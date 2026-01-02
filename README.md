@@ -2,7 +2,7 @@
 
 Motor de ingeniería editorial escrito en Python para generar agendas de alta gama en formato PDF (1200 DPI). Combina la potencia de **Jinja2** y **WeasyPrint** con principios de diseño suizo y encuadernación artesanal.
 
-tapa.png
+![alt text](docs/images/tapa.png)
 
 ## 📜 Filosofía de Diseño: El Concepto "Heritage"
 
@@ -27,10 +27,10 @@ El diseño evoca la calidad táctil de los libros botánicos del siglo XIX, fusi
 
 1.  **Método Alastair Híbrido:**
     Una disposición semanal que separa lo rígido (citas con hora) de lo fluido (tareas de la semana). Permite migrar tareas sin reescribirlas.
-![alt text](metodoalastair.png)
+![alt text](docs/images/metodoalastair.png)
 2.  **Habit Tracker Rotado (Landscape):**
     Aprovecha el eje largo de la página A5 (210mm) para ofrecer celdas de 5.5mm, permitiendo un seguimiento mensual cómodo sin comprimir la caligrafía.
-![alt text](registrohabitos.png)
+![alt text](docs/images/registrohabitos.png)
 3.  **Zero-Waste Layout:**
     Cada módulo ha sido calculado matemáticamente para encajar estrictamente dentro del formato A5, eliminando páginas fantasma y errores de corte.
 
