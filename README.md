@@ -2,7 +2,7 @@
 
 Motor de ingeniería editorial escrito en Python para generar agendas de alta gama en formato PDF (1200 DPI). Combina la potencia de **Jinja2** y **WeasyPrint** con principios de diseño suizo y encuadernación artesanal.
 
-![alt text](docs/images/tapa.png)
+[![alt text]([docs/images/tapa.png](https://github.com/jonidimo/agenda-heritage-generator/blob/main/docs/images/tapa.jpg))](https://github.com/jonidimo/agenda-heritage-generator/blob/main/docs/images/tapa.jpg)
 
 ## 📜 Filosofía de Diseño: El Concepto "Heritage"
 
