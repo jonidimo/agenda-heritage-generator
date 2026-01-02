@@ -1,0 +1,232 @@
+/* MASTER STYLE - AGENDA 2026 
+   Target: HP 4350 Laser (1200dpi)
+   Engine: WeasyPrint
+*/
+
+@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,300;1,400;1,600&family=Manrope:wght@300;400;600&display=swap');
+
+:root {
+    /* Colors - Pure Black/Grays for Laser Precision */
+    --ink-primary: #000000;
+    --ink-secondary: #000000;
+    /* Force pure black for laser high-contrast */
+    --hairline: #999999;
+    /* Calibrated for writing lines */
+    --grid-hairline: #cccccc;
+    /* Calibrated for Alastair grid */
+
+    /* Dimensions */
+    --page-width: 148mm;
+    --page-height: 210mm;
+    --margin-inner: 20mm;
+    --margin-outer: 15mm;
+    --margin-y: 15mm;
+    --grid-line: 0.5pt solid #000000;
+    /* Structural borders */
+}
+
+@page {
+    size: A5;
+    margin: 0;
+}
+
+/* Lomo logic will now be handled via padding inside .page to avoid WeasyPrint margin-box recursion */
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box !important;
+}
+
+body {
+    margin: 0;
+    padding: 0;
+    font-family: 'Manrope', sans-serif;
+    font-weight: 300;
+    color: var(--ink-primary);
+    background: white;
+    font-size: 9pt;
+    line-height: 1.2;
+}
+
+.page {
+    width: 148mm !important;
+    height: 210mm !important;
+    padding: 15mm;
+    /* Global padding as requested */
+    position: relative;
+    overflow: hidden !important;
+    page-break-after: always;
+    display: block;
+    margin: 0;
+    background: white;
+}
+
+/* Specific padding for Left/Right pages (Spiral/Binding) */
+.page.left-page {
+    padding-left: 20mm;
+    padding-right: 15mm;
+}
+
+.page.right-page {
+    padding-left: 15mm;
+    padding-right: 20mm;
+}
+
+/* Zero Spillover: Prevent children from pushing page boundaries */
+.page>* {
+    margin-top: 0 !important;
+    margin-bottom: 0 !important;
+}
+
+table {
+    width: 100%;
+    table-layout: fixed;
+    /* Rigid columns */
+    border-collapse: collapse;
+}
+
+/* Colibri Vector Injection (1200dpi ready) */
+.page::after {
+    content: "";
+    position: absolute;
+    bottom: 13mm;
+    right: 13mm;
+    width: 12mm;
+    height: 12mm;
+    background-repeat: no-repeat;
+    background-size: contain;
+    opacity: 1;
+    /* Increased from 0.05 for printer visibility */
+    background-image: REPLACE_WITH_COLIBRI_SVG;
+    transition: transform 0.3s ease;
+}
+
+/* Mirroring Logic for Watermark */
+.page:nth-child(even)::after {
+    left: 13mm;
+    right: auto;
+    transform: scaleX(-1);
+}
+
+.page.no-watermark::after {
+    display: none;
+}
+
+/* TYPOGRAPHY */
+.font-display {
+    font-family: 'Cormorant Garamond', serif;
+}
+
+.font-sans {
+    font-family: 'Manrope', sans-serif;
+}
+
+.title-huge {
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 60pt;
+    font-weight: 300;
+    line-height: 1;
+    margin: 0;
+}
+
+.subtitle-italic {
+    font-family: 'Cormorant Garamond', serif;
+    font-style: italic;
+    font-size: 18pt;
+    color: var(--ink-primary);
+    font-weight: 300;
+    margin-top: 2mm;
+}
+
+.section-header {
+    font-family: 'Manrope', sans-serif;
+    font-size: 8pt;
+    font-weight: 600;
+    /* SemiBold instead of ExtraBold */
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    border-bottom: 0.5pt solid var(--ink-primary);
+    padding-bottom: 1mm;
+    margin-bottom: 3mm;
+}
+
+.label-mini {
+    font-family: 'Manrope', sans-serif;
+    font-size: 6pt;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--ink-primary);
+}
+
+/* UTILITIES */
+.vector-line {
+    border-bottom: 0.3pt solid var(--hairline);
+    height: 5mm;
+    width: 100%;
+}
+
+.vector-line-solid {
+    border-bottom: 0.5pt solid #000000;
+}
+
+.text-right {
+    text-align: right;
+}
+
+.text-center {
+    text-align: center;
+}
+
+.page-centered {
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+    gap: 5mm;
+    height: 100%;
+    padding: 25mm 15mm 15mm 20mm !important;
+    /* Added 10mm top padding + balanced margins */
+    overflow: hidden !important;
+}
+
+/* TABLE HELPERS */
+table {
+    border-collapse: collapse;
+    width: 100%;
+}
+
+th,
+td {
+    padding: 1mm;
+    vertical-align: middle;
+}
+
+/* MODULE SPECIFIC OVERRIDES */
+
+/* Dot Grid Helper for empty pages */
+.dot-grid {
+    width: 100%;
+    height: 180mm;
+    background-image: radial-gradient(circle, #303030 0.5pt, transparent 0.5pt);
+    background-size: 5mm 5mm;
+}
+
+/* CONDITIONAL STATES (to avoid Jinja tags in inline styles) */
+.bg-weekend {
+    background-color: #e0e0e0 !important;
+    /* 12% Grey for print visibility */
+}
+
+.opacity-off-month {
+    opacity: 0.3;
+}
+
+.text-holiday {
+    color: var(--ink-primary);
+    font-style: italic;
+}
+
+.weekend-bold {
+    font-weight: 600;
+    color: var(--ink-primary);
+}

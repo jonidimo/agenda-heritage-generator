@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Weekly Spread</title>
+</head>
+
+<body>
+    <!-- PAGE 1: LEFT SIDE (Daily Rows) -->
+    <section class="page">
+        <!-- HEADER TABLE -->
+        <table style="width: 100%; border-bottom: 0.5pt solid #000; margin-bottom: 5mm; table-layout: fixed;">
+            <tr>
+                <td style="vertical-align: top; padding-bottom: 2mm;">
+                    <div class="label-mini" style="font-size: 8pt;">SEMANA {{ week.number }}</div>
+                    <div class="font-display" style="font-size: 14pt; font-style: italic;">{{ week.month_label }}</div>
+                </td>
+                <td style="width: 45mm; text-align: right; vertical-align: top; padding-bottom: 2mm;">
+                    {{ mini_calendar_html | safe }}
+                </td>
+            </tr>
+        </table>
+
+        <!-- DAILY ROWS - Using Table and Classes to avoid IDE errors -->
+        <div style="height: 130mm; border-bottom: 0.5pt solid #000;">
+            {% for day in week.days %}
+            <table class="{{ 'bg-weekend' if day.is_weekend else '' }}"
+                style="width: 100%; height: 18.2mm; border-top: 0.5pt solid #000; table-layout: fixed;">
+                <tr>
+                    <td style="vertical-align: top; padding: 1mm 2mm;">
+                        <span class="font-sans" style="font-size: 9pt; font-weight: 800;">{{ day.name_short }} {{
+                            day.day_num }}</span>
+                        {% if day.holiday_name %}
+                        <span style="font-size: 7pt; font-weight: 400; margin-left: 2mm; color: #000;">— {{
+                            day.holiday_name }}</span>
+                        {% endif %}
+                    </td>
+                </tr>
+            </table>
+            {% endfor %}
+        </div>
+
+        <!-- NOTES SECTION -->
+        <table style="width: 100%; margin-top: 5mm; border-top: 1.5pt solid #000; padding-top: 2mm;">
+            <tr>
+                <td>
+                    <div class="label-mini" style="font-size: 7pt; margin-bottom: 1mm;">NOTAS / OBJETIVOS SEMANALES
+                    </div>
+                    <div class="vector-line" style="border-bottom: 0.3pt solid #999; height: 6mm;"></div>
+                    <div class="vector-line" style="border-bottom: 0.3pt solid #999; height: 6mm;"></div>
+                    <div class="vector-line" style="border-bottom: 0.3pt solid #999; height: 6mm;"></div>
+                </td>
+            </tr>
+        </table>
+    </section>
+
+    <!-- PAGE 2: RIGHT SIDE (Alastair Engine) -->
+    <section class="page">
+        <table
+            style="width: 100%; table-layout: fixed; border-collapse: collapse; height: 165mm; border-top: 0.5pt solid #000;">
+            <thead>
+                <tr>
+                    <th class="label-mini"
+                        style="text-align: left; border-bottom: 0.5pt solid #000; padding-bottom: 2mm;">TAREAS</th>
+                    {% for day in week.days %}
+                    <th class="label-mini {{ 'bg-weekend' if day.is_weekend else '' }}"
+                        style="width: 6.5mm; text-align: center; border-left: 0.3pt solid #ccc; border-bottom: 0.5pt solid #000; padding-bottom: 1mm;">
+                        <div style="font-size: 8pt; font-weight: 800;">{{ day.name_short[0] }}</div>
+                        <div style="font-size: 6pt; color: #000;">{{ day.day_num }}</div>
+                    </th>
+                    {% endfor %}
+                </tr>
+            </thead>
+            <tbody>
+                {% for _ in range(25) %}
+                <tr style="height: 6.2mm; border-bottom: 0.3pt solid #999;">
+                    <td></td>
+                    {% for day in week.days %}
+                    <td class="{{ 'bg-weekend' if day.is_weekend else '' }}" style="border-left: 0.3pt solid #ccc;">
+                    </td>
+                    {% endfor %}
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+
+        <!-- GASTOS TABLE -->
+        <table style="width: 100%; border-top: 0.5pt solid #000; margin-top: 8mm; table-layout: fixed;">
+            <tr>
+                <td style="padding-top: 2mm;">
+                    <div class="label-mini" style="font-size: 7pt;">CONTROL DE GASTOS SEMANAL</div>
+                    <table style="width: 100%; margin-top: 1mm;">
+                        <tr>
+                            <td style="font-size: 9pt; width: 40mm;">TOTAL ACUMULADO:</td>
+                            <td style="border-bottom: 1pt solid #000;"></td>
+                        </tr>
+                    </table>
+                </td>
+            </tr>
+        </table>
+    </section>
+</body>
+
+</html>

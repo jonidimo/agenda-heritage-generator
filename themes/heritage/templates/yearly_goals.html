@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Yearly Goals</title>
+</head>
+
+<body>
+    <!-- PAGE 1: VISION MATRIX (Downgrade to Table) -->
+    <section class="page">
+        <header style="height: 15mm; margin-bottom: 5mm; border-bottom: 0.5pt solid #000; padding-bottom: 2mm;">
+            <h1 class="font-display" style="font-size: 20pt; font-style: italic; margin: 0; color: #000;">Visión Anual
+                2026</h1>
+            <div class="label-mini" style="margin-top: 1mm; font-size: 7.5pt; color: #000;">ESTRATEGIA A CORTO, MEDIANO
+                Y LARGO
+                PLAZO.</div>
+        </header>
+
+        <table
+            style="width: 100%; height: 160mm; border-collapse: collapse; table-layout: fixed; border: 1pt solid #000;">
+            <thead>
+                <tr style="height: 10mm; background: #f0f0f0;">
+                    <th class="label-mini" style="width: 25%; border: 0.5pt solid #000;">CATEGORÍA</th>
+                    <th class="label-mini" style="border: 0.5pt solid #000;">CORTO PLAZO</th>
+                    <th class="label-mini" style="border: 0.5pt solid #000;">MEDIANO PLAZO</th>
+                    <th class="label-mini" style="border: 0.5pt solid #000;">LARGO PLAZO</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for category in ["PERSONAL / HOGAR", "PROFESIONAL", "SALUD / BIENESTAR", "FINANZAS"] %}
+                <tr style="height: 37.5mm;">
+                    <td class="font-sans"
+                        style="font-weight: 800; font-size: 7pt; text-align: center; border: 0.5pt solid #000; background: #f9f9f9;">
+                        {{ category }}
+                    </td>
+                    {% for _ in range(3) %}
+                    <td style="border: 0.5pt solid #000; vertical-align: top; padding: 2mm;">
+                        <div style="border-bottom: 0.3pt solid #999; height: 8mm;"></div>
+                        <div style="border-bottom: 0.3pt solid #999; height: 8mm;"></div>
+                        <div style="border-bottom: 0.3pt solid #999; height: 8mm;"></div>
+                    </td>
+                    {% endfor %}
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </section>
+
+    <!-- PAGE 2: ACTION PLAN -->
+    <section class="page">
+        <header style="height: 15mm; margin-bottom: 5mm; border-bottom: 0.5pt solid #000; padding-bottom: 2mm;">
+            <h1 class="font-display" style="font-size: 20pt; font-style: italic; margin: 0; color: #000;">Plan de Acción
+            </h1>
+            <div class="label-mini" style="margin-top: 1mm; font-size: 7.5pt; color: #000;">LOS 3 PROYECTOS CRÍTICOS DEL
+                AÑO.</div>
+        </header>
+
+        {% for i in range(1, 4) %}
+        <div style="height: 60mm; border: 0.8pt solid #000; padding: 4mm; margin-bottom: 2mm; overflow: hidden;">
+            <table style="width: 100%; border-bottom: 1pt solid #000; margin-bottom: 3mm;">
+                <tr>
+                    <td class="label-mini" style="width: 30mm; font-weight: 800; font-size: 8pt; color: #000;">OBJETIVO
+                        {{ i }}:</td>
+                    <td style="border-bottom: 0.3pt solid #999;">&nbsp;</td>
+                </tr>
+            </table>
+
+            <table style="width: 100%; margin-bottom: 2mm;">
+                <tr>
+                    <td style="vertical-align: top;">
+                        <div class="label-mini" style="font-style: italic; color: #000; font-size: 6pt;">PRÓXIMAS
+                            ACCIONES</div>
+                        {% for _ in range(3) %}
+                        <table style="width: 100%; border-bottom: 0.3pt solid #999; height: 9mm;">
+                            <tr>
+                                <td style="width: 5mm; font-size: 10pt; color: #999;">◯</td>
+                                <td></td>
+                            </tr>
+                        </table>
+                        {% endfor %}
+                    </td>
+                    <td style="width: 25mm; vertical-align: top; padding-left: 4mm;">
+                        <div
+                            style="width: 25mm; height: 25mm; border: 0.5pt solid #000; text-align: center; padding-top: 2mm;">
+                            <div class="label-mini" style="font-size: 6pt; font-weight: 800; color: #000;">PLAZO</div>
+                            <div style="margin-top: 4mm; font-size: 14pt; color: #999;">/ /</div>
+                        </div>
+                    </td>
+                </tr>
+            </table>
+        </div>
+        {% endfor %}
+    </section>
+</body>
+
+</html>

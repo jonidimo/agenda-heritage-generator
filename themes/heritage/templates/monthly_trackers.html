@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Balance del Mes</title>
+</head>
+
+<body>
+    <!-- PAGE: FINANCES & BRAIN DUMP -->
+    <section class="page">
+        <div style="height: 180mm; overflow: hidden; border: 0.5pt solid #eee; padding: 5mm;">
+
+            <!-- HEADER -->
+            <table style="width: 100%; border-bottom: 0.5pt solid #000; margin-bottom: 5mm;">
+                <tr>
+                    <td style="padding: 0;">
+                        <h1 class="font-display" style="font-size: 20pt; font-style: italic; margin: 0;">Balance del Mes
+                        </h1>
+                    </td>
+                    <td style="text-align: right; vertical-align: bottom; padding: 0;">
+                        <span class="label-mini" style="font-size: 8pt;">{{ month_name }} 2026</span>
+                    </td>
+                </tr>
+            </table>
+
+            <!-- FINANCES SECTION (Top) -->
+            <table style="width: 100%; table-layout: fixed; border-collapse: collapse; margin-bottom: 8mm;">
+                <tr>
+                    <!-- Left Column: INGRESOS / FIJOS -->
+                    <td style="width: 50%; vertical-align: top; padding-right: 3mm; border-right: 0.5pt solid #000;">
+                        <div class="label-mini"
+                            style="font-weight: 800; border-bottom: 0.5pt solid #000; margin-bottom: 2mm;">INGRESOS /
+                            FIJOS</div>
+                        <table style="width: 100%; table-layout: fixed;">
+                            {% for _ in range(12) %}
+                            <tr style="height: 6mm; border-bottom: 0.3pt solid #999;">
+                                <td style="width: 70%;"></td>
+                                <td style="text-align: right; border-left: 0.3pt solid #999;">$</td>
+                            </tr>
+                            {% endfor %}
+                        </table>
+                    </td>
+                    <!-- Right Column: VARIABLES / OTROS -->
+                    <td style="width: 50%; vertical-align: top; padding-left: 3mm;">
+                        <div class="label-mini"
+                            style="font-weight: 800; border-bottom: 0.5pt solid #000; margin-bottom: 2mm;">VARIABLES /
+                            OTROS</div>
+                        <table style="width: 100%; table-layout: fixed;">
+                            {% for _ in range(12) %}
+                            <tr style="height: 6mm; border-bottom: 0.3pt solid #999;">
+                                <td style="width: 70%;"></td>
+                                <td style="text-align: right; border-left: 0.3pt solid #999;">$</td>
+                            </tr>
+                            {% endfor %}
+                        </table>
+                    </td>
+                </tr>
+            </table>
+
+            <!-- BALANCE BOX -->
+            <table style="width: 100%; border: 0.5pt solid #000; margin-bottom: 8mm;">
+                <tr style="height: 10mm;">
+                    <td class="label-mini" style="font-weight: 800; padding-left: 4mm;">TOTAL ACUMULADO / BALANCE</td>
+                    <td class="font-display" style="text-align: right; padding-right: 4mm; font-size: 16pt;">$
+                        ____________</td>
+                </tr>
+            </table>
+
+            <!-- BRAIN DUMP: LISTA DE COMPRAS / PENDIENTES -->
+            <div class="label-mini" style="font-weight: 800; border-bottom: 0.5pt solid #000; margin-bottom: 3mm;">LISTA
+                DE COMPRAS / PENDIENTES</div>
+            <table style="width: 100%; table-layout: fixed; border-collapse: collapse;">
+                <tbody>
+                    {% for _ in range(12) %}
+                    <tr style="height: 7mm; border-bottom: 0.3pt solid #999;">
+                        <td style="width: 8mm; vertical-align: middle; text-align: center; color: #999;">◯</td>
+                        <td></td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+</body>
+
+</html>

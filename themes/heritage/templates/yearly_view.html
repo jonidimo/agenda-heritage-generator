@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+  <meta charset="UTF-8">
+  <title>Calendario 2026-2027</title>
+</head>
+
+<body>
+  {% set months_2026 = [
+  ('ENERO', 31, 3), ('FEBRERO', 28, 6), ('MARZO', 31, 6),
+  ('ABRIL', 30, 2), ('MAYO', 31, 4), ('JUNIO', 30, 0),
+  ('JULIO', 31, 2), ('AGOSTO', 31, 5), ('SEPTIEMBRE', 30, 1),
+  ('OCTUBRE', 31, 3), ('NOVIEMBRE', 30, 6), ('DICIEMBRE', 31, 1)
+  ] %}
+
+  {% set months_2027 = [
+  ('ENERO', 31, 4), ('FEBRERO', 28, 0), ('MARZO', 31, 0),
+  ('ABRIL', 30, 3), ('MAYO', 31, 5), ('JUNIO', 30, 1),
+  ('JULIO', 31, 3), ('AGOSTO', 31, 6), ('SEPTIEMBRE', 30, 2),
+  ('OCTUBRE', 31, 4), ('NOVIEMBRE', 30, 0), ('DICIEMBRE', 31, 2)
+  ] %}
+
+  <!-- 2026: Page 1 (Jan-Jun) -->
+  <section class="page">
+    <header
+      style="margin-bottom: 12mm; padding-bottom: 0mm; display: flex; justify-content: space-between; align-items: baseline;">
+      <h1 class="font-display" style="font-size: 26pt; margin: 0;">2026</h1>
+      <div class="label-mini" style="font-size: 8pt; font-weight: 300; color: #000;">CALENDARIO ANUAL</div>
+    </header>
+
+    <table style="width: 100%; table-layout: fixed; border-collapse: collapse;">
+      {% for row_idx in range(3) %}
+      <tr>
+        {% for col_idx in range(2) %}
+        {% set month_idx = row_idx * 2 + col_idx %}
+        {% set name, days, start_day = months_2026[month_idx] %}
+        <td style="width: 50%; vertical-align: top; padding: 0 4mm 2mm 4mm;">
+          <div class="font-sans"
+            style="font-weight: 800; font-size: 10pt; text-align: left; margin-bottom: 2mm; border-bottom: 0.3pt solid #000; padding-bottom: 1mm;">
+            {{ name }}
+          </div>
+          <table style="width: 100%; table-layout: fixed; border-collapse: collapse;">
+            <tr>
+              {% for h in ['L','M','M','J','V','S','D'] %}
+              <td class="label-mini"
+                style="text-align: center; font-size: 6.5pt; font-weight: 800; padding-bottom: 1.5mm;">{{ h }}</td>
+              {% endfor %}
+            </tr>
+            {% for row in range(6) %}
+            <tr style="height: 5.0mm;">
+              {% for col in range(7) %}
+              {% set day_idx = row * 7 + col %}
+              {% set d = day_idx - start_day + 1 %}
+              <td style="text-align: center; font-size: 8.5pt; vertical-align: middle;">
+                {% if d > 0 and d <= days %} {% set dow=(start_day + d - 1) % 7 %} <span
+                  style="{% if dow >= 5 %}color: #999; font-weight: 600;{% endif %}">{{ d }}</span>
+                  {% endif %}
+              </td>
+              {% endfor %}
+            </tr>
+            {% endfor %}
+          </table>
+        </td>
+        {% endfor %}
+      </tr>
+      {% endfor %}
+    </table>
+  </section>
+
+  <!-- 2026: Page 2 (Jul-Dec) -->
+  <section class="page">
+    <header
+      style="margin-bottom: 12mm; padding-bottom: 0mm; display: flex; justify-content: space-between; align-items: baseline;">
+      <h1 class="font-display" style="font-size: 26pt; margin: 0;">2026</h1>
+      <div class="label-mini" style="font-size: 8pt; font-weight: 300; color: #000;">CALENDARIO ANUAL</div>
+    </header>
+
+    <table style="width: 100%; table-layout: fixed; border-collapse: collapse;">
+      {% for row_idx in range(3) %}
+      <tr>
+        {% for col_idx in range(2) %}
+        {% set month_idx = 6 + row_idx * 2 + col_idx %}
+        {% set name, days, start_day = months_2026[month_idx] %}
+        <td style="width: 50%; vertical-align: top; padding: 0 4mm 4mm 4mm;">
+          <div class="font-sans"
+            style="font-weight: 800; font-size: 10pt; text-align: left; margin-bottom: 2mm; border-bottom: 1pt solid #eee; padding-bottom: 1mm;">
+            {{ name }}
+          </div>
+          <table style="width: 100%; table-layout: fixed; border-collapse: collapse;">
+            <tr>
+              {% for h in ['L','M','M','J','V','S','D'] %}
+              <td class="label-mini"
+                style="text-align: center; font-size: 6.5pt; font-weight: 800; padding-bottom: 1.5mm;">{{ h }}</td>
+              {% endfor %}
+            </tr>
+            {% for row in range(6) %}
+            <tr style="height: 5.0mm;">
+              {% for col in range(7) %}
+              {% set day_idx = row * 7 + col %}
+              {% set d = day_idx - start_day + 1 %}
+              <td style="text-align: center; font-size: 8.5pt; vertical-align: middle;">
+                {% if d > 0 and d <= days %} {% set dow=(start_day + d - 1) % 7 %} <span
+                  style="{% if dow >= 5 %}color: #999; font-weight: 600;{% endif %}">{{ d }}</span>
+                  {% endif %}
+              </td>
+              {% endfor %}
+            </tr>
+            {% endfor %}
+          </table>
+        </td>
+        {% endfor %}
+      </tr>
+      {% endfor %}
+    </table>
+  </section>
+
+  <!-- 2027: Page 1 (Jan-Jun) -->
+  <section class="page">
+    <header
+      style="margin-bottom: 12mm; padding-bottom: 0mm; display: flex; justify-content: space-between; align-items: baseline;">
+      <h1 class="font-display" style="font-size: 26pt; margin: 0;">2027</h1>
+      <div class="label-mini" style="font-size: 8pt; font-weight: 300; color: #000;">CALENDARIO ANUAL</div>
+    </header>
+
+    <table style="width: 100%; table-layout: fixed; border-collapse: collapse;">
+      {% for row_idx in range(3) %}
+      <tr>
+        {% for col_idx in range(2) %}
+        {% set month_idx = row_idx * 2 + col_idx %}
+        {% set name, days, start_day = months_2027[month_idx] %}
+        <td style="width: 50%; vertical-align: top; padding: 0 4mm 4mm 4mm;">
+          <div class="font-sans"
+            style="font-weight: 800; font-size: 10pt; text-align: left; margin-bottom: 2mm; border-bottom: 1pt solid #eee; padding-bottom: 1mm;">
+            {{ name }}
+          </div>
+          <table style="width: 100%; table-layout: fixed; border-collapse: collapse;">
+            <tr>
+              {% for h in ['L','M','M','J','V','S','D'] %}
+              <td class="label-mini"
+                style="text-align: center; font-size: 6.5pt; font-weight: 800; padding-bottom: 1.5mm;">{{ h }}</td>
+              {% endfor %}
+            </tr>
+            {% for row in range(6) %}
+            <tr style="height: 5.0mm;">
+              {% for col in range(7) %}
+              {% set day_idx = row * 7 + col %}
+              {% set d = day_idx - start_day + 1 %}
+              <td style="text-align: center; font-size: 8.5pt; vertical-align: middle;">
+                {% if d > 0 and d <= days %} {% set dow=(start_day + d - 1) % 7 %} <span
+                  style="{% if dow >= 5 %}color: #999; font-weight: 600;{% endif %}">{{ d }}</span>
+                  {% endif %}
+              </td>
+              {% endfor %}
+            </tr>
+            {% endfor %}
+          </table>
+        </td>
+        {% endfor %}
+      </tr>
+      {% endfor %}
+    </table>
+  </section>
+
+  <!-- 2027: Page 2 (Jul-Dec) -->
+  <section class="page">
+    <header
+      style="margin-bottom: 12mm; padding-bottom: 0mm; display: flex; justify-content: space-between; align-items: baseline;">
+      <h1 class="font-display" style="font-size: 26pt; margin: 0;">2027</h1>
+      <div class="label-mini" style="font-size: 8pt; font-weight: 300; color: #000;">CALENDARIO ANUAL</div>
+    </header>
+
+    <table style="width: 100%; table-layout: fixed; border-collapse: collapse;">
+      {% for row_idx in range(3) %}
+      <tr>
+        {% for col_idx in range(2) %}
+        {% set month_idx = 6 + row_idx * 2 + col_idx %}
+        {% set name, days, start_day = months_2027[month_idx] %}
+        <td style="width: 50%; vertical-align: top; padding: 0 4mm 4mm 4mm;">
+          <div class="font-sans"
+            style="font-weight: 800; font-size: 10pt; text-align: left; margin-bottom: 2mm; border-bottom: 1pt solid #eee; padding-bottom: 1mm;">
+            {{ name }}
+          </div>
+          <table style="width: 100%; table-layout: fixed; border-collapse: collapse;">
+            <tr>
+              {% for h in ['L','M','M','J','V','S','D'] %}
+              <td class="label-mini"
+                style="text-align: center; font-size: 6.5pt; font-weight: 800; padding-bottom: 1.5mm;">{{ h }}</td>
+              {% endfor %}
+            </tr>
+            {% for row in range(6) %}
+            <tr style="height: 5.0mm;">
+              {% for col in range(7) %}
+              {% set day_idx = row * 7 + col %}
+              {% set d = day_idx - start_day + 1 %}
+              <td style="text-align: center; font-size: 8.5pt; vertical-align: middle;">
+                {% if d > 0 and d <= days %} {% set dow=(start_day + d - 1) % 7 %} <span
+                  style="{% if dow >= 5 %}color: #999; font-weight: 600;{% endif %}">{{ d }}</span>
+                  {% endif %}
+              </td>
+              {% endfor %}
+            </tr>
+            {% endfor %}
+          </table>
+        </td>
+        {% endfor %}
+      </tr>
+      {% endfor %}
+    </table>
+  </section>
+</body>
+
+</html>

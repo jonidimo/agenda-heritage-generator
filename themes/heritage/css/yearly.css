@@ -1,0 +1,59 @@
+.yearly-page {
+    padding: 20mm;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+}
+
+.year-title {
+    text-align: center;
+    font-size: 36pt;
+    margin-bottom: 5mm;
+    color: var(--ink-primary);
+}
+
+.year-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    grid-template-rows: repeat(4, 1fr);
+    column-gap: 5mm;
+    row-gap: 8mm;
+    height: 85%;
+}
+
+.month-container {
+    display: flex;
+    flex-direction: column;
+    gap: 1mm;
+}
+
+.month-name {
+    text-align: center;
+    margin-bottom: 1mm;
+}
+
+/* Table Refactor for Stability */
+.month-table {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: fixed;
+}
+
+.month-table th,
+.month-table td {
+    text-align: center;
+    font-size: 5pt;
+    height: 3mm;
+    vertical-align: middle;
+    padding: 0;
+}
+
+.month-table th {
+    font-weight: bold;
+    color: var(--ink-secondary);
+}
+
+.weekend {
+    background-color: var(--weekend-fill);
+    border-radius: 1px;
+}

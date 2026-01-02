@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Monthly Log</title>
+</head>
+
+<body>
+    <section class="page">
+        <!-- HEADER TABLE -->
+        <table
+            style="width: 100%; border-bottom: 0.5pt solid var(--ink-primary); margin-bottom: 2mm; table-layout: fixed;">
+            <tr>
+                <td style="vertical-align: bottom; padding-bottom: 1mm;">
+                    <h1 class="font-display" style="font-size: 26pt; font-style: italic; margin: 0; line-height: 1;">{{
+                        month_name }}</h1>
+                </td>
+                <td style="text-align: right; vertical-align: bottom; padding-bottom: 1mm;">
+                    <div class="label-mini" style="font-weight: 600; font-size: 10pt;">2026</div>
+                </td>
+            </tr>
+        </table>
+
+        <!-- Days List Table -->
+        <table style="width: 100%; border-collapse: collapse; table-layout: fixed;">
+            <tbody>
+                {% for day in days_list %}
+                <tr style="height: 5.2mm; border-bottom: 0.3pt solid var(--hairline);"
+                    class="{{ 'bg-weekend' if day.is_weekend else '' }}">
+                    <td class="font-display {{ 'text-holiday' if day.holiday_name else '' }}"
+                        style="width: 10mm; text-align: right; padding-right: 3mm; font-size: 8.5pt;">
+                        {{ day.day_num }}
+                    </td>
+                    <td class="label-mini" style="width: 10mm; font-size: 7.5pt; color: var(--ink-secondary);">
+                        {{ day.name_short }}
+                    </td>
+                    <td style="padding-left: 2mm;">
+                        {% if day.holiday_name %}
+                        <span
+                            style="font-size: 5.5pt; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ink-secondary);">{{
+                            day.holiday_name }}</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </section>
+</body>
+
+</html>

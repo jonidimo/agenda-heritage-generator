@@ -1,0 +1,95 @@
+/* Global CSS Variables & Typography */
+
+@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;0,700;1,300;1,400;1,500;1,600;1,700&family=Manrope:wght@200;300;400;500;600;700;800&display=swap');
+
+:root {
+    /* Colors */
+    --ink-primary: #1a1a1a;
+    --ink-secondary: #666666;
+    --accent-color: #556b2f;
+    --paper-color: #fcfbf4;
+    --grid-line-color: #cccccc;
+    --weekend-fill: #f4f4f4;
+
+    /* Borders */
+    --grid-line: 0.25pt solid var(--grid-line-color);
+
+    /* Dimensions - though usually handled in layout, good for calculation references */
+    --page-width: 148mm;
+    --page-height: 210mm;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    padding: 0;
+    font-family: 'Manrope', sans-serif;
+    color: var(--ink-primary);
+    background-color: white;
+    /* Changed from paper-color for print */
+    background-image: none !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+}
+
+.page {
+    background-color: white;
+    /* Changed from paper-color for print */
+    background-image: none !important;
+    position: relative;
+    overflow: hidden;
+    width: 148mm;
+    height: 210mm;
+}
+
+/* Typography Base */
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+    font-family: 'Cormorant Garamond', serif;
+    font-weight: normal;
+    margin: 0;
+}
+
+.text-serif {
+    font-family: 'Cormorant Garamond', serif;
+}
+
+.text-sans {
+    font-family: 'Manrope', sans-serif;
+}
+
+/* Utility Classes based on Specs */
+.display-header {
+    font-family: 'Cormorant Garamond', serif;
+    font-style: italic;
+}
+
+.label-caps {
+    font-family: 'Manrope', sans-serif;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    font-size: 7pt;
+    /* Default label size */
+}
+
+.accent-text {
+    color: var(--accent-color);
+}
+
+.secondary-text {
+    color: var(--ink-secondary);
+}
+.dot-grid-bg {
+    background-image: radial-gradient(circle, #d4d4d4 1px, transparent 1px);
+    background-size: 5mm 5mm;
+    background-position: 2.5mm 2.5mm;
+    width: 100%;
+    height: 100%;
+}

@@ -1,0 +1,4 @@
+weasyprint
+jinja2
+arrow
+holidays

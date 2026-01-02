@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Habit Tracker Extra</title>
+</head>
+
+<body>
+    <section class="page">
+        <!-- Landscape Wrapper -->
+        <div
+            style="position: absolute; top: 50%; left: 50%; width: 195mm; height: 130mm; transform: translate(-50%, -50%) rotate(-90deg); overflow: hidden;">
+
+            <!-- Header Table for Title -->
+            <table
+                style="width: 100%; border-bottom: 2pt solid #000; margin-bottom: 4mm; border-collapse: collapse; table-layout: fixed;">
+                <tr>
+                    <td style="vertical-align: bottom; padding-bottom: 2mm;">
+                        <h1 class="font-display" style="font-size: 20pt; font-style: italic; margin: 0;">Registro de
+                            Hábitos</h1>
+                    </td>
+                    <td style="text-align: right; vertical-align: bottom; padding-bottom: 2mm;">
+                        <span class="label-mini" style="font-size: 9pt; opacity: 0.6;">{{ month_name }} 2026</span>
+                    </td>
+                </tr>
+            </table>
+
+            <!-- Main Rigid Table -->
+            <table style="width: 100%; table-layout: fixed; border-collapse: collapse; border: 0.25pt solid black;">
+                <thead>
+                    <!-- Row 1: Numbers -->
+                    <tr style="height: 6mm; background: #ffffff;">
+                        <th class="label-mini"
+                            style="width: 40mm; text-align: left; padding-left: 3mm; border: 0.25pt solid black; vertical-align: middle;">
+                            HÁBITO</th>
+                        {% for day in days_31 %}
+                        <th class="label-mini {{ 'bg-weekend' if day.is_weekend else '' }}"
+                            style="width: 5.0mm; text-align: center; border: 0.25pt solid black; font-size: 8pt; vertical-align: middle; padding: 1mm 0; line-height: 1.2; {% if day.is_weekend %}background-color: #f9f9f9;{% endif %}">
+                            {{ day.day_num }}
+                        </th>
+                        {% endfor %}
+                    </tr>
+                    <!-- Row 2: Single Letters (L M M J V S D) -->
+                    <tr style="height: 6mm; background: #ffffff;">
+                        <th style="border: 0.25pt solid black; vertical-align: middle;"></th>
+                        {% for day in days_31 %}
+                        <th class="label-mini {{ 'bg-weekend' if day.is_weekend else '' }}"
+                            style="text-align: center; border: 0.25pt solid black; font-size: 7pt; vertical-align: middle; padding: 1mm 0; line-height: 1.2; {% if day.is_weekend %}background-color: #f9f9f9;{% endif %}">
+                            {{ day.name_short[0] }}
+                        </th>
+                        {% endfor %}
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for _ in range(10) %}
+                    <tr style="height: 8.5mm;">
+                        <td style="border: 0.25pt solid black; vertical-align: middle;"></td>
+                        {% for day in days_31 %}
+                        <td class="{{ 'bg-weekend' if day.is_weekend else '' }}"
+                            style="border: 0.25pt solid black; vertical-align: middle; text-align: center; {% if day.is_weekend %}background-color: #f9f9f9;{% endif %}">
+                        </td>
+                        {% endfor %}
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+
+            <!-- Bottom Note -->
+            <table style="width: 100%; margin-top: 5mm; border-collapse: collapse; table-layout: fixed;">
+                <tr>
+                    <td style="vertical-align: middle;">
+                        <div style="border-top: 0.5pt solid #ccc; width: 100%;"></div>
+                    </td>
+                    <td style="width: 80mm; text-align: right; padding-left: 5mm;">
+                        <div class="font-display" style="font-style: italic; opacity: 0.5; font-size: 10pt;">"La
+                            disciplina es el puente entre las metas y los logros."</div>
+                    </td>
+                </tr>
+            </table>
+        </div>
+    </section>
+</body>
+
+</html>

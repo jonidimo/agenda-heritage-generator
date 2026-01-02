@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Plan de Acción</title>
+</head>
+
+<body>
+    <!-- PAGE 1: OBJETIVOS 1 & 2 -->
+    <section class="page page-centered">
+        <!-- HEADER FIX: Increased padding and removed fixed line-height to avoid overlaps -->
+        <div style="width: 100%; margin-bottom: 8mm; border-bottom: 0.5pt solid #000; padding-bottom: 4mm;">
+            <table style="width: 100%; table-layout: fixed; border-collapse: collapse;">
+                <tr>
+                    <td style="vertical-align: bottom; width: 60%;">
+                        <h1 class="font-display" style="font-size: 28pt; margin: 0; line-height: 1.1;">Plan de Acción
+                        </h1>
+                    </td>
+                    <td style="text-align: right; vertical-align: bottom; width: 40%;">
+                        <span class="label-mini"
+                            style="font-size: 8pt; font-weight: 300; line-height: 1.3; color: #000;">LOS PRIMEROS PASOS
+                            SON LOS MÁS IMPORTANTES</span>
+                    </td>
+                </tr>
+            </table>
+        </div>
+
+        <!-- GOAL BLOCKS: Height reduced to 72mm to fit perfectly within A5 margin constraints -->
+        {% for i in range(1, 3) %}
+        <div style="height: 72mm; border: 0.5pt solid black; padding: 5mm; overflow: hidden; display: block;">
+            <!-- Objective Line -->
+            <table style="width: 100%; table-layout: fixed; margin-bottom: 5mm;">
+                <tr>
+                    <td style="width: 25mm; font-family: 'Manrope', sans-serif; font-weight: 600; font-size: 9pt;">
+                        OBJETIVO {{ i }}:</td>
+                    <td style="border-bottom: 0.5pt solid #000;"></td>
+                </tr>
+            </table>
+
+            <table style="width: 100%; table-layout: fixed;">
+                <tr>
+                    <!-- Left: Motivation & Steps -->
+                    <td style="width: 70%; vertical-align: top; padding-right: 5mm;">
+                        <div
+                            style="font-family: 'Cormorant Garamond', serif; font-style: italic; font-size: 11pt; font-weight: 500; color: #000; margin-bottom: 1mm;">
+                            ¿Por qué es importante para mí?</div>
+                        <div class="vector-line" style="margin-bottom: 4mm;"></div>
+
+                        <div class="label-mini" style="font-weight: 600; font-size: 7.5pt; margin-bottom: 2mm;">
+                            ESTRATEGIA Y PASOS:</div>
+                        {% for _ in range(5) %}
+                        <div class="vector-line"
+                            style="display: flex; align-items: center; gap: 4mm; height: 7mm; border-bottom: 0.3pt solid #999;">
+                            <span style="font-size: 11pt; color: #999;">◯</span>
+                        </div>
+                        {% endfor %}
+                    </td>
+                    <!-- Right: Plazo -->
+                    <td style="width: 30%; vertical-align: top; text-align: center;">
+                        <div class="label-mini" style="margin-bottom: 3mm; font-weight: 600;">PLAZO</div>
+                        <div
+                            style="width: 28mm; height: 14mm; border: 0.5pt solid black; margin: 0 auto; display: flex; align-items: center; justify-content: center;">
+                            <span
+                                style="font-size: 18pt; color: #999; font-weight: 300; font-family: 'Manrope', sans-serif;">/</span>
+                        </div>
+                    </td>
+                </tr>
+            </table>
+        </div>
+        {% endfor %}
+
+        <!-- Bottom Safety Spacer -->
+        <div style="height: 5mm;"></div>
+    </section>
+
+    <!-- PAGE 2: OBJETIVO 3 & MANTRA -->
+    <section class="page page-centered">
+        <!-- HEADER -->
+        <div style="width: 100%; margin-bottom: 8mm; border-bottom: 0.5pt solid #000; padding-bottom: 4mm;">
+            <table style="width: 100%; table-layout: fixed; border-collapse: collapse;">
+                <tr>
+                    <td style="vertical-align: bottom; width: 60%;">
+                        <h1 class="font-display" style="font-size: 28pt; margin: 0; line-height: 1.1;">Plan de Acción
+                        </h1>
+                    </td>
+                    <td style="text-align: right; vertical-align: bottom; width: 40%;">
+                        <span class="label-mini"
+                            style="font-size: 8pt; font-weight: 300; line-height: 1.3; color: #000;">ENFOQUE Y VISIÓN
+                            FINAL</span>
+                    </td>
+                </tr>
+            </table>
+        </div>
+
+        <!-- GOAL BLOCK 3: Fixed 72mm -->
+        <div style="height: 72mm; border: 0.5pt solid black; padding: 5mm; overflow: hidden; display: block;">
+            <table style="width: 100%; table-layout: fixed; margin-bottom: 5mm;">
+                <tr>
+                    <td style="width: 25mm; font-family: 'Manrope', sans-serif; font-weight: 600; font-size: 9pt;">
+                        OBJETIVO 3:</td>
+                    <td style="border-bottom: 0.5pt solid #000;"></td>
+                </tr>
+            </table>
+            <table style="width: 100%; table-layout: fixed;">
+                <tr>
+                    <td style="width: 70%; vertical-align: top; padding-right: 5mm;">
+                        <div
+                            style="font-family: 'Cormorant Garamond', serif; font-style: italic; font-size: 11pt; font-weight: 500; color: #000; margin-bottom: 1mm;">
+                            ¿Por qué es importante para mí?</div>
+                        <div class="vector-line" style="margin-bottom: 4mm;"></div>
+
+                        <div class="label-mini" style="font-weight: 600; font-size: 7.5pt; margin-bottom: 2mm;">
+                            ESTRATEGIA Y PASOS:</div>
+                        {% for _ in range(5) %}
+                        <div class="vector-line"
+                            style="display: flex; align-items: center; gap: 4mm; height: 7mm; border-bottom: 0.3pt solid #999;">
+                            <span style="font-size: 11pt; color: #999;">◯</span>
+                        </div>
+                        {% endfor %}
+                    </td>
+                    <td style="width: 30%; vertical-align: top; text-align: center;">
+                        <div class="label-mini" style="margin-bottom: 3mm; font-weight: 600;">PLAZO</div>
+                        <div
+                            style="width: 28mm; height: 14mm; border: 0.5pt solid black; margin: 0 auto; display: flex; align-items: center; justify-content: center;">
+                            <span
+                                style="font-size: 18pt; color: #ddd; font-weight: 300; font-family: 'Manrope', sans-serif;">/</span>
+                        </div>
+                    </td>
+                </tr>
+            </table>
+        </div>
+
+        <!-- MI MANTRA: Height reduced to 50mm to ensure proper bottom margin -->
+        <div
+            style="height: 50mm; border: 0.5pt dashed #cccccc; padding: 6mm; margin-top: auto; display: flex; align-items: center; justify-content: center; text-align: center; background-color: #fafafa;">
+            <div>
+                <div class="label-mini" style="color: #000; margin-bottom: 4mm; font-weight: 600;">MI MANTRA PARA EL
+                    2026</div>
+                <div
+                    style="font-family: 'Cormorant Garamond', serif; font-style: italic; font-size: 14pt; color: #000;">
+                    Escribe aquí tu intención o coloca una foto que represente tu año.
+                </div>
+            </div>
+        </div>
+
+        <!-- Bottom Safety Spacer -->
+        <div style="height: 5mm;"></div>
+    </section>
+</body>
+
+</html>

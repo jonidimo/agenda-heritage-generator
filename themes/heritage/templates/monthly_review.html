@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Resumen Mensual</title>
+</head>
+
+<body>
+    <section class="page">
+        <!-- HEADER -->
+        <table
+            style="width: 100%; border-bottom: 0.5pt solid var(--ink-primary); padding-bottom: 2mm; margin-bottom: 4mm;">
+            <tr>
+                <td>
+                    <h1 class="font-display" style="font-size: 24pt; font-style: italic; margin: 0;">Resumen Mensual
+                    </h1>
+                </td>
+                <td style="text-align: right; vertical-align: bottom;">
+                    <div class="label-mini" style="font-weight: 800; font-size: 10pt;">{{ month_name }} 2026</div>
+                </td>
+            </tr>
+        </table>
+
+        <!-- LOGROS (Top Section) -->
+        <div class="section-header" style="margin-bottom: 2mm;">LOGROS Y MOMENTOS GRATOS</div>
+        <table style="width: 100%; margin-bottom: 6mm;">
+            {% for _ in range(8) %}
+            <tr style="height: 6.5mm; border-bottom: 0.3pt solid var(--hairline);">
+                <td></td>
+            </tr>
+            {% endfor %}
+        </table>
+
+        <!-- RECUERDO DEL MES (Middle Section) -->
+        <div class="section-header" style="margin-bottom: 2mm;">RECUERDO DEL MES / ESPACIO CREATIVO</div>
+        <table
+            style="width: 100%; height: 60mm; border: 0.5pt dashed var(--ink-secondary); background-color: rgba(0,0,0,0.01); margin-bottom: 6mm;">
+            <tr>
+                <td style="vertical-align: top; padding: 3mm;">
+                    <div class="font-display" style="color: #000; font-style: italic; font-size: 9pt;">Captura un
+                        momento especial</div>
+                </td>
+            </tr>
+        </table>
+
+        <!-- BOTTOM SECTION: PENDIENTES & MOOD (2 columns) -->
+        <table style="width: 100%; table-layout: fixed;">
+            <tr>
+                <!-- Pendientes Next Month -->
+                <td style="vertical-align: top; padding-right: 5mm;">
+                    <div class="section-header" style="font-size: 8pt; margin-bottom: 3mm;">PENDIENTES {{
+                        next_month_name }}</div>
+                    <table style="width: 100%;">
+                        {% for _ in range(6) %}
+                        <tr style="height: 7mm; border-bottom: 0.3pt solid var(--hairline);">
+                            <td style="width: 5mm; vertical-align: middle;">
+                                <div
+                                    style="width: 3.5mm; height: 3.5mm; border: 0.5pt solid var(--ink-primary); border-radius: 50%;">
+                                </div>
+                            </td>
+                            <td></td>
+                        </tr>
+                        {% endfor %}
+                    </table>
+                </td>
+
+                <!-- Mood Tracker -->
+                <td style="width: 60mm; vertical-align: bottom; text-align: right;">
+                    <div class="label-mini" style="margin-bottom: 4mm; font-weight: 800; text-align: center;">CÓMO ME
+                        SENTÍ ESTE MES</div>
+                    <table style="width: 100%; table-layout: fixed;">
+                        <tr>
+                            <td style="text-align: center;">
+                                <div
+                                    style="width: 8mm; height: 8mm; border: 0.5pt solid var(--ink-primary); border-radius: 50%; margin: 0 auto 2mm;">
+                                </div>
+                                <span class="label-mini" style="font-size: 6pt;">CALMA</span>
+                            </td>
+                            <td style="text-align: center;">
+                                <div
+                                    style="width: 8mm; height: 8mm; border: 0.5pt solid var(--ink-primary); border-radius: 50%; margin: 0 auto 2mm;">
+                                </div>
+                                <span class="label-mini" style="font-size: 6pt;">CON PILAS</span>
+                            </td>
+                            <td style="text-align: center;">
+                                <div
+                                    style="width: 8mm; height: 8mm; border: 0.5pt solid var(--ink-primary); border-radius: 50%; margin: 0 auto 2mm;">
+                                </div>
+                                <span class="label-mini" style="font-size: 6pt;">CANSADA</span>
+                            </td>
+                        </tr>
+                    </table>
+                </td>
+            </tr>
+        </table>
+    </section>
+</body>
+
+</html>
