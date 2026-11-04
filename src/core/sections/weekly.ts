@@ -6,13 +6,13 @@
 import type { DayInfo, MonthInfo, WeekInfo } from '../calendar';
 import { weekdayLabel, weekdayLetter } from '../calendar/locale';
 import { fmt } from '../i18n';
-import { cols, flex, hsplit, rows, takeBottom, takeTop } from '../layout/box';
+import { flex, hsplit, rows, takeBottom, takeTop } from '../layout/box';
 import type { LayoutContext } from '../layout/context';
 import { circle, line, rect, type Prim } from '../layout/prims';
 import { checkCircle, heartIcon, isSouthern, miniCalendar, moonIcon, ruledLines, signifierIcon, writingArea, type Signifier } from '../layout/widgets';
 import { TABULAR_FEATURES } from '../text/shape';
 import { ptToMm, type Rect } from '../util/geometry';
-import { checklist, order } from './common';
+import { abbreviated, checklist, order } from './common';
 import { opt, param, type PagePlan, type PagePlanDraft, type SectionModule } from './types';
 
 type Variant = 'alastair' | 'horizontal' | 'vertical' | 'daily';
@@ -49,12 +49,19 @@ export const weeks: SectionModule = {
     const out: PagePlanDraft[] = [];
     for (const week of month.weeks) {
       if (variant === 'daily') {
-        const workdays = week.days.filter((d) => !d.isWeekend);
-        const weekend = week.days.filter((d) => d.isWeekend);
-        workdays.forEach((d, i) =>
-          out.push(draft(week, month, item.id, `day:${d.iso}`, 'daily', { key: `day:${d.iso}`, startOn: i === 0 ? 'verso' : 'any', title: d.iso, params: { ...item.options, days: [d.iso] } })),
-        );
-        if (weekend.length > 0) out.push(draft(week, month, item.id, 'weekend', 'daily', { key: `day:${weekend[0]!.iso}+`, title: weekend[0]!.iso, params: { ...item.options, days: weekend.map((d) => d.iso) } }));
+        // En el orden de la semana; los días de fin de semana contiguos comparten página.
+        const days = week.days;
+        let i = 0;
+        let first = true;
+        while (i < days.length) {
+          const group = [days[i]!];
+          if (days[i]!.isWeekend) while (i + group.length < days.length && days[i + group.length]!.isWeekend) group.push(days[i + group.length]!);
+          const isos = group.map((d) => d.iso);
+          const key = group.length > 1 ? `day:${isos[0]}+` : `day:${isos[0]}`;
+          out.push(draft(week, month, item.id, key, 'daily', { key, startOn: first ? 'verso' : 'any', title: isos[0]!, params: { ...item.options, days: isos } }));
+          first = false;
+          i += group.length;
+        }
         continue;
       }
       out.push(draft(week, month, item.id, 'left', 'weekLeft', { startOn: 'verso', params: { ...item.options, variant } }));
@@ -130,14 +137,23 @@ function dayHeading(ctx: LayoutContext, day: DayInfo, x: number, baseline: numbe
   let cx = x + t.width + 2;
   if (day.events.length > 0) {
     out.push(heartIcon(ctx, cx + 0.9, baseline - 1.1, 1.6));
-    const e = ctx.textIn(day.events.map((e2) => e2.label).join(' · '), { x: cx + 2.4, y: baseline - 2.6, w: Math.max(0, x + maxW - cx - 2.4), h: 3 }, { role: 'body', size: ctx.theme.sizes.small - 0.5, ellipsis: true });
-    out.push(...e.prims);
-    cx += 2.4 + e.bbox.w + 2;
+    const evText = day.events.map((e2) => e2.label).join(' · ');
+    const evW = x + maxW - cx - 2.4;
+    if (evW > 4) {
+      const e = ctx.textIn(evText, { x: cx + 2.4, y: baseline - 2.6, w: evW, h: 3 }, { role: 'body', size: ctx.theme.sizes.small - 0.5, ellipsis: true, silent: true });
+      if (e.truncated) abbreviated(ctx, evText, 'event');
+      out.push(...e.prims);
+      cx += 2.4 + e.bbox.w + 2;
+    } else abbreviated(ctx, evText, 'event');
   }
   const h = day.holidays[0];
   if (h) {
     const avail = x + maxW - cx - (showMoon(ctx) && day.moon ? 4 : 0);
-    if (avail > 6) out.push(...ctx.textIn(`— ${h.name}`, { x: cx, y: baseline - 2.6, w: avail, h: 3 }, { role: 'body', size: ctx.theme.sizes.small - 0.5, ellipsis: true }).prims);
+    if (avail > 6) {
+      const ht = ctx.textIn(`— ${h.name}`, { x: cx, y: baseline - 2.6, w: avail, h: 3 }, { role: 'body', size: ctx.theme.sizes.small - 0.5, ellipsis: true, silent: true });
+      if (ht.truncated) abbreviated(ctx, h.name, 'holiday');
+      out.push(...ht.prims);
+    } else abbreviated(ctx, h.name, 'holiday');
   }
   if (showMoon(ctx) && day.moon) out.push(...moonIcon(ctx, x + maxW - 1.6, baseline - 1.2, 1.25, day.moon, south(ctx)));
   return out;
@@ -195,7 +211,15 @@ function alastairRight(ctx: LayoutContext, page: PagePlan, week: WeekInfo): void
   const footer = param<string>(page, 'footer', 'expenses');
   const footerH = footer === 'none' ? 0 : footer === 'review' ? 26 : 14;
   const legendOn = ctx.has('alastair-method') || ctx.has('bullet-journal');
-  const legendH = legendOn ? 6 : 0;
+  // Leyenda medida: en una fila con espacios iguales si entra; si no, en dos filas de dos.
+  const legendItems = ALASTAIR_LEGEND.map((k) => ({ k, label: s.pages.signifiers[k] }));
+  const legendStyle = { role: 'body' as const, size: 'tiny' as const };
+  const ICON_W = 3.6;
+  const legendWidths = legendItems.map((it) => ICON_W + ctx.run(it.label, legendStyle).width);
+  const legendGap = 2.5;
+  const oneRow = legendWidths.reduce((a, b) => a + b, 0) + legendGap * (legendItems.length - 1) <= c.w;
+  const legendRowH = 5;
+  const legendH = legendOn ? (oneRow ? 6 : 2 * legendRowH + 1) : 0;
   const [gridArea, bottom] = takeBottom(c, footerH + legendH, footerH + legendH > 0 ? 4 : 0);
   const undated = param(page, 'undated', false);
   const dayW = Math.max(6.5, ctx.theme.writing.pitch * 1.05);
@@ -230,13 +254,23 @@ function alastairRight(ctx: LayoutContext, page: PagePlan, week: WeekInfo): void
   let y = bottom.y;
   if (legendOn) {
     const lp: Prim[] = [];
-    const items = ALASTAIR_LEGEND.map((k) => ({ k, label: s.pages.signifiers[k] }));
-    const lc = cols({ x: bottom.x, y, w: bottom.w, h: legendH }, items.length, 2);
-    items.forEach((it, i) => {
-      const cell = lc[i]!;
-      lp.push(...signifierIcon(ctx, it.k, cell.x + 1.5, cell.y + legendH / 2, 2.6));
-      lp.push(...ctx.textIn(it.label, { x: cell.x + 3.6, y: cell.y, w: cell.w - 3.6, h: legendH }, { role: 'body', size: 'tiny', valign: 'middle', fit: true }).prims);
-    });
+    const place = (i: number, x: number, rowY: number, rowH: number, w: number): void => {
+      const it = legendItems[i]!;
+      lp.push(...signifierIcon(ctx, it.k, x + 1.5, rowY + rowH / 2, 2.6));
+      lp.push(...ctx.textIn(it.label, { x: x + ICON_W, y: rowY, w: w - ICON_W, h: rowH }, { ...legendStyle, valign: 'middle', fit: true }).prims);
+    };
+    if (oneRow) {
+      // Primer elemento al margen izquierdo, último al derecho y espacios iguales entre medio.
+      const spare = (bottom.w - legendWidths.reduce((a, b) => a + b, 0)) / Math.max(1, legendItems.length - 1);
+      let x = bottom.x;
+      legendItems.forEach((_, i) => {
+        place(i, x, y, legendH, legendWidths[i]! + 0.2);
+        x += legendWidths[i]! + spare;
+      });
+    } else {
+      const half = bottom.w / 2;
+      legendItems.forEach((_, i) => place(i, bottom.x + (i % 2) * half, y + Math.floor(i / 2) * legendRowH, legendRowH, half - 1.5));
+    }
     ctx.add('tasks.legend', s.pages.weekly.legend, lp);
     y += legendH;
   }
@@ -305,7 +339,11 @@ function verticalWeek(ctx: LayoutContext, page: PagePlan, week: WeekInfo, left: 
     p.push(...ctx.textIn(weekdayLabel(ctx.doc.locale, day.dow), { x: col.x, y: col.y + 1.5, w: col.w, h: 3 }, { role: 'labelStrong', size: 'label', align: 'center' }).prims);
     p.push(...ctx.textIn(String(day.d), { x: col.x, y: col.y + 5, w: col.w, h: 6 }, { role: 'display', size: ctx.theme.sizes.subtitle + 4, align: 'center', features: TABULAR_FEATURES }).prims);
     const h = day.holidays[0];
-    if (h) p.push(...ctx.textIn(h.name, { x: col.x + 0.5, y: col.y + 12.5, w: col.w - 1, h: 5 }, { role: 'label', size: 'tiny', upper: true, align: 'center', wrap: true, maxLines: 2, ellipsis: true, fit: true }).prims);
+    if (h) {
+      const ht = ctx.textIn(h.name, { x: col.x + 0.5, y: col.y + 12.5, w: col.w - 1, h: 5.5 }, { role: 'label', size: 'tiny', upper: true, align: 'center', wrap: true, maxLines: 2, ellipsis: true, fit: true, silent: true });
+      if (ht.truncated) abbreviated(ctx, h.name, 'holiday');
+      p.push(...ht.prims);
+    }
     if (showMoon(ctx) && day.moon) p.push(...moonIcon(ctx, col.x + col.w - 2, col.y + 3, 1.2, day.moon, south(ctx)));
     p.push(...ruledLines({ x: col.x + 0.5, y: col.y + 18, w: col.w - 1, h: col.h - 18 }, ctx.theme.writing.pitch, ctx.stroke('hair')));
     ctx.add(`day.${left ? i : i + 4}`, `${day.d}`, p, { bbox: col });
@@ -347,7 +385,11 @@ function dailyPage(ctx: LayoutContext, page: PagePlan): void {
     hp.push(ctx.textAt(wdName, num.bbox.x + num.width + 3, head.y + (single ? 6 : 4), { role: 'labelStrong', size: 'label', tracking: true }).prim);
     hp.push(ctx.textAt(`${mName} ${day.y}`, num.bbox.x + num.width + 3, head.y + (single ? 10.5 : 7.5), { role: 'label', size: 'labelSmall', tracking: true }).prim);
     const hol = day.holidays[0];
-    if (hol) hp.push(...ctx.textIn(hol.name, { x: head.x + head.w * 0.45, y: head.y + 1, w: head.w * 0.5, h: 6 }, { role: 'body', size: 'small', align: 'right', wrap: true, maxLines: 2, ellipsis: true }).prims);
+    if (hol) {
+      const ht = ctx.textIn(hol.name, { x: head.x + head.w * 0.45, y: head.y + 1, w: head.w * 0.5, h: 6 }, { role: 'body', size: 'small', align: 'right', wrap: true, maxLines: 2, ellipsis: true, silent: true });
+      if (ht.truncated) abbreviated(ctx, hol.name, 'holiday');
+      hp.push(...ht.prims);
+    }
     if (showMoon(ctx) && day.moon) hp.push(...moonIcon(ctx, head.x + head.w - 2, head.y + head.h - 3, 1.5, day.moon, south(ctx)));
     hp.push(line(head.x, head.y + head.h, head.x + head.w, head.y + head.h, ctx.stroke('rule', 'ink')));
     ctx.add(`daily.${i}.head`, day.iso, hp);

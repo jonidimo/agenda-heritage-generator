@@ -11,7 +11,8 @@ import { assetPrims } from '../document/assets';
 import type { PageFormat } from '../document/context';
 import type { FontFace } from '../text/fonts';
 import { shapeText, type ShapedRun } from '../text/shape';
-import { ptToMm, type Rect } from '../util/geometry';
+import { compose, ptToMm, rotateAround, translate, type Matrix, type Rect } from '../util/geometry';
+import { backRotates } from './impose';
 import type { SheetRender } from './compose';
 import type { SignaturePlan } from './signatures';
 
@@ -130,7 +131,13 @@ export function calibrationSheet(doc: DocContext, fmt0: PageFormat, s: AgendaStr
       const lines = wrapLines(k, `${s.calibration.crosses} ${s.calibration.expected}`, 6.5, (fmt0.nUp === 2 ? W / 2 : W) - 30);
       lines.forEach((l, i) => p.push(txt(k, l, 15, H * 0.62 + i * 3.2, 6.5)));
     }
-    sides.push({ w: W, h: H, prims: p });
+    if (side === 'back') {
+      let m: Matrix = translate(0, 0);
+      if (backRotates(doc.design.binding, fmt0.nUp)) m = compose(m, rotateAround(180, W / 2, H / 2));
+      const off = doc.design.binding.backOffset;
+      if (off.x !== 0 || off.y !== 0) m = compose(translate(off.x, off.y), m);
+      sides.push({ w: W, h: H, prims: [{ t: 'group', m, children: p }] });
+    } else sides.push({ w: W, h: H, prims: p });
   }
   return sides;
 }
@@ -187,7 +194,8 @@ export function coverSheet(doc: DocContext, plan: SignaturePlan): SheetRender {
   const pw = doc.pageW;
   const ph = doc.pageH;
   const caliper = doc.design.binding.creep.caliper;
-  const spine = c.spine === 'auto' ? Math.max(3, plan.totalSheets * 2 * caliper + 2) : c.spine;
+  const leavesPerSheet = doc.design.binding.method === 'single' || doc.design.binding.method === 'cut-stack' ? 1 : 2;
+  const spine = c.spine === 'auto' ? Math.max(3, plan.totalSheets * leavesPerSheet * caliper + 2) : c.spine;
   const p: Prim[] = [];
   const guide = { color: '#888888', width: ptToMm(0.3), dash: [1.5, 1] };
   const sans = doc.fonts.resolveWithFallback(doc.theme.fonts.label, doc.theme.fallbacks);

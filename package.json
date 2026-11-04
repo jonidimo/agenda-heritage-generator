@@ -2,8 +2,7 @@
   "name": "agenda-heritage-studio",
   "version": "2.0.0",
   "private": true,
-  "description": "Estudio para diseñar, previsualizar e imprimir agendas artesanales en cuadernillos (cualquier año, idioma y país).",
-  "license": "MIT",
+  "description": "Design, preview and print handmade planners in signatures, for any year, language and country.",
   "type": "module",
   "engines": {
     "node": ">=22.12"

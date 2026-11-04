@@ -70,8 +70,10 @@ async function cmdInfo(path: string): Promise<void> {
   console.log(`Página: ${doc.format.w.toFixed(1)} × ${doc.format.h.toFixed(1)} mm · hoja ${doc.format.sheetW.toFixed(1)} × ${doc.format.sheetH.toFixed(1)} mm · ${doc.format.nUp} por cara`);
   console.log(`Hojas de papel: ${p.signatures.totalSheets} · ${describeSignatures(p.signatures)}`);
   const warnings = doc.warnings();
-  console.log(`Avisos: ${warnings.length + errors.length}`);
+  const general = doc.documentWarnings();
+  console.log(`Avisos: ${warnings.length + errors.length + general.length}`);
   for (const e of errors) console.log(`  · ${e}`);
+  for (const w of general) console.log(`  · ${w.message}`);
   const grouped = new Map<string, number[]>();
   for (const w of warnings) grouped.set(w.message, [...(grouped.get(w.message) ?? []), w.page + 1]);
   for (const [msg, pages] of grouped) console.log(`  · ${msg} (págs. ${pages.slice(0, 12).join(', ')}${pages.length > 12 ? '…' : ''})`);
@@ -80,13 +82,19 @@ async function cmdInfo(path: string): Promise<void> {
 async function cmdPdf(path: string): Promise<void> {
   const design = await loadDesign(path);
   const mode = (flag('mode', 'imposed') as ExportKind) ?? 'imposed';
+  const MODES: ExportKind[] = ['pages', 'imposed', 'fronts', 'backs', 'signature', 'calibration', 'sewing', 'cover', 'separate'];
+  if (!MODES.includes(mode)) throw new Error(`Modo desconocido: ${mode}. Opciones: ${MODES.join(', ')}`);
+  const sigFlag = flag('signature');
+  const signature = sigFlag === undefined ? undefined : Number(sigFlag);
+  if (mode === 'signature' && (signature === undefined || !Number.isInteger(signature) || signature < 1))
+    throw new Error('Con --mode signature indicá el cuadernillo con --signature N (1, 2, 3…).');
   const { doc, bytes } = await openDocument(design);
   const out = resolve(flag('out', `output/${(design.name || 'agenda').replace(/[^\p{L}\p{N}]+/gu, '-').toLowerCase()}-${mode}.pdf`)!);
   await mkdir(dirname(out), { recursive: true });
   const t0 = Date.now();
   const pdf = await doc.exportPdf(mode, {
     assetBytes: (id) => bytes.get(id),
-    ...(flag('signature') ? { signature: Number(flag('signature')) - 1 } : {}),
+    ...(signature !== undefined ? { signature: signature - 1 } : {}),
     onProgress: (d, n) => {
       if (d === n || d % 25 === 0) process.stdout.write(`\r  ${d}/${n} páginas`);
     },

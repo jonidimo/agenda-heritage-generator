@@ -6,7 +6,6 @@
  *
  * Funciona igual en Node (CLI), en el navegador y en un Web Worker.
  */
-import PDFDocumentCtor from 'pdfkit';
 import type { FontRegistry } from '../text/fonts';
 import { compose, IDENTITY, matrixScale, PT_PER_MM, type Matrix } from '../util/geometry';
 import type { Fill, Prim, Stroke } from '../layout/prims';
@@ -30,7 +29,10 @@ interface PdfKitDoc {
   lineWidth(w: number): PdfKitDoc;
   lineCap(c: string): PdfKitDoc;
   lineJoin(j: string): PdfKitDoc;
-  dash(len: number, opts: { space: number; phase?: number }): PdfKitDoc;
+  dash(len: number | number[], opts: { space?: number; phase?: number }): PdfKitDoc;
+  miterLimit(m: number): PdfKitDoc;
+  addContent(data: string): PdfKitDoc;
+  page: { xobjects: Record<string, unknown> };
   undash(): PdfKitDoc;
   fillColor(c: string, opacity?: number): PdfKitDoc;
   strokeColor(c: string, opacity?: number): PdfKitDoc;
@@ -42,7 +44,7 @@ interface PdfKitDoc {
   fontSize(size: number): PdfKitDoc;
   text(text: string, x: number, y: number, opts: Record<string, unknown>): PdfKitDoc;
   image(src: ArrayBuffer, x: number, y: number, opts: { width: number; height: number }): PdfKitDoc;
-  ref(data: Record<string, unknown>): unknown;
+  ref(data: Record<string, unknown>): { id: number; end(): void };
   end(): void;
   _root: { data: Record<string, unknown> };
 }
@@ -67,12 +69,10 @@ export interface PdfRenderOptions {
 }
 
 interface PdfArtPlacement {
-  pageIndex: number;
+  /** Número de objeto del marcador que pdf-lib reemplaza por la página vectorial. */
+  objectNumber: number;
   asset: string;
   page: number;
-  matrix: Matrix;
-  opacity: number;
-  under: boolean;
 }
 
 const toArrayBuffer = (u8: Uint8Array): ArrayBuffer => u8.buffer.slice(u8.byteOffset, u8.byteOffset + u8.byteLength) as ArrayBuffer;
@@ -117,6 +117,8 @@ class PdfPainter {
     this.drewSomething = false;
     this.save();
     this.transform([PT_PER_MM, 0, 0, PT_PER_MM, 0, 0]);
+    // Igual que SVG (el PDF usa 10 por defecto).
+    this.doc.miterLimit(4);
   }
 
   endPage(): void {
@@ -140,9 +142,10 @@ class PdfPainter {
     this.doc.strokeColor(s.color, (s.opacity ?? 1) * this.alpha);
     this.doc.lineCap(s.cap ?? 'butt');
     this.doc.lineJoin(s.join ?? 'miter');
-    if (s.dash && s.dash.length >= 2) this.doc.dash(s.dash[0]! / localScale, { space: s.dash[1]! / localScale });
-    else if (s.dash && s.dash.length === 1) this.doc.dash(s.dash[0]! / localScale, { space: s.dash[0]! / localScale });
-    else this.doc.undash();
+    if (s.dash && s.dash.length > 0) {
+      const arr = (s.dash.length % 2 === 1 ? [...s.dash, ...s.dash] : [...s.dash]).map((d) => Math.max(0.001, d / localScale));
+      this.doc.dash(arr, {});
+    } else this.doc.undash();
   }
 
   private paint(fill: Fill | undefined, stroke: Stroke | undefined, rule: 'nonzero' | 'evenodd' = 'nonzero', localScale = 1): void {
@@ -229,19 +232,20 @@ class PdfPainter {
         break;
       }
       case 'pdf': {
-        // Se registra la ubicación; pdf-lib incrusta la página vectorial después.
-        const flip: Matrix = [1, 0, 0, -1, 0, this.pageHeightPt];
-        const W = 1;
-        const H = 1;
-        const local: Matrix = [p.w / W, 0, 0, -p.h / H, p.x, p.y + p.h];
-        this.placements.push({
-          pageIndex: this.pageIndex,
-          asset: p.asset,
-          page: p.page,
-          matrix: compose(flip, compose(this.ctm, local)),
-          opacity: (p.opacity ?? 1) * this.alpha,
-          under: !this.drewSomething,
-        });
+        // Marcador en el punto exacto del dibujo (respeta recorte, capa, transformación y
+        // transparencia); pdf-lib lo reemplaza luego por la página importada, vectorial.
+        const ref = doc.ref({ Type: 'XObject', Subtype: 'Form', BBox: [0, 0, 1, 1] });
+        ref.end();
+        const name = `Art${this.placements.length + 1}`;
+        doc.page.xobjects[name] = ref;
+        this.placements.push({ objectNumber: ref.id, asset: p.asset, page: p.page });
+        this.save();
+        if ((p.opacity ?? 1) * this.alpha < 1) doc.opacity((p.opacity ?? 1) * this.alpha);
+        // Cuadrado unidad (Y hacia arriba) → caja de destino.
+        this.transform([p.w, 0, 0, -p.h, p.x, p.y + p.h]);
+        doc.addContent(`/${name} Do`);
+        this.restore();
+        this.drewSomething = true;
         break;
       }
       case 'group': {
@@ -275,8 +279,11 @@ function concat(chunks: Uint8Array[]): Uint8Array {
 
 /** Renderiza páginas a un PDF. Las páginas de PDF importados se incrustan como vectores. */
 export async function renderPdf(pages: PdfPageInput[], opts: PdfRenderOptions): Promise<Uint8Array> {
-  const Ctor = PDFDocumentCtor as unknown as PdfKitCtor;
+  // Carga diferida: pdfkit solo se descarga cuando se exporta.
+  const Ctor = (await import('pdfkit')).default as unknown as PdfKitCtor;
   const doc = new Ctor({
+    // Sin fuente estándar por defecto: la versión de navegador no trae Helvetica y no la usamos.
+    font: null,
     autoFirstPage: false,
     compress: true,
     pdfVersion: '1.7',
@@ -316,37 +323,35 @@ export async function renderPdf(pages: PdfPageInput[], opts: PdfRenderOptions): 
 
 async function embedPdfArt(base: Uint8Array, placements: PdfArtPlacement[], opts: PdfRenderOptions): Promise<Uint8Array> {
   const lib = await import('@cantoo/pdf-lib');
-  const { PDFDocument, pushGraphicsState, popGraphicsState, concatTransformationMatrix, drawObject, setGraphicsState, PDFName } = lib;
+  const { PDFDocument, PDFRef, pushGraphicsState, popGraphicsState, concatTransformationMatrix, drawObject, PDFName } = lib;
   const out = await PDFDocument.load(base);
-  const cache = new Map<string, Awaited<ReturnType<typeof out.embedPdf>>[number]>();
+  const sources = new Map<string, Awaited<ReturnType<typeof PDFDocument.load>>>();
+  const embedded = new Map<string, { ref: unknown; box: { x: number; y: number; width: number; height: number } }>();
   for (const pl of placements) {
-    const key = `${pl.asset}#${pl.page}`;
-    let emb = cache.get(key);
+    const bytes = opts.assetBytes(pl.asset);
+    if (!bytes) continue;
+    let src = sources.get(pl.asset);
+    if (!src) {
+      src = await PDFDocument.load(bytes, { ignoreEncryption: true });
+      sources.set(pl.asset, src);
+    }
+    // Página pedida acotada a las que existen (una página inexistente no rompe la exportación).
+    const idx = Math.min(Math.max(0, pl.page - 1), src.getPageCount() - 1);
+    const key = `${pl.asset}#${idx}`;
+    let emb = embedded.get(key);
     if (!emb) {
-      const src = opts.assetBytes(pl.asset);
-      if (!src) continue;
-      const [e] = await out.embedPdf(src, [Math.max(0, pl.page - 1)]);
+      const [e] = await out.embedPdf(bytes, [idx]);
       if (!e) continue;
-      emb = e;
-      cache.set(key, e);
+      emb = { ref: e.ref, box: src.getPage(idx).getMediaBox() };
+      embedded.set(key, emb);
     }
-    const page = out.getPage(pl.pageIndex);
-    const xName = page.node.newXObject('Art', emb.ref);
-    const [a, b, c, d, e, f] = pl.matrix;
-    // La página incrustada mide emb.width × emb.height puntos: se normaliza a 1×1.
-    const ops = [pushGraphicsState()];
-    if (pl.opacity < 1) {
-      const gs = out.context.obj({ Type: 'ExtGState', ca: pl.opacity, CA: pl.opacity });
-      const gsName = page.node.newExtGState('GS', out.context.register(gs));
-      ops.push(setGraphicsState(gsName));
-    }
-    ops.push(concatTransformationMatrix(a, b, c, d, e, f), concatTransformationMatrix(1 / emb.width, 0, 0, 1 / emb.height, 0, 0), drawObject(xName), popGraphicsState());
-    const ref = out.context.register(out.context.contentStream(ops));
-    const contents = page.node.normalizedEntries().Contents;
-    if (!contents) continue;
-    if (pl.under) contents.insert(0, ref);
-    else contents.push(ref);
-    void PDFName;
+    const { x, y, width, height } = emb.box;
+    // Envoltura: lleva la página importada al cuadrado unidad que dibujó pdfkit.
+    const wrapper = out.context.formXObject(
+      [pushGraphicsState(), concatTransformationMatrix(1 / width, 0, 0, 1 / height, -x / width, -y / height), drawObject(PDFName.of('P')), popGraphicsState()],
+      { BBox: [0, 0, 1, 1], Resources: { XObject: { P: emb.ref } } } as never,
+    );
+    out.context.assign(PDFRef.of(pl.objectNumber, 0), wrapper);
   }
   out.setProducer('Agenda Heritage Studio (pdfkit + pdf-lib)');
   out.setCreator('Agenda Heritage Studio');

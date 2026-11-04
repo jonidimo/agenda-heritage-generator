@@ -11,7 +11,7 @@ import { circle, line, rect, type Prim } from '../layout/prims';
 import { heartIcon, isSouthern, moonIcon, ruledLines, sectionHeader, writingArea } from '../layout/widgets';
 import { TABULAR_FEATURES } from '../text/shape';
 import { ptToMm, type Rect } from '../util/geometry';
-import { checklist, headed, monthTitle, nextMonthName, order } from './common';
+import { abbreviated, checklist, headed, monthTitle, nextMonthName, order } from './common';
 import { opt, param, type PagePlan, type PagePlanDraft, type SectionModule } from './types';
 
 function monthOf(ctx: LayoutContext, page: PagePlan): MonthInfo {
@@ -151,13 +151,19 @@ export const monthLog: SectionModule = {
       let x = rest!.x;
       if (day.events.length > 0) {
         p.push(heartIcon(ctx, x + 1, row.y + row.h / 2, 1.6));
-        const ev = ctx.textIn(day.events.map((e) => e.label).join(' · '), { x: x + 2.6, y: row.y, w: rest!.w * 0.5, h: row.h }, { role: 'body', size: ctx.theme.sizes.tiny + 0.5, valign: 'middle', ellipsis: true });
+        const evText = day.events.map((e) => e.label).join(' · ');
+        const ev = ctx.textIn(evText, { x: x + 2.6, y: row.y, w: rest!.w * 0.5, h: row.h }, { role: 'body', size: ctx.theme.sizes.tiny + 0.5, valign: 'middle', ellipsis: true, silent: true });
+        if (ev.truncated) abbreviated(ctx, evText, 'event');
         p.push(...ev.prims);
         x += 2.6 + ev.bbox.w + 3;
       }
       if (holiday) {
         const w = rest!.x + rest!.w - x - (moon ? 4 : 0);
-        if (w > 5) p.push(...ctx.textIn(holiday.name, { x, y: row.y, w, h: row.h }, { role: 'label', size: 'tiny', upper: true, tracking: 0.04, valign: 'middle', ellipsis: true }).prims);
+        if (w > 5) {
+          const hn = ctx.textIn(holiday.name, { x, y: row.y, w, h: row.h }, { role: 'label', size: 'tiny', upper: true, tracking: 0.04, valign: 'middle', ellipsis: true, silent: true });
+          if (hn.truncated) abbreviated(ctx, holiday.name, 'holiday');
+          p.push(...hn.prims);
+        }
       }
       if (moon && day.moon) p.push(...moonIcon(ctx, rest!.x + rest!.w - 1.5, row.y + row.h / 2, Math.min(1.4, row.h * 0.26), day.moon, south(ctx)));
       ctx.add(`day.${day.d}`, `${day.d}`, p, { bbox: row });
@@ -227,13 +233,19 @@ function gridCell(ctx: LayoutContext, day: DayInfo, cell: Rect, month: MonthInfo
   out.push(...num.prims);
   let y = cell.y + 6;
   for (const h of day.holidays.slice(0, 1)) {
-    const t = ctx.textIn(h.name, { x: cell.x + 1.2, y, w: cell.w - 2.4, h: 5 }, { role: 'label', size: 'tiny', upper: true, wrap: true, maxLines: 2, ellipsis: true, fit: true });
+    // Dos líneas (tres si la celda es alta), con todo el alto libre de la celda; si no entra, se abrevia y se avisa.
+    const free = Math.max(5, cell.y + cell.h - y - 1.2);
+    const maxLines = free >= ptToMm(ctx.theme.sizes.tiny) * 1.3 * 6 ? 3 : 2;
+    const t = ctx.textIn(h.name, { x: cell.x + 1.2, y, w: cell.w - 2.4, h: free }, { role: 'label', size: 'tiny', upper: true, wrap: true, maxLines, ellipsis: true, fit: true, silent: true });
+    if (t.truncated) abbreviated(ctx, h.name, 'holiday');
     out.push(...t.prims);
     y += t.bbox.h + 1.2;
   }
   for (const e of day.events.slice(0, 1)) {
     out.push(heartIcon(ctx, cell.x + 2, y + 1, 1.4));
-    out.push(...ctx.textIn(e.label, { x: cell.x + 3.4, y: y - 0.3, w: cell.w - 4.6, h: 3 }, { role: 'body', size: 'tiny', ellipsis: true }).prims);
+    const ev = ctx.textIn(e.label, { x: cell.x + 3.4, y: y - 0.3, w: cell.w - 4.6, h: 3 }, { role: 'body', size: 'tiny', ellipsis: true, silent: true });
+    if (ev.truncated) abbreviated(ctx, e.label, 'event');
+    out.push(...ev.prims);
   }
   if (showMoon(ctx, 'monthGrid') && day.moon) out.push(...moonIcon(ctx, cell.x + cell.w - 2.2, cell.y + 2.6, 1.3, day.moon, south(ctx)));
   return out;
@@ -269,10 +281,14 @@ export const habits: SectionModule = {
     const [gridArea, foot] = takeBottom({ x: 0, y: ruleY + 4, w: W, h: H - ruleY - 4 }, footH, 2);
     const nDays = month.days.length;
     const totalCol = param(page, 'total', true) ? 9 : 0;
-    const autoCol = ctx.has('habit-timeline') ? 12 : 0;
+    // Columna de automaticidad: tan ancha como su palabra más larga y tan alta como sus líneas.
+    const autoLabel = ctx.s.pages.habits.automatic;
+    const autoStyle = { role: 'heading' as const, size: ctx.theme.sizes.tiny, upper: true };
+    const autoCol = ctx.has('habit-timeline') ? Math.max(12, ...autoLabel.split(/\s+/).map((w) => ctx.run(w, autoStyle).width + 2)) : 0;
     const nameW = Math.min(46, gridArea.w * 0.24);
     const dayW = (gridArea.w - nameW - totalCol - autoCol) / nDays;
-    const headH = 8;
+    const autoLines = autoCol ? ctx.textIn(autoLabel, { x: 0, y: 0, w: autoCol - 1, h: 100 }, { ...autoStyle, wrap: true, silent: true }).lines : 0;
+    const headH = Math.max(8, autoLines * ptToMm(ctx.theme.sizes.tiny) * 1.3 + 2);
     const nRows = Math.max(3, Math.min(20, Number(param(page, 'rows', 10))));
     const rowH = (gridArea.h - headH) / nRows;
     const g = ctx.stroke('grid', 'ink');
@@ -291,7 +307,7 @@ export const habits: SectionModule = {
       p.push(...ctx.textIn(s.total, { x: xr, y: gridArea.y, w: totalCol, h: headH }, { role: 'heading', size: ctx.theme.sizes.tiny, upper: true, align: 'center', valign: 'middle', fit: true }).prims);
       xr += totalCol;
     }
-    if (autoCol) p.push(...ctx.textIn(ctx.s.pages.habits.automatic, { x: xr, y: gridArea.y, w: autoCol, h: headH }, { role: 'heading', size: ctx.theme.sizes.tiny, upper: true, align: 'center', valign: 'middle', wrap: true, fit: true }).prims);
+    if (autoCol) p.push(...ctx.textIn(autoLabel, { x: xr + 0.5, y: gridArea.y, w: autoCol - 1, h: headH }, { ...autoStyle, align: 'center', valign: 'middle', wrap: true, fit: true }).prims);
     // Líneas.
     const right = gridArea.x + gridArea.w;
     for (let k = 0; k <= nRows; k++) {

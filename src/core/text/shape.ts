@@ -1,4 +1,4 @@
-import { ptToMm } from '../util/geometry';
+import { ptToMm, type Rect } from '../util/geometry';
 import type { FontFace } from './fonts';
 
 /** Rasgos OpenType que se piden siempre. El mismo arreglo se le pasa a pdfkit. */
@@ -159,4 +159,46 @@ export function wrapText(face: FontFace, text: string, sizePt: number, maxWidth:
     if (line) out.push(line);
   }
   return out;
+}
+
+/* ---------- Tinta real de los glifos (para detectar textos que se pisan) ---------- */
+
+type Box4 = [number, number, number, number];
+const glyphBoxes = new WeakMap<FontFace, Map<number, Box4 | null>>();
+
+/** Caja de tinta de un glifo en unidades de diseño: [minX, minY, maxX, maxY] con Y hacia arriba. */
+export function glyphBox(face: FontFace, gid: number): Box4 | null {
+  let cache = glyphBoxes.get(face);
+  if (!cache) {
+    cache = new Map();
+    glyphBoxes.set(face, cache);
+  }
+  const hit = cache.get(gid);
+  if (hit !== undefined) return hit;
+  let box: Box4 | null = null;
+  try {
+    const b = face.font.getGlyph(gid).bbox;
+    if (Number.isFinite(b.minX) && Number.isFinite(b.maxY) && b.maxX > b.minX && b.maxY > b.minY) box = [b.minX, b.minY, b.maxX, b.maxY];
+  } catch {
+    box = null;
+  }
+  cache.set(gid, box);
+  return box;
+}
+
+/** Caja de tinta de un texto conformado, relativa a su origen (x, línea de base), en mm y con Y hacia abajo. */
+export function inkBounds(face: FontFace, run: ShapedRun): Rect | null {
+  let x0 = Infinity;
+  let y0 = Infinity;
+  let x1 = -Infinity;
+  let y1 = -Infinity;
+  for (const gl of run.glyphs) {
+    const b = glyphBox(face, gl.id);
+    if (!b) continue;
+    x0 = Math.min(x0, gl.x + b[0] * run.unit);
+    x1 = Math.max(x1, gl.x + b[2] * run.unit);
+    y0 = Math.min(y0, gl.y - b[3] * run.unit);
+    y1 = Math.max(y1, gl.y - b[1] * run.unit);
+  }
+  return Number.isFinite(x0) ? { x: x0, y: y0, w: x1 - x0, h: y1 - y0 } : null;
 }

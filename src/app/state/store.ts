@@ -1,0 +1,171 @@
+/**
+ * Estado de la aplicación (zustand + immer): diseño con historial para
+ * deshacer/rehacer, vista, selección y preferencias de la interfaz. El diseño
+ * se guarda solo en IndexedDB (con demora) en cada cambio.
+ */
+import type { Design } from '@core/design/schema';
+import { produce, type Draft } from 'immer';
+import { create } from 'zustand';
+import { saveDesign } from './persist';
+import type { UiLang } from '../i18n/ui';
+
+export type View = 'page' | 'spread' | 'sheet' | 'book';
+export type Panel = 'sections' | 'style' | 'methods' | 'persona' | 'calendar' | 'assets' | 'print';
+
+export interface Selection {
+  pageKey: string;
+  pageType: string;
+  blockId: string;
+  role: string;
+}
+
+interface StoreState {
+  design: Design | null;
+  past: Design[];
+  future: Design[];
+  coalesce: { key: string; at: number } | null;
+  view: View;
+  panel: Panel;
+  pageIndex: number;
+  sheetSide: 'front' | 'back';
+  zoom: number;
+  fit: boolean;
+  selection: Selection | null;
+  scope: 'type' | 'page';
+  uiLang: UiLang;
+  resVersion: number;
+  showWelcome: boolean;
+  showLibrary: boolean;
+  sidebarOpen: boolean;
+  guides: boolean;
+  snap: boolean;
+  setDesign(d: Design, opts?: { keepHistory?: boolean }): void;
+  update(recipe: (d: Draft<Design>) => void, coalesceKey?: string): void;
+  undo(): void;
+  redo(): void;
+  setView(v: View): void;
+  setPanel(p: Panel): void;
+  goToPage(i: number): void;
+  setSheetSide(s: 'front' | 'back'): void;
+  setZoom(z: number, fit?: boolean): void;
+  select(s: Selection | null): void;
+  setScope(s: 'type' | 'page'): void;
+  setUiLang(l: UiLang): void;
+  bumpResources(v: number): void;
+  setShowWelcome(b: boolean): void;
+  setShowLibrary(b: boolean): void;
+  setSidebarOpen(b: boolean): void;
+  toggleGuides(): void;
+  toggleSnap(): void;
+}
+
+const HISTORY_LIMIT = 150;
+const COALESCE_MS = 700;
+
+function initialLang(): UiLang {
+  try {
+    const saved = localStorage.getItem('agenda-studio.uiLang');
+    if (saved === 'es' || saved === 'en' || saved === 'pt' || saved === 'it') return saved;
+  } catch {
+    /* sin almacenamiento */
+  }
+  const nav = (typeof navigator !== 'undefined' ? navigator.language : 'es').slice(0, 2);
+  return nav === 'en' || nav === 'pt' || nav === 'it' ? nav : 'es';
+}
+
+let saveTimer: ReturnType<typeof setTimeout> | null = null;
+function scheduleSave(d: Design): void {
+  if (saveTimer) clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => void saveDesign(d), 500);
+}
+
+export const useStore = create<StoreState>((set, get) => ({
+  design: null,
+  past: [],
+  future: [],
+  coalesce: null,
+  view: 'spread',
+  panel: 'sections',
+  pageIndex: 0,
+  sheetSide: 'front',
+  zoom: 1,
+  fit: true,
+  selection: null,
+  scope: 'type',
+  uiLang: initialLang(),
+  resVersion: 0,
+  showWelcome: false,
+  showLibrary: false,
+  sidebarOpen: true,
+  guides: false,
+  snap: true,
+
+  setDesign(d, opts) {
+    set((s) => ({
+      design: d,
+      past: opts?.keepHistory ? s.past : [],
+      future: opts?.keepHistory ? s.future : [],
+      coalesce: null,
+      selection: null,
+      pageIndex: opts?.keepHistory ? s.pageIndex : 0,
+    }));
+    scheduleSave(d);
+  },
+
+  update(recipe, coalesceKey) {
+    const { design, past, coalesce } = get();
+    if (!design) return;
+    const next = produce(design, (draft) => {
+      recipe(draft);
+      draft.updatedAt = new Date().toISOString();
+    });
+    if (next === design) return;
+    const now = Date.now();
+    const merge = coalesceKey !== undefined && coalesce?.key === coalesceKey && now - coalesce.at < COALESCE_MS;
+    set({
+      design: next,
+      past: merge ? past : [...past.slice(-HISTORY_LIMIT + 1), design],
+      future: [],
+      coalesce: coalesceKey !== undefined ? { key: coalesceKey, at: now } : null,
+    });
+    scheduleSave(next);
+  },
+
+  undo() {
+    const { design, past, future } = get();
+    const prev = past[past.length - 1];
+    if (!design || !prev) return;
+    set({ design: prev, past: past.slice(0, -1), future: [design, ...future], coalesce: null });
+    scheduleSave(prev);
+  },
+
+  redo() {
+    const { design, past, future } = get();
+    const next = future[0];
+    if (!design || !next) return;
+    set({ design: next, past: [...past, design], future: future.slice(1), coalesce: null });
+    scheduleSave(next);
+  },
+
+  setView: (view) => set({ view, selection: null }),
+  setPanel: (panel) => set({ panel }),
+  goToPage: (i) => set({ pageIndex: Math.max(0, i), selection: null }),
+  setSheetSide: (sheetSide) => set({ sheetSide }),
+  setZoom: (zoom, fit = false) => set({ zoom: Math.min(6, Math.max(0.2, zoom)), fit }),
+  select: (selection) => set({ selection }),
+  setScope: (scope) => set({ scope }),
+  setUiLang(uiLang) {
+    try {
+      localStorage.setItem('agenda-studio.uiLang', uiLang);
+    } catch {
+      /* sin almacenamiento */
+    }
+    set({ uiLang });
+  },
+  bumpResources: (resVersion) => set({ resVersion }),
+  setShowWelcome: (showWelcome) => set({ showWelcome }),
+  setShowLibrary: (showLibrary) => set({ showLibrary }),
+  setSidebarOpen: (sidebarOpen) => set({ sidebarOpen }),
+  toggleGuides: () => set((s) => ({ guides: !s.guides })),
+  toggleSnap: () => set((s) => ({ snap: !s.snap })),
+}));

@@ -5,7 +5,7 @@
  */
 import { fmt } from '../i18n';
 import { assetPrims } from '../document/assets';
-import { flex, hsplit, inset, rows, takeBottom, takeTop } from '../layout/box';
+import { inset, rows, takeBottom, takeTop } from '../layout/box';
 import type { LayoutContext } from '../layout/context';
 import { line, rect, type Prim } from '../layout/prims';
 import { ruledLines, sectionHeader, writingArea } from '../layout/widgets';
@@ -19,11 +19,49 @@ function pagesDraft(item: { id: string; options: Record<string, unknown> }, pref
 }
 
 /** Tabla de renglones con columnas (anchos relativos) y encabezados. */
+/**
+ * Anchos de columna por peso, pero sin que ninguna quede más angosta que su mínimo
+ * (las que lo necesitan se fijan en su mínimo y el resto se reparte entre las demás).
+ */
+export function fitColumns(total: number, weights: number[], mins: number[]): number[] {
+  const fixed = weights.map(() => false);
+  let out = weights.slice();
+  if (mins.reduce((a, b) => a + b, 0) > total) {
+    const sum = weights.reduce((a, b) => a + b, 0);
+    return weights.map((w) => (total * w) / sum);
+  }
+  for (let iter = 0; iter <= weights.length; iter++) {
+    const freeW = total - mins.reduce((a, m, i) => a + (fixed[i] ? m : 0), 0);
+    const sumW = weights.reduce((a, w, i) => a + (fixed[i] ? 0 : w), 0);
+    out = weights.map((w, i) => (fixed[i] ? mins[i]! : sumW > 0 ? (freeW * w) / sumW : 0));
+    let changed = false;
+    out.forEach((w, i) => {
+      if (!fixed[i] && w < mins[i]! - 1e-6) {
+        fixed[i] = true;
+        changed = true;
+      }
+    });
+    if (!changed) break;
+  }
+  return out;
+}
+
 function table(ctx: LayoutContext, r: Rect, headers: string[], weights: number[], pitch: number, id: string, label: string): void {
   const [head, body] = takeTop(r, 6);
-  const colsR = hsplit(head, weights.map((w) => flex(w)), 0);
+  const style = { role: 'heading' as const, size: 'labelSmall' as const, upper: true, tracking: true };
+  // Mínimo de cada columna: su rótulo al cuerpo mínimo legible del tema, más aire a los lados.
+  const mins = headers.map((h) => {
+    const run = ctx.run(h, style);
+    return run.width * Math.min(1, ctx.theme.minTextPt / run.sizePt) + 3.2;
+  });
+  let cx = head.x;
+  const colsR = fitColumns(head.w, weights, mins).map((w) => {
+    const c = { x: cx, y: head.y, w, h: head.h };
+    cx += w;
+    return c;
+  });
   const p: Prim[] = [];
-  headers.forEach((h, i) => p.push(...ctx.textIn(h, inset(colsR[i]!, 0, 1.5), { role: 'heading', size: 'labelSmall', upper: true, tracking: true, valign: 'middle', fit: true }).prims));
+  headers.forEach((h, i) => p.push(...ctx.textIn(h, inset(colsR[i]!, 0, 1.5), { ...style, valign: 'middle', fit: true }).prims));
   p.push(line(r.x, head.y + head.h, r.x + r.w, head.y + head.h, ctx.stroke('rule', 'ink')));
   const n = Math.floor(body.h / pitch);
   for (let k = 1; k <= n; k++) p.push(line(r.x, body.y + k * pitch, r.x + r.w, body.y + k * pitch, ctx.stroke('hair')));
@@ -220,11 +258,16 @@ export const custom: SectionModule = {
     }
     if (c.kind === 'artwork' && c.assetId) {
       const info = ctx.doc.assets.get(c.assetId);
+      const name = ctx.doc.design.assets.find((a) => a.id === c.assetId)?.name ?? c.assetId;
+      if (!info) ctx.warn('missingAsset', `No se encontró el archivo «${name}» de esta página: se deja un recuadro vacío.`, { name });
       const rotated = c.rotation === 90 || c.rotation === 270;
       const box = rotated ? { x: area.x + (area.w - area.h) / 2, y: area.y + (area.h - area.w) / 2, w: area.h, h: area.w } : area;
-      const prims = assetPrims(info ? { ...info, ...(info.kind === 'pdf' ? {} : {}) } : undefined, box, { fit: c.fit, opacity: c.opacity, rotation: c.rotation, clip: c.fit === 'cover', minStrokePt: 0.2 });
+      const prims = assetPrims(info, box, { fit: c.fit, opacity: c.opacity, rotation: c.rotation, clip: c.fit === 'cover', minStrokePt: 0.2 });
       if (info?.kind === 'pdf') {
-        const walk = (ps: Prim[]): void => ps.forEach((p) => (p.t === 'pdf' ? (p.page = c.pdfPage) : p.t === 'group' ? walk(p.children) : undefined));
+        const total = info.pages ?? 1;
+        if (c.pdfPage > total) ctx.warn('pdfPageRange', `«${name}» tiene ${total} página${total === 1 ? '' : 's'}; se usa la última en lugar de la ${c.pdfPage}.`, { name, total, page: c.pdfPage });
+        const pageNo = Math.min(Math.max(1, c.pdfPage), total);
+        const walk = (ps: Prim[]): void => ps.forEach((p) => (p.t === 'pdf' ? (p.page = pageNo) : p.t === 'group' ? walk(p.children) : undefined));
         walk(prims);
       }
       ctx.add('custom.artwork', 'Ilustración', prims, { role: 'artwork', layer: 5, bbox: box });

@@ -73,12 +73,15 @@ export function computeHolidays(data: HolidayCountryData | null, q: HolidayQuery
   const types = new Set(q.types);
   if (data) {
     const sub = q.subdivision ? data.subdivisions[q.subdivision] : undefined;
+    // La lista «remove» de una subdivisión aplica SOLO a las entradas nacionales: si un
+    // feriado cambia de tipo en la región, aparece en «remove» (versión nacional) y en
+    // «add» (versión regional) con la misma clave fecha|nombre.
     const removedBySub = new Set(sub?.remove ?? []);
-    const entries = sub ? [...data.national, ...sub.add] : data.national;
-    for (const e of entries) {
+    const entries: Array<[HolidayEntry, boolean]> = [...data.national.map((e): [HolidayEntry, boolean] => [e, true]), ...(sub?.add ?? []).map((e): [HolidayEntry, boolean] => [e, false])];
+    for (const [e, isNational] of entries) {
       const [date, idx, code] = e;
       if (date < q.from || date > q.to) continue;
-      if (removedBySub.has(`${date}|${idx}`)) continue;
+      if (isNational && removedBySub.has(`${date}|${idx}`)) continue;
       const type = CODE_TO_TYPE[code] ?? 'observance';
       if (!types.has(type)) continue;
       push({ date, name: holidayName(data, idx, q.lang), type, substitute: e.length === 4, custom: false });
@@ -91,10 +94,6 @@ export function computeHolidays(data: HolidayCountryData | null, q: HolidayQuery
       const kept = list.filter((h) => !removed.has(date) && !removed.has(`${date}|${h.name}`));
       if (kept.length === 0) out.delete(date);
       else out.set(date, kept);
-    }
-    for (const [date, name] of Object.entries(edits.renamed)) {
-      const list = out.get(date);
-      if (list && list[0]) list[0] = { ...list[0], name, custom: true };
     }
     for (const a of edits.added) {
       if (a.date < q.from || a.date > q.to) continue;
@@ -111,6 +110,9 @@ export function computeHolidays(data: HolidayCountryData | null, q: HolidayQuery
     }
     const rank: Record<HolidayType, number> = { public: 0, bank: 1, optional: 2, school: 3, observance: 4 };
     unique.sort((a, b) => rank[a.type] - rank[b.type]);
+    // Renombrar después de ordenar: cambia el nombre del feriado que efectivamente se muestra.
+    const renamed = edits?.renamed[date];
+    if (renamed && unique[0]) unique[0] = { ...unique[0], name: renamed, custom: true };
     out.set(date, unique);
   }
   return out;

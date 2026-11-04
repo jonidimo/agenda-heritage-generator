@@ -55,6 +55,7 @@ export function draftPages(doc: DocContext, registry: ReadonlyMap<string, Sectio
 export function insertCustomPages(drafts: PagePlanDraft[], design: Design, placeholder: string): PagePlanDraft[] {
   const out = [...drafts];
   for (const cp of design.customPages) {
+    const anchorKey = cp.after ?? '__start__';
     const draft: PagePlanDraft = {
       key: `custom:${cp.id}`,
       type: 'custom',
@@ -63,17 +64,23 @@ export function insertCustomPages(drafts: PagePlanDraft[], design: Design, place
       group: '',
       startOn: cp.startOn,
       module: 'custom',
-      params: { id: cp.id },
+      params: { id: cp.id, anchor: anchorKey },
     };
     let at = -1;
     if (cp.after === null) at = 0;
     else {
       const idx = out.findIndex((p) => p.key === cp.after);
-      if (idx >= 0) at = idx + 1;
-      else if (cp.fallback) {
-        // Respaldo: después de la última página cuya clave empieza con el prefijo indicado.
+      if (idx >= 0) {
+        at = idx + 1;
+        // No partir un pliego: si el ancla abre una doble página, se inserta después de su pareja.
+        const a = out[idx]!;
+        const next = out[idx + 1];
+        if (a.startOn === 'verso' && next && next.type !== 'custom' && next.section === a.section && next.group === a.group && (next.startOn ?? 'any') === 'any') at = idx + 2;
+      } else if (cp.fallback) {
+        // Respaldo: después de la última página del grupo (mes), sección o prefijo indicado.
         for (let i = out.length - 1; i >= 0; i--) {
-          if (out[i]!.key.startsWith(cp.fallback) || out[i]!.section === cp.fallback) {
+          const p = out[i]!;
+          if (p.group === cp.fallback || p.section === cp.fallback || p.key.startsWith(cp.fallback)) {
             at = i + 1;
             break;
           }
@@ -81,8 +88,8 @@ export function insertCustomPages(drafts: PagePlanDraft[], design: Design, place
       }
     }
     if (at < 0) at = out.length;
-    // Páginas propias consecutivas con la misma ancla conservan su orden.
-    while (at < out.length && out[at]!.type === 'custom' && at > 0) at++;
+    // Varias páginas propias con la misma ancla conservan el orden en que se crearon.
+    while (at < out.length && out[at]!.type === 'custom' && out[at]!.params?.anchor === anchorKey) at++;
     draft.group = out[Math.max(0, at - 1)]?.group ?? '';
     out.splice(at, 0, draft);
   }
@@ -90,7 +97,10 @@ export function insertCustomPages(drafts: PagePlanDraft[], design: Design, place
 }
 
 function filler(n: number, group: string, style: string, reason: 'parity' | 'signature'): PagePlanDraft {
-  return { key: `filler:${reason}:${n}`, type: 'filler', section: 'filler', module: 'filler', title: '', group, params: { style, reason } };
+  // Dentro de un mes, el relleno conserva el mes (pestañas del borde sin huecos).
+  const m = /^month:(\d{4})-(\d{2})$/.exec(group);
+  const month = m ? { y: Number(m[1]), m: Number(m[2]) } : undefined;
+  return { key: `filler:${reason}:${n}`, type: 'filler', section: 'filler', module: 'filler', title: '', group, params: { style, reason, ...(month ? { month } : {}) } };
 }
 
 export function planDocument(doc: DocContext, registry: ReadonlyMap<string, SectionModule>, opts: PlanOptions = {}): DocumentPlan {

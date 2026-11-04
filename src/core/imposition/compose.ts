@@ -44,7 +44,12 @@ export function composeSide(side: SheetSide, getPage: (index: number) => PageMod
     const y = slot.y + t.top;
     const creep = recto ? -slot.creep : slot.creep;
     const m: Matrix = translate(x + creep, y);
-    content.push({ t: 'group', m, clip: { x: 0, y: 0, w: page.w, h: page.h }, children: pagePrims(page) });
+    // Recorte a la celda: con creep el contenido se corre hacia el lomo sin invadir la página enfrentada.
+    content.push({
+      t: 'group',
+      clip: { x: slot.x, y: slot.y, w: slot.w, h: slot.h },
+      children: [{ t: 'group', m, clip: { x: 0, y: 0, w: page.w, h: page.h }, children: pagePrims(page) }],
+    });
     if (opts.guides) content.push(rect({ x: x + creep, y, w: page.w, h: page.h }, { stroke: { color: '#d33', width: 0.15, dash: [1, 1] } }));
   }
 

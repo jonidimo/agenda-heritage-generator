@@ -78,11 +78,26 @@ export function pageHeader(
   const t = ctx.textAt(title, r.x, baseline, { role: 'title', size: opts.titleSize ?? 'title' });
   const prefix = opts.idPrefix ?? 'header';
   ctx.add(`${prefix}.title`, 'Título', [t.prim]);
+  let extra = 0;
   if (right) {
-    const rr = ctx.textAt(right, r.x + r.w, baseline, { role: 'heading', size: opts.rightSize ?? 'label', upper: true, tracking: true, align: 'right' });
-    ctx.add(`${prefix}.right`, 'Rótulo del encabezado', [rr.prim]);
+    const free = r.w - t.width - 4;
+    const style = { role: 'heading' as const, size: opts.rightSize ?? 'label', upper: true, tracking: true };
+    const natural = ctx.run(right, style);
+    if (natural.width <= free) {
+      ctx.add(`${prefix}.right`, 'Rótulo del encabezado', [ctx.textAt(right, r.x + r.w, baseline, { ...style, align: 'right' }).prim]);
+    } else if (free > 20 && ctx.textIn(right, { x: 0, y: 0, w: free, h: 10 }, { ...style, fit: true, silent: true }).sizePt > ctx.theme.minTextPt + 0.4) {
+      // Se achica para entrar al lado del título.
+      const fitted = ctx.textIn(right, { x: r.x + r.w - free, y: baseline - natural.capHeight, w: free, h: natural.capHeight + 1 }, { ...style, fit: true, align: 'right' });
+      ctx.add(`${prefix}.right`, 'Rótulo del encabezado', fitted.prims);
+    } else {
+      // No entra: baja a una línea propia, alineado a la derecha, debajo del título.
+      const y2 = baseline - titleRun.descent + natural.capHeight + 1.5;
+      const below = ctx.textIn(right, { x: r.x, y: y2 - natural.capHeight, w: r.w, h: natural.capHeight + 1 }, { ...style, fit: true, align: 'right' });
+      ctx.add(`${prefix}.right`, 'Rótulo del encabezado', below.prims);
+      extra = natural.capHeight + 2;
+    }
   }
-  const ruleY = baseline - titleRun.descent + 1.2;
+  const ruleY = baseline - titleRun.descent + 1.2 + extra;
   if (opts.rule !== 'none') ctx.add(`${prefix}.rule`, 'Filete del encabezado', [line(r.x, ruleY, r.x + r.w, ruleY, ctx.stroke(opts.rule ?? 'rule'))], { editable: false });
   return ruleY - r.y + (opts.gap ?? 4);
 }

@@ -8,7 +8,8 @@ import { calibrationSheet, coverSheet, sewingTemplate } from '../imposition/extr
 import { composeSide, type SheetRender } from '../imposition/compose';
 import { impose, type SheetSide } from '../imposition/impose';
 import type { DocContext } from '../layout/context';
-import type { PageModel } from '../layout/prims';
+import type { PageModel, PageWarning } from '../layout/prims';
+import { addMonths } from '../util/dates';
 import { renderPdf, type PdfPageInput } from '../render/pdf';
 import { SECTION_REGISTRY } from '../sections/registry';
 import { shapeText } from '../text/shape';
@@ -41,6 +42,9 @@ export class AgendaDocument {
     this.format = pageFormat(design);
     this.plan = planDocument(this.ctx, SECTION_REGISTRY, planOptions);
     (this.ctx as { pages?: DocContext['pages'] }).pages = this.plan.pages.map((p) => ({ key: p.key, type: p.type, group: p.group, index: p.index, title: p.title, section: p.section }));
+    const sides = new Map<string, Set<string>>();
+    for (const p of this.plan.pages) sides.set(p.type, (sides.get(p.type) ?? new Set()).add(p.side));
+    (this.ctx as { mirrorTypes?: ReadonlySet<string> }).mirrorTypes = new Set([...sides.entries()].filter(([, s]) => s.size === 2).map(([t]) => t));
   }
 
   get pageCount(): number {
@@ -83,11 +87,31 @@ export class AgendaDocument {
   }
 
   /** Avisos de verificación previa de todas las páginas (maqueta todo). */
-  warnings(): Array<{ page: number; key: string; message: string }> {
-    const out: Array<{ page: number; key: string; message: string }> = [];
+  warnings(): Array<PageWarning & { page: number; key: string }> {
+    const out: Array<PageWarning & { page: number; key: string }> = [];
     for (let i = 0; i < this.pageCount; i++) {
       const p = this.page(i);
-      for (const w of p.warnings) out.push({ page: i, key: p.key, message: w });
+      for (const w of p.warnings) out.push({ ...w, page: i, key: p.key });
+    }
+    return out;
+  }
+
+  /** Avisos que no dependen de una página (por ahora: datos de feriados). */
+  documentWarnings(): PageWarning[] {
+    const out: PageWarning[] = [];
+    const d = this.design;
+    const country = d.holidays.country;
+    if (country) {
+      const data = this.resources.holidays;
+      const first = d.calendar.year;
+      const last = addMonths(d.calendar.year, d.calendar.startMonth, d.calendar.monthCount - 1).y;
+      if (!data) out.push({ code: 'holidaysMissing', params: { country }, message: `No se pudieron cargar los feriados de ${country}: la agenda sale sin feriados.` });
+      else if (first < data.range[0] || last > data.range[1])
+        out.push({
+          code: 'holidaysRange',
+          params: { from: data.range[0], to: data.range[1], year: last },
+          message: `Los feriados calculados cubren ${data.range[0]}–${data.range[1]}: para ${last} regenerá los datos con «npm run holidays -- --to ${last + 5}».`,
+        });
     }
     return out;
   }
@@ -127,7 +151,10 @@ export class AgendaDocument {
           sides = sides.filter((s) => s.side === 'back');
           if (d.binding.manualReverseBacks) sides = [...sides].reverse();
         }
-        if (kind === 'signature') sides = sides.filter((s) => s.signature === (opts.signature ?? 0));
+        if (kind === 'signature') {
+          sides = sides.filter((s) => s.signature === (opts.signature ?? 0));
+          if (sides.length === 0) throw new Error(`No existe el cuadernillo ${(opts.signature ?? 0) + 1} (hay ${this.plan.signatures.signatures.length}).`);
+        }
         const duplex = this.format.nUp === 1 || d.binding.duplex === 'long-edge' ? 'DuplexFlipLongEdge' : 'DuplexFlipShortEdge';
         return renderPdf(
           sides.map((s) => toInput(this.sheet(s))),
@@ -146,6 +173,7 @@ export class AgendaDocument {
       case 'cover':
         return renderPdf([toInput(coverSheet(this.ctx, this.plan.signatures))], { ...base, info: { ...base.info, title: `${title} · tapa` } });
       case 'separate':
+        if (!this.hasSeparate()) throw new Error('No hay secciones marcadas como «libreta aparte».');
         return this.separate().exportPdf('imposed', opts);
     }
   }

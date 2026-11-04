@@ -1,0 +1,107 @@
+import { BookOpen, Columns2, File, FolderOpen, Grid3x3, Magnet, Maximize, PanelLeft, Printer, Redo2, Ruler, Undo2, ZoomIn, ZoomOut } from 'lucide-react';
+import { useT, type UiLang } from '../i18n/ui';
+import { useStore, type View } from '../state/store';
+import { IconButton, Segmented } from './ui';
+
+export function Topbar() {
+  const t = useT();
+  const design = useStore((s) => s.design);
+  const update = useStore((s) => s.update);
+  const canUndo = useStore((s) => s.past.length > 0);
+  const canRedo = useStore((s) => s.future.length > 0);
+  const undo = useStore((s) => s.undo);
+  const redo = useStore((s) => s.redo);
+  const view = useStore((s) => s.view);
+  const setView = useStore((s) => s.setView);
+  const zoom = useStore((s) => s.zoom);
+  const fit = useStore((s) => s.fit);
+  const setZoom = useStore((s) => s.setZoom);
+  const lang = useStore((s) => s.uiLang);
+  const setLang = useStore((s) => s.setUiLang);
+  const setShowLibrary = useStore((s) => s.setShowLibrary);
+  const setPanel = useStore((s) => s.setPanel);
+  const sidebarOpen = useStore((s) => s.sidebarOpen);
+  const setSidebarOpen = useStore((s) => s.setSidebarOpen);
+  const guides = useStore((s) => s.guides);
+  const toggleGuides = useStore((s) => s.toggleGuides);
+  const snap = useStore((s) => s.snap);
+  const toggleSnap = useStore((s) => s.toggleSnap);
+
+  return (
+    <header className="flex flex-wrap items-center gap-2 border-b border-line bg-paper px-2 py-1.5">
+      <IconButton label={t('top.menu')} onClick={() => setSidebarOpen(!sidebarOpen)} active={sidebarOpen}>
+        <PanelLeft size={18} />
+      </IconButton>
+      <div className="flex items-baseline gap-2 pr-2">
+        <span className="font-display text-[19px] leading-none italic">Heritage</span>
+        <span className="hidden text-[10.5px] font-extrabold tracking-[0.16em] text-ink-soft uppercase md:inline">Studio</span>
+      </div>
+      <button type="button" onClick={() => setShowLibrary(true)} className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-[12.5px] font-semibold hover:bg-black/5" title={t('top.library')}>
+        <FolderOpen size={16} />
+        <span className="hidden sm:inline">{t('top.library')}</span>
+      </button>
+      {design && (
+        <input
+          aria-label={t('top.name')}
+          className="min-w-[120px] flex-1 rounded-md border border-transparent bg-transparent px-2 py-1 text-[13px] font-semibold hover:border-line focus:border-accent focus:bg-white focus:outline-none sm:max-w-[260px]"
+          value={design.name}
+          onChange={(e) => update((d) => void (d.name = e.target.value), 'name')}
+        />
+      )}
+      <div className="flex items-center">
+        <IconButton label={t('top.undo')} onClick={undo} disabled={!canUndo}>
+          <Undo2 size={17} />
+        </IconButton>
+        <IconButton label={t('top.redo')} onClick={redo} disabled={!canRedo}>
+          <Redo2 size={17} />
+        </IconButton>
+      </div>
+      <div className="mx-auto">
+        <Segmented<View>
+          value={view}
+          onChange={setView}
+          options={[
+            { value: 'page', label: t('view.page'), icon: <File size={14} /> },
+            { value: 'spread', label: t('view.spread'), icon: <BookOpen size={14} /> },
+            { value: 'sheet', label: t('view.sheet'), icon: <Columns2 size={14} /> },
+            { value: 'book', label: t('view.book'), icon: <Grid3x3 size={14} /> },
+          ]}
+        />
+      </div>
+      <div className="flex items-center">
+        <IconButton label={t('top.zoomOut')} onClick={() => setZoom((fit ? 1 : zoom) / 1.2)}>
+          <ZoomOut size={17} />
+        </IconButton>
+        <IconButton label={t('top.fit')} onClick={() => setZoom(1, true)} active={fit}>
+          <Maximize size={16} />
+        </IconButton>
+        <IconButton label={t('top.zoomIn')} onClick={() => setZoom((fit ? 1 : zoom) * 1.2)}>
+          <ZoomIn size={17} />
+        </IconButton>
+        <IconButton label={t('top.guides')} onClick={toggleGuides} active={guides}>
+          <Ruler size={16} />
+        </IconButton>
+        <IconButton label={t('top.snap')} onClick={toggleSnap} active={snap}>
+          <Magnet size={16} />
+        </IconButton>
+      </div>
+      <select aria-label={t('top.lang')} className="rounded-md border border-line bg-white px-1.5 py-1 text-[12px]" value={lang} onChange={(e) => setLang(e.target.value as UiLang)}>
+        <option value="es">ES</option>
+        <option value="en">EN</option>
+        <option value="pt">PT</option>
+        <option value="it">IT</option>
+      </select>
+      <button
+        type="button"
+        onClick={() => {
+          setPanel('print');
+          setSidebarOpen(true);
+        }}
+        className="inline-flex items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-[12.5px] font-semibold text-white hover:bg-[#435c31]"
+      >
+        <Printer size={15} />
+        <span className="hidden sm:inline">{t('top.export')}</span>
+      </button>
+    </header>
+  );
+}

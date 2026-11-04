@@ -94,14 +94,22 @@ export interface CalendarSources {
 }
 
 /** Rango de fechas que necesita el calendario (para pedir feriados y lunas una sola vez). */
-export function calendarRange(opts: CalendarOptions, extraYears = 1): { from: string; to: string } {
+export function calendarRange(opts: CalendarOptions, extraYears = 2): { from: string; to: string } {
   const first = toDayNumber(opts.year, opts.startMonth, 1);
   const lastMonth = addMonths(opts.year, opts.startMonth, opts.monthCount - 1);
   const last = toDayNumber(lastMonth.y, lastMonth.m, daysInMonth(lastMonth.y, lastMonth.m));
-  const fromN = first - 14;
-  const end = addMonths(lastMonth.y, lastMonth.m, 12 * extraYears);
-  const toN = Math.max(last + 14, toDayNumber(end.y, end.m, daysInMonth(end.y, end.m)));
+  // Años completos desde el año de la agenda (la vista anual muestra enero–diciembre de
+  // varios años aunque la agenda empiece a mitad de año) más las semanas de borde.
+  const fromN = Math.min(first - 14, toDayNumber(opts.year, 1, 1) - 14);
+  const toN = Math.max(last + 14, toDayNumber(lastMonth.y + extraYears, 12, 31) + 14);
   return { from: isoFromDayNumber(fromN), to: isoFromDayNumber(toN) };
+}
+
+function eventMatches(p: PersonalDate, y: number, m: number, d: number): boolean {
+  if (p.year != null && p.year !== y) return false;
+  if (p.month === m && p.day === d) return true;
+  // 29 de febrero en años no bisiestos: se recuerda el 28.
+  return p.month === 2 && p.day === 29 && m === 2 && d === 28 && daysInMonth(y, 2) === 28;
 }
 
 export function buildCalendar(opts: CalendarOptions, sources: CalendarSources): CalendarModel {
@@ -127,7 +135,7 @@ export function buildCalendar(opts: CalendarOptions, sources: CalendarSources): 
       dow,
       isWeekend: weekend.has(dow),
       holidays: holidays.get(iso) ?? [],
-      events: sources.personalDates.filter((p) => p.month === m && p.day === d && (p.year == null || p.year === y)),
+      events: sources.personalDates.filter((p) => eventMatches(p, y, m, d)),
       moon: moons.get(iso) ?? null,
     };
     dayCache.set(n, day);

@@ -175,7 +175,7 @@ export const it: AgendaStrings = {
     up: 'ALTO',
     page: 'PAG. {n}',
     fold: 'PIEGA',
-    crosses: 'Guarda il foglio in controluce: le croci delle due facciate devono coincidere. Altrimenti misura la differenza e inseriscila come «spostamento del retro».',
+    crosses: 'Guarda il foglio in controluce: le croci delle due facciate devono coincidere. Altrimenti misura la differenza e inseriscila in Stampa → «Correzione del retro».',
     nonPrintable: 'Area non stampabile ({n} mm)',
     lines: 'CAMPIONI DI LINEA',
     dots: 'CAMPIONI DI PUNTI',

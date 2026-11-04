@@ -175,7 +175,7 @@ export const pt: AgendaStrings = {
     up: 'CIMA',
     page: 'PÁG. {n}',
     fold: 'DOBRA',
-    crosses: 'Olhe a folha contra a luz: as cruzes das duas faces devem coincidir. Se não, meça a diferença e informe como «deslocamento do verso».',
+    crosses: 'Olhe a folha contra a luz: as cruzes das duas faces devem coincidir. Se não, meça a diferença e informe em Impressão → «Correção do verso».',
     nonPrintable: 'Área não imprimível ({n} mm)',
     lines: 'AMOSTRAS DE LINHA',
     dots: 'AMOSTRAS DE PONTOS',

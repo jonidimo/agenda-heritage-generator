@@ -10,7 +10,9 @@ import { LayoutContext, type DocContext } from '../layout/context';
 import { primsBounds, type Block, type PageModel, type Prim } from '../layout/prims';
 import { dotField, squareGrid, writingArea } from '../layout/widgets';
 import type { PagePlan, SectionModule } from '../sections/types';
-import { compose, composeAll, rectContains, rotateAround, scale, transformRect, translate, type Matrix, type Rect } from '../util/geometry';
+import { compose, composeAll, IDENTITY, rectContains, rotateAround, scale, transformRect, translate, type Matrix, type Rect } from '../util/geometry';
+import { inkBounds } from '../text/shape';
+import type { FontRegistry } from '../text/fonts';
 import { assetPrims } from './assets';
 import { pageGeometry } from './context';
 
@@ -21,10 +23,11 @@ export function findOverride(overrides: BlockOverride[], page: { key: string; ty
   );
 }
 
-export function overrideMatrix(bbox: Rect, o: Pick<BlockOverride, 'dx' | 'dy' | 'scale' | 'rotation'>): Matrix {
+export function overrideMatrix(bbox: Rect, o: Pick<BlockOverride, 'dx' | 'dy' | 'scale' | 'rotation'>, mirrorX = false): Matrix {
   const s = o.scale;
+  const dx = mirrorX ? -o.dx : o.dx;
   return composeAll(
-    translate(bbox.x + o.dx, bbox.y + o.dy),
+    translate(bbox.x + dx, bbox.y + o.dy),
     rotateAround(o.rotation, (bbox.w * s) / 2, (bbox.h * s) / 2),
     scale(s),
     translate(-bbox.x, -bbox.y),
@@ -71,6 +74,34 @@ function placeWatermark(ctx: LayoutContext, wm: WatermarkPlacement): void {
   const mirror = wm.mirrorOnVerso && side === 'verso' && (wm.hAnchor === 'outer' || wm.hAnchor === 'inner');
   const prims = assetPrims(info, { x, y, w, h }, { fit: 'fill', opacity: wm.opacity, rotation: wm.rotation, mirror, minStrokePt: wm.minStrokePt });
   ctx.add(`wm.${wm.id}`, 'Marca de agua', prims, { role: 'watermark', layer: wm.layer === 'above' ? 20 : 1, bbox: { x, y, w, h } });
+}
+
+/** Cajas aproximadas de la «tinta» de cada línea de texto (con todas las transformaciones). */
+function collectTextBoxes(prims: Prim[], m: Matrix, label: string, block: string, out: Array<{ r: Rect; label: string; block: string }>, fonts: FontRegistry): void {
+  for (const p of prims) {
+    if (p.t === 'group') collectTextBoxes(p.children, p.m ? compose(m, p.m) : m, label, block, out, fonts);
+    else if (p.t === 'text' && p.run.glyphs.length > 0 && p.run.text.trim()) {
+      const face = fonts.get(p.run.face);
+      const ink = face ? inkBounds(face, p.run) : null;
+      const r = ink
+        ? { x: p.x + ink.x, y: p.y + ink.y, w: ink.w, h: ink.h }
+        : { x: p.x, y: p.y - p.run.capHeight * 1.05, w: p.run.width, h: p.run.capHeight * 1.05 + Math.abs(p.run.descent) * 0.6 };
+      const text = p.run.text.length > 28 ? `${p.run.text.slice(0, 26)}…` : p.run.text;
+      out.push({ r: transformRect(m, r), label: `${text}`, block });
+    }
+  }
+}
+
+function findImages(prims: Prim[]): Array<{ asset: string; w: number }> {
+  const out: Array<{ asset: string; w: number }> = [];
+  const walk = (ps: Prim[], k: number): void => {
+    for (const p of ps) {
+      if (p.t === 'image') out.push({ asset: p.asset, w: p.w * k });
+      else if (p.t === 'group') walk(p.children, p.m ? k * Math.sqrt(Math.abs(p.m[0] * p.m[3] - p.m[1] * p.m[2])) : k);
+    }
+  };
+  walk(prims, 1);
+  return out;
 }
 
 function substitute(text: string, ctx: LayoutContext, page: PagePlan): string {
@@ -181,7 +212,7 @@ export function layoutPage(doc: DocContext, plan: PagePlan, registry: ReadonlyMa
     try {
       mod.layout(ctx, plan);
     } catch (err) {
-      ctx.warn(`Error al maquetar: ${(err as Error).message}`);
+      ctx.warn('layoutError', `Error al maquetar: ${(err as Error).message}`, { error: (err as Error).message });
     }
   }
   for (const cb of design.customBlocks) {
@@ -197,15 +228,17 @@ export function layoutPage(doc: DocContext, plan: PagePlan, registry: ReadonlyMa
     const o = findOverride(design.overrides, plan, b.id);
     if (o) {
       if (o.hidden) continue;
-      let m = overrideMatrix(b.bbox, o);
-      let bounds = transformRect(m, b.bbox);
+      // Ajustes «por tipo» en tipos que caen a ambos lados: X se espeja en las páginas izquierdas
+      // (mover «hacia afuera» en una derecha es mover hacia afuera también en una izquierda).
+      const mirror = o.pageKey === null && plan.side === 'verso' && (doc.mirrorTypes?.has(plan.type) ?? false);
+      let m = overrideMatrix(b.bbox, o, mirror);
+      const bounds = transformRect(m, b.bbox);
       // Mantener dentro de la página.
       const dx = bounds.x < 0 ? -bounds.x : bounds.x + bounds.w > geom.w ? geom.w - bounds.x - bounds.w : 0;
       const dy = bounds.y < 0 ? -bounds.y : bounds.y + bounds.h > geom.h ? geom.h - bounds.y - bounds.h : 0;
       if ((dx !== 0 || dy !== 0) && bounds.w <= geom.w && bounds.h <= geom.h) {
         m = compose(translate(dx, dy), m);
-        bounds = transformRect(m, b.bbox);
-        ctx.warn(`«${b.label}» se acomodó para no salir de la página.`);
+        ctx.warn('clamped', `«${b.label}» se acomodó para no salir de la página.`, { block: b.id, label: b.label });
       }
       b.m = m;
       if (o.opacity < 1) b.opacity = o.opacity;
@@ -214,15 +247,38 @@ export function layoutPage(doc: DocContext, plan: PagePlan, registry: ReadonlyMa
   }
   blocks.sort((a, b) => a.layer - b.layer);
 
-  // Verificación: contenido dentro de la página y fuera de la zona no imprimible.
+  // Verificación: contenido real dentro de la página, fuera de la zona no imprimible y sin textos superpuestos.
   const np = design.binding.nonPrintable;
-  const safe = inset(pageBox, np, geom.side === 'recto' ? np : 0, np, geom.side === 'recto' ? 0 : np);
+  const allEdges = design.binding.method === 'single' || design.binding.method === 'cut-stack';
+  const safe = allEdges ? inset(pageBox, np) : inset(pageBox, np, geom.side === 'recto' ? np : 0, np, geom.side === 'recto' ? 0 : np);
+  const texts: Array<{ r: Rect; label: string; block: string }> = [];
   for (const b of blocks) {
     if (b.role === 'watermark' || b.role === 'chrome' || b.role === 'artwork') continue;
-    const bounds = blockBounds(b);
-    if (bounds.w === 0 && bounds.h === 0) continue;
-    if (!rectContains(pageBox, bounds, 0.05)) ctx.warn(`«${b.label}» sale de la página.`);
-    else if (!rectContains(safe, bounds, 0.05)) ctx.warn(`«${b.label}» entra en la zona que la impresora no imprime (${np} mm del borde).`);
+    const own = primsBounds(b.prims);
+    const bounds = own ? (b.m ? transformRect(b.m, own) : own) : null;
+    if (!bounds || (bounds.w === 0 && bounds.h === 0)) continue;
+    if (!rectContains(pageBox, bounds, 0.05)) ctx.warn('offPage', `«${b.label}» sale de la página.`, { block: b.id, label: b.label });
+    else if (!rectContains(safe, bounds, 0.05)) ctx.warn('nonPrintable', `«${b.label}» entra en la zona que la impresora no imprime (${np} mm del borde).`, { block: b.id, label: b.label, mm: np });
+    collectTextBoxes(b.prims, b.m ?? IDENTITY, b.label, b.id, texts, doc.fonts);
+  }
+  for (let i = 0; i < texts.length; i++) {
+    for (let j = i + 1; j < texts.length; j++) {
+      const a = texts[i]!;
+      const c = texts[j]!;
+      const ix = Math.min(a.r.x + a.r.w, c.r.x + c.r.w) - Math.max(a.r.x, c.r.x);
+      const iy = Math.min(a.r.y + a.r.h, c.r.y + c.r.h) - Math.max(a.r.y, c.r.y);
+      if (ix > 0.2 && iy > 0.2) ctx.warn('overlap', `Textos superpuestos: «${a.label}» y «${c.label}».`, { a: a.label, b: c.label });
+    }
+  }
+  // Imágenes con poca resolución para el tamaño impreso.
+  for (const b of blocks) {
+    for (const im of findImages(b.prims)) {
+      const info = doc.assets.get(im.asset);
+      if (info?.pxWidth && im.w > 0) {
+        const dpi = Math.round(info.pxWidth / (im.w / 25.4));
+        if (dpi < 200) ctx.warn('lowDpi', `La imagen se imprime a ${dpi} ppp (se recomiendan 300 o más): se verá pixelada.`, { dpi });
+      }
+    }
   }
   return {
     key: plan.key,
@@ -235,7 +291,7 @@ export function layoutPage(doc: DocContext, plan: PagePlan, registry: ReadonlyMa
     title: plan.title,
     group: plan.group,
     blocks,
-    warnings: [...new Set(ctx.warnings)],
+    warnings: [...new Map(ctx.warnings.map((w) => [w.message, w])).values()],
   };
 }
 

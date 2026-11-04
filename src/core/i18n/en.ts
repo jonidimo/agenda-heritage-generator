@@ -175,7 +175,7 @@ export const en: AgendaStrings = {
     up: 'UP',
     page: 'PAGE {n}',
     fold: 'FOLD',
-    crosses: 'Hold the sheet against the light: the crosses on both sides must match. If not, measure the offset and enter it as “back-side offset”.',
+    crosses: 'Hold the sheet against the light: the crosses on both sides must match. If not, measure the offset and enter it in Print → “Back-side correction”.',
     nonPrintable: 'Non-printable area ({n} mm)',
     lines: 'LINE SAMPLES',
     dots: 'DOT SAMPLES',

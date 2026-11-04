@@ -11,7 +11,7 @@ import { langOf } from '../i18n';
 import type { FontFace, FontRegistry } from '../text/fonts';
 import { fitSize, shapeText, wrapText, type ShapedRun } from '../text/shape';
 import { ptToMm, type Rect } from '../util/geometry';
-import { primsBounds, type Block, type BlockRole, type Fill, type Prim, type Side, type Stroke, type TextPrim } from './prims';
+import { primsBounds, type Block, type BlockRole, type Fill, type PageWarning, type Prim, type Side, type Stroke, type TextPrim, type WarningCode } from './prims';
 
 export type TextRole = keyof ThemeTokens['fonts'];
 export type SizeKey = keyof ThemeTokens['sizes'];
@@ -41,6 +41,8 @@ export interface TextInOpts extends TextAtOpts {
   /** Interlineado como múltiplo del cuerpo. */
   leading?: number;
   ellipsis?: boolean;
+  /** Solo medir: no avisa si no entra (para probar alternativas de diagramación). */
+  silent?: boolean;
 }
 
 export interface AssetInfo {
@@ -85,13 +87,15 @@ export interface DocContext {
   seasons: import('../calendar/moon').SeasonDates;
   pageW: number;
   pageH: number;
+  /** Tipos de página que caen tanto a la izquierda como a la derecha: sus ajustes «por tipo» se espejan en las izquierdas. */
+  mirrorTypes?: ReadonlySet<string>;
   /** Plan final de páginas (lo completa el documento después de paginar; lo usa el índice). */
   pages?: ReadonlyArray<{ key: string; type: string; group: string; index: number; title: string; section: string }>;
 }
 
 export class LayoutContext {
   readonly blocks: Block[] = [];
-  readonly warnings: string[] = [];
+  readonly warnings: PageWarning[] = [];
 
   constructor(
     readonly doc: DocContext,
@@ -135,7 +139,7 @@ export class LayoutContext {
   private prim(run: ShapedRun, x: number, y: number, opts: TextOpts): TextPrim {
     if (run.missing.length > 0) {
       const chars = [...new Set(run.missing)].map((c) => String.fromCodePoint(c)).join(' ');
-      this.warnings.push(`La fuente no tiene los caracteres: ${chars}`);
+      this.warn('missingGlyphs', `La fuente no tiene los caracteres: ${chars}`, { chars });
     }
     return { t: 'text', run, x, y, color: opts.color ?? this.theme.colors.ink, ...(opts.opacity !== undefined ? { opacity: opts.opacity } : {}) };
   }
@@ -150,7 +154,7 @@ export class LayoutContext {
   }
 
   /** Texto dentro de una caja con alineación, ajuste de cuerpo y partición en líneas. */
-  textIn(text: string, box: Rect, opts: TextInOpts = {}): { prims: TextPrim[]; bbox: Rect; lines: number; sizePt: number } {
+  textIn(text: string, box: Rect, opts: TextInOpts = {}): { prims: TextPrim[]; bbox: Rect; lines: number; sizePt: number; truncated: boolean } {
     const role = opts.role ?? 'body';
     const face = this.face(role);
     const str = opts.upper ? text.toLocaleUpperCase(this.doc.locale) : text;
@@ -167,19 +171,33 @@ export class LayoutContext {
         lines = wrapText(face, str, sizePt, box.w, shapeOpts);
       }
     }
+    const runW = (t: string): number => shapeText(face, t, sizePt, shapeOpts).width;
+    /** Acorta una línea (primero por palabras, después por letras) hasta que entre con «…». */
+    const withEllipsis = (l: string): string => {
+      let out = l.trimEnd();
+      while (out.length > 1 && runW(`${out}…`) > box.w + 0.01) out = /\s/.test(out) && runW(`${out.replace(/\s+\S*$/, '')}…`) <= box.w + 0.01 ? out.replace(/\s+\S*$/, '') : out.slice(0, -1).trimEnd();
+      return `${out}…`;
+    };
+    let truncated = false;
     if (opts.maxLines !== undefined && lines.length > opts.maxLines) {
       lines = lines.slice(0, opts.maxLines);
-      if (opts.ellipsis) lines[lines.length - 1] = `${lines[lines.length - 1]!.replace(/\s+\S*$/, '')}…`;
+      truncated = true;
+      if (opts.ellipsis) lines[lines.length - 1] = withEllipsis(lines[lines.length - 1]!);
     }
     if (opts.ellipsis && !opts.wrap) {
-      const runW = (t: string): number => shapeText(face, t, sizePt, shapeOpts).width;
-      let l = lines[0] ?? '';
+      const l = lines[0] ?? '';
       if (runW(l) > box.w) {
-        while (l.length > 1 && runW(`${l}…`) > box.w) l = l.slice(0, -1);
-        lines = [`${l.trimEnd()}…`];
+        lines = [withEllipsis(l)];
+        truncated = true;
       }
     }
     const runs = lines.map((l) => shapeText(face, l, sizePt, shapeOpts));
+    const tooWide = runs.some((r) => r.width > box.w + 0.3);
+    const tooTall = opts.wrap && box.h > 0 && runs.length * ptToMm(sizePt) * (opts.leading ?? 1.3) > box.h + ptToMm(sizePt) * 0.5;
+    if (!opts.silent && str.trim() && (tooWide || tooTall)) {
+      const short = str.length > 40 ? `${str.slice(0, 38)}…` : str;
+      this.warn('textOverflow', `El texto «${short}» no entra en su espacio.`, { text: short });
+    }
     const lh = opts.wrap ? ptToMm(sizePt) * (opts.leading ?? 1.3) : leading;
     const first = runs[0];
     const cap = first ? first.capHeight : 0;
@@ -199,7 +217,7 @@ export class LayoutContext {
     }
     const top = prims[0] ? prims[0].y - cap : box.y;
     const bbox = prims.length > 0 ? { x: minX, y: top, w: maxX - minX, h: blockH } : { x: box.x, y: box.y, w: 0, h: 0 };
-    return { prims, bbox, lines: runs.length, sizePt };
+    return { prims, bbox, lines: runs.length, sizePt, truncated };
   }
 
   /* ---------- Trazos y rellenos del tema ---------- */
@@ -238,7 +256,7 @@ export class LayoutContext {
     return block;
   }
 
-  warn(message: string): void {
-    this.warnings.push(message);
+  warn(code: WarningCode, message: string, params: Record<string, string | number> = {}): void {
+    this.warnings.push({ code, params, message });
   }
 }

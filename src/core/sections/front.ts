@@ -7,10 +7,10 @@ import type { DayInfo } from '../calendar';
 import { monthNames } from '../calendar/locale';
 import { fmt } from '../i18n';
 import { centerIn, cols, flex, grid, hsplit, inset, rows, takeBottom, takeTop } from '../layout/box';
-import type { LayoutContext } from '../layout/context';
+import type { LayoutContext, SizeKey, TextRole } from '../layout/context';
 import { line, rect, type Prim } from '../layout/prims';
 import { heartIcon, miniCalendar, ruledLines, sectionHeader, writingArea } from '../layout/widgets';
-import { TABULAR_FEATURES } from '../text/shape';
+import { inkBounds, TABULAR_FEATURES } from '../text/shape';
 import { ptToMm } from '../util/geometry';
 import { checklist, fieldLine, headed, order } from './common';
 import { opt, param, type SectionModule } from './types';
@@ -32,13 +32,26 @@ export const titlePage: SectionModule = {
     const cy = c.y + c.h * 0.42;
     const y = ctx.textAt(year, c.x + c.w / 2, cy, { role: 'display', size: 'hero', align: 'center', features: TABULAR_FEATURES });
     ctx.add('title.year', 'Año', [y.prim]);
+    // Las cifras de estilo antiguo bajan de la línea de base (el 7 y el 9 de Cormorant Garamond):
+    // la línea siguiente se ubica por debajo de la tinta real del año, nunca encima.
+    const yearInk = inkBounds(ctx.face('display'), yearRun);
+    const yearBottom = cy + (yearInk ? yearInk.y + yearInk.h : 0);
+    const clear = (text: string, role: TextRole, size: SizeKey, preferred: number): number => {
+      const run = ctx.run(text, { role, size });
+      const ink = inkBounds(ctx.face(role), run);
+      return Math.max(preferred, yearBottom + 2.5 - (ink ? ink.y : -run.capHeight));
+    };
     let baseline = cy + ptToMm(ctx.theme.sizes.title) * 1.45;
+    const titleCap = ctx.run(title, { role: 'title', size: 'titleSmall' }).capHeight;
+    let titleBaseline: number;
     if (showName) {
+      baseline = clear(d.persona.name, 'title', 'title', baseline);
       const n = ctx.textAt(d.persona.name, c.x + c.w / 2, baseline, { role: 'title', size: 'title', align: 'center' });
       ctx.add('title.name', 'Nombre', [n.prim]);
       baseline += ptToMm(ctx.theme.sizes.title) * 1.3;
-    }
-    const t = ctx.textIn(title, { x: c.x, y: baseline - ptToMm(ctx.theme.sizes.titleSmall), w: c.w, h: 30 }, { role: 'title', size: 'titleSmall', align: 'center', wrap: true, fit: true });
+      titleBaseline = baseline - ptToMm(ctx.theme.sizes.titleSmall) + titleCap;
+    } else titleBaseline = clear(title, 'title', 'titleSmall', baseline - ptToMm(ctx.theme.sizes.titleSmall) + titleCap);
+    const t = ctx.textIn(title, { x: c.x, y: titleBaseline - titleCap, w: c.w, h: 30 }, { role: 'title', size: 'titleSmall', align: 'center', wrap: true, fit: true });
     ctx.add('title.title', 'Título', t.prims);
     if (d.persona.subtitle) {
       const st = ctx.textIn(d.persona.subtitle, { x: c.x, y: t.bbox.y + t.bbox.h + 4, w: c.w, h: 12 }, { role: 'label', size: 'label', upper: true, tracking: true, align: 'center', wrap: true });
@@ -48,7 +61,6 @@ export const titlePage: SectionModule = {
       const k = ctx.textAt(ctx.s.titlePage.kicker, c.x + c.w / 2, c.y + c.h, { role: 'label', size: 'labelSmall', upper: true, tracking: 0.2, align: 'center' });
       ctx.add('title.kicker', 'Rótulo inferior', [k.prim]);
     }
-    void yearRun;
   },
 };
 
@@ -65,15 +77,17 @@ export const dedication: SectionModule = {
     const titleText = fmt(d.persona.dedicationTitle, { year: d.calendar.year, name: d.persona.name });
     const body = fmt(d.persona.dedication, { year: d.calendar.year, name: d.persona.name });
     const bodySize = ctx.theme.sizes.subtitle + 1;
-    const bodyMeasure = ctx.textIn(body, { ...c, h: c.h * 0.7 }, { role: 'quote', size: bodySize, wrap: true, fit: true, leading: 1.6 });
     const titleH = titleText ? ptToMm(ctx.theme.sizes.title) * 1.6 : 0;
-    const total = titleH + bodyMeasure.bbox.h;
-    const top = c.y + Math.max(0, (c.h - total) / 2);
+    const bodyBox = { x: c.x, y: 0, w: c.w, h: c.h - titleH };
+    // Medición con la caja real; luego se ubica con el mismo cuerpo, sin volver a ajustar.
+    const measured = ctx.textIn(body, bodyBox, { role: 'quote', size: bodySize, wrap: true, fit: true, leading: 1.6 });
+    const bodyH = measured.lines * ptToMm(measured.sizePt) * 1.6;
+    const top = c.y + Math.max(0, (c.h - titleH - bodyH) / 2);
     if (titleText) {
       const t = ctx.textIn(titleText, { x: c.x, y: top, w: c.w, h: titleH }, { role: 'title', size: 'title', wrap: true, fit: true });
       ctx.add('dedication.title', 'Título de la dedicatoria', t.prims);
     }
-    const b = ctx.textIn(body, { x: c.x, y: top + titleH, w: c.w, h: c.h - titleH }, { role: 'quote', size: bodySize, wrap: true, fit: true, leading: 1.6 });
+    const b = ctx.textIn(body, { x: c.x, y: top + titleH, w: c.w, h: c.y + c.h - top - titleH }, { role: 'quote', size: measured.sizePt, wrap: true, leading: 1.6 });
     ctx.add('dedication.body', 'Texto de la dedicatoria', b.prims);
   },
 };
@@ -158,7 +172,7 @@ export const toc: SectionModule = {
         entries.push({ title: `${monthNames(ctx.doc.locale)[(m ?? 1) - 1]} ${y}`, page: p.index + 1, month: true });
         continue;
       }
-      const key = p.type === 'weekLeft' || p.type === 'weekRight' ? 'week' : p.type === 'guide' ? 'guide' : p.type;
+      const key = p.type === 'weekLeft' || p.type === 'weekRight' ? 'week' : p.type === 'custom' ? p.key : p.type;
       if (seenTypes.has(key)) continue;
       seenTypes.add(key);
       const t = TOC_TITLES[key]?.(ctx) ?? (p.type === 'custom' ? p.title : null);

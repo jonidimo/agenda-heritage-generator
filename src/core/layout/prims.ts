@@ -146,7 +146,31 @@ export interface PageModel {
   title: string;
   group: string;
   blocks: Block[];
-  warnings: string[];
+  warnings: PageWarning[];
+}
+
+/** Códigos estables de aviso: la interfaz los traduce; `message` queda en español para la CLI. */
+export type WarningCode =
+  | 'layoutError'
+  | 'clamped'
+  | 'offPage'
+  | 'nonPrintable'
+  | 'overlap'
+  | 'lowDpi'
+  | 'missingGlyphs'
+  | 'textOverflow'
+  | 'missingAsset'
+  | 'pdfPageRange'
+  | 'holidaysMissing'
+  | 'holidaysRange'
+  /** Informativo: un texto (feriado, fecha propia) se abrevió con «…» para entrar. */
+  | 'abbreviated';
+
+export interface PageWarning {
+  code: WarningCode;
+  /** Datos del aviso (id y nombre del bloque, textos, valores). */
+  params: Record<string, string | number>;
+  message: string;
 }
 
 /* ---------- Constructores breves ---------- */

@@ -43,12 +43,22 @@ function creepFor(i: number, n: number, creep: Design['binding']['creep']): numb
   return creep.caliper * i;
 }
 
+/**
+ * ¿Hay que girar 180° los dorsos? Con 2 páginas por cara (hoja apaisada) el volteo
+ * natural es por el borde corto; si la impresora solo voltea por el largo, se giran.
+ * Con 1 página por cara (vertical) el volteo natural es por el borde largo y no se giran.
+ */
+export function backRotates(binding: Design['binding'], nUp: 1 | 2): boolean {
+  if (binding.duplex === 'manual') return binding.manualRotateBacks;
+  return nUp === 2 && binding.duplex === 'long-edge';
+}
+
 export function impose(plan: SignaturePlan, fmt: PageFormat, binding: Design['binding']): SheetSide[] {
   const out: SheetSide[] = [];
   const back = (side: Omit<SheetSide, 'rotate180' | 'offset' | 'side'>): SheetSide => ({
     ...side,
     side: 'back',
-    rotate180: binding.duplex === 'long-edge' || (binding.duplex === 'manual' && binding.manualRotateBacks),
+    rotate180: backRotates(binding, fmt.nUp),
     offset: { x: binding.backOffset.x, y: binding.backOffset.y },
   });
   const front = (side: Omit<SheetSide, 'rotate180' | 'offset' | 'side'>): SheetSide => ({ ...side, side: 'front', rotate180: false, offset: { x: 0, y: 0 } });

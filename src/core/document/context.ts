@@ -3,7 +3,7 @@
  * ya cargados (fuentes, datos de feriados, recursos gráficos).
  */
 import { buildCalendar, type CalendarOptions } from '../calendar';
-import { currencySymbol, regionWeekInfo } from '../calendar/locale';
+import { currencySymbol, defaultTimeZone, regionWeekInfo } from '../calendar/locale';
 import { moonPhases, seasonDates } from '../calendar/moon';
 import { sheetSize, type Design } from '../design/schema';
 import { resolveTheme } from '../design/themes';
@@ -69,7 +69,12 @@ export function createDocContext(design: Design, res: Resources): DocContext {
   const theme = resolveTheme(design.theme.id, design.theme.tokens, design.theme.comfort);
   const strings = resolveStrings(design.locale, design.persona.labels);
   const lang = design.holidays.language === 'auto' ? langOf(design.locale) : design.holidays.language;
-  const tz = design.calendar.timeZone !== 'auto' ? design.calendar.timeZone : (res.holidays?.tz ?? 'UTC');
+  const tz =
+    design.calendar.timeZone !== 'auto'
+      ? design.calendar.timeZone
+      : design.holidays.country && res.holidays?.tz
+        ? res.holidays.tz
+        : defaultTimeZone(design.locale, design.holidays.country);
   const cal = buildCalendar(calendarOptions(design), {
     holidays: (from, to) =>
       computeHolidays(design.holidays.country ? res.holidays : null, {

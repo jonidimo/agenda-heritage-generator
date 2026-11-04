@@ -100,3 +100,23 @@ export function currencySymbol(locale: string, country: string | null): string {
     return '$';
   }
 }
+
+const REGION_TZ: Record<string, string> = {
+  AR: 'America/Argentina/Buenos_Aires', UY: 'America/Montevideo', CL: 'America/Santiago', PY: 'America/Asuncion',
+  BO: 'America/La_Paz', PE: 'America/Lima', CO: 'America/Bogota', EC: 'America/Guayaquil', VE: 'America/Caracas',
+  MX: 'America/Mexico_City', GT: 'America/Guatemala', CR: 'America/Costa_Rica', PA: 'America/Panama', DO: 'America/Santo_Domingo',
+  CU: 'America/Havana', PR: 'America/Puerto_Rico', ES: 'Europe/Madrid', PT: 'Europe/Lisbon', IT: 'Europe/Rome', FR: 'Europe/Paris',
+  DE: 'Europe/Berlin', GB: 'Europe/London', IE: 'Europe/Dublin', US: 'America/New_York', CA: 'America/Toronto', BR: 'America/Sao_Paulo',
+  AU: 'Australia/Sydney', NZ: 'Pacific/Auckland', CH: 'Europe/Zurich', AT: 'Europe/Vienna', NL: 'Europe/Amsterdam', BE: 'Europe/Brussels',
+};
+
+/** Huso horario razonable para un idioma-región (antes de caer en el del sistema o UTC). */
+export function defaultTimeZone(locale: string, country: string | null): string {
+  const region = (country ?? locale.split(/[-_]/)[1] ?? '').toUpperCase();
+  if (REGION_TZ[region]) return REGION_TZ[region]!;
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+  } catch {
+    return 'UTC';
+  }
+}

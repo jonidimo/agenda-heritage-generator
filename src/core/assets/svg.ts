@@ -283,8 +283,7 @@ export function importSvg(src: string): VectorAsset {
   const items: VectorItem[] = [];
   let warnedText = false;
   let warnedImage = false;
-  let warnedGradient = gradients.size > 0;
-  if (warnedGradient) warnings.push('Los degradados se convierten a su primer color.');
+  if (gradients.size > 0) warnings.push('Los degradados se convierten a su primer color.');
 
   const computeStyle = (node: XmlNode, inherited: Style): Style => {
     const style: Style = {};

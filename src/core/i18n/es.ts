@@ -179,7 +179,7 @@ export const es = {
     up: 'ARRIBA',
     page: 'PÁG. {n}',
     fold: 'PLIEGUE',
-    crosses: 'Mirá la hoja a trasluz: las cruces de ambas caras deben coincidir. Si no, medí la diferencia y cargala como «desplazamiento del dorso».',
+    crosses: 'Mirá la hoja a trasluz: las cruces de ambas caras deben coincidir. Si no, medí la diferencia y cargala en Impresión → «Corrección del dorso».',
     nonPrintable: 'Zona no imprimible ({n} mm)',
     lines: 'MUESTRAS DE LÍNEA',
     dots: 'MUESTRAS DE PUNTOS',

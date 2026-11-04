@@ -56,3 +56,9 @@ export function fieldLine(ctx: LayoutContext, x: number, y: number, w: number, l
   const lx = x + t.width + 2;
   return [t.prim, line(lx, y + 0.6, x + w, y + 0.6, ctx.stroke('hair'))];
 }
+
+/** Aviso informativo: un feriado o una fecha propia se abrevió con «…» para entrar en su lugar. */
+export function abbreviated(ctx: LayoutContext, text: string, kind: 'holiday' | 'event'): void {
+  const where = kind === 'holiday' ? 'podés darle un nombre más corto en Calendario → Feriados' : 'podés acortarlo en Persona → Cumpleaños y fechas importantes';
+  ctx.warn('abbreviated', `«${text}» se abrevió para entrar en su lugar: ${where}.`, { text, kind });
+}

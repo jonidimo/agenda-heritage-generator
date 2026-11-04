@@ -86,18 +86,26 @@ function buildItems(ctx: LayoutContext): GuideItem[] {
   const addMethod = (id: string, name: string, text: string, level: EvidenceLevel, refList: string[]): void => {
     const nums = showRefs ? refList.map(refIndex) : [];
     const textLines = ctx.textIn(text, { x: 0, y: 0, w, h: 500 }, { role: 'body', size: bodySize, wrap: true, leading: lead }).lines;
-    const height = 5.5 + textLines * lineH + 3.5;
+    const rightText = [showEvidence ? levelName(level) : '', nums.length ? `[${nums.join(', ')}]` : ''].filter(Boolean).join('  ');
+    const nameW = ctx.run(name, { role: 'labelStrong', size: ctx.theme.sizes.label + 1, upper: true, tracking: 0.05 }).width;
+    const rightW = rightText ? ctx.run(rightText, { role: 'quote', size: bodySize }).width : 0;
+    const stacked = nameW + rightW + 4 > w;
+    const head = stacked ? 5.5 + ptToMm(bodySize) * 1.35 : 5.5;
+    const height = head + textLines * lineH + 3.5;
     items.push({
       id: `method.${id}`,
       height,
       render(c, y) {
         const p: Prim[] = [];
-        const nm = c.textAt(name, c.content.x, y + 3.6, { role: 'labelStrong', size: c.theme.sizes.label + 1, upper: true, tracking: 0.05 });
-        p.push(nm.prim);
-        const right = [showEvidence ? levelName(level) : '', nums.length ? `[${nums.join(', ')}]` : ''].filter(Boolean).join('  ');
-        if (right) p.push(c.textAt(right, c.content.x + w, y + 3.6, { role: 'quote', size: bodySize, align: 'right', color: '#555555' }).prim);
-        p.push(line(c.content.x, y + 4.8, c.content.x + w, y + 4.8, c.stroke('hair')));
-        p.push(...c.textIn(text, { x: c.content.x, y: y + 6, w, h: 500 }, { role: 'body', size: bodySize, wrap: true, leading: lead }).prims);
+        const nm = c.textIn(name, { x: c.content.x, y: y + 3.6 - ptToMm(c.theme.sizes.label + 1) * 0.7, w, h: 4 }, { role: 'labelStrong', size: c.theme.sizes.label + 1, upper: true, tracking: 0.05, fit: true });
+        p.push(...nm.prims);
+        const ruleY = head - 0.7;
+        if (rightText) {
+          const ry = stacked ? y + ruleY - 1.2 : y + 3.6;
+          p.push(c.textAt(rightText, c.content.x + w, ry, { role: 'quote', size: bodySize, align: 'right', color: '#555555' }).prim);
+        }
+        p.push(line(c.content.x, y + ruleY, c.content.x + w, y + ruleY, c.stroke('hair')));
+        p.push(...c.textIn(text, { x: c.content.x, y: y + head + 0.5, w, h: 500 }, { role: 'body', size: bodySize, wrap: true, leading: lead }).prims);
         c.add(`guide.${id}`, name, p);
       },
     });

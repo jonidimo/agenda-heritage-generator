@@ -207,7 +207,7 @@ async function main(): Promise<void> {
 
   await writeFile(
     indexPath,
-    JSON.stringify({ v: FORMAT_VERSION, source: `date-holidays@${version}`, range: [from, to], generated: new Date().toISOString(), countries: index }),
+    JSON.stringify({ v: FORMAT_VERSION, source: `date-holidays@${version}`, license: 'CC BY-SA 3.0 (data based on Wikipedia, https://github.com/commenthol/date-holidays)', range: [from, to], generated: new Date().toISOString(), countries: index }),
   );
   console.log(`Feriados: ${index.length} países, ${from}–${to}, en ${((Date.now() - t0) / 1000).toFixed(1)} s → ${outDir}`);
 }
