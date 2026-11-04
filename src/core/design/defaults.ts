@@ -9,7 +9,7 @@ import { parseDesign, type Design, type DesignInput, type SectionItem, type Sect
 export type TemplateId = 'heritage-norma' | 'heritage' | 'clara' | 'minimal';
 
 export const TEMPLATES: Array<{ id: TemplateId; name: string; description: string }> = [
-  { id: 'heritage-norma', name: 'Heritage · Norma', description: 'La agenda de Norma: dedicatoria, frases del mes, cumpleaños y colibrí.' },
+  { id: 'heritage-norma', name: 'Heritage · Con dedicatoria', description: 'Para regalar: dedicatoria, una frase por mes, cumpleaños y colibrí.' },
   { id: 'heritage', name: 'Heritage', description: 'Diseño clásico, durable y legible. Semana Alastair sin horas fijas.' },
   { id: 'clara', name: 'Lectura clara', description: 'Letra grande, alto contraste y renglones amplios (personas mayores o baja visión).' },
   { id: 'minimal', name: 'Mínima', description: 'Una sola tipografía, puntos en vez de renglones, sin sombreado.' },
@@ -122,7 +122,7 @@ export function createDesign(template: TemplateId, opts: CreateOptions = {}): De
     createdAt: now,
     updatedAt: now,
     locale,
-    calendar: { year, weekStart: 'monday', numbering: 'iso' },
+    calendar: { year, weekStart: 'auto', numbering: 'iso' },
     holidays: { country, types: ['public', 'bank'] },
     paper: { preset: 'A4' },
     binding: { method: 'sewn', signature: { mode: 'uniform', sheets: 4, last: 'shrink' } },
@@ -137,11 +137,9 @@ export function createDesign(template: TemplateId, opts: CreateOptions = {}): De
     case 'heritage-norma':
       return parseDesign({
         ...base,
-        name: `Agenda Norma ${year}`,
-        locale: 'es-AR',
-        holidays: { country: 'AR', types: ['public', 'bank'] },
+        name: opts.name?.trim() ? `Agenda ${opts.name.trim()} ${year}` : `Agenda ${year}`,
         persona: {
-          name: opts.name ?? 'Norma',
+          name: opts.name ?? '',
           title: 'Arquitectura del Tiempo',
           dedicationTitle: '{year}: El tiempo de florecer.',
           dedication:
@@ -149,7 +147,6 @@ export function createDesign(template: TemplateId, opts: CreateOptions = {}): De
           phrases: NORMA_PHRASES,
           labels: { 'review.moods.0': 'CALMA', 'review.moods.1': 'CON PILAS', 'review.moods.2': 'CANSADA' },
         },
-        personalDates: [{ id: 'cumple-norma', month: 10, day: 1, label: 'Cumpleaños de Norma', kind: 'birthday' }],
         sections: defaultSections({ personal: true, guide: true, health: true }),
       });
     case 'clara':
@@ -175,7 +172,7 @@ export function createDesign(template: TemplateId, opts: CreateOptions = {}): De
  * duplicar la agenda para otro año.
  */
 export function shiftKeyYears(key: string, delta: number): string {
-  return key.replace(/(^|[:+])(\d{4})(?=-)/g, (_m, pre: string, y: string) => `${pre}${Number(y) + delta}`);
+  return key.replace(/(^|[:+])(\d{4})(?=-|:|$)/g, (_m, pre: string, y: string) => `${pre}${Number(y) + delta}`);
 }
 
 export function duplicateForYear(d: Design, year: number): Design {

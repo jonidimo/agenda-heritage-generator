@@ -58,9 +58,12 @@ and as a desktop app for Windows, macOS and Linux. Nothing is uploaded anywhere.
 
 ### Any year, language and country
 
-- Printed text in Spanish (Argentina, Uruguay, Chile, Mexico, Colombia, Peru, Spain),
-  English (US, UK), Portuguese (Brazil, Portugal) and Italian. The interface speaks the
-  same four languages.
+- Printed text in Spanish, English, Portuguese and Italian; the interface speaks the same
+  four languages and follows the language chosen when the planner is created.
+- The country sets the regional conventions (date order, currency, first day of the
+  week) from the Unicode CLDR data built into the browser, so English in Argentina is
+  written day/month. Date order and first day of the week can also be set by hand;
+  dates are always stored as ISO 8601.
 - Public holidays for **207 countries** and their regions, from 2016 to 2061. Add bridge
   days, rename or remove holidays.
 - Birthdays and important dates, moon phases, and the equinoxes and solstices computed

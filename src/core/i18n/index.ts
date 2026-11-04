@@ -1,3 +1,4 @@
+import { likelyLanguage, likelyRegion } from '../calendar/locale';
 import { en } from './en';
 import { es, type AgendaStrings } from './es';
 import { it } from './it';
@@ -14,6 +15,31 @@ const TABLE: Record<Lang, AgendaStrings> = { es, en, pt, it };
 export function langOf(locale: string): Lang {
   const base = locale.toLowerCase().split(/[-_]/)[0] ?? 'es';
   return (LANGUAGES as readonly string[]).includes(base) ? (base as Lang) : 'es';
+}
+
+/** Idioma de la agenda que se habla en un país, según CLDR (AR → es, BR → pt, DE → ninguno). */
+export function countryLang(country: string | null | undefined): Lang | undefined {
+  if (!country) return undefined;
+  const l = likelyLanguage(country.toUpperCase());
+  return (LANGUAGES as readonly string[]).includes(l ?? '') ? (l as Lang) : undefined;
+}
+
+/**
+ * País para un idioma cuando hay que proponer uno: el de la persona si habla ese idioma
+ * (su navegador dice es-AR → Argentina); si no, el más probable según CLDR (pt → Brasil).
+ */
+export function homeCountry(lang: Lang, preferred?: string | null): string | undefined {
+  if (preferred && countryLang(preferred) === lang) return preferred.toUpperCase();
+  return likelyRegion(lang);
+}
+
+/**
+ * Etiqueta de idioma y región: el idioma elegido y la región del país de los feriados
+ * ('es' + 'UY' → 'es-UY'), que fija fechas, moneda, inicio de semana y variantes regionales.
+ */
+export function localeFor(lang: string, country: string | null | undefined): string {
+  const l = lang.toLowerCase().split(/[-_]/)[0] || 'es';
+  return country && /^[A-Za-z]{2}$/.test(country) ? `${l}-${country.toUpperCase()}` : l;
 }
 
 /** Interpola variables {nombre} en una plantilla. */

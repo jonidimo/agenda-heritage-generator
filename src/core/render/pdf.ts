@@ -108,6 +108,29 @@ interface PdfArtPlacement {
   page: number;
 }
 
+/**
+ * El PDF pide direcciones en ASCII: acentos y eñes se codifican (%C3%B1) y los dominios con
+ * acentos pasan a su forma «xn--». Si no, el lector no reconoce el enlace.
+ */
+export function asciiUri(url: string): string {
+  let out = url;
+  try {
+    if (/^https?:/i.test(url)) out = new URL(url).href;
+  } catch {
+    /* se codifica tal cual abajo */
+  }
+  // eslint-disable-next-line no-control-regex
+  return /^[\x00-\x7f]*$/.test(out) ? out : encodeURI(decodeURISafe(out));
+}
+
+function decodeURISafe(s: string): string {
+  try {
+    return decodeURI(s);
+  } catch {
+    return s;
+  }
+}
+
 const toArrayBuffer = (u8: Uint8Array): ArrayBuffer => u8.buffer.slice(u8.byteOffset, u8.byteOffset + u8.byteLength) as ArrayBuffer;
 
 class PdfPainter {
@@ -355,7 +378,7 @@ export async function renderPdf(pages: PdfPageInput[], opts: PdfRenderOptions): 
         doc.page.annotations.push(ref);
         pending.push({ annot: ref, page: l.page! });
       } else {
-        const action = doc.ref({ S: 'URI', URI: new String(l.url) });
+        const action = doc.ref({ S: 'URI', URI: new String(asciiUri(l.url!)) });
         action.end();
         const ref = doc.ref({ ...annot, A: action });
         doc.page.annotations.push(ref);

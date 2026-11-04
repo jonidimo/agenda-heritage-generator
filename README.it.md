@@ -60,9 +60,12 @@ come app desktop per Windows, macOS e Linux. Non viene caricato nulla da nessuna
 
 ### Qualsiasi anno, lingua e Paese
 
-- Testi stampati in spagnolo (Argentina, Uruguay, Cile, Messico, Colombia, Perù,
-  Spagna), inglese (Stati Uniti, Regno Unito), portoghese (Brasile, Portogallo) e
-  italiano. L’interfaccia parla le stesse quattro lingue.
+- Testi stampati in spagnolo, inglese, portoghese e italiano; l’interfaccia parla le
+  stesse quattro lingue e segue quella scelta quando si crea l’agenda.
+- Il Paese fissa le convenzioni regionali (ordine delle date, valuta, giorno in cui
+  inizia la settimana) con i dati Unicode CLDR del browser: l’inglese in Argentina si
+  scrive giorno/mese. L’ordine delle date e l’inizio della settimana si possono anche
+  scegliere a mano; le date sono sempre salvate in ISO 8601.
 - Festività di **207 Paesi** e delle loro regioni, dal 2016 al 2061. Aggiungi ponti,
   rinomina o rimuovi festività.
 - Compleanni e date importanti, fasi lunari, ed equinozi e solstizi calcolati per il tuo

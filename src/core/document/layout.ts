@@ -200,13 +200,26 @@ function upTarget(plan: PagePlan): LinkTarget | null {
 }
 
 /** Bloques de título que llevan un nivel arriba al tocarlos. */
-const TITLE_BLOCKS = new Set(['header.title', 'week.title', 'cover.month']);
+const TITLE_BLOCKS = new Set(['header.title', 'week.title', 'cover.month', 'habits.title', 'habits.month']);
+
+/** ¿El bloque tiene texto visible? (un título vacío no debe dejar una zona tocable invisible). */
+function hasText(prims: Prim[]): boolean {
+  return prims.some((p) => (p.t === 'text' ? p.run.text.trim() !== '' : p.t === 'group' ? hasText(p.children) : false));
+}
 
 function addUpLinks(ctx: LayoutContext, plan: PagePlan): void {
   const to = upTarget(plan);
   if (!to) return;
+  const days = Array.isArray(plan.params?.days) ? (plan.params.days as string[]) : [];
   for (const b of ctx.blocks) {
-    if (TITLE_BLOCKS.has(b.id) || /^daily\.\d+\.head$/.test(b.id)) ctx.link(b.id, pad(b.bbox, 1), to, 'up');
+    if (!hasText(b.prims)) continue;
+    const head = /^daily\.(\d+)\.head$/.exec(b.id);
+    if (head) {
+      // El encabezado de un día lleva al mes de ese día (la página puede estar en la sección del mes siguiente).
+      const iso = days[Number(head[1])];
+      const [y, m] = (iso ?? '').split('-').map(Number);
+      ctx.link(b.id, pad(b.bbox, 1), y && m ? { kind: 'month', y, m } : to, 'up');
+    } else if (TITLE_BLOCKS.has(b.id)) ctx.link(b.id, pad(b.bbox, 1), to, 'up');
   }
 }
 

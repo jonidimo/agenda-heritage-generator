@@ -362,3 +362,104 @@ describe('marcadores', () => {
     for (const it of all) expect(doc.plan.pages[it.page]!.type).not.toBe('filler');
   });
 });
+
+describe('arreglos de la revisión', () => {
+  it('vista mensual en dos páginas: cada día lleva a la mitad que lo muestra; sin título vacío tocable', async () => {
+    const { doc } = await openDocument(
+      norma((d) => {
+        const items = monthsSection(d).items!;
+        items.find((i) => i.type === 'monthGrid')!.enabled = true;
+        items.find((i) => i.type === 'monthGrid')!.options.spread = true;
+        items.find((i) => i.type === 'weeks')!.enabled = false;
+        items.find((i) => i.type === 'monthLog')!.enabled = false;
+      }),
+    );
+    const yp = doc.plan.pages.find((p) => p.type === 'yearOverview')!;
+    for (const l of doc.links(yp.index)) {
+      if (l.target.kind !== 'date') continue;
+      expect((doc.plan.pages[l.page!]!.params?.days as string[]) ?? []).toContain(l.target.iso);
+    }
+    const second = doc.plan.pages.find((p) => p.type === 'monthGrid' && p.params?.part === 1)!;
+    expect(doc.links(second.index).some((l) => l.cat === 'up')).toBe(false);
+  });
+
+  it('«los días llevan al mes» sin registro ni vista mensual: la página del día, no la primera del mes', async () => {
+    const { doc } = await openDocument(
+      norma((d) => {
+        d.links.dayTarget = 'month';
+        monthsSection(d).items!.find((i) => i.type === 'monthLog')!.enabled = false;
+      }),
+    );
+    const yp = doc.plan.pages.find((p) => p.type === 'yearOverview')!;
+    const l = doc.links(yp.index).find((x) => x.target.kind === 'date' && x.target.iso === '2027-03-15')!;
+    expect(pagesWithDay(doc, '2027-03-15')).toContain(l.page);
+  });
+
+  it('las páginas del día dicen su fecha y su encabezado sube al mes de ese día', async () => {
+    const { doc } = await openDocument(norma((d) => void (weeksItem(d).options.variant = 'daily')));
+    const p = doc.plan.pages.find((x) => x.type === 'daily' && ((x.params?.days as string[]) ?? []).includes('2027-03-31'))!;
+    expect(doc.pageLabel(p.index)).toMatch(/31 de marzo/);
+    expect(doc.pageLabel(p.index)).not.toMatch(/abril/i);
+    const up = doc.links(p.index).find((l) => l.cat === 'up' && l.blockId.startsWith('daily.'))!;
+    expect(up.target).toEqual({ kind: 'month', y: 2027, m: 3 });
+  });
+
+  it('el título del registro de hábitos sube al calendario anual', async () => {
+    const { doc } = await openDocument(norma());
+    const h = doc.plan.pages.find((p) => p.type === 'habits')!;
+    expect(doc.links(h.index).some((l) => l.cat === 'up' && doc.plan.pages[l.page!]!.type === 'yearOverview')).toBe(true);
+  });
+
+  it('una dirección larguísima se recorta en lugar de dejar la agenda sin abrir', () => {
+    const d = norma((x) => void x.links.blocks.push({ pageType: 'contacts', pageKey: null, blockId: 'header.title', mode: 'url', page: '', url: `https://example.org/${'a'.repeat(3000)}` }));
+    expect(parseDesign(JSON.parse(JSON.stringify(d))).links.blocks[0]!.url.length).toBe(2000);
+  });
+
+  it('las direcciones con acentos se escriben en ASCII en el PDF', async () => {
+    const { asciiUri } = await import('../src/core/render/pdf');
+    expect(asciiUri('https://ejemplo.com/año?q=ñ')).toBe('https://ejemplo.com/a%C3%B1o?q=%C3%B1');
+    // Dominio con acentos: su forma «xn--» (la que calcula URL), solo ASCII.
+    expect(asciiUri('https://cañón.com/')).toMatch(/^https:\/\/xn--[a-z0-9-]+\.com\/$/);
+    expect(asciiUri('mailto:josé@example.org')).toBe('mailto:jos%C3%A9@example.org');
+  });
+
+  it('duplicar para otro año corre también las claves del calendario anual y del año en píxeles', async () => {
+    const { shiftKeyYears } = await import('../src/core/design/defaults');
+    expect(shiftKeyYears('year:2027:0', 1)).toBe('year:2028:0');
+    expect(shiftKeyYears('front:mood:2027', 1)).toBe('front:mood:2028');
+    expect(shiftKeyYears('front:toc:0', 1)).toBe('front:toc:0');
+  });
+});
+
+describe('idioma y región', () => {
+  it('el idioma y el país forman la región de la agenda', async () => {
+    const { localeFor, countryLang, homeCountry } = await import('../src/core/i18n');
+    expect(homeCountry('es', 'AR')).toBe('AR');
+    expect(homeCountry('pt', 'AR')).toBe('BR');
+    expect(homeCountry('en', null)).toBe('US');
+    expect(localeFor('en', 'AR')).toBe('en-AR');
+    expect(localeFor('es', null)).toBe('es');
+    expect(countryLang('UY')).toBe('es');
+    expect(countryLang('BR')).toBe('pt');
+    expect(countryLang('DE')).toBeUndefined();
+  });
+});
+
+describe('formato de las fechas', () => {
+  it('auto sigue al país (no al idioma) y se puede fijar a mano', async () => {
+    const { dateOrder, formatDayMonth, formatNumeric } = await import('../src/core/calendar/locale');
+    expect(dateOrder('es-AR')).toBe('dmy');
+    expect(dateOrder('en-US')).toBe('mdy');
+    expect(dateOrder('en-AR')).toBe('dmy');
+    expect(dateOrder('es-AR', 'mdy')).toBe('mdy');
+    expect(formatNumeric('2027-03-31', 'dmy', true)).toBe('31/03/2027');
+    expect(formatNumeric('2027-03-31', 'ymd', true)).toBe('2027-03-31');
+    expect(formatDayMonth('es-AR', '2027-03-31', 'dmy')).toBe('31 de marzo');
+    expect(formatDayMonth('en-AR', '2027-03-31', 'dmy')).toBe('31 March');
+    expect(formatDayMonth('en-US', '2027-03-31', 'mdy')).toBe('March 31');
+  });
+
+  it('una agenda vieja sin formato de fecha queda en automático', () => {
+    expect(parseDesign({}).calendar.dateFormat).toBe('auto');
+  });
+});

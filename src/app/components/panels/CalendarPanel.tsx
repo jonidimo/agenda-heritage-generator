@@ -1,27 +1,15 @@
-import { monthNames } from '@core/calendar/locale';
+import { dateOrder, formatDayMonth, formatNumeric, monthNames } from '@core/calendar/locale';
 import { computeHolidays, countryName, HOLIDAY_TYPES, type HolidayType } from '@core/holidays';
-import { langOf } from '@core/i18n';
+import { LANGUAGES, langOf, localeFor } from '@core/i18n';
 import { Plus, RotateCcw, Trash2 } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { isUiLang, UI_LANG_NAMES, useT, type UiKey } from '../../i18n/ui';
+
+/** Idioma de una etiqueta tal como viene ('es-AR' → 'es', 'de-DE' → 'de'). */
+const baseLang = (locale: string): string => locale.toLowerCase().split(/[-_]/)[0] || 'es';
 import { resources } from '../../state/resources';
 import { useStore } from '../../state/store';
 import { Button, Field, Group, NumberInput, Select, TextInput, Toggle } from '../ui';
-
-export const LOCALES = [
-  { value: 'es-AR', label: 'Español (Argentina)' },
-  { value: 'es-UY', label: 'Español (Uruguay)' },
-  { value: 'es-CL', label: 'Español (Chile)' },
-  { value: 'es-MX', label: 'Español (México)' },
-  { value: 'es-CO', label: 'Español (Colombia)' },
-  { value: 'es-PE', label: 'Español (Perú)' },
-  { value: 'es-ES', label: 'Español (España)' },
-  { value: 'en-US', label: 'English (United States)' },
-  { value: 'en-GB', label: 'English (United Kingdom)' },
-  { value: 'pt-BR', label: 'Português (Brasil)' },
-  { value: 'pt-PT', label: 'Português (Portugal)' },
-  { value: 'it-IT', label: 'Italiano (Italia)' },
-];
 
 export function CalendarPanel() {
   const t = useT();
@@ -73,7 +61,15 @@ export function CalendarPanel() {
           <Select value={String(c.startMonth)} onChange={(v) => update((d) => void (d.calendar.startMonth = Number(v)))} options={months.map((m, i) => ({ value: String(i + 1), label: m }))} />
         </Field>
         <Field label={t('cal.locale')} hint={t('cal.uiHint')}>
-          <Select value={design.locale} onChange={(v) => update((d) => void (d.locale = v))} options={LOCALES.some((l) => l.value === design.locale) ? LOCALES : [...LOCALES, { value: design.locale, label: design.locale }]} />
+          <Select
+            value={baseLang(design.locale)}
+            onChange={(v) => update((d) => void (d.locale = localeFor(v, d.holidays.country)))}
+            options={[
+              ...LANGUAGES.map((l) => ({ value: l as string, label: UI_LANG_NAMES[l] })),
+              // Un idioma de un archivo hecho a mano que la agenda no trae: se muestra tal cual.
+              ...((LANGUAGES as readonly string[]).includes(baseLang(design.locale)) ? [] : [{ value: baseLang(design.locale), label: design.locale }]),
+            ]}
+          />
         </Field>
         {(() => {
           const l = langOf(design.locale);
@@ -91,6 +87,17 @@ export function CalendarPanel() {
             <Select value={c.numbering} onChange={(v) => update((d) => void (d.calendar.numbering = v))} options={(['iso', 'simple', 'none'] as const).map((v) => ({ value: v, label: t(`cal.numbering.${v}`) }))} />
           </Field>
         </div>
+        <Field label={t('cal.dateFormat')} hint={t('cal.dateFormatHint')}>
+          <Select
+            value={c.dateFormat}
+            onChange={(v) => update((d) => void (d.calendar.dateFormat = v))}
+            options={(['auto', 'dmy', 'mdy', 'ymd'] as const).map((v) => {
+              const o = dateOrder(design.locale, v);
+              const ex = `${formatNumeric(`${c.year}-03-31`, o, true)} · ${formatDayMonth(design.locale, `${c.year}-03-31`, o)}`;
+              return { value: v, label: `${t(`cal.dateFormat.${v}`)} (${ex})` };
+            })}
+          />
+        </Field>
       </Group>
 
       <Group title={t('cal.holidays')}>
@@ -102,6 +109,8 @@ export function CalendarPanel() {
               update((d) => {
                 d.holidays.country = v || null;
                 d.holidays.subdivision = null;
+                // La región de la agenda (fechas, moneda, semana) es la del país.
+                d.locale = localeFor(baseLang(d.locale), v || null);
               })
             }
             options={[{ value: '', label: t('cal.noCountry') }, ...countries]}
@@ -137,7 +146,7 @@ export function CalendarPanel() {
             const active = design.holidays.types.includes(h.type);
             return (
               <li key={`${h.date}-${i}`} className={`flex items-start gap-1.5 text-[11.5px] ${removed || !active ? 'opacity-45' : ''}`}>
-                <span className="w-[74px] shrink-0 tabular-nums text-ink-soft">{dayMonth(h.date, design.locale)}</span>
+                <span className="w-[74px] shrink-0 tabular-nums text-ink-soft">{formatNumeric(h.date, dateOrder(design.locale, c.dateFormat))}</span>
                 <span className="flex-1">
                   {design.holidays.renamed[h.date] ?? h.name}
                   <span className="ml-1 text-[10px] text-ink-soft">({t(`type.${h.type}` as UiKey)})</span>
@@ -156,7 +165,7 @@ export function CalendarPanel() {
           })}
           {design.holidays.added.map((a, i) => (
             <li key={`add-${i}`} className="flex items-start gap-1.5 text-[11.5px]">
-              <span className="w-[74px] shrink-0 tabular-nums text-ink-soft">{dayMonth(a.date, design.locale)}</span>
+              <span className="w-[74px] shrink-0 tabular-nums text-ink-soft">{formatNumeric(a.date, dateOrder(design.locale, c.dateFormat))}</span>
               <span className="flex-1 font-semibold">{a.name}</span>
               <button type="button" className="text-warn" onClick={() => update((d) => void d.holidays.added.splice(i, 1))} aria-label={t('common.remove')}>
                 <Trash2 size={13} />
@@ -218,11 +227,3 @@ export function CalendarPanel() {
   );
 }
 
-/** Día y mes en el orden del idioma de la agenda (18/01 en es-AR, 01/18 en en-US). */
-function dayMonth(iso: string, locale: string): string {
-  try {
-    return new Intl.DateTimeFormat(locale, { day: '2-digit', month: '2-digit', timeZone: 'UTC' }).format(new Date(`${iso}T00:00:00Z`));
-  } catch {
-    return iso.slice(5).split('-').reverse().join('/');
-  }
-}

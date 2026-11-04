@@ -30,7 +30,7 @@ import {
   Trash2,
   Type,
 } from 'lucide-react';
-import { safeUrl } from '@core/document/links';
+import { pageLinks, safeUrl } from '@core/document/links';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { blockLabel, warningText } from '../i18n/messages';
 import { sectionName, useT } from '../i18n/ui';
@@ -507,9 +507,10 @@ function LinkFields(props: { doc: AgendaDocument; page: PageModel; block: Block;
   const links = doc.links(page.index).filter((l) => l.blockId === block.id);
   // Un renglón por destino (los siete días de una semana llevan a la misma página).
   const groups = [...links.reduce((m, l) => m.set(l.page ?? l.url ?? '', { l, n: (m.get(l.page ?? l.url ?? '')?.n ?? 0) + 1 }), new Map<number | string, { l: (typeof links)[number]; n: number }>()).values()];
-  const autoCount = block.links?.length ?? 0;
+  // Cuántos enlaces automáticos funcionan de verdad en esta página (sin los que no llevan a ningún lado).
+  const autoCount = useMemo(() => pageLinks(page, doc.linkResolver, { ...design.links, enabled: true, blocks: [] }).links.filter((l) => l.blockId === block.id).length, [page, doc, design.links, block.id]);
   const pages = useMemo(() => doc.plan.pages.filter((p) => p.type !== 'filler').map((p) => ({ value: p.key, label: `${p.index + 1} · ${doc.pageLabel(p.index)}` })), [doc]);
-  const home = doc.plan.pages.find((p) => p.type === 'toc') ?? doc.plan.pages.find((p) => p.type === 'yearOverview') ?? doc.plan.pages[0];
+  const home = doc.plan.pages.find((p) => p.type === 'toc' && p.key !== page.key) ?? doc.plan.pages.find((p) => p.type === 'yearOverview' && p.key !== page.key) ?? doc.plan.pages.find((p) => p.key !== page.key);
   const set = (link: Parameters<typeof setBlockLink>[3]): void => setBlockLink(page, block.id, level, link, `link:${block.id}:${link.mode}`);
   const urlOk = mode !== 'url' || safeUrl(shown?.url ?? '') !== null;
   const label = (l: (typeof links)[number]): string => (l.page !== undefined ? `${doc.pageLabel(l.page)} · ${t('nav.page', { n: l.page + 1 })}` : (l.url ?? ''));

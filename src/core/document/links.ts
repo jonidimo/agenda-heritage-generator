@@ -4,7 +4,7 @@
  * índice a sus páginas. Las secciones marcan zonas con destinos con sentido (un día, un mes, una
  * clave de página); acá se traducen a números de página según la agenda que haya.
  */
-import { monthNames, weekdayNames } from '../calendar/locale';
+import { dateOrder, formatDayMonth, monthNames, weekdayNames } from '../calendar/locale';
 import type { BlockLink, Design } from '../design/schema';
 import { fmt } from '../i18n';
 import type { DocContext } from '../layout/context';
@@ -74,6 +74,7 @@ export class LinkResolver {
   private readonly first = new Map<string, number>();
   private readonly log = new Map<string, number>();
   private readonly grid = new Map<string, number>();
+  private readonly gridDay = new Map<string, number>();
   private readonly years: Array<{ y: number; months: number[]; index: number }> = [];
   private toc: number | undefined;
 
@@ -95,6 +96,8 @@ export class LinkResolver {
       if (p.type === 'weekLeft' || p.type === 'weekRight') for (const iso of days) once(this.week, iso, p.index);
       if (p.type === 'monthLog' && month) once(this.log, monthKey(month.y, month.m), p.index);
       if (p.type === 'monthGrid' && month) once(this.grid, monthKey(month.y, month.m), p.index);
+      // En la vista mensual en dos páginas, cada día está en una de las dos.
+      if (p.type === 'monthGrid') for (const iso of days) once(this.gridDay, iso, p.index);
       if (p.type === 'yearOverview') {
         const y = Number(p.params?.year);
         const perPage = Number(p.params?.perPage) === 12 ? 12 : 6;
@@ -133,9 +136,10 @@ export class LinkResolver {
         const d = this.daily.get(t.iso);
         const w = this.week.get(t.iso);
         const l = this.log.get(k);
-        const g = this.grid.get(k);
+        const g = this.gridDay.get(t.iso) ?? this.grid.get(k);
         const f = this.first.get(k);
-        const order = this.settings.dayTarget === 'week' ? [w, d, l, g, f] : this.settings.dayTarget === 'month' ? [l, g, f, d, w] : [d, w, l, g, f];
+        // La primera página del mes es el último recurso: sin registro ni vista mensual, mejor la página del día.
+        const order = this.settings.dayTarget === 'week' ? [w, d, l, g, f] : this.settings.dayTarget === 'month' ? [l, g, d, w, f] : [d, w, l, g, f];
         return order.find((v) => v !== undefined) ?? null;
       }
     }
@@ -193,9 +197,14 @@ export function monthLabel(doc: DocContext, y: number, m: number): string {
   return `${monthNames(doc.locale)[m - 1] ?? ''} ${y}`;
 }
 
-function dayLabel(doc: DocContext, iso: string): string {
+/** «Miércoles 31 de marzo» (con su mes: una página del día puede caer en la sección del mes siguiente). */
+function dayLabel(doc: DocContext, iso: string, withMonth = true): string {
   const [y, m, d] = iso.split('-').map(Number);
-  const dow = ((new Date(Date.UTC(y!, m! - 1, d!)).getUTCDay() + 6) % 7) + 1;
+  const date = new Date(Date.UTC(y!, m! - 1, d!, 12));
+  if (withMonth) {
+    return cap(formatDayMonth(doc.locale, iso, dateOrder(doc.locale, doc.design.calendar.dateFormat), { weekday: true }), doc.locale);
+  }
+  const dow = ((date.getUTCDay() + 6) % 7) + 1;
   return `${cap(weekdayNames(doc.locale, 'long')[dow - 1] ?? '', doc.locale)} ${d}`;
 }
 
@@ -256,7 +265,8 @@ export function pageShortTitle(doc: DocContext, p: PagePlan): string {
 export function pageFullTitle(doc: DocContext, p: PagePlan): string {
   const short = pageShortTitle(doc, p);
   const month = p.params?.month as { y: number; m: number } | undefined;
-  if (!month || p.type === 'monthCover') return short;
+  // Las páginas del día ya dicen su fecha completa (pueden caer en la sección de otro mes).
+  if (!month || p.type === 'monthCover' || p.type === 'daily') return short;
   const ml = monthLabel(doc, month.y, month.m);
   return short ? `${short} · ${ml}` : ml;
 }

@@ -169,7 +169,7 @@ test('si el editor falla, ofrece cómo seguir y la agenda no se reabre sola al r
   await expect(page.getByRole('dialog', { name: 'Mis agendas' })).toBeVisible();
   await expect(page.getByText(/no se pudo mostrar la última vez/)).toBeVisible();
   // Abierta a mano se ve bien (lo guardado nunca estuvo roto) y, tras unos segundos, deja de estar anotada.
-  await page.getByRole('dialog', { name: 'Mis agendas' }).getByRole('button', { name: /Norma/ }).first().click();
+  await page.getByRole('dialog', { name: 'Mis agendas' }).getByRole('button', { name: /Agenda 2027/ }).first().click();
   await expect(page.locator('[data-page-index]').first()).toBeVisible({ timeout: 60_000 });
   await expect.poll(() => page.evaluate(() => localStorage.getItem('agenda-studio.crashed')), { timeout: 15_000 }).toBeNull();
   await page.reload();
@@ -261,13 +261,24 @@ test('en el pliego, la primera página sola se muestra centrada', async ({ page 
   expect(Math.abs(box.x + box.width / 2 - (area.x + area.width / 2))).toBeLessThan(4);
 });
 
-test('sin elegir idioma, la interfaz sigue al idioma de la agenda', async ({ browser }) => {
-  const ctx = await browser.newContext({ locale: 'en-US' });
+test('el idioma elegido al crear la agenda cambia toda la interfaz al momento', async ({ browser }) => {
+  const ctx = await browser.newContext({ locale: 'es-AR' });
   const page = await ctx.newPage();
   await page.goto('/');
+  // Sin elegir idioma, el asistente habla el del navegador y propone su país.
+  await expect(page.getByRole('button', { name: 'Crear agenda' })).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByLabel('País (feriados)')).toHaveValue('AR');
+  await page.getByLabel('Idioma de la agenda y de la interfaz').selectOption('en');
+  // La interfaz entera pasa al inglés antes de crear, y el país pasa a uno de habla inglesa.
+  await expect(page.getByRole('button', { name: 'Create planner' })).toBeVisible();
+  await expect(page.getByLabel('Country (holidays)')).toHaveValue('US');
+  await page.getByLabel('Week starts on').selectOption('auto');
   await page.getByRole('button', { name: 'Create planner' }).click();
-  await expect(page.getByRole('button', { name: 'Imprimir / exportar' })).toBeVisible({ timeout: 60_000 });
-  expect(await page.evaluate(() => (globalThis as unknown as { __agenda: StoreHandle }).__agenda.getState().uiLang)).toBe('es');
+  await expect(page.getByRole('button', { name: 'Print / export' })).toBeVisible({ timeout: 60_000 });
+  const d = await page.evaluate(() => (globalThis as unknown as { __agenda: { getState: () => { uiLang: string; design: { locale: string; calendar: { weekStart: string } } } } }).__agenda.getState());
+  expect(d.uiLang).toBe('en');
+  expect(d.design.locale).toBe('en-US');
+  expect(d.design.calendar.weekStart).toBe('auto');
   await ctx.close();
 });
 
@@ -378,6 +389,6 @@ test.describe('enlaces para leer en tableta', () => {
     const pdf = readFileSync((await dl.path())!).toString('latin1');
     expect(pdf).toContain('/Subtype /Link');
     expect(pdf).toContain('/Outlines');
-    expect(pdf).toContain('/Lang (es-AR)');
+    expect(pdf).toMatch(/\/Lang \(es-[A-Z]{2}\)/);
   });
 });

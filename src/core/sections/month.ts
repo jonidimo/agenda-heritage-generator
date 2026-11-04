@@ -3,7 +3,7 @@
  * hábitos, balance, resumen y notas.
  */
 import type { DayInfo, MonthInfo } from '../calendar';
-import { weekdayLabel, weekdayLetter } from '../calendar/locale';
+import { dateOrder, formatDayMonth, weekdayLabel, weekdayLetter } from '../calendar/locale';
 import { fmt } from '../i18n';
 import { centerIn, cols, flex, grid, hsplit, inset, rows, takeBottom, takeTop, vsplit } from '../layout/box';
 import type { LayoutContext } from '../layout/context';
@@ -110,7 +110,7 @@ export const monthCover: SectionModule = {
 function phraseVars(ctx: LayoutContext, text: string): string {
   const fmtDay = (iso: string): string => {
     try {
-      return new Intl.DateTimeFormat(ctx.doc.locale, { day: 'numeric', month: 'long', timeZone: 'UTC' }).format(new Date(`${iso}T12:00:00Z`));
+      return formatDayMonth(ctx.doc.locale, iso, dateOrder(ctx.doc.locale, ctx.doc.design.calendar.dateFormat));
     } catch {
       return iso;
     }
@@ -183,8 +183,10 @@ export const monthGrid: SectionModule = {
     if (!month) return [];
     const spreadOpt = opt<string | boolean>(item, 'spread', 'auto');
     const spread = spreadOpt === true || (spreadOpt === 'auto' && doc.design.theme.comfort === 'wide');
-    if (!spread) return [monthDraft(month, item.id, 'grid', 'monthGrid', month.name, { params: { part: -1 } })];
-    return [0, 1].map((part) => monthDraft(month, item.id, `grid:${part}`, 'monthGrid', month.name, { startOn: part === 0 ? 'verso' : 'any', params: { part } }));
+    // `days`: los días del mes que muestra cada página (en dos páginas: lun–jue | vie–dom, según el orden de la semana).
+    const daysOf = (cols: number[]): string[] => month.grid.flatMap((w) => cols.map((c) => w[c]!)).filter((d) => d.m === month.m && d.y === month.y).map((d) => d.iso);
+    if (!spread) return [monthDraft(month, item.id, 'grid', 'monthGrid', month.name, { params: { part: -1, days: daysOf([0, 1, 2, 3, 4, 5, 6]) } })];
+    return [0, 1].map((part) => monthDraft(month, item.id, `grid:${part}`, 'monthGrid', month.name, { startOn: part === 0 ? 'verso' : 'any', params: { part, days: daysOf(part === 0 ? [0, 1, 2, 3] : [4, 5, 6]) } }));
   },
   layout(ctx, page) {
     const month = monthOf(ctx, page);

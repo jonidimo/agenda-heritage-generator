@@ -45,6 +45,8 @@ export const CalendarZ = z
     weekStart: z.enum(['auto', 'monday', 'sunday', 'saturday']).default('monday'),
     weekend: z.union([z.literal('auto'), z.array(intIn(1, 7))]).default('auto'),
     numbering: z.enum(['iso', 'simple', 'none']).default('iso'),
+    /** Orden de día, mes y año al mostrar fechas: auto sigue al país (las fechas se guardan en ISO). */
+    dateFormat: z.enum(['auto', 'dmy', 'mdy', 'ymd']).default('auto'),
     timeZone: z.string().default('auto'),
   })
   .prefault({});
@@ -302,7 +304,8 @@ export const BlockLinkZ = z.object({
   blockId: z.string(),
   mode: z.enum(['auto', 'none', 'page', 'url']),
   page: z.string().default(''),
-  url: z.string().max(2000).default(''),
+  // Recortada (no rechazada): una dirección larguísima no puede dejar la agenda sin abrir.
+  url: z.string().default('').transform((v) => v.slice(0, 2000)),
 });
 export type BlockLink = z.infer<typeof BlockLinkZ>;
 

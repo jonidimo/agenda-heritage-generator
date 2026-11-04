@@ -2,17 +2,17 @@
 import { createDesign, duplicateForYear, TEMPLATES, type TemplateId } from '@core/design/defaults';
 import type { Design } from '@core/design/schema';
 import { countryName } from '@core/holidays';
-import { langOf } from '@core/i18n';
+import { monthNames, regionOf, regionWeekInfo } from '@core/calendar/locale';
+import { countryLang, homeCountry, LANGUAGES, langOf, localeFor, type Lang } from '@core/i18n';
 import { Archive, Copy, Download, FileUp, Plus, Trash2, X } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { uiText, useT } from '../i18n/ui';
+import { UI_LANG_NAMES, uiText, useT } from '../i18n/ui';
 import { deleteDesign, deleteTemplate, exportDesignFile, listDesigns, listTemplates, loadDesign, saveDesign, type DesignMeta, type TemplateRecord } from '../state/persist';
 import { backupAll, openAnyFile } from '../state/fileActions';
 import { designFromTemplate, exportTemplateFile, importText, saveAsTemplate } from '../state/files';
 import { download, fileBase } from '../state/exporter';
 import { resources } from '../state/resources';
 import { useStore } from '../state/store';
-import { LOCALES } from './panels/CalendarPanel';
 import { Button, Field, NumberInput, Select, TextArea, TextInput, Toggle } from './ui';
 
 const FOCUSABLE = 'button:not([disabled]), [href], input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
@@ -74,26 +74,32 @@ export function WelcomeDialog() {
   const [userTpls, setUserTpls] = useState<TemplateRecord[]>([]);
   useEffect(() => void listTemplates().then(setUserTpls), []);
   const [year, setYear] = useState(new Date().getFullYear() + 1);
-  const [locale, setLocale] = useState('es-AR');
-  const [country, setCountry] = useState('AR');
-  const [name, setName] = useState('Norma');
-  const lang = langOf(locale);
+  // El idioma se elige solo (español, inglés…); la región sale del país de los feriados.
+  const [lang, setLang] = useState<Lang>(() => langOf(useStore.getState().uiLang));
+  // País propuesto: el del navegador si habla el idioma; si no, el más probable para ese idioma.
+  const userRegion = typeof navigator !== 'undefined' ? regionOf(navigator.language) : undefined;
+  const [country, setCountry] = useState(() => homeCountry(langOf(useStore.getState().uiLang), userRegion) ?? '');
+  const [name, setName] = useState('');
+  const [weekStart, setWeekStart] = useState<'auto' | 'monday' | 'sunday' | 'saturday'>('auto');
+  const [startMonth, setStartMonth] = useState(1);
+  const [monthCount, setMonthCount] = useState(12);
+  const locale = localeFor(lang, country || null);
+  const regionFirst = regionWeekInfo(locale).firstDay;
+  const firstName = regionFirst === 7 ? t('cal.weekStart.sunday') : regionFirst === 6 ? t('cal.weekStart.saturday') : t('cal.weekStart.monday');
+  const uiMonths = monthNames(locale);
   const countries = useMemo(() => (resources.holidayIndex?.countries ?? []).map((c) => ({ value: c.code, label: countryName(resources.holidayIndex, c.code, lang) })).sort((a, b) => a.label.localeCompare(b.label)), [lang]);
 
   const create = (): void => {
     const own = template.startsWith('user:') ? userTpls.find((x) => `user:${x.id}` === template) : undefined;
+    const calendar = (d: Design): Design => ({ ...d, calendar: { ...d.calendar, weekStart, startMonth, monthCount } });
     if (own) {
-      setDesign(designFromTemplate(own.design, { year, locale, country: country || null, name }));
+      setDesign(calendar(designFromTemplate(own.design, { year, locale, country: country || null, name })));
       setShow(false);
       return;
     }
     const d = createDesign(template as TemplateId, { year, locale, country: country || null, ...(name.trim() ? { name: name.trim() } : {}) });
     if (template !== 'heritage-norma' && name.trim()) d.persona.name = name.trim();
-    if (template === 'heritage-norma') {
-      d.locale = locale;
-      d.holidays.country = country || null;
-    }
-    setDesign(d);
+    setDesign(calendar(d));
     setShow(false);
   };
 
@@ -128,19 +134,40 @@ export function WelcomeDialog() {
         </Field>
         <Field label={t('welcome.language')}>
           <Select
-            value={locale}
+            value={lang}
             onChange={(v) => {
-              setLocale(v);
-              const region = v.split('-')[1];
-              if (region) setCountry(region);
+              setLang(v);
+              // Un país de otro idioma pasa al país típico del nuevo (Argentina → Estados Unidos).
+              const spoken = countryLang(country);
+              if (spoken && spoken !== v) setCountry(homeCountry(v, userRegion) ?? '');
+              // La interfaz se pasa al mismo idioma y vuelve a seguir al de la agenda.
+              useStore.getState().followAgendaLang(v);
             }}
-            options={LOCALES}
+            options={LANGUAGES.map((l) => ({ value: l, label: UI_LANG_NAMES[l] }))}
           />
         </Field>
       </div>
-      <Field label={t('welcome.country')}>
+      <Field label={t('welcome.country')} hint={t('welcome.countryHint')}>
         <Select value={country} onChange={setCountry} options={[{ value: '', label: '—' }, ...countries]} />
       </Field>
+      <div className="grid grid-cols-[1.5fr_1fr_0.7fr] gap-2">
+        <Field label={t('cal.weekStart')}>
+          <Select
+            value={weekStart}
+            onChange={setWeekStart}
+            options={[
+              { value: 'auto', label: `${t('cal.weekStart.auto')} (${firstName})` },
+              ...(['monday', 'sunday', 'saturday'] as const).map((v) => ({ value: v, label: t(`cal.weekStart.${v}`) })),
+            ]}
+          />
+        </Field>
+        <Field label={t('cal.startMonth')}>
+          <Select value={String(startMonth)} onChange={(v) => setStartMonth(Number(v))} options={uiMonths.map((m, i) => ({ value: String(i + 1), label: m }))} />
+        </Field>
+        <Field label={t('cal.monthCount')}>
+          <NumberInput value={monthCount} min={1} max={24} integer onChange={(v) => setMonthCount(Math.min(24, Math.max(1, Math.round(v))))} />
+        </Field>
+      </div>
       <Field label={t('welcome.name')}>
         <TextInput value={name} onChange={setName} />
       </Field>

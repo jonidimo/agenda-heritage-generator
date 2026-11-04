@@ -44,6 +44,8 @@ interface StoreState {
   uiLangChosen: boolean;
   /** Idioma de la interfaz sin marcarlo como elegido (sigue a la agenda). */
   followLang(l: UiLang): void;
+  /** La interfaz pasa a este idioma y vuelve a seguir al de la agenda (se elige el idioma al crear una agenda). */
+  followAgendaLang(l: UiLang): void;
   resVersion: number;
   showWelcome: boolean;
   showLibrary: boolean;
@@ -252,6 +254,14 @@ export const useStore = create<StoreState>((set, get) => ({
     set({ uiLang, uiLangChosen: true });
   },
   followLang: (uiLang) => set({ uiLang }),
+  followAgendaLang(uiLang) {
+    try {
+      localStorage.removeItem('agenda-studio.uiLang');
+    } catch {
+      /* sin almacenamiento */
+    }
+    set({ uiLang, uiLangChosen: false });
+  },
   bumpResources: (resVersion) => set({ resVersion }),
   setShowWelcome: (showWelcome) => set({ showWelcome }),
   setShowLibrary: (showLibrary) => set({ showLibrary }),

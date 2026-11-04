@@ -62,9 +62,12 @@ enviado para lugar nenhum.
 
 ### Qualquer ano, idioma e país
 
-- Textos impressos em espanhol (Argentina, Uruguai, Chile, México, Colômbia, Peru,
-  Espanha), inglês (EUA, Reino Unido), português (Brasil, Portugal) e italiano. A
-  interface fala os mesmos quatro idiomas.
+- Textos impressos em espanhol, inglês, português e italiano; a interface fala os mesmos
+  quatro idiomas e segue o que se escolhe ao criar a agenda.
+- O país define as convenções regionais (ordem das datas, moeda, dia em que começa a
+  semana) com os dados do Unicode CLDR que vêm no navegador: o inglês na Argentina se
+  escreve dia/mês. A ordem das datas e o começo da semana também podem ser escolhidos à
+  mão; as datas são sempre salvas em ISO 8601.
 - Feriados de **207 países** e suas regiões, de 2016 a 2061. Adicione dias de emenda,
   renomeie ou remova feriados.
 - Aniversários e datas importantes, fases da lua, e os equinócios e solstícios calculados

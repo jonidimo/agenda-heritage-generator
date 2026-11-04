@@ -22,6 +22,8 @@ export function PrintPanel() {
   const [busy, setBusy] = useState(false);
   const [sigNo, setSigNo] = useState(1);
   const [customText, setCustomText] = useState<string | null>(null);
+  // Al apagar «todos los meses» vuelve lo que había antes (la pestaña del mes, o nada).
+  const [tabsBefore, setTabsBefore] = useState<boolean | null>(null);
 
   const run = async (kind: ExportKind, suffix: string, signature?: number): Promise<void> => {
     setBusy(true);
@@ -144,12 +146,13 @@ export function PrintPanel() {
           label={t('links.tabs')}
           hint={t('links.tabsHint')}
           checked={b.thumbIndex.enabled && b.thumbIndex.months === 'all'}
-          onChange={(v) =>
+          onChange={(v) => {
+            if (v) setTabsBefore(b.thumbIndex.enabled);
             update((d) => {
-              d.binding.thumbIndex.enabled = v;
+              d.binding.thumbIndex.enabled = v ? true : (tabsBefore ?? false);
               d.binding.thumbIndex.months = v ? 'all' : 'current';
-            })
-          }
+            });
+          }}
         />
         <Button variant="ghost" onClick={() => setShowLinks(!showLinks)}>
           <Link2 size={14} /> {showLinks ? t('links.hideOnPage') : t('links.showOnPage')}

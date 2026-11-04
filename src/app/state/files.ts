@@ -147,7 +147,13 @@ export async function openFile(): Promise<Imported | null> {
 /** Guarda la agenda como plantilla propia (opcionalmente sin datos personales). */
 export async function saveAsTemplate(design: Design, name: string, description: string, stripPersonal: boolean): Promise<TemplateRecord> {
   const base = stripPersonal
-    ? { ...design, persona: { ...design.persona, name: '', dedication: '' }, personalDates: [] }
+    ? {
+        ...design,
+        persona: { ...design.persona, name: '', dedication: '' },
+        personalDates: [],
+        // Correos y teléfonos de los enlaces a mano son datos personales.
+        links: { ...design.links, blocks: design.links.blocks.filter((l) => !(l.mode === 'url' && /^(mailto|tel):/i.test(l.url.trim()))) },
+      }
     : design;
   const tpl: TemplateRecord = { id: newId('tpl'), name: name.trim() || design.name, description: description.trim(), createdAt: new Date().toISOString(), design: parseDesign({ ...base, id: newId('agenda') }) };
   await saveTemplate(tpl);
