@@ -1,9 +1,11 @@
 import clsx from 'clsx';
 import { BookMarked, CalendarDays, Image as ImageIcon, LayoutList, Palette, Printer, SlidersHorizontal, UserRound, X } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
+import type { AgendaDocument } from '@core/document';
 import { Canvas } from './components/canvas/Canvas';
 import { ContextMenuHost } from './components/ContextMenu';
 import { LibraryDialog, SaveTemplateDialog, WelcomeDialog } from './components/Dialogs';
+import { ErrorBoundary, ViewError } from './components/ErrorBoundary';
 import { openAnyFile, saveCurrent } from './state/fileActions';
 import { Inspector } from './components/Inspector';
 import { Navigator } from './components/Navigator';
@@ -17,6 +19,7 @@ import { StylePanel } from './components/panels/StylePanel';
 import { Topbar } from './components/Topbar';
 import { isUiLang, useT, type UiKey } from './i18n/ui';
 import { langOf } from '@core/i18n';
+import { clearCrashed, crashedId } from './state/crash';
 import { useDocument } from './state/doc';
 import { collectUnusedAssets, listDesigns, loadDesign } from './state/persist';
 import { resources } from './state/resources';
@@ -80,6 +83,28 @@ function useMediaQuery(query: string): boolean {
   return match;
 }
 
+/** Vista central: si una página o la hoja no se pueden dibujar, el resto del editor sigue andando. */
+function CanvasArea({ doc }: { doc: AgendaDocument }) {
+  const pageIndex = useStore((s) => s.pageIndex);
+  const view = useStore((s) => s.view);
+  return (
+    <ErrorBoundary resetKeys={[doc, pageIndex, view]} fallback={(e) => <ViewError error={e} />}>
+      <Canvas doc={doc} />
+    </ErrorBoundary>
+  );
+}
+
+function InspectorArea({ doc }: { doc: AgendaDocument }) {
+  const t = useT();
+  const pageIndex = useStore((s) => s.pageIndex);
+  const selection = useStore((s) => s.selection);
+  return (
+    <ErrorBoundary resetKeys={[doc, pageIndex, selection]} fallback={(e) => <ViewError error={e} message={t('insp.error')} />}>
+      <Inspector doc={doc} />
+    </ErrorBoundary>
+  );
+}
+
 let shownErrors = 0;
 
 export function App() {
@@ -121,14 +146,21 @@ export function App() {
       }
       if (!useStore.getState().design) {
         const list = await listDesigns();
-        try {
-          const last = list[0] ? await loadDesign(list[0].id) : null;
-          // Si mientras tanto ya se abrió o importó otra agenda, no se la reemplaza.
-          if (last && !useStore.getState().design) setDesign(last);
-          else if (!useStore.getState().design) setShowWelcome(true);
-        } catch (err) {
-          setNotice(`${t('notice.loadFailed')} ${(err as Error).message}`);
-          if (!useStore.getState().design) setShowWelcome(true);
+        const first = list[0];
+        if (first && first.id === crashedId()) {
+          // La última vez esta agenda hizo fallar el editor: abrirla sola volvería a fallar en cada recarga.
+          setNotice(t('crash.skipped', { name: first.name }));
+          if (!useStore.getState().design) useStore.getState().setShowLibrary(true);
+        } else {
+          try {
+            const last = first ? await loadDesign(first.id) : null;
+            // Si mientras tanto ya se abrió o importó otra agenda, no se la reemplaza.
+            if (last && !useStore.getState().design) setDesign(last);
+            else if (!useStore.getState().design) setShowWelcome(true);
+          } catch (err) {
+            setNotice(`${t('notice.loadFailed')} ${(err as Error).message}`);
+            if (!useStore.getState().design) setShowWelcome(true);
+          }
         }
       }
       const d = useStore.getState().design;
@@ -157,6 +189,14 @@ export function App() {
       .catch((err: unknown) => setNotice((err as Error).message))
       .finally(reportResourceErrors);
   }, [design, reportResourceErrors, setNotice]);
+
+  // Si la agenda se muestra bien durante unos segundos, deja de estar anotada como que falló.
+  const designId = design?.id;
+  useEffect(() => {
+    if (!designId || !doc) return;
+    const timer = setTimeout(() => clearCrashed(designId), 4000);
+    return () => clearTimeout(timer);
+  }, [designId, doc]);
 
   // Mientras la persona no elija el idioma de la interfaz, la interfaz habla el idioma de la agenda.
   const designLang = design ? langOf(design.locale) : null;
@@ -259,18 +299,33 @@ export function App() {
                 {t('app.retry')}
               </button>
             </div>
+          ) : ready && !design ? (
+            <div className="desk flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center text-[13px] text-ink-soft">
+              <p>{t('app.noDesign')}</p>
+              <div className="flex flex-wrap justify-center gap-2">
+                <button type="button" className="rounded-md bg-accent px-3 py-1.5 font-semibold text-white" onClick={() => setShowWelcome(true)}>
+                  {t('welcome.title')}
+                </button>
+                <button type="button" className="rounded-md border border-line bg-white px-3 py-1.5 font-semibold text-ink hover:bg-paper" onClick={() => useStore.getState().setShowLibrary(true)}>
+                  {t('top.library')}
+                </button>
+                <button type="button" className="rounded-md border border-line bg-white px-3 py-1.5 font-semibold text-ink hover:bg-paper" onClick={() => void openAnyFile()}>
+                  {t('file.open')}
+                </button>
+              </div>
+            </div>
           ) : !ready || !doc ? (
             <div className="desk flex flex-1 items-center justify-center text-[13px] text-ink-soft">{error ?? t('app.loading')}</div>
           ) : (
             <>
-              <Canvas doc={doc} />
+              <CanvasArea doc={doc} />
               <Navigator doc={doc} />
             </>
           )}
         </main>
         {doc && large && (
           <aside className="w-[280px] shrink-0 border-l border-line bg-paper">
-            <Inspector doc={doc} />
+            <InspectorArea doc={doc} />
           </aside>
         )}
         {doc && !large && sheetOpen && (
@@ -281,7 +336,7 @@ export function App() {
               </button>
             </div>
             <div className="min-h-0 flex-1">
-              <Inspector doc={doc} />
+              <InspectorArea doc={doc} />
             </div>
           </div>
         )}

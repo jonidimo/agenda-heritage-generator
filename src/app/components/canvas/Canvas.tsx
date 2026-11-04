@@ -7,6 +7,7 @@ import { pageTitle, useT } from '../../i18n/ui';
 import { assetHref } from '../../state/assetUrls';
 import { useStore } from '../../state/store';
 import { IconButton } from '../ui';
+import { ErrorBoundary, ViewError } from '../ErrorBoundary';
 import { PageView } from './PageView';
 import { Thumb } from './Thumb';
 
@@ -83,7 +84,7 @@ export function Canvas({ doc }: { doc: AgendaDocument }) {
           </div>
         ) : view === 'page' ? (
           <div className="m-auto p-6">
-            <PageView doc={doc} index={pageIndex} scale={scale} />
+            <SafePage doc={doc} index={pageIndex} scale={scale} />
           </div>
         ) : (
           <div className="m-auto">
@@ -108,18 +109,35 @@ export function Canvas({ doc }: { doc: AgendaDocument }) {
   );
 }
 
+/** Una página que no se puede dibujar ocupa su lugar con el motivo; la otra del pliego se sigue viendo. */
+function SafePage({ doc, index, scale }: { doc: AgendaDocument; index: number; scale: number }) {
+  const t = useT();
+  return (
+    <ErrorBoundary
+      resetKeys={[doc, index]}
+      fallback={(e) => (
+        <div className="page-shadow flex bg-white" style={{ width: doc.format.w * scale, height: doc.format.h * scale }}>
+          <ViewError error={e} message={t('view.pageError', { n: index + 1 })} />
+        </div>
+      )}
+    >
+      <PageView doc={doc} index={index} scale={scale} />
+    </ErrorBoundary>
+  );
+}
+
 function SpreadView({ doc, index, scale }: { doc: AgendaDocument; index: number; scale: number }) {
   const [left, right] = spreadOf(index, doc.pageCount);
   const h = doc.format.h * scale;
   if (left === null || right === null) {
     const only = left ?? right;
-    return <div className="p-6">{only !== null && <PageView doc={doc} index={only} scale={scale} />}</div>;
+    return <div className="p-6">{only !== null && <SafePage doc={doc} index={only} scale={scale} />}</div>;
   }
   return (
     <div className="flex p-6">
-      <PageView doc={doc} index={left} scale={scale} />
+      <SafePage doc={doc} index={left} scale={scale} />
       <div className="w-px bg-black/20" style={{ height: h }} aria-hidden="true" />
-      <PageView doc={doc} index={right} scale={scale} />
+      <SafePage doc={doc} index={right} scale={scale} />
     </div>
   );
 }

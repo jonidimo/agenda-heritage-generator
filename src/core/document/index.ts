@@ -90,7 +90,15 @@ export class AgendaDocument {
   warnings(): Array<PageWarning & { page: number; key: string }> {
     const out: Array<PageWarning & { page: number; key: string }> = [];
     for (let i = 0; i < this.pageCount; i++) {
-      const p = this.page(i);
+      let p: PageModel;
+      try {
+        p = this.page(i);
+      } catch (err) {
+        // Una página que no se puede maquetar se informa como aviso; la revisión del resto sigue.
+        const message = (err as Error).message;
+        out.push({ code: 'layoutError', params: { error: message }, message: `Error al maquetar: ${message}`, page: i, key: this.plan.pages[i]?.key ?? '' });
+        continue;
+      }
       for (const w of p.warnings) out.push({ ...w, page: i, key: p.key });
     }
     return out;

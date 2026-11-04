@@ -6,6 +6,11 @@
 import { z } from 'zod';
 import { pruneTokens } from './themes';
 
+// Sin compilación a medida: zod decide si compilar sus validadores probando `new Function`, y la
+// política de seguridad de la aplicación prohíbe evaluar texto como código, así que el navegador
+// registraba una violación en cada arranque. Tiene que fijarse antes del primer `z.object`.
+z.config({ jitless: true });
+
 export const SCHEMA_VERSION = 1;
 
 export const HolidayTypeZ = z.enum(['public', 'bank', 'school', 'optional', 'observance']);

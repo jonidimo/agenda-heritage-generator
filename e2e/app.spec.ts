@@ -124,6 +124,13 @@ test('la política de seguridad no bloquea nada de la aplicación', async ({ pag
   page.on('console', (m) => {
     if (/Content Security Policy|Refused to|Vista previa de PDF no disponible/i.test(m.text())) violations.push(m.text());
   });
+  // Las violaciones que se atrapan con try/catch no llegan a la consola: se escuchan desde el primer instante.
+  type Violation = { violatedDirective: string; blockedURI: string; sourceFile: string; lineNumber: number };
+  await page.addInitScript(() => {
+    const g = globalThis as unknown as { __csp: string[]; document: { addEventListener: (type: string, fn: (e: Violation) => void) => void } };
+    g.__csp = [];
+    g.document.addEventListener('securitypolicyviolation', (e) => g.__csp.push(`${e.violatedDirective} ${e.blockedURI} ${e.sourceFile}:${e.lineNumber}`));
+  });
   await open(page);
   for (let i = 0; i < 4; i++) await page.keyboard.press('PageDown');
   await page.getByRole('button', { name: 'Imprimir / exportar' }).click();
@@ -142,8 +149,59 @@ test('la política de seguridad no bloquea nada de la aplicación', async ({ pag
   // pdf.js dibujó la vista previa (una imagen blob:), así que su Worker funciona con la política.
   await expect(page.locator('img[src^="blob:"]').first()).toBeVisible({ timeout: 20_000 });
   expect(violations).toEqual([]);
+  expect(await page.evaluate(() => (globalThis as unknown as { __csp: string[] }).__csp)).toEqual([]);
   // La política está activa en la compilación.
   expect(await page.locator('meta[http-equiv="Content-Security-Policy"]').count()).toBe(1);
+});
+
+test('si el editor falla, ofrece cómo seguir y la agenda no se reabre sola al recargar', async ({ page }) => {
+  test.setTimeout(180_000);
+  await open(page);
+  // Un estado que el esquema nunca deja pasar (simula un error del programa al dibujar).
+  await page.evaluate(() => {
+    const st = (globalThis as unknown as { __agenda: { getState: () => { design: object }; setState: (s: object) => void } }).__agenda;
+    st.setState({ design: { ...st.getState().design, sections: null } });
+  });
+  await expect(page.getByRole('heading', { name: 'Algo falló al mostrar el editor' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Guardar una copia en un archivo' })).toBeVisible();
+  // Al recargar, la agenda que falló no se abre sola: aparecen Mis agendas y el motivo.
+  await page.reload();
+  await expect(page.getByRole('dialog', { name: 'Mis agendas' })).toBeVisible();
+  await expect(page.getByText(/no se pudo mostrar la última vez/)).toBeVisible();
+  // Abierta a mano se ve bien (lo guardado nunca estuvo roto) y, tras unos segundos, deja de estar anotada.
+  await page.getByRole('dialog', { name: 'Mis agendas' }).getByRole('button', { name: /Norma/ }).first().click();
+  await expect(page.locator('[data-page-index]').first()).toBeVisible({ timeout: 60_000 });
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('agenda-studio.crashed')), { timeout: 15_000 }).toBeNull();
+  await page.reload();
+  await expect(page.locator('[data-page-index]').first()).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByRole('dialog', { name: 'Mis agendas' })).toHaveCount(0);
+});
+
+test('una página que no se puede dibujar no tumba el editor', async ({ page }) => {
+  await open(page);
+  const first = page.locator('[data-page-index="0"]');
+  const key = await first.getAttribute('data-page-key');
+  const type = await first.getAttribute('data-page-type');
+  expect(key && type).toBeTruthy();
+  // Un bloque sin propiedades (el esquema nunca lo deja pasar): simula un error del programa en una sola página.
+  await page.evaluate(
+    ([k, ty]) => {
+      const st = (globalThis as unknown as { __agenda: { getState: () => { update: (fn: (d: { customBlocks: unknown[] }) => void) => void } } }).__agenda;
+      st.getState().update((d) => void d.customBlocks.push({ id: 'roto', pageType: ty, pageKey: k, kind: 'text', x: 10, y: 10, w: 30, h: 10, mirror: false, props: null }));
+    },
+    [key, type],
+  );
+  await expect(page.getByText('La página 1 no se pudo dibujar.')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Algo falló al mostrar el editor' })).toHaveCount(0);
+  // El resto del editor sigue andando: se puede ir a otra página y volver a esta.
+  await page.keyboard.press('PageDown');
+  await expect(page.locator('[data-page-index="1"]')).toBeVisible();
+  await page.keyboard.press('PageUp');
+  await expect(page.getByText('La página 1 no se pudo dibujar.')).toBeVisible();
+  // Y se arregla deshaciendo el cambio.
+  await page.getByRole('alert').getByRole('button', { name: 'Deshacer el último cambio' }).first().click();
+  await expect(page.locator('[data-page-index="0"]')).toBeVisible();
+  await expect(page.getByText('La página 1 no se pudo dibujar.')).toHaveCount(0);
 });
 
 const center = async (page: Page, selector: string) => {

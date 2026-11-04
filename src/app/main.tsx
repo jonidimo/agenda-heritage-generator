@@ -1,6 +1,7 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './App';
+import { AppBoundary } from './components/ErrorBoundary';
 import { flushSave, useStore } from './state/store';
 import './styles.css';
 
@@ -23,6 +24,8 @@ const root = document.getElementById('root');
 if (!root) throw new Error('Falta el elemento #root');
 createRoot(root).render(
   <StrictMode>
-    <App />
+    <AppBoundary>
+      <App />
+    </AppBoundary>
   </StrictMode>,
 );

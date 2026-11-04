@@ -3,6 +3,7 @@
  * la vista previa, y un tema malformado no deja la agenda sin abrir.
  */
 import { describe, expect, it } from 'vitest';
+import { z } from 'zod';
 import { importSvg } from '../src/core/assets/svg';
 import { createDesign } from '../src/core/design/defaults';
 import { parseDesign } from '../src/core/design/schema';
@@ -64,5 +65,13 @@ describe('temas malformados', () => {
     raw.theme.tokens = { colors: null, fonts: { body: null }, sizes: { body: 'x', label: 'y' }, writing: { pitch: '436' } };
     const { doc } = await openDocument(parseDesign(raw));
     expect(doc.warnings().filter((w) => w.code !== 'abbreviated')).toEqual([]);
+  });
+});
+
+describe('validación sin evaluar código', () => {
+  it('zod no compila validadores con new Function (la política de seguridad lo prohíbe)', () => {
+    // El esquema lo fija al cargarse; si no, el navegador registra una violación en cada arranque.
+    expect(parseDesign(createDesign('heritage', { year: 2027, locale: 'es-AR', country: 'AR' })).calendar.year).toBe(2027);
+    expect(z.config().jitless).toBe(true);
   });
 });

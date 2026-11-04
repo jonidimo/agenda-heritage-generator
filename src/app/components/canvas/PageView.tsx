@@ -328,6 +328,8 @@ export function PageView({ doc, index, scale, interactive = true }: Props) {
       className="page-shadow relative shrink-0 bg-white"
       style={{ width: w, height: h }}
       data-page-index={index}
+      data-page-key={page.key}
+      data-page-type={page.type}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={(e) => finish(e, true)}
