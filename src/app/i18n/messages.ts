@@ -34,6 +34,10 @@ export function warningText(t: T, w: Pick<PageWarning, 'code' | 'params' | 'mess
     const where = p.kind === 'event' ? `${t('tab.persona')} → ${t('persona.dates')}` : `${t('tab.calendar')} → ${t('cal.holidays')}`;
     return t('warn.abbreviated', { text: String(p.text ?? ''), where });
   }
+  if (w.code === 'brokenLink') {
+    const label = blockLabel(t, String(p.block ?? ''), String(p.label ?? ''));
+    return p.mode === 'url' ? t('warn.brokenLink.url', { label, target: String(p.target ?? '') }) : t('warn.brokenLink.page', { label });
+  }
   const key = `warn.${w.code}` as UiKey;
   const vars: Record<string, string | number> = { ...p };
   if (typeof p.label === 'string') vars.label = blockLabel(t, String(p.block ?? ''), p.label);

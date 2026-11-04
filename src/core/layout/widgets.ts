@@ -133,6 +133,8 @@ export interface MiniCalOpts {
   /** Orden de días ISO de la semana (empieza en lunes o domingo). */
   order: number[];
   headerRule?: boolean;
+  /** Se llama por cada día dibujado con su casilla (para que el día sea tocable en el PDF). */
+  onCell?: (day: DayInfo, cell: Rect, inMonth: boolean) => void;
 }
 
 /** Minicalendario dentro de una caja: encabezado con iniciales + filas de semanas. */
@@ -156,6 +158,7 @@ export function miniCalendar(ctx: LayoutContext, r: Rect, weeks: DayInfo[][], op
       const cell = cells[di]!;
       const inMonth = !opts.month || (day.y === opts.month.y && day.m === opts.month.m);
       if (!inMonth && opts.otherMonth === 'hide') return;
+      opts.onCell?.(day, cell, inMonth);
       const highlighted = opts.highlight?.has(day.iso) ?? false;
       const weekendGray = opts.weekendStyle === 'gray' && day.isWeekend;
       const isHoliday = day.holidays.some((h) => h.type === 'public');

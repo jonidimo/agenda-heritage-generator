@@ -139,6 +139,8 @@ export const BindingZ = z
       .object({
         enabled: z.boolean().default(false),
         width: num(4, 2, 12),
+        /** current: solo la pestaña del mes de cada página; all: todos los meses, con el de la página resaltado. */
+        months: z.enum(['current', 'all']).default('current'),
       })
       .prefault({}),
   })
@@ -288,6 +290,48 @@ export const PageStyleZ = z.object({
 });
 export type PageStyle = z.infer<typeof PageStyleZ>;
 
+/**
+ * Enlace elegido a mano para un elemento (por tipo de página o en una página): reemplaza a los
+ * automáticos de ese elemento. `none` le quita los enlaces; `page` lleva a una página por su clave
+ * (sigue funcionando aunque cambie la numeración) y `url` a una dirección web. `auto`, en una
+ * página, vuelve a los automáticos aunque su tipo diga otra cosa.
+ */
+export const BlockLinkZ = z.object({
+  pageType: z.string(),
+  pageKey: z.string().nullable().default(null),
+  blockId: z.string(),
+  mode: z.enum(['auto', 'none', 'page', 'url']),
+  page: z.string().default(''),
+  url: z.string().max(2000).default(''),
+});
+export type BlockLink = z.infer<typeof BlockLinkZ>;
+
+/**
+ * Enlaces del PDF de páginas (para leer la agenda en una tableta o un lector de tinta electrónica):
+ * se generan solos a partir de lo que ya está impreso, por familias.
+ */
+export const LinksZ = z
+  .object({
+    enabled: z.boolean().default(true),
+    /** Cada número de día lleva a su página. */
+    days: z.boolean().default(true),
+    /** auto: la página más detallada que tenga ese día (día, semana, mes); o siempre la semana o el mes. */
+    dayTarget: z.enum(['auto', 'week', 'month']).default('auto'),
+    /** El nombre de cada mes (calendario anual) lleva a ese mes. */
+    months: z.boolean().default(true),
+    monthTarget: z.enum(['first', 'log', 'grid']).default('first'),
+    /** Los títulos llevan un nivel arriba: día → mes, semana → mes, mes → calendario anual, el resto → índice. */
+    up: z.boolean().default(true),
+    /** Cada entrada del índice lleva a su página. */
+    toc: z.boolean().default(true),
+    /** Adónde lleva el número de página (si se imprimen). */
+    pageNumber: z.enum(['none', 'toc', 'year', 'month']).default('toc'),
+    /** Marcadores del lector (índice lateral) por secciones, meses y semanas. */
+    bookmarks: z.boolean().default(true),
+    blocks: z.array(BlockLinkZ).default([]),
+  })
+  .prefault({});
+
 export const AssetRefZ = z.object({
   id: z.string(),
   name: z.string(),
@@ -341,6 +385,7 @@ export const DesignZ = z.object({
   watermarks: z.array(WatermarkZ).default([]),
   overrides: z.array(BlockOverrideZ).default([]),
   pageStyles: z.array(PageStyleZ).default([]),
+  links: LinksZ,
   assets: z.array(AssetRefZ).default([]),
   cover: CoverZ,
 });

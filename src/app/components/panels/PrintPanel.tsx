@@ -1,6 +1,6 @@
 import type { ExportKind } from '@core/document';
 import { PAPER_PRESETS, type PaperPresetId } from '@core/design/schema';
-import { Download, FileDown, Printer, Ruler, Scissors } from 'lucide-react';
+import { Download, FileDown, Link2, Printer, Ruler, Scissors } from 'lucide-react';
 import { useState } from 'react';
 import { uiText, useT, type UiKey } from '../../i18n/ui';
 import { useDocument } from '../../state/doc';
@@ -13,8 +13,11 @@ export function PrintPanel() {
   const design = useStore((s) => s.design)!;
   const update = useStore((s) => s.update);
   const pageIndex = useStore((s) => s.pageIndex);
+  const showLinks = useStore((s) => s.showLinks);
+  const setShowLinks = useStore((s) => s.setShowLinks);
   const { doc } = useDocument();
   const b = design.binding;
+  const L = design.links;
   const [status, setStatus] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [sigNo, setSigNo] = useState(1);
@@ -110,6 +113,47 @@ export function PrintPanel() {
           )}
         </div>
         {status && <p className="mt-2 text-[11.5px] text-ink-soft" role="status">{status}</p>}
+      </Group>
+
+      <Group title={t('links.title')} defaultOpen={false}>
+        <p className="mb-1.5 text-[11.5px] leading-snug text-ink-soft">{t('links.help')}</p>
+        <Toggle label={t('links.enabled')} checked={L.enabled} onChange={(v) => update((d) => void (d.links.enabled = v))} />
+        {L.enabled && (
+          <div className="mb-1 border-l-2 border-line pl-2">
+            <Toggle label={t('links.days')} checked={L.days} onChange={(v) => update((d) => void (d.links.days = v))} />
+            {L.days && (
+              <Field label={t('links.dayTarget')}>
+                <Select value={L.dayTarget} onChange={(v) => update((d) => void (d.links.dayTarget = v))} options={(['auto', 'week', 'month'] as const).map((v) => ({ value: v, label: t(`links.day.${v}`) }))} />
+              </Field>
+            )}
+            <Toggle label={t('links.months')} checked={L.months} onChange={(v) => update((d) => void (d.links.months = v))} />
+            {L.months && (
+              <Field label={t('links.monthTarget')}>
+                <Select value={L.monthTarget} onChange={(v) => update((d) => void (d.links.monthTarget = v))} options={(['first', 'log', 'grid'] as const).map((v) => ({ value: v, label: t(`links.month.${v}`) }))} />
+              </Field>
+            )}
+            <Toggle label={t('links.up')} hint={t('links.upHint')} checked={L.up} onChange={(v) => update((d) => void (d.links.up = v))} />
+            <Toggle label={t('links.toc')} checked={L.toc} onChange={(v) => update((d) => void (d.links.toc = v))} />
+            <Field label={t('links.pageNumber')} hint={b.pageNumbers.enabled ? undefined : t('links.pageNumberOff')}>
+              <Select value={L.pageNumber} onChange={(v) => update((d) => void (d.links.pageNumber = v))} options={(['toc', 'year', 'month', 'none'] as const).map((v) => ({ value: v, label: t(`links.pn.${v}`) }))} />
+            </Field>
+          </div>
+        )}
+        <Toggle label={t('links.bookmarks')} hint={t('links.bookmarksHint')} checked={L.bookmarks} onChange={(v) => update((d) => void (d.links.bookmarks = v))} />
+        <Toggle
+          label={t('links.tabs')}
+          hint={t('links.tabsHint')}
+          checked={b.thumbIndex.enabled && b.thumbIndex.months === 'all'}
+          onChange={(v) =>
+            update((d) => {
+              d.binding.thumbIndex.enabled = v;
+              d.binding.thumbIndex.months = v ? 'all' : 'current';
+            })
+          }
+        />
+        <Button variant="ghost" onClick={() => setShowLinks(!showLinks)}>
+          <Link2 size={14} /> {showLinks ? t('links.hideOnPage') : t('links.showOnPage')}
+        </Button>
       </Group>
 
       <Group title={t('print.paper')}>
@@ -217,6 +261,11 @@ export function PrintPanel() {
         </Field>
         <Toggle label={t('print.pageNumbers')} checked={b.pageNumbers.enabled} onChange={(v) => update((d) => void (d.binding.pageNumbers.enabled = v))} />
         <Toggle label={t('print.thumbIndex')} checked={b.thumbIndex.enabled} onChange={(v) => update((d) => void (d.binding.thumbIndex.enabled = v))} />
+        {b.thumbIndex.enabled && (
+          <Field label={t('print.thumbMonths')}>
+            <Select value={b.thumbIndex.months} onChange={(v) => update((d) => void (d.binding.thumbIndex.months = v))} options={(['current', 'all'] as const).map((v) => ({ value: v, label: t(`thumb.${v}`) }))} />
+          </Field>
+        )}
       </Group>
 
       {b.method === 'sewn' && (

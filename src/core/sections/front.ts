@@ -5,10 +5,10 @@
  */
 import type { DayInfo } from '../calendar';
 import { monthNames } from '../calendar/locale';
-import { fmt } from '../i18n';
+import { fmt, type AgendaStrings } from '../i18n';
 import { centerIn, cols, flex, grid, hsplit, inset, rows, takeBottom, takeTop } from '../layout/box';
 import type { LayoutContext, SizeKey, TextRole } from '../layout/context';
-import { line, rect, type Prim } from '../layout/prims';
+import { line, rect, type LinkArea, type Prim } from '../layout/prims';
 import { heartIcon, miniCalendar, ruledLines, sectionHeader, writingArea } from '../layout/widgets';
 import { inkBounds, TABULAR_FEATURES } from '../text/shape';
 import { ptToMm } from '../util/geometry';
@@ -131,7 +131,14 @@ export const personalInfo: SectionModule = {
 
 /* ---------- Índice ---------- */
 
-const TOC_TITLES: Record<string, (ctx: LayoutContext) => string> = {
+/** Lo mínimo para titular una sección: los textos del idioma y el idioma (sirve un `LayoutContext`). */
+export interface TitleContext {
+  s: AgendaStrings;
+  doc: { locale: string };
+}
+
+/** Títulos de las secciones en el idioma de la agenda (índice impreso y marcadores del PDF). */
+export const TOC_TITLES: Record<string, (ctx: TitleContext) => string> = {
   personalInfo: (c) => c.s.personal.title,
   guide: (c) => c.s.guide.title,
   yearOverview: (c) => c.s.yearOverview.title.charAt(0) + c.s.yearOverview.title.slice(1).toLocaleLowerCase(c.doc.locale),
@@ -160,7 +167,7 @@ export const toc: SectionModule = {
   },
   layout(ctx, page) {
     const all = ctx.doc.pages ?? [];
-    const entries: Array<{ title: string; page: number; month?: boolean }> = [];
+    const entries: Array<{ title: string; page: number; key: string; month?: boolean }> = [];
     const seenTypes = new Set<string>();
     const seenGroups = new Set<string>();
     for (const p of all) {
@@ -169,14 +176,14 @@ export const toc: SectionModule = {
         if (seenGroups.has(p.group)) continue;
         seenGroups.add(p.group);
         const [y, m] = p.group.slice(6).split('-').map(Number);
-        entries.push({ title: `${monthNames(ctx.doc.locale)[(m ?? 1) - 1]} ${y}`, page: p.index + 1, month: true });
+        entries.push({ title: `${monthNames(ctx.doc.locale)[(m ?? 1) - 1]} ${y}`, page: p.index + 1, key: p.key, month: true });
         continue;
       }
       const key = p.type === 'weekLeft' || p.type === 'weekRight' ? 'week' : p.type === 'custom' ? p.key : p.type;
       if (seenTypes.has(key)) continue;
       seenTypes.add(key);
       const t = TOC_TITLES[key]?.(ctx) ?? (p.type === 'custom' ? p.title : null);
-      if (t) entries.push({ title: t, page: p.index + 1 });
+      if (t) entries.push({ title: t, page: p.index + 1, key: p.key });
     }
     const parts = param(page, 'parts', 1);
     const part = param(page, 'part', 0);
@@ -185,8 +192,11 @@ export const toc: SectionModule = {
     const r = headed(ctx, ctx.s.toc.title, '');
     const pitch = Math.min(7, r.h / Math.max(1, mine.length));
     const prims: Prim[] = [];
+    const links: LinkArea[] = [];
     mine.forEach((e, i) => {
       const y = r.y + (i + 0.75) * pitch;
+      // Toda la fila (título, puntos y número) lleva a la página.
+      links.push({ x: r.x, y: r.y + i * pitch, w: r.w, h: pitch, to: { kind: 'page', key: e.key }, cat: 'toc' });
       const left = ctx.textAt(e.title, r.x + (e.month ? 4 : 0), y, { role: e.month ? 'body' : 'heading', size: e.month ? 'body' : 'small', upper: !e.month, tracking: e.month ? 0 : 0.05 });
       const num = ctx.textAt(String(e.page), r.x + r.w, y, { role: 'number', size: 'body', align: 'right', features: TABULAR_FEATURES });
       prims.push(left.prim, num.prim);
@@ -194,7 +204,7 @@ export const toc: SectionModule = {
       const x1 = num.bbox.x - 2;
       if (x1 > x0 + 2) prims.push(line(x0, y, x1, y, ctx.stroke('hair', undefined, { dash: [0.15, 1.2], cap: 'round', width: ptToMm(0.7) })));
     });
-    ctx.add('toc.entries', 'Entradas del índice', prims);
+    ctx.add('toc.entries', 'Entradas del índice', prims, { links });
   },
 };
 
@@ -247,8 +257,12 @@ export const yearOverview: SectionModule = {
       const rowsData = weeks.map((w) => (w.length === 7 ? w : ([] as DayInfo[])));
       const filled = rowsData.filter((w) => w.length === 7);
       const prims: Prim[] = [...head.prims, line(cell.x + 2, ruleY, cell.x + cell.w - 2, ruleY, ctx.stroke('hair', 'ink'))];
+      const links: LinkArea[] = [{ x: cell.x, y: cell.y, w: cell.w, h: ruleY - cell.y + 0.6, to: { kind: 'month', y, m }, cat: 'months' }];
       prims.push(
         ...miniCalendar(ctx, body, filled, {
+          onCell: (day, c, inMonth) => {
+            if (inMonth) links.push({ ...c, to: { kind: 'date', iso: day.iso }, cat: 'days' });
+          },
           month: { y, m },
           otherMonth: 'hide',
           order: order(ctx),
@@ -270,7 +284,7 @@ export const yearOverview: SectionModule = {
           if (showMoon && day.moon === 'full') prims.push({ t: 'circle', cx: body.x + (di + 0.15) * colW, cy: body.y + 4.5 + (wi + 0.25) * rowH, r: 0.45, stroke: ctx.stroke('hair', 'ink') });
         }),
       );
-      ctx.add(`month.${m}`, `${names[m - 1]} ${y}`, prims);
+      ctx.add(`month.${m}`, `${names[m - 1]} ${y}`, prims, { links });
     });
   },
 };

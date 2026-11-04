@@ -49,6 +49,11 @@ export const pt: AgendaStrings = {
   toc: {
     title: 'Índice',
   },
+  outline: {
+    cover: 'Capa',
+    dedication: 'Dedicatória',
+    monthLog: 'Registro do mês',
+  },
   yearOverview: {
     title: 'CALENDÁRIO ANUAL',
     holidays: 'Feriados',

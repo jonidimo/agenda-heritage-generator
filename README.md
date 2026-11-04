@@ -100,6 +100,22 @@ and as a desktop app for Windows, macOS and Linux. Nothing is uploaded anywhere.
 - Calibration sheet, punching template for the sewing stations, and a cover with the
   spine width computed from the number of sheets.
 
+### Read it on a tablet or e-reader
+
+- The **Pages PDF** comes with tappable links, like a digital planner: each day in the
+  calendars, the monthly log and the month view takes you to its week (or its day page),
+  each month name to its month, titles go one level up (week → month → year calendar →
+  contents) and the contents go to their pages. In a reader that follows PDF links, such
+  as an Onyx Boox or a tablet, a tap is enough.
+- **Reader bookmarks**: the reader's side index lists the sections, each month and its
+  weeks.
+- **Tabs for every month** on the edge of each page (optional), each one taking you to its
+  month.
+- Links come from what is printed, so they follow any change of year, paper or sections.
+  The links button in the top bar shows them on the page, and a click follows them; each
+  element's panel shows where it goes and lets you remove its links or send it to another
+  page or a web address. The PDF for printing does not include them.
+
 ### Your files and templates
 
 - **File → Save** (Ctrl+S) writes a `.agenda.json` file with its images and fonts inside.

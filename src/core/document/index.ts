@@ -15,6 +15,7 @@ import { SECTION_REGISTRY } from '../sections/registry';
 import { shapeText } from '../text/shape';
 import { createDocContext, pageFormat, type PageFormat, type Resources } from './context';
 import { layoutPage, pagePrims } from './layout';
+import { buildOutline, LinkResolver, pageFullTitle, pageLinks, type ResolvedLink } from './links';
 import { planDocument, type DocumentPlan, type PlanOptions } from './plan';
 
 export type ExportKind = 'pages' | 'imposed' | 'fronts' | 'backs' | 'signature' | 'calibration' | 'sewing' | 'cover' | 'separate';
@@ -32,6 +33,7 @@ export class AgendaDocument {
   readonly format: PageFormat;
   private readonly cache = new Map<number, PageModel>();
   private sidesCache: SheetSide[] | null = null;
+  private resolverCache: LinkResolver | null = null;
 
   constructor(
     readonly design: Design,
@@ -63,6 +65,22 @@ export class AgendaDocument {
 
   indexOfKey(key: string): number {
     return this.plan.pages.findIndex((p) => p.key === key);
+  }
+
+  get linkResolver(): LinkResolver {
+    this.resolverCache ??= new LinkResolver(this.plan.pages, this.design.links);
+    return this.resolverCache;
+  }
+
+  /** Enlaces de una página (los del PDF de páginas): zona tocable y destino. */
+  links(index: number): ResolvedLink[] {
+    return pageLinks(this.page(index), this.linkResolver, this.design.links).links;
+  }
+
+  /** Título de una página en el idioma de la agenda, con su mes (describe adónde lleva un enlace). */
+  pageLabel(index: number): string {
+    const p = this.plan.pages[index];
+    return p ? pageFullTitle(this.ctx, p) : '';
   }
 
   sides(): SheetSide[] {
@@ -100,6 +118,11 @@ export class AgendaDocument {
         continue;
       }
       for (const w of p.warnings) out.push({ ...w, page: i, key: p.key });
+      for (const b of pageLinks(p, this.linkResolver, this.design.links).broken) {
+        const label = p.blocks.find((x) => x.id === b.blockId)?.label ?? b.blockId;
+        const message = b.mode === 'url' ? `El enlace de «${label}» no es una dirección web válida (${b.target}).` : `El enlace de «${label}» lleva a una página que ya no existe.`;
+        out.push({ code: 'brokenLink', params: { block: b.blockId, label, mode: b.mode, target: b.target }, message, page: i, key: p.key });
+      }
     }
     return out;
   }
@@ -142,12 +165,20 @@ export class AgendaDocument {
     const toInput = (r: SheetRender): PdfPageInput => ({ w: r.w, h: r.h, prims: r.prims });
     switch (kind) {
       case 'pages': {
+        // Para leer en pantalla (tableta, lector de tinta electrónica): con enlaces y marcadores.
         const pages: PdfPageInput[] = [];
+        const label = (n: number): string => `${this.pageLabel(n)} · ${this.ctx.strings.common.page} ${n + 1}`;
         for (let i = 0; i < this.pageCount; i++) {
           const p = this.page(i);
-          pages.push({ w: p.w, h: p.h, prims: pagePrims(p) });
+          const links = this.links(i).map((l) => ({ rect: l.rect, ...(l.page !== undefined ? { page: l.page, label: label(l.page) } : { url: l.url!, label: l.url! }) }));
+          pages.push({ w: p.w, h: p.h, prims: pagePrims(p), ...(links.length > 0 ? { links } : {}) });
         }
-        return renderPdf(pages, { ...base, duplex: 'DuplexFlipLongEdge' });
+        return renderPdf(pages, {
+          ...base,
+          duplex: 'DuplexFlipLongEdge',
+          lang: d.locale,
+          ...(d.links.bookmarks ? { outline: buildOutline(this.ctx, this.plan.pages) } : {}),
+        });
       }
       case 'imposed':
       case 'fronts':

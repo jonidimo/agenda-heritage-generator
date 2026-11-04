@@ -194,6 +194,8 @@ export function duplicateForYear(d: Design, year: number): Design {
     customBlocks: d.customBlocks.map((c) => ({ ...c, pageKey: shift(c.pageKey) })),
     watermarks: d.watermarks.map((w) => ({ ...w, excludePages: w.excludePages.map((k) => shiftKeyYears(k, delta)) })),
     pageStyles: d.pageStyles.map((p) => ({ ...p, pageKey: shift(p.pageKey) })),
+    // Los enlaces a mano siguen en su página y a la misma página del año nuevo.
+    links: { ...d.links, blocks: d.links.blocks.map((l) => ({ ...l, pageKey: shift(l.pageKey), page: l.mode === 'page' ? shiftKeyYears(l.page, delta) : l.page })) },
     // Si el ancla no existe en el año nuevo, la página propia cae por su respaldo.
     customPages: d.customPages.map((c) => ({ ...c, after: shift(c.after), fallback: shift(c.fallback) })),
   });

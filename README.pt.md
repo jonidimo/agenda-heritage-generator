@@ -106,6 +106,21 @@ enviado para lugar nenhum.
 - Folha de calibração, gabarito de furação para as estações de costura e uma capa com a
   largura da lombada calculada pelo número de folhas.
 
+### Para ler no tablet ou no leitor
+
+- O **PDF das páginas** vem com links tocáveis, como uma agenda digital: cada dia dos
+  calendários, do registro do mês e da visão mensal leva à sua semana (ou à página do
+  dia), cada mês ao seu mês, os títulos sobem um nível (semana → mês → calendário anual →
+  índice) e o índice leva às suas páginas. Num leitor que siga os links do PDF, como um
+  Onyx Boox ou um tablet, basta tocar.
+- **Marcadores do leitor**: o índice lateral do leitor traz as seções, cada mês e suas
+  semanas.
+- **Abas de todos os meses** na borda de cada página (opcional): cada uma leva ao seu mês.
+- Os links saem do que está impresso, então acompanham qualquer mudança de ano, papel ou
+  seções. O botão de links da barra de cima os mostra sobre a página e um clique os segue;
+  o painel de cada elemento mostra para onde leva e permite tirar os links ou mandá-lo
+  para outra página ou um endereço da web. O PDF para imprimir não os leva.
+
 ### Seus arquivos e modelos
 
 - **Arquivo → Salvar** (Ctrl+S) grava um arquivo `.agenda.json` com as imagens e fontes

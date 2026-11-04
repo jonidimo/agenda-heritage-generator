@@ -1,16 +1,26 @@
 name: Desktop apps
 
 # Builds the desktop installers (Electron) for Linux, Windows and macOS; see docs/desktop.md.
-# Run it by hand (Actions → Desktop apps → Run workflow) to get the installers as artifacts,
-# or push a tag such as v2.1.0 to also publish them in a GitHub Release. It also runs when the
-# desktop packaging itself changes, so every change is tested on the three systems.
+# Every change to the app or its packaging on main or refactor-v2 builds new installers (as
+# artifacts of the run), so the latest ones always match the code. Push a tag such as v2.1.0
+# to also publish them in a GitHub Release, or run it by hand (Actions → Desktop apps → Run
+# workflow, once this file is on the default branch).
 on:
   workflow_dispatch:
   push:
     tags: ['v*']
     branches: [main, refactor-v2]
-    # Only for branches: GitHub does not apply path filters to tags.
+    # Only for branches: GitHub does not apply path filters to tags. Changes to the docs or
+    # the tests alone do not rebuild the installers.
     paths:
+      - 'src/**'
+      - 'public/**'
+      - 'scripts/**'
+      - 'index.html'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'vite.config.ts'
+      - 'tsconfig*.json'
       - 'electron/**'
       - 'electron-builder.yml'
       - '.github/workflows/desktop.yml'

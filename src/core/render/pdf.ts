@@ -32,7 +32,7 @@ interface PdfKitDoc {
   dash(len: number | number[], opts: { space?: number; phase?: number }): PdfKitDoc;
   miterLimit(m: number): PdfKitDoc;
   addContent(data: string): PdfKitDoc;
-  page: { xobjects: Record<string, unknown> };
+  page: { xobjects: Record<string, unknown>; annotations: PdfRef[] };
   undash(): PdfKitDoc;
   fillColor(c: string, opacity?: number): PdfKitDoc;
   strokeColor(c: string, opacity?: number): PdfKitDoc;
@@ -44,18 +44,47 @@ interface PdfKitDoc {
   fontSize(size: number): PdfKitDoc;
   text(text: string, x: number, y: number, opts: Record<string, unknown>): PdfKitDoc;
   image(src: ArrayBuffer, x: number, y: number, opts: { width: number; height: number }): PdfKitDoc;
-  ref(data: Record<string, unknown>): { id: number; end(): void };
+  ref(data: Record<string, unknown>): PdfRef;
   end(): void;
   _root: { data: Record<string, unknown> };
+  outline: PdfOutline;
+}
+
+interface PdfRef {
+  id: number;
+  data: Record<string, unknown>;
+  end(): void;
+}
+
+interface PdfOutline {
+  addItem(title: string, options?: { pageNumber?: number; expanded?: boolean; fit?: boolean }): PdfOutline;
+  outlineData: Record<string, unknown>;
 }
 
 type PdfKitCtor = new (opts: Record<string, unknown>) => PdfKitDoc;
+
+export interface PdfLink {
+  /** Zona tocable en mm de página. */
+  rect: { x: number; y: number; w: number; h: number };
+  /** Página de destino (0 = la primera) o dirección web. */
+  page?: number;
+  url?: string;
+  /** Descripción del destino (lectores de pantalla y algunos visores). */
+  label?: string;
+}
+
+export interface PdfOutlineItem {
+  title: string;
+  page: number;
+  children: PdfOutlineItem[];
+}
 
 export interface PdfPageInput {
   /** Tamaño en mm. */
   w: number;
   h: number;
   prims: Prim[];
+  links?: PdfLink[];
 }
 
 export interface PdfRenderOptions {
@@ -66,6 +95,10 @@ export interface PdfRenderOptions {
   duplex?: 'Simplex' | 'DuplexFlipShortEdge' | 'DuplexFlipLongEdge';
   pickTrayByPdfSize?: boolean;
   onProgress?: (done: number, total: number) => void;
+  /** Marcadores del lector (índice lateral). */
+  outline?: PdfOutlineItem[];
+  /** Idioma del documento (lectura en voz alta, accesibilidad), p. ej. «es-AR». */
+  lang?: string;
 }
 
 interface PdfArtPlacement {
@@ -300,14 +333,60 @@ export async function renderPdf(pages: PdfPageInput[], opts: PdfRenderOptions): 
   doc.on('data', (c) => chunks.push(c instanceof Uint8Array ? c : new Uint8Array(c as ArrayBuffer)));
   const done = new Promise<void>((resolve) => doc.on('end', () => resolve()));
   const painter = new PdfPainter(doc, opts);
+  // Enlaces internos: la página de destino puede venir después, así que cada anotación se cierra
+  // recién cuando existen todas las páginas (con destino explícito: lo entiende cualquier visor).
+  const pending: Array<{ annot: PdfRef; page: number }> = [];
+  const heightsPt: number[] = [];
   for (let i = 0; i < pages.length; i++) {
     const pg = pages[i]!;
     painter.beginPage(pg.w, pg.h);
     painter.draw(pg.prims);
+    heightsPt.push(pg.h * PT_PER_MM);
+    for (const l of pg.links ?? []) {
+      const internal = l.page !== undefined && Number.isInteger(l.page) && l.page >= 0 && l.page < pages.length;
+      if (!internal && !l.url) continue;
+      const k = PT_PER_MM;
+      const hPt = pg.h * k;
+      const rect = [l.rect.x * k, hPt - (l.rect.y + l.rect.h) * k, (l.rect.x + l.rect.w) * k, hPt - l.rect.y * k].map((v) => Math.round(v * 100) / 100);
+      const annot: Record<string, unknown> = { Type: 'Annot', Subtype: 'Link', Rect: rect, Border: [0, 0, 0], F: 4 };
+      if (l.label) annot.Contents = new String(l.label);
+      if (internal) {
+        const ref = doc.ref(annot);
+        doc.page.annotations.push(ref);
+        pending.push({ annot: ref, page: l.page! });
+      } else {
+        const action = doc.ref({ S: 'URI', URI: new String(l.url) });
+        action.end();
+        const ref = doc.ref({ ...annot, A: action });
+        doc.page.annotations.push(ref);
+        ref.end();
+      }
+    }
     painter.endPage();
     opts.onProgress?.(i + 1, pages.length);
     if (i % 8 === 7) await new Promise((r) => setTimeout(r, 0));
   }
+  const kids = (doc._root.data.Pages as { data: { Kids: unknown[] } }).data.Kids;
+  // Destino: arriba de la página, sin cambiar el zoom ni el desplazamiento horizontal del lector.
+  const dest = (i: number): unknown[] => [kids[i], 'XYZ', null, Math.round(heightsPt[i]! * 100) / 100, null];
+  for (const p of pending) {
+    p.annot.data.Dest = dest(p.page);
+    p.annot.end();
+  }
+  if (opts.outline && opts.outline.length > 0) {
+    const add = (parent: PdfOutline, items: PdfOutlineItem[]): void => {
+      for (const it of items) {
+        if (!Number.isInteger(it.page) || it.page < 0 || it.page >= pages.length) continue;
+        const node = parent.addItem(it.title, { pageNumber: it.page, fit: true });
+        node.outlineData.Dest = dest(it.page);
+        if (it.children.length > 0) add(node, it.children);
+      }
+    };
+    add(doc.outline, opts.outline);
+    // Que el lector abra en la portada, sin el panel de marcadores desplegado.
+    doc._root.data.PageMode = 'UseNone';
+  }
+  if (opts.lang) doc._root.data.Lang = new String(opts.lang);
   doc._root.data.ViewerPreferences = doc.ref({
     DisplayDocTitle: true,
     PrintScaling: 'None',

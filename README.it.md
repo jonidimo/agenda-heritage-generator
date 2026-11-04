@@ -104,6 +104,22 @@ come app desktop per Windows, macOS e Linux. Non viene caricato nulla da nessuna
 - Foglio di calibrazione, dima di foratura per le stazioni di cucitura e una copertina con
   la larghezza del dorso calcolata in base al numero di fogli.
 
+### Da leggere su tablet o e-reader
+
+- Il **PDF delle pagine** ha link toccabili, come un’agenda digitale: ogni giorno dei
+  calendari, del registro del mese e della vista mensile porta alla sua settimana (o alla
+  pagina del giorno), ogni mese al suo mese, i titoli salgono di un livello (settimana →
+  mese → calendario annuale → indice) e l’indice porta alle sue pagine. In un lettore che
+  segue i link del PDF, come un Onyx Boox o un tablet, basta un tocco.
+- **Segnalibri del lettore**: l’indice laterale del lettore elenca le sezioni, ogni mese e
+  le sue settimane.
+- **Linguette di tutti i mesi** sul bordo di ogni pagina (facoltative): ognuna porta al suo
+  mese.
+- I link nascono da ciò che è stampato, quindi seguono ogni cambio di anno, carta o
+  sezioni. Il pulsante dei link nella barra in alto li mostra sulla pagina e un clic li
+  segue; il pannello di ogni elemento mostra dove porta e permette di togliergli i link o
+  mandarlo a un’altra pagina o a un indirizzo web. Il PDF da stampare non li contiene.
+
 ### I tuoi file e modelli
 
 - **File → Salva** (Ctrl+S) scrive un file `.agenda.json` con immagini e caratteri al suo

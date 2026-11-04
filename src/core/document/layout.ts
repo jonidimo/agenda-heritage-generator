@@ -7,7 +7,7 @@ import type { BlockOverride, CustomBlock, Design, WatermarkPlacement } from '../
 import { fmt as fmtStr } from '../i18n';
 import { inset } from '../layout/box';
 import { LayoutContext, type DocContext } from '../layout/context';
-import { primsBounds, type Block, type PageModel, type Prim } from '../layout/prims';
+import { primsBounds, type Block, type LinkArea, type LinkTarget, type PageModel, type Prim } from '../layout/prims';
 import { dotField, ruledLines, squareGrid } from '../layout/widgets';
 import type { PagePlan, SectionModule } from '../sections/types';
 import { compose, composeAll, IDENTITY, rectContains, rotateAround, scale, transformRect, translate, type Matrix, type Rect } from '../util/geometry';
@@ -185,6 +185,46 @@ function placeCustomBlock(ctx: LayoutContext, cb: CustomBlock, page: PagePlan): 
   ctx.add(`custom.${cb.id}`, String(p.label ?? 'Elemento propio'), prims, { role: 'custom', layer: 15, bbox: box });
 }
 
+/** Caja agrandada para que sea fácil de tocar (se recorta a la página al resolver el enlace). */
+function pad(r: Rect, mm: number): Rect {
+  return { x: r.x - mm, y: r.y - mm, w: r.w + 2 * mm, h: r.h + 2 * mm };
+}
+
+/** Un nivel arriba: día y semana → su mes; páginas del mes → calendario anual; el resto → índice. */
+function upTarget(plan: PagePlan): LinkTarget | null {
+  const month = plan.params?.month as { y: number; m: number } | undefined;
+  if (plan.type === 'weekLeft' || plan.type === 'weekRight' || plan.type === 'daily') return month ? { kind: 'month', y: month.y, m: month.m } : null;
+  if (plan.type === 'filler' || plan.type === 'custom' || plan.type === 'toc' || plan.type === 'titlePage') return null;
+  if (month) return { kind: 'year', y: month.y, m: month.m };
+  return { kind: 'toc' };
+}
+
+/** Bloques de título que llevan un nivel arriba al tocarlos. */
+const TITLE_BLOCKS = new Set(['header.title', 'week.title', 'cover.month']);
+
+function addUpLinks(ctx: LayoutContext, plan: PagePlan): void {
+  const to = upTarget(plan);
+  if (!to) return;
+  for (const b of ctx.blocks) {
+    if (TITLE_BLOCKS.has(b.id) || /^daily\.\d+\.head$/.test(b.id)) ctx.link(b.id, pad(b.bbox, 1), to, 'up');
+  }
+}
+
+/** Adónde lleva el número de página según los ajustes de enlaces. */
+function pageNumberTarget(design: Design, plan: PagePlan): LinkTarget | null {
+  const month = plan.params?.month as { y: number; m: number } | undefined;
+  switch (design.links.pageNumber) {
+    case 'toc':
+      return { kind: 'toc' };
+    case 'year':
+      return month ? { kind: 'year', y: month.y, m: month.m } : { kind: 'year', y: design.calendar.year };
+    case 'month':
+      return month ? { kind: 'month', y: month.y, m: month.m } : null;
+    default:
+      return null;
+  }
+}
+
 function addChrome(ctx: LayoutContext, page: PagePlan, totalPages: number): void {
   const d = ctx.doc.design;
   const pn = d.binding.pageNumbers;
@@ -208,29 +248,39 @@ function addChrome(ctx: LayoutContext, page: PagePlan, totalPages: number): void
         t = ctx.textAt(String(page.index + 1), nx, y, { role: 'number', size: 'labelSmall', align });
       }
     }
-    ctx.add('chrome.pageNumber', 'Número de página', [t.prim], { role: 'chrome', layer: 18 });
+    const back = pageNumberTarget(d, page);
+    ctx.add('chrome.pageNumber', 'Número de página', [t.prim], { role: 'chrome', layer: 18, ...(back ? { links: [{ ...pad(t.bbox, 1.5), to: back, cat: 'pageNumber' }] } : {}) });
   }
   const ti = d.binding.thumbIndex;
   const month = page.params?.month as { y: number; m: number } | undefined;
-  if (ti.enabled && month) {
-    const idx = ctx.doc.cal.months.findIndex((mm) => mm.y === month.y && mm.m === month.m);
-    if (idx >= 0) {
-      const count = ctx.doc.cal.months.length;
-      const area = inset({ x: 0, y: 0, w: ctx.page.w, h: ctx.page.h }, ctx.theme.margins.top, 0, ctx.theme.margins.bottom, 0);
-      const tabH = area.h / count;
-      const np = d.binding.nonPrintable;
-      const x = ctx.page.side === 'recto' ? ctx.page.w - np - ti.width : np;
-      const y = area.y + idx * tabH;
-      const label = ctx.doc.cal.months[idx]!.name.slice(0, 3).toLocaleUpperCase(ctx.doc.locale);
-      const prims: Prim[] = [{ t: 'rect', x, y, w: ti.width, h: tabH, fill: { color: ctx.theme.colors.ink } }];
-      const run = ctx.run(label, { role: 'labelStrong', size: Math.min(6, ti.width * 1.6), tracking: 0.05 });
+  const months = ctx.doc.cal.months;
+  const idx = month ? months.findIndex((mm) => mm.y === month.y && mm.m === month.m) : -1;
+  // «Todos los meses»: índice completo en el borde (el mes de la página resaltado); en el PDF de
+  // páginas cada pestaña lleva a su mes. Va en todas las páginas salvo la portada y las propias.
+  const all = ti.months === 'all';
+  if (ti.enabled && (idx >= 0 || (all && page.type !== 'titlePage' && page.type !== 'custom'))) {
+    const area = inset({ x: 0, y: 0, w: ctx.page.w, h: ctx.page.h }, ctx.theme.margins.top, 0, ctx.theme.margins.bottom, 0);
+    const tabH = area.h / months.length;
+    const np = d.binding.nonPrintable;
+    const x = ctx.page.side === 'recto' ? ctx.page.w - np - ti.width : np;
+    const prims: Prim[] = [];
+    const links: LinkArea[] = [];
+    const tab = (k: number, current: boolean): void => {
+      const mm = months[k]!;
+      const y = area.y + k * tabH;
+      const label = mm.name.slice(0, 3).toLocaleUpperCase(ctx.doc.locale);
+      prims.push(current ? { t: 'rect', x, y, w: ti.width, h: tabH, fill: { color: ctx.theme.colors.ink } } : { t: 'rect', x, y, w: ti.width, h: tabH, fill: ctx.fill('weekend'), stroke: ctx.stroke('hair', '#ffffff') });
+      const run = ctx.run(label, { role: current ? 'labelStrong' : 'label', size: Math.min(6, ti.width * 1.6), tracking: 0.05 });
       prims.push({
         t: 'group',
         m: composeAll(translate(x + ti.width / 2, y + tabH / 2), rotateAround(ctx.page.side === 'recto' ? 90 : -90, 0, 0)),
-        children: [{ t: 'text', run, x: -run.width / 2, y: run.capHeight / 2, color: '#ffffff' }],
+        children: [{ t: 'text', run, x: -run.width / 2, y: run.capHeight / 2, color: current ? '#ffffff' : ctx.theme.colors.ink }],
       });
-      ctx.add('chrome.thumb', 'Pestaña del mes', prims, { role: 'chrome', layer: 18, editable: false });
-    }
+      links.push({ x, y, w: ti.width, h: tabH, to: { kind: 'month', y: mm.y, m: mm.m }, cat: all ? 'months' : 'up' });
+    };
+    if (all) months.forEach((_, k) => tab(k, k === idx));
+    else tab(idx, true);
+    ctx.add('chrome.thumb', all ? 'Índice de meses' : 'Pestaña del mes', prims, { role: 'chrome', layer: 18, editable: false, links });
   }
 }
 
@@ -250,6 +300,7 @@ export function layoutPage(doc: DocContext, plan: PagePlan, registry: ReadonlyMa
       ctx.warn('layoutError', `Error al maquetar: ${(err as Error).message}`, { error: (err as Error).message });
     }
   }
+  addUpLinks(ctx, plan);
   for (const cb of design.customBlocks) {
     if (cb.pageType === plan.type && (cb.pageKey === null || cb.pageKey === plan.key)) placeCustomBlock(ctx, cb, plan);
   }

@@ -65,7 +65,13 @@ export function PageView({ doc, index, scale, interactive = true }: Props) {
   const scope = useStore((s) => s.scope);
   const showGuides = useStore((s) => s.guides);
   const snapOn = useStore((s) => s.snap);
+  const showLinks = useStore((s) => s.showLinks);
+  const goToPage = useStore((s) => s.goToPage);
   const t = useT();
+  // Zonas tocables del PDF de páginas: se ven en celeste y un clic lleva al destino, como en el lector.
+  const links = useMemo(() => (showLinks && interactive ? doc.links(index) : []), [showLinks, interactive, doc, index]);
+  const linkTitle = (l: (typeof links)[number]): string =>
+    l.page !== undefined ? `→ ${doc.pageLabel(l.page)} · ${t('nav.page', { n: l.page + 1 })}` : `→ ${l.url ?? ''}`;
 
   // Cambia de identidad cuando llega una vista previa de imagen/PDF: así se vuelve a dibujar la página.
   const hrefFor = useMemo(() => {
@@ -387,6 +393,29 @@ export function PageView({ doc, index, scale, interactive = true }: Props) {
         )}
         {marquee && <rect x={marquee.x} y={marquee.y} width={marquee.w} height={marquee.h} fill="#4f6b3a14" stroke="#4f6b3a" strokeWidth={1 / scale} strokeDasharray={`${3 / scale} ${2 / scale}`} pointerEvents="none" />}
       </svg>
+      {links.length > 0 && (
+        <div className="pointer-events-none absolute inset-0" data-links={links.length}>
+          {links.map((l, i) => (
+            <button
+              key={i}
+              type="button"
+              tabIndex={-1}
+              data-link-to={l.page ?? l.url}
+              className={`pointer-events-auto absolute rounded-[2px] border border-[#2563eb]/70 bg-[#2563eb]/15 hover:bg-[#2563eb]/30 ${l.cat === 'manual' ? 'border-dashed' : ''}`}
+              style={{ left: l.rect.x * scale, top: l.rect.y * scale, width: l.rect.w * scale, height: l.rect.h * scale }}
+              title={linkTitle(l)}
+              aria-label={linkTitle(l)}
+              // El enlace no selecciona ni arrastra el elemento de abajo: lo sigue.
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation();
+                if (l.page !== undefined) goToPage(l.page);
+                else if (l.url) window.open(l.url, '_blank', 'noopener,noreferrer');
+              }}
+            />
+          ))}
+        </div>
+      )}
       {interactive && single && selBounds && selected?.editable && (
         <>
           {/* Capa del elemento seleccionado: con el dedo se arrastra desde acá sin desplazar la página. */}

@@ -53,6 +53,12 @@ export const es = {
   toc: {
     title: 'Índice',
   },
+  /** Marcadores del PDF (índice lateral del lector). */
+  outline: {
+    cover: 'Portada',
+    dedication: 'Dedicatoria',
+    monthLog: 'Registro del mes',
+  },
   yearOverview: {
     title: 'CALENDARIO ANUAL',
     holidays: 'Feriados',

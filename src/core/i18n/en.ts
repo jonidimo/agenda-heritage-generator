@@ -49,6 +49,11 @@ export const en: AgendaStrings = {
   toc: {
     title: 'Contents',
   },
+  outline: {
+    cover: 'Cover',
+    dedication: 'Dedication',
+    monthLog: 'Monthly log',
+  },
   yearOverview: {
     title: 'YEAR AT A GLANCE',
     holidays: 'Holidays',

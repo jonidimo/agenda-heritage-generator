@@ -19,6 +19,7 @@ import { fileURLToPath } from 'node:url';
 import { createDesign, TEMPLATES, type TemplateId } from '../core/design/defaults';
 import { parseDesign, type Design } from '../core/design/schema';
 import { AgendaDocument, type ExportKind } from '../core/document';
+import { buildOutline } from '../core/document/links';
 import { describeSignatures } from '../core/imposition/signatures';
 import { pageToSvg } from '../core/render/svg';
 import { facesForDesign, loadAssets, loadBuiltinFonts, loadFontManifest, loadHolidayData, type ResourceIO } from '../core/resources';
@@ -70,6 +71,17 @@ async function cmdInfo(path: string): Promise<void> {
   console.log(`Páginas: ${p.pages.length} (contenido ${p.contentPages}, relleno de paridad ${p.parityFillers}, relleno de cuadernillo ${p.signatureFillers})`);
   console.log(`Página: ${doc.format.w.toFixed(1)} × ${doc.format.h.toFixed(1)} mm · hoja ${doc.format.sheetW.toFixed(1)} × ${doc.format.sheetH.toFixed(1)} mm · ${doc.format.nUp} por cara`);
   console.log(`Hojas de papel: ${p.signatures.totalSheets} · ${describeSignatures(p.signatures)}`);
+  if (design.links.enabled || design.links.bookmarks) {
+    let links = 0;
+    let withLinks = 0;
+    for (let i = 0; i < doc.pageCount; i++) {
+      const n = doc.links(i).length;
+      links += n;
+      if (n > 0) withLinks++;
+    }
+    const marks = design.links.bookmarks ? buildOutline(doc.ctx, p.pages).reduce((s, o) => s + 1 + o.children.length, 0) : 0;
+    console.log(`Enlaces del PDF de páginas: ${links} en ${withLinks} páginas · marcadores: ${marks}`);
+  }
   const warnings = doc.warnings();
   const general = doc.documentWarnings();
   console.log(`Avisos: ${warnings.length + errors.length + general.length}`);

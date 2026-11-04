@@ -9,9 +9,11 @@ planners on your computer.
 - **Releases** (recommended): open the repository's
   [Releases](https://github.com/jonidimo/agenda-heritage-generator/releases) page and pick
   the file for your system under **Assets**.
-- **Latest build**: in the **Actions** tab, open the **Desktop apps** workflow, click a
-  finished run and download the artifact for your system at the bottom of the page. You
-  must be signed in to GitHub. Artifacts are zip files and expire after 90 days by default.
+- **Latest build**: every change to the app on the `main` and `refactor-v2` branches
+  builds new installers. In the **Actions** tab, open the **Desktop apps** workflow, click
+  the latest finished run and download the artifact for your system at the bottom of the
+  page. You must be signed in to GitHub. Artifacts are zip files and expire after 90 days
+  by default.
 
 | System | File | Notes |
 | --- | --- | --- |
@@ -135,7 +137,12 @@ a **View** menu with **Reload** and **Toggle Developer Tools**.
    Releases page.
 
 To build the installers without publishing anything, open **Actions → Desktop apps → Run
-workflow**: the files appear as artifacts of that run.
+workflow**: the files appear as artifacts of that run. GitHub shows that button only once
+the workflow file is on the default branch (`main`).
+
+If the macOS job is cancelled after about 15 minutes without starting, GitHub had no Mac
+machine free for it; the Linux and Windows files of that run are fine. Open the run and
+click **Re-run failed jobs** to try the Mac again.
 
 ## How it works
 

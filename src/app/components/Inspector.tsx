@@ -30,7 +30,8 @@ import {
   Trash2,
   Type,
 } from 'lucide-react';
-import { useEffect, useState, type ReactNode } from 'react';
+import { safeUrl } from '@core/document/links';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { blockLabel, warningText } from '../i18n/messages';
 import { sectionName, useT } from '../i18n/ui';
 import { addAssetFiles, pickFiles } from '../state/uploads';
@@ -39,6 +40,7 @@ import {
   alignBlocks,
   centerBlocks,
   clampMoveDelta,
+  currentBlockLink,
   currentOverride,
   distributeBlocks,
   hideBlock,
@@ -50,6 +52,7 @@ import {
   resetBlock,
   resetBlocks,
   resetPageStyle,
+  setBlockLink,
   setPageStyle,
   tidyBlocks,
   typeMirrored,
@@ -57,7 +60,7 @@ import {
 } from '../state/actions';
 import { useDocument } from '../state/doc';
 import { useStore } from '../state/store';
-import { Button, Field, NumberInput, Segmented, Select, Slider, TextArea, Toggle } from './ui';
+import { Button, Field, NumberInput, Segmented, Select, Slider, TextArea, TextInput, Toggle } from './ui';
 
 export function Inspector({ doc }: { doc: AgendaDocument }) {
   const t = useT();
@@ -139,6 +142,7 @@ export function Inspector({ doc }: { doc: AgendaDocument }) {
                 )}
               </div>
             )}
+            <LinkFields doc={doc} page={page} block={block} scope={scope} setScope={setScope} showScope={!(block.editable && block.role !== 'watermark' && block.role !== 'custom')} />
             <p className="mt-3 text-[11px] text-ink-soft">{t('insp.keys')}</p>
             <p className="mt-1 text-[11px] text-ink-soft">{t('multi.hint')}</p>
           </div>
@@ -477,6 +481,104 @@ function CustomFields({ id }: { id: string }) {
       )}
       {(cb.kind === 'lines' || cb.kind === 'dots' || cb.kind === 'grid') && (
         <Slider label={t('style.pitch')} value={Number(p.pitch ?? 6)} min={3} max={12} step={0.1} onChange={(v) => setProp('pitch', v)} />
+      )}
+    </div>
+  );
+}
+
+/**
+ * Enlaces del elemento en el PDF de páginas: adónde lleva hoy (automáticos o a mano) y elegir otro
+ * destino (una página, una dirección web) o ninguno, para su tipo de página o solo para esta.
+ */
+function LinkFields(props: { doc: AgendaDocument; page: PageModel; block: Block; scope: 'type' | 'page'; setScope: (s: 'type' | 'page') => void; showScope: boolean }) {
+  const { doc, page, block, scope, setScope } = props;
+  const t = useT();
+  const design = useStore((s) => s.design)!;
+  const showLinks = useStore((s) => s.showLinks);
+  const setShowLinks = useStore((s) => s.setShowLinks);
+  const goToPage = useStore((s) => s.goToPage);
+  // Un elemento propio de una sola página (o una página propia) se enlaza solo en esa página.
+  const custom = block.role === 'custom' ? design.customBlocks.find((c) => `custom.${c.id}` === block.id) : undefined;
+  const level: 'type' | 'page' = page.type === 'custom' || (custom && custom.pageKey !== null) ? 'page' : scope;
+  const own = currentBlockLink(design, page, block.id, level);
+  const byType = level === 'page' ? currentBlockLink(design, page, block.id, 'type') : undefined;
+  const shown = own ?? byType;
+  const mode = shown?.mode ?? 'auto';
+  const links = doc.links(page.index).filter((l) => l.blockId === block.id);
+  // Un renglón por destino (los siete días de una semana llevan a la misma página).
+  const groups = [...links.reduce((m, l) => m.set(l.page ?? l.url ?? '', { l, n: (m.get(l.page ?? l.url ?? '')?.n ?? 0) + 1 }), new Map<number | string, { l: (typeof links)[number]; n: number }>()).values()];
+  const autoCount = block.links?.length ?? 0;
+  const pages = useMemo(() => doc.plan.pages.filter((p) => p.type !== 'filler').map((p) => ({ value: p.key, label: `${p.index + 1} · ${doc.pageLabel(p.index)}` })), [doc]);
+  const home = doc.plan.pages.find((p) => p.type === 'toc') ?? doc.plan.pages.find((p) => p.type === 'yearOverview') ?? doc.plan.pages[0];
+  const set = (link: Parameters<typeof setBlockLink>[3]): void => setBlockLink(page, block.id, level, link, `link:${block.id}:${link.mode}`);
+  const urlOk = mode !== 'url' || safeUrl(shown?.url ?? '') !== null;
+  const label = (l: (typeof links)[number]): string => (l.page !== undefined ? `${doc.pageLabel(l.page)} · ${t('nav.page', { n: l.page + 1 })}` : (l.url ?? ''));
+  return (
+    <div className="mt-3 border-t border-line pt-2" data-testid="link-fields">
+      <div className="mb-1 flex items-center justify-between gap-2">
+        <h4 className="text-[11px] font-extrabold tracking-[0.08em] uppercase">{t('link.title')}</h4>
+        <button type="button" className="text-[11.5px] text-accent underline" onClick={() => setShowLinks(!showLinks)}>
+          {showLinks ? t('link.hide') : t('link.show')}
+        </button>
+      </div>
+      {!design.links.enabled && <p className="mb-1 text-[11px] leading-snug text-warn">{t('link.allOff')}</p>}
+      {props.showScope && level === scope && page.type !== 'custom' && (
+        <Field label={t('insp.scope')} group>
+          <Segmented
+            value={scope}
+            onChange={setScope}
+            options={[
+              { value: 'type', label: t('insp.scopeType') },
+              { value: 'page', label: t('insp.scopePage') },
+            ]}
+          />
+        </Field>
+      )}
+      <Field label={t('link.mode')}>
+        <Select
+          value={mode}
+          ariaLabel={t('link.mode')}
+          onChange={(v) => set(v === 'page' ? { mode: 'page', page: shown?.page || home?.key || '' } : { mode: v })}
+          options={[
+            { value: 'auto', label: autoCount > 0 ? t('link.auto', { n: autoCount }) : t('link.autoNone') },
+            { value: 'none', label: t('link.none') },
+            { value: 'page', label: t('link.page') },
+            { value: 'url', label: t('link.url') },
+          ]}
+        />
+      </Field>
+      {level === 'page' && !own && byType && <p className="mb-1 text-[11px] leading-snug text-ink-soft">{t('insp.inherits')}</p>}
+      {mode === 'page' && (
+        <Field label={t('link.target')}>
+          <Select value={shown?.page ?? ''} ariaLabel={t('link.target')} onChange={(v) => set({ mode: 'page', page: v })} options={pages.some((o) => o.value === shown?.page) ? pages : [{ value: shown?.page ?? '', label: t('link.missing') }, ...pages]} />
+        </Field>
+      )}
+      {mode === 'url' && (
+        <Field label={t('link.address')} hint={urlOk ? t('link.urlHint') : t('link.urlBad')}>
+          <TextInput value={shown?.url ?? ''} placeholder="https://" ariaLabel={t('link.address')} onChange={(v) => set({ mode: 'url', url: v })} />
+        </Field>
+      )}
+      {groups.length > 0 ? (
+        <ul className="mt-1 space-y-0.5 text-[11.5px]">
+          {groups.slice(0, 8).map(({ l, n }, i) => (
+            <li key={i} className="flex items-center justify-between gap-2">
+              <span className="min-w-0 truncate" title={label(l)}>
+                → {label(l)}
+              </span>
+              <span className="flex shrink-0 items-center gap-2">
+                {n > 1 && <span className="text-ink-soft tabular-nums">×{n}</span>}
+                {l.page !== undefined && (
+                  <button type="button" className="text-accent underline" onClick={() => goToPage(l.page!)}>
+                    {t('pre.go')}
+                  </button>
+                )}
+              </span>
+            </li>
+          ))}
+          {groups.length > 8 && <li className="text-ink-soft">{t('link.more', { n: groups.length - 8 })}</li>}
+        </ul>
+      ) : (
+        <p className="text-[11px] leading-snug text-ink-soft">{t('link.noneHere')}</p>
       )}
     </div>
   );

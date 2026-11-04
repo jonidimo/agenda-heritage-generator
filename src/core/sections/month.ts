@@ -7,7 +7,7 @@ import { weekdayLabel, weekdayLetter } from '../calendar/locale';
 import { fmt } from '../i18n';
 import { centerIn, cols, flex, grid, hsplit, inset, rows, takeBottom, takeTop, vsplit } from '../layout/box';
 import type { LayoutContext } from '../layout/context';
-import { circle, line, rect, type Prim } from '../layout/prims';
+import { circle, line, rect, type LinkArea, type Prim } from '../layout/prims';
 import { heartIcon, isSouthern, moonIcon, ruledLines, sectionHeader, writingArea } from '../layout/widgets';
 import { TABULAR_FEATURES } from '../text/shape';
 import { ptToMm, type Rect } from '../util/geometry';
@@ -166,7 +166,9 @@ export const monthLog: SectionModule = {
         }
       }
       if (moon && day.moon) p.push(...moonIcon(ctx, rest!.x + rest!.w - 1.5, row.y + row.h / 2, Math.min(1.4, row.h * 0.26), day.moon, south(ctx)));
-      ctx.add(`day.${day.d}`, `${day.d}`, p, { bbox: row });
+      // Solo el número y la inicial del día son tocables: el resto del renglón es para escribir.
+      const tap = { x: row.x, y: row.y, w: rest!.x - row.x, h: row.h };
+      ctx.add(`day.${day.d}`, `${day.d}`, p, { bbox: row, links: [{ ...tap, to: { kind: 'date', iso: day.iso }, cat: 'days' }] });
     });
   },
 };
@@ -207,10 +209,13 @@ export const monthGrid: SectionModule = {
       const row = rowRects[wi]!;
       const cells = hsplit(row, tracks);
       const wp: Prim[] = [line(row.x, row.y, row.x + row.w, row.y, ctx.stroke('rule', 'ink'))];
+      const links: LinkArea[] = [];
       colIdx.forEach((ci, k) => {
         const day = week[ci]!;
         const cell = cells[k]!;
         wp.push(...gridCell(ctx, day, cell, month, wi === 0 && k === 0));
+        // La esquina del número es tocable; el resto de la casilla queda para escribir.
+        if (day.m === month.m && day.y === month.y) links.push({ x: cell.x, y: cell.y, w: Math.min(cell.w, 8), h: Math.min(cell.h, 6.5), to: { kind: 'date', iso: day.iso }, cat: 'days' });
         if (k > 0) wp.push(line(cell.x, row.y, cell.x, row.y + row.h, ctx.stroke('hair')));
       });
       if (notesCol) {
@@ -219,7 +224,7 @@ export const monthGrid: SectionModule = {
         wp.push(...ruledLines(inset(nc, 0, 1.5), Math.max(5, ctx.theme.writing.pitch), ctx.stroke('hair')));
       }
       if (wi === weeks.length - 1) wp.push(line(row.x, row.y + row.h, row.x + row.w, row.y + row.h, ctx.stroke('rule', 'ink')));
-      ctx.add(`grid.week.${wi}`, `Semana ${wi + 1}`, wp);
+      ctx.add(`grid.week.${wi}`, `Semana ${wi + 1}`, wp, { links });
     });
   },
 };

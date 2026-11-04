@@ -102,6 +102,23 @@ ningún lado.
 - Hoja de calibración, plantilla de perforado para las estaciones de costura y una tapa
   con el ancho del lomo calculado según la cantidad de hojas.
 
+### Para leer en tableta o lector
+
+- El **PDF de páginas** viene con enlaces tocables, como una agenda digital: cada día de
+  los calendarios, del registro del mes y de la vista mensual lleva a su semana (o a su
+  página del día), cada mes a su mes, los títulos suben un nivel (semana → mes →
+  calendario anual → índice) y el índice lleva a sus páginas. En un lector que siga los
+  enlaces del PDF, como un Onyx Boox o una tableta, alcanza con tocar.
+- **Marcadores del lector**: el índice lateral del lector tiene las secciones, cada mes y
+  sus semanas.
+- **Pestañas de todos los meses** en el borde de cada página (opcional): cada una lleva a
+  su mes.
+- Los enlaces salen de lo que está impreso, así que acompañan cualquier cambio de año,
+  papel o secciones. El botón de enlaces de la barra de arriba los muestra sobre la página
+  y un clic los sigue; el panel de cada elemento muestra adónde lleva y permite quitarle
+  los enlaces o mandarlo a otra página o a una dirección web. El PDF para imprimir no los
+  lleva.
+
 ### Tus archivos y plantillas
 
 - **Archivo → Guardar** (Ctrl+S) escribe un archivo `.agenda.json` con sus imágenes y

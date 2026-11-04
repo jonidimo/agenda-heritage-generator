@@ -11,7 +11,21 @@ import { langOf } from '../i18n';
 import type { FontFace, FontRegistry } from '../text/fonts';
 import { fitSize, shapeText, wrapText, type ShapedRun } from '../text/shape';
 import { ptToMm, type Rect } from '../util/geometry';
-import { primsBounds, type Block, type BlockRole, type Fill, type PageWarning, type Prim, type Side, type Stroke, type TextPrim, type WarningCode } from './prims';
+import {
+  primsBounds,
+  type Block,
+  type BlockRole,
+  type Fill,
+  type LinkArea,
+  type LinkCategory,
+  type LinkTarget,
+  type PageWarning,
+  type Prim,
+  type Side,
+  type Stroke,
+  type TextPrim,
+  type WarningCode,
+} from './prims';
 
 export type TextRole = keyof ThemeTokens['fonts'];
 export type SizeKey = keyof ThemeTokens['sizes'];
@@ -246,7 +260,7 @@ export class LayoutContext {
 
   /* ---------- Bloques ---------- */
 
-  add(id: string, label: string, prims: Prim[], opts: { role?: BlockRole; editable?: boolean; layer?: number; bbox?: Rect } = {}): Block {
+  add(id: string, label: string, prims: Prim[], opts: { role?: BlockRole; editable?: boolean; layer?: number; bbox?: Rect; links?: LinkArea[] } = {}): Block {
     const bbox = opts.bbox ?? primsBounds(prims) ?? { x: 0, y: 0, w: 0, h: 0 };
     const block: Block = {
       id,
@@ -256,9 +270,17 @@ export class LayoutContext {
       role: opts.role ?? 'content',
       editable: opts.editable ?? true,
       layer: opts.layer ?? 10,
+      ...(opts.links && opts.links.length > 0 ? { links: opts.links } : {}),
     };
     this.blocks.push(block);
     return block;
+  }
+
+  /** Suma un enlace a un bloque ya creado (p. ej. el título de la página que lleva un nivel arriba). */
+  link(blockId: string, area: Rect, to: LinkTarget, cat: LinkCategory): void {
+    const b = this.blocks.find((x) => x.id === blockId);
+    if (!b) return;
+    (b.links ??= []).push({ x: area.x, y: area.y, w: area.w, h: area.h, to, cat });
   }
 
   warn(code: WarningCode, message: string, params: Record<string, string | number> = {}): void {

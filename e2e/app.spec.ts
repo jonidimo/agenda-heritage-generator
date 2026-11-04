@@ -322,3 +322,62 @@ test.describe('archivos y plantillas', () => {
     expect(backup.designs.length).toBeGreaterThanOrEqual(1);
   });
 });
+
+test.describe('enlaces para leer en tableta', () => {
+  type LinksState = { design: { links: { dayTarget: string; blocks: Array<{ blockId: string; pageKey: string | null; mode: string; url: string }> } } };
+  const links = (page: Page) => page.evaluate(() => (globalThis as unknown as { __agenda: { getState: () => LinksState } }).__agenda.getState().design.links);
+  const areas = (page: Page) => page.locator('[data-page-type="yearOverview"] [data-link-to]');
+
+  test('el calendario anual muestra sus enlaces y un clic en un día lleva a su semana', async ({ page }) => {
+    await open(page);
+    await page.evaluate(() => (globalThis as unknown as { __agenda: StoreHandle }).__agenda.getState().goToPage(7));
+    await page.getByRole('button', { name: 'Ver y seguir los enlaces del PDF' }).click();
+    // Los dos calendarios del pliego: 365 días y 12 meses (más el título de la segunda página).
+    await expect.poll(async () => areas(page).count()).toBeGreaterThan(370);
+    const day = areas(page).and(page.locator('[title*="Semana 9 "]')).first();
+    const to = Number(await day.getAttribute('data-link-to'));
+    await day.click();
+    await expect.poll(async () => (await state(page)).pageIndex).toBe(to);
+    await expect(page.locator('[data-page-type="weekLeft"]')).toBeVisible();
+    // El título de la semana sube al mes.
+    await expect(page.locator('[data-page-type="weekLeft"] [data-link-to]').first()).toHaveAttribute('title', /Marzo 2027/);
+  });
+
+  test('en el panel del elemento se le quitan los enlaces o se le pone uno a mano', async ({ page }) => {
+    await open(page);
+    await page.evaluate(() => (globalThis as unknown as { __agenda: StoreHandle }).__agenda.getState().goToPage(7));
+    // Seleccionar marzo (por la fila de iniciales, que no es un enlace).
+    const box = (await page.locator('[data-page-type="yearOverview"] [data-block="month.3"]').first().boundingBox())!;
+    await page.mouse.click(box.x + box.width / 2, box.y + box.height * 0.14);
+    const panel = page.getByTestId('link-fields');
+    const mode = panel.getByRole('combobox', { name: 'Al tocarlo en el PDF' });
+    await expect(mode).toHaveValue('auto');
+    await page.getByRole('button', { name: 'Ver y seguir los enlaces del PDF' }).click();
+    const before = await areas(page).count();
+    await mode.selectOption('none');
+    await expect.poll(async () => (await links(page)).blocks).toEqual([expect.objectContaining({ blockId: 'month.3', pageKey: null, mode: 'none' })]);
+    await expect.poll(async () => areas(page).count()).toBe(before - 32);
+    await mode.selectOption('url');
+    await panel.getByRole('textbox', { name: 'Dirección' }).fill('https://example.org/marzo');
+    await expect.poll(async () => (await links(page)).blocks[0]?.url).toBe('https://example.org/marzo');
+    await expect(page.locator('[data-page-type="yearOverview"] [data-link-to="https://example.org/marzo"]')).toHaveCount(1);
+    await mode.selectOption('auto');
+    await expect.poll(async () => (await links(page)).blocks).toEqual([]);
+    await expect.poll(async () => areas(page).count()).toBe(before);
+  });
+
+  test('ajustes de enlaces y PDF de páginas con enlaces y marcadores', async ({ page }) => {
+    test.setTimeout(240_000);
+    await open(page);
+    await page.getByRole('button', { name: 'Imprimir / exportar' }).click();
+    await page.getByRole('button', { name: 'Enlaces y marcadores (tableta o lector)' }).click();
+    await page.getByLabel('Los días llevan a').selectOption('month');
+    await expect.poll(async () => (await links(page)).dayTarget).toBe('month');
+    const [dl] = await Promise.all([page.waitForEvent('download', { timeout: 200_000 }), page.getByRole('button', { name: 'PDF de páginas' }).click()]);
+    const { readFileSync } = await import('node:fs');
+    const pdf = readFileSync((await dl.path())!).toString('latin1');
+    expect(pdf).toContain('/Subtype /Link');
+    expect(pdf).toContain('/Outlines');
+    expect(pdf).toContain('/Lang (es-AR)');
+  });
+});

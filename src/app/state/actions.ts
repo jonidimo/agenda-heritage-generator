@@ -3,7 +3,7 @@
  * lienzo: mover, escalar, ocultar o restablecer bloques; mover marcas de agua y
  * elementos propios respetando sus anclajes y su espejado.
  */
-import type { BlockOverride, CustomBlock, Design } from '@core/design/schema';
+import type { BlockLink, BlockOverride, CustomBlock, Design } from '@core/design/schema';
 import { newId } from '@core/util/hash';
 import type { Block, PageModel } from '@core/layout/prims';
 import type { Rect } from '@core/util/geometry';
@@ -316,11 +316,42 @@ export function hideBlocks(page: PageModel, blocks: Block[], scope: Scope): void
         } else if (!wm.exclude.includes(page.type)) wm.exclude.push(page.type);
       } else if (block.role === 'custom' && block.id.startsWith('custom.')) {
         d.customBlocks = d.customBlocks.filter((c) => c.id !== block.id.slice(7));
+        // Sus enlaces a mano se van con él.
+        d.links.blocks = d.links.blocks.filter((l) => l.blockId !== block.id);
       } else {
         upsertOverride(d, page, block.id, sc, (o) => void (o.hidden = true), mirrored);
       }
     }
   });
+}
+
+/* ---------- Enlaces ---------- */
+
+/** Enlace a mano de un elemento en el alcance elegido (por tipo o en esta página), si lo hay. */
+export function currentBlockLink(design: Design, page: PageModel, blockId: string, scope: Scope): BlockLink | undefined {
+  const key = effectiveScope(page, scope) === 'page' ? page.key : null;
+  return design.links.blocks.find((l) => l.blockId === blockId && l.pageType === page.type && l.pageKey === key);
+}
+
+/**
+ * Elige el enlace de un elemento: `auto` vuelve a los automáticos (en una página solo se guarda si
+ * su tipo dice otra cosa), `none` se los quita, `page` y `url` ponen uno a mano que cubre el elemento.
+ */
+export function setBlockLink(page: PageModel, blockId: string, scope: Scope, link: Pick<BlockLink, 'mode'> & Partial<Pick<BlockLink, 'page' | 'url'>>, coalesce?: string): void {
+  const key = effectiveScope(page, scope) === 'page' ? page.key : null;
+  useStore.getState().update((d) => {
+    const list = d.links.blocks;
+    const at = list.findIndex((l) => l.blockId === blockId && l.pageType === page.type && l.pageKey === key);
+    const byType = key === null ? undefined : list.find((l) => l.blockId === blockId && l.pageType === page.type && l.pageKey === null);
+    if (link.mode === 'auto' && (key === null || !byType || byType.mode === 'auto')) {
+      if (at >= 0) list.splice(at, 1);
+      return;
+    }
+    const prev = at >= 0 ? list[at] : undefined;
+    const entry: BlockLink = { pageType: page.type, pageKey: key, blockId, mode: link.mode, page: link.page ?? prev?.page ?? '', url: link.url ?? prev?.url ?? '' };
+    if (at >= 0) list[at] = entry;
+    else list.push(entry);
+  }, coalesce);
 }
 
 export function currentOverride(design: Design, page: PageModel, blockId: string, scope: Scope): BlockOverride | undefined {

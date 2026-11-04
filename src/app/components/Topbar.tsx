@@ -1,4 +1,4 @@
-import { Archive, BookOpen, Columns2, File, FileDown, FolderOpen, Grid3x3, LayoutTemplate, Magnet, Maximize, PanelLeft, Printer, Redo2, Ruler, Save, Undo2, Upload, ZoomIn, ZoomOut } from 'lucide-react';
+import { Archive, BookOpen, Columns2, File, FileDown, FolderOpen, Grid3x3, LayoutTemplate, Link2, Magnet, Maximize, PanelLeft, Printer, Redo2, Ruler, Save, Undo2, Upload, ZoomIn, ZoomOut } from 'lucide-react';
 import { backupAll, openAnyFile, saveCurrent } from '../state/fileActions';
 import { openMenuAt } from './ContextMenu';
 import { useT, type UiLang } from '../i18n/ui';
@@ -29,6 +29,8 @@ export function Topbar() {
   const toggleGuides = useStore((s) => s.toggleGuides);
   const snap = useStore((s) => s.snap);
   const toggleSnap = useStore((s) => s.toggleSnap);
+  const showLinks = useStore((s) => s.showLinks);
+  const setShowLinks = useStore((s) => s.setShowLinks);
 
   return (
     <header className="flex flex-wrap items-center gap-2 border-b border-line bg-paper px-2 py-1.5">
@@ -106,6 +108,9 @@ export function Topbar() {
         </IconButton>
         <IconButton label={t('top.snap')} onClick={toggleSnap} active={snap}>
           <Magnet size={16} />
+        </IconButton>
+        <IconButton label={t('top.links')} onClick={() => setShowLinks(!showLinks)} active={showLinks}>
+          <Link2 size={17} />
         </IconButton>
       </div>
       <select aria-label={t('top.lang')} className="rounded-md border border-line bg-white px-1.5 py-1 text-[12px]" value={lang} onChange={(e) => setLang(e.target.value as UiLang)}>

@@ -115,6 +115,33 @@ export type Prim = LinePrim | RectPrim | CirclePrim | PathPrim | DotsPrim | Text
 /** `writing`: áreas de renglones, puntos o cuadrícula (su estilo se ajusta por tipo de página o por página). */
 export type BlockRole = 'content' | 'decoration' | 'watermark' | 'custom' | 'artwork' | 'chrome' | 'writing';
 
+/**
+ * Adónde lleva un enlace del PDF. Son destinos con sentido (un día, un mes, una página por su
+ * clave), no números de página: el documento los traduce según las secciones que tenga la agenda,
+ * así siguen bien aunque cambien el año, el papel o las secciones.
+ */
+export type LinkTarget =
+  | { kind: 'date'; iso: string }
+  | { kind: 'month'; y: number; m: number }
+  /** Calendario anual de ese año (la página que muestra el mes `m`, si se indica). */
+  | { kind: 'year'; y: number; m?: number }
+  | { kind: 'toc' }
+  | { kind: 'page'; key: string }
+  | { kind: 'url'; href: string };
+
+/** Familias de enlaces automáticos: cada una se activa o no en los ajustes de enlaces. */
+export type LinkCategory = 'days' | 'months' | 'up' | 'toc' | 'pageNumber';
+
+/** Zona tocable de un bloque, en mm de página antes de la transformación del bloque. */
+export interface LinkArea {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  to: LinkTarget;
+  cat: LinkCategory;
+}
+
 /** Unidad editable de una página: se puede seleccionar, mover, escalar u ocultar. */
 export interface Block {
   /** Identificador estable dentro del tipo de página (p. ej. `header.title`, `day.3.label`). */
@@ -130,6 +157,8 @@ export interface Block {
   /** Transformación final (ajustes del editor). */
   m?: Matrix;
   opacity?: number;
+  /** Enlaces automáticos dentro del bloque (días, meses, títulos…); se mueven con él. */
+  links?: LinkArea[];
 }
 
 export type Side = 'recto' | 'verso';
@@ -165,7 +194,9 @@ export type WarningCode =
   | 'holidaysMissing'
   | 'holidaysRange'
   /** Informativo: un texto (feriado, fecha propia) se abrevió con «…» para entrar. */
-  | 'abbreviated';
+  | 'abbreviated'
+  /** Un enlace elegido a mano lleva a una página que ya no existe o a una dirección no válida. */
+  | 'brokenLink';
 
 export interface PageWarning {
   code: WarningCode;

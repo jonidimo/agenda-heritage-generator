@@ -53,6 +53,8 @@ interface StoreState {
   sidebarOpen: boolean;
   guides: boolean;
   snap: boolean;
+  /** Muestra en la página las zonas tocables del PDF (y un clic las sigue). */
+  showLinks: boolean;
   /** Aviso para el usuario (errores de carga, archivos inválidos…). */
   notice: string | null;
   /** Página a la que ir en cuanto exista (p. ej. una página propia recién creada). */
@@ -82,6 +84,7 @@ interface StoreState {
   setSidebarOpen(b: boolean): void;
   toggleGuides(): void;
   toggleSnap(): void;
+  setShowLinks(b: boolean): void;
 }
 
 const HISTORY_LIMIT = 150;
@@ -165,6 +168,7 @@ export const useStore = create<StoreState>((set, get) => ({
   sidebarOpen: true,
   guides: false,
   snap: true,
+  showLinks: false,
   notice: null,
   goToKey: null,
   updateReady: false,
@@ -255,4 +259,5 @@ export const useStore = create<StoreState>((set, get) => ({
   setSidebarOpen: (sidebarOpen) => set({ sidebarOpen }),
   toggleGuides: () => set((s) => ({ guides: !s.guides })),
   toggleSnap: () => set((s) => ({ snap: !s.snap })),
+  setShowLinks: (showLinks) => set({ showLinks }),
 }));

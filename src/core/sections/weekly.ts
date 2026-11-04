@@ -8,7 +8,7 @@ import { weekdayLabel, weekdayLetter } from '../calendar/locale';
 import { fmt } from '../i18n';
 import { flex, hsplit, rows, takeBottom, takeTop } from '../layout/box';
 import type { LayoutContext } from '../layout/context';
-import { circle, line, rect, type Prim } from '../layout/prims';
+import { circle, line, rect, type LinkArea, type Prim } from '../layout/prims';
 import { checkCircle, heartIcon, isSouthern, miniCalendar, moonIcon, ruledLines, signifierIcon, writingArea, type Signifier } from '../layout/widgets';
 import { TABULAR_FEATURES } from '../text/shape';
 import { ptToMm, type Rect } from '../util/geometry';
@@ -64,8 +64,10 @@ export const weeks: SectionModule = {
         }
         continue;
       }
-      out.push(draft(week, month, item.id, 'left', 'weekLeft', { startOn: 'verso', params: { ...item.options, variant } }));
-      out.push(draft(week, month, item.id, 'right', 'weekRight', { params: { ...item.options, variant } }));
+      // `days`: los días que muestra cada página (los enlaces de un día llevan a la página que lo tiene).
+      const daysOf = (left: boolean): string[] => week.days.slice(...weekSplit(variant, left)).map((d) => d.iso);
+      out.push(draft(week, month, item.id, 'left', 'weekLeft', { startOn: 'verso', params: { ...item.options, variant, days: daysOf(true) } }));
+      out.push(draft(week, month, item.id, 'right', 'weekRight', { params: { ...item.options, variant, days: daysOf(false) } }));
     }
     return out;
   },
@@ -79,6 +81,13 @@ export const weeks: SectionModule = {
     return horizontalWeek(ctx, page, week, left);
   },
 };
+
+/** Qué días de la semana van en cada página según la variante (desde, hasta: índices dentro de la semana). */
+export function weekSplit(variant: string, left: boolean): [number, number] {
+  if (variant === 'alastair') return left ? [0, 7] : [0, 0];
+  if (variant === 'vertical') return left ? [0, 4] : [4, 7];
+  return left ? [0, 3] : [3, 7];
+}
 
 /* ---------- Encabezado semanal ---------- */
 
@@ -106,7 +115,9 @@ function weekHeader(ctx: LayoutContext, week: WeekInfo, page: PagePlan, withMini
     }
     const w = Math.min(46, c.w * 0.42);
     const box = { x: head.x + head.w - w, y: head.y, w, h: headH - 2.5 };
+    const links: LinkArea[] = [];
     const prims = miniCalendar(ctx, box, rowsData, {
+      onCell: (day, cell) => links.push({ ...cell, to: { kind: 'date', iso: day.iso }, cat: 'days' }),
       order: order(ctx),
       highlight: new Set(week.days.map((d) => d.iso)),
       month: null,
@@ -118,7 +129,7 @@ function weekHeader(ctx: LayoutContext, week: WeekInfo, page: PagePlan, withMini
       holidays: 'none',
       headerRule: true,
     });
-    ctx.add('week.minical', 'Minicalendario', prims);
+    ctx.add('week.minical', 'Minicalendario', prims, { links });
   }
   ctx.add('week.headRule', 'Filete del encabezado', [line(head.x, head.y + headH, head.x + head.w, head.y + headH, ctx.stroke('rule', 'ink'))], { editable: false });
   return rest;
@@ -303,7 +314,7 @@ function alastairRight(ctx: LayoutContext, page: PagePlan, week: WeekInfo): void
 
 function horizontalWeek(ctx: LayoutContext, page: PagePlan, week: WeekInfo, left: boolean): void {
   const r = left ? weekHeader(ctx, week, page, true) : takeTop(ctx.content, 0)[1];
-  const days = left ? week.days.slice(0, 3) : week.days.slice(3);
+  const days = week.days.slice(...weekSplit('horizontal', left));
   const slots = left ? 4 : 4;
   const parts = rows(r, slots, 2);
   days.forEach((day, i) => {
@@ -329,7 +340,7 @@ function horizontalWeek(ctx: LayoutContext, page: PagePlan, week: WeekInfo, left
 
 function verticalWeek(ctx: LayoutContext, page: PagePlan, week: WeekInfo, left: boolean): void {
   const r = left ? weekHeader(ctx, week, page, false) : weekHeaderRight(ctx, week);
-  const days = left ? week.days.slice(0, 4) : week.days.slice(4);
+  const days = week.days.slice(...weekSplit('vertical', left));
   const colRects = hsplit(r, [...days.map(() => flex()), ...(left ? [] : [flex()])], 2);
   days.forEach((day, i) => {
     const col = colRects[i]!;
