@@ -462,7 +462,7 @@ export const monthNotes: SectionModule = {
   },
   layout(ctx, page) {
     const style = param<string>(page, 'style', 'auto');
-    ctx.add('notes.area', 'Área de notas', writingArea(ctx, ctx.content, style === 'auto' ? 'dots' : (style as 'dots')), { editable: false });
+    ctx.add('notes.area', 'Área de notas', writingArea(ctx, ctx.content, style === 'auto' ? 'dots' : (style as 'dots')), { role: 'writing' });
   },
 };
 

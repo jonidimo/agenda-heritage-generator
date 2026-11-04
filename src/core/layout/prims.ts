@@ -112,7 +112,8 @@ export interface GroupPrim {
 
 export type Prim = LinePrim | RectPrim | CirclePrim | PathPrim | DotsPrim | TextPrim | ImagePrim | PdfPrim | GroupPrim;
 
-export type BlockRole = 'content' | 'decoration' | 'watermark' | 'custom' | 'artwork' | 'chrome';
+/** `writing`: áreas de renglones, puntos o cuadrícula (su estilo se ajusta por tipo de página o por página). */
+export type BlockRole = 'content' | 'decoration' | 'watermark' | 'custom' | 'artwork' | 'chrome' | 'writing';
 
 /** Unidad editable de una página: se puede seleccionar, mover, escalar u ocultar. */
 export interface Block {

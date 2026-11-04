@@ -65,7 +65,7 @@ const esc = (s: string): string => s.replace(/&/g, '&amp;').replace(/</g, '&lt;'
 
 function strokeAttrs(s: Stroke | undefined, localScale = 1, alpha = 1): string {
   if (!s) return ' stroke="none"';
-  let a = ` stroke="${s.color}" stroke-width="${fmt(s.width / localScale, 4)}"`;
+  let a = ` stroke="${esc(s.color)}" stroke-width="${fmt(s.width / localScale, 4)}"`;
   if (s.dash && s.dash.length > 0) a += ` stroke-dasharray="${s.dash.map((d) => fmt(d / localScale, 3)).join(' ')}"`;
   if (s.cap && s.cap !== 'butt') a += ` stroke-linecap="${s.cap}"`;
   if (s.join && s.join !== 'miter') a += ` stroke-linejoin="${s.join}"`;
@@ -77,7 +77,7 @@ function strokeAttrs(s: Stroke | undefined, localScale = 1, alpha = 1): string {
 function fillAttrs(f: Fill | undefined, alpha = 1): string {
   if (!f) return ' fill="none"';
   const o = (f.opacity ?? 1) * alpha;
-  return ` fill="${f.color}"${o < 1 ? ` fill-opacity="${fmt(o, 3)}"` : ''}`;
+  return ` fill="${esc(f.color)}"${o < 1 ? ` fill-opacity="${fmt(o, 3)}"` : ''}`;
 }
 
 function transformAttr(m: Matrix | undefined): string {
@@ -110,7 +110,7 @@ export function primsToSvg(prims: Prim[], opts: SvgRenderOptions, sink: GlyphSin
         let d = '';
         for (let i = 0; i < p.pts.length; i += 2) d += `M${fmt(p.pts[i]!)} ${fmt(p.pts[i + 1]!)}h0`;
         const o = (p.opacity ?? 1) * alpha;
-        out += `<path d="${d}" stroke="${p.color}" stroke-width="${fmt(p.r * 2, 4)}" stroke-linecap="round" fill="none"${o < 1 ? ` stroke-opacity="${fmt(o, 3)}"` : ''}/>`;
+        out += `<path d="${d}" stroke="${esc(p.color)}" stroke-width="${fmt(p.r * 2, 4)}" stroke-linecap="round" fill="none"${o < 1 ? ` stroke-opacity="${fmt(o, 3)}"` : ''}/>`;
         break;
       }
       case 'text': {
@@ -118,7 +118,7 @@ export function primsToSvg(prims: Prim[], opts: SvgRenderOptions, sink: GlyphSin
         if (run.glyphs.length === 0) break;
         const u = run.unit;
         const o = (p.opacity ?? 1) * alpha;
-        let g = `<g fill="${p.color}"${o < 1 ? ` fill-opacity="${fmt(o, 3)}"` : ''}>`;
+        let g = `<g fill="${esc(p.color)}"${o < 1 ? ` fill-opacity="${fmt(o, 3)}"` : ''}>`;
         for (const gl of run.glyphs) {
           const id = sink.add(run.face, gl.id);
           g += `<use href="#${prefix}${id}" transform="matrix(${fmt(u, 7)} 0 0 ${fmt(-u, 7)} ${fmt(p.x + gl.x, 4)} ${fmt(p.y + gl.y, 4)})"/>`;
@@ -156,7 +156,7 @@ export function primsToSvg(prims: Prim[], opts: SvgRenderOptions, sink: GlyphSin
 }
 
 function blockToSvg(b: Block, opts: SvgRenderOptions, sink: GlyphSink, prefix: string): string {
-  const attrs = opts.blockAttrs ? ` data-block="${esc(b.id)}" data-role="${b.role}"${b.editable ? '' : ' data-locked="1"'}` : '';
+  const attrs = opts.blockAttrs ? ` data-block="${esc(b.id)}" data-role="${esc(b.role)}"${b.editable ? '' : ' data-locked="1"'}` : '';
   return `<g${attrs}${transformAttr(b.m)}>${primsToSvg(b.prims, opts, sink, prefix, b.opacity ?? 1)}</g>`;
 }
 
@@ -175,7 +175,7 @@ export function pageToSvg(page: PageModel, opts: SvgRenderOptions, extra: { back
   const prefix = opts.glyphPrefix ?? 'g';
   const { body } = pageInnerSvg(page, { ...opts, glyphSink: sink });
   const defs = sink.defs(opts.fonts, prefix);
-  const bg = extra.background ? `<rect width="${fmt(page.w)}" height="${fmt(page.h)}" fill="${extra.background}"/>` : '';
+  const bg = extra.background ? `<rect width="${fmt(page.w)}" height="${fmt(page.h)}" fill="${esc(extra.background)}"/>` : '';
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${fmt(page.w)}mm" height="${fmt(page.h)}mm" viewBox="0 0 ${fmt(page.w)} ${fmt(page.h)}"><defs>${defs}</defs>${bg}${body}</svg>`;
 }
 
@@ -184,5 +184,5 @@ export function primsToStandaloneSvg(w: number, h: number, prims: Prim[], opts: 
   const sink = new GlyphSink();
   const prefix = opts.glyphPrefix ?? 'g';
   const body = primsToSvg(prims, opts, sink, prefix);
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${fmt(w)}mm" height="${fmt(h)}mm" viewBox="0 0 ${fmt(w)} ${fmt(h)}"><defs>${sink.defs(opts.fonts, prefix)}</defs><rect width="${fmt(w)}" height="${fmt(h)}" fill="${background}"/>${body}</svg>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${fmt(w)}mm" height="${fmt(h)}mm" viewBox="0 0 ${fmt(w)} ${fmt(h)}"><defs>${sink.defs(opts.fonts, prefix)}</defs><rect width="${fmt(w)}" height="${fmt(h)}" fill="${esc(background)}"/>${body}</svg>`;
 }

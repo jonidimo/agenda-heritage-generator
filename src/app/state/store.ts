@@ -31,11 +31,25 @@ interface StoreState {
   zoom: number;
   fit: boolean;
   selection: Selection | null;
+  /** Bloques seleccionados en la página de `selection` (incluye el principal, que es el último elegido). */
+  selectedIds: string[];
+  /** En pantallas angostas: hoja inferior del panel del elemento abierta. */
+  inspectorOpen: boolean;
+  setInspectorOpen(b: boolean): void;
+  /** Selección múltiple (Ctrl/Mayús, recuadro, «seleccionar similares»). */
+  setSelection(s: Selection | null, ids?: string[]): void;
   scope: 'type' | 'page';
   uiLang: UiLang;
+  /** La persona eligió el idioma de la interfaz (si no, sigue al idioma de la agenda abierta). */
+  uiLangChosen: boolean;
+  /** Idioma de la interfaz sin marcarlo como elegido (sigue a la agenda). */
+  followLang(l: UiLang): void;
   resVersion: number;
   showWelcome: boolean;
   showLibrary: boolean;
+  /** Diálogo «Guardar como plantilla». */
+  showSaveTemplate: boolean;
+  setShowSaveTemplate(b: boolean): void;
   sidebarOpen: boolean;
   guides: boolean;
   snap: boolean;
@@ -72,6 +86,14 @@ interface StoreState {
 
 const HISTORY_LIMIT = 150;
 const COALESCE_MS = 700;
+
+function langChosen(): boolean {
+  try {
+    return localStorage.getItem('agenda-studio.uiLang') !== null;
+  } catch {
+    return false;
+  }
+}
 
 function initialLang(): UiLang {
   try {
@@ -131,11 +153,15 @@ export const useStore = create<StoreState>((set, get) => ({
   zoom: 1,
   fit: true,
   selection: null,
+  selectedIds: [],
+  inspectorOpen: false,
   scope: 'type',
   uiLang: initialLang(),
+  uiLangChosen: langChosen(),
   resVersion: 0,
   showWelcome: false,
   showLibrary: false,
+  showSaveTemplate: false,
   sidebarOpen: true,
   guides: false,
   snap: true,
@@ -153,6 +179,7 @@ export const useStore = create<StoreState>((set, get) => ({
       future: opts?.keepHistory ? s.future : [],
       coalesce: null,
       selection: null,
+      selectedIds: [],
       pageIndex: opts?.keepHistory ? s.pageIndex : 0,
     }));
     scheduleSave(d);
@@ -161,7 +188,7 @@ export const useStore = create<StoreState>((set, get) => ({
   closeDesign() {
     const d = get().design;
     if (d) cancelSave(d.id);
-    set({ design: null, past: [], future: [], coalesce: null, selection: null, pageIndex: 0 });
+    set({ design: null, past: [], future: [], coalesce: null, selection: null, selectedIds: [], pageIndex: 0 });
   },
 
   setNotice: (notice) => set({ notice }),
@@ -203,12 +230,14 @@ export const useStore = create<StoreState>((set, get) => ({
     scheduleSave(next);
   },
 
-  setView: (view) => set({ view, selection: null }),
+  setView: (view) => set({ view, selection: null, selectedIds: [] }),
   setPanel: (panel) => set({ panel }),
-  goToPage: (i) => set({ pageIndex: Math.max(0, i), selection: null }),
+  goToPage: (i) => set({ pageIndex: Math.max(0, i), selection: null, selectedIds: [] }),
   setSheetSide: (sheetSide) => set({ sheetSide }),
   setZoom: (zoom, fit = false) => set({ zoom: Math.min(6, Math.max(0.2, zoom)), fit }),
-  select: (selection) => set({ selection }),
+  select: (selection) => set({ selection, selectedIds: selection ? [selection.blockId] : [] }),
+  setSelection: (selection, ids) => set({ selection, selectedIds: selection ? [...new Set([...(ids ?? []), selection.blockId])] : [] }),
+  setInspectorOpen: (inspectorOpen) => set({ inspectorOpen }),
   setScope: (scope) => set({ scope }),
   setUiLang(uiLang) {
     try {
@@ -216,11 +245,13 @@ export const useStore = create<StoreState>((set, get) => ({
     } catch {
       /* sin almacenamiento */
     }
-    set({ uiLang });
+    set({ uiLang, uiLangChosen: true });
   },
+  followLang: (uiLang) => set({ uiLang }),
   bumpResources: (resVersion) => set({ resVersion }),
   setShowWelcome: (showWelcome) => set({ showWelcome }),
   setShowLibrary: (showLibrary) => set({ showLibrary }),
+  setShowSaveTemplate: (showSaveTemplate) => set({ showSaveTemplate }),
   setSidebarOpen: (sidebarOpen) => set({ sidebarOpen }),
   toggleGuides: () => set((s) => ({ guides: !s.guides })),
   toggleSnap: () => set((s) => ({ snap: !s.snap })),

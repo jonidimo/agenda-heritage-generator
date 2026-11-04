@@ -1,4 +1,4 @@
-import { deepMerge, THEMES, type ThemeTokens, type WritingStyle } from '@core/design/themes';
+import { mergeTokens, THEMES, type ThemeTokens, type WritingStyle } from '@core/design/themes';
 import type { FontStyle } from '@core/text/fonts';
 import { RotateCcw } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
@@ -29,7 +29,7 @@ export function StylePanel() {
   const design = useStore((s) => s.design)!;
   const update = useStore((s) => s.update);
   const families = useFamilies();
-  const base: ThemeTokens = useMemo(() => deepMerge(THEMES[design.theme.id] ?? THEMES.heritage!, design.theme.tokens), [design.theme.id, design.theme.tokens]);
+  const base: ThemeTokens = useMemo(() => mergeTokens(THEMES[design.theme.id] ?? THEMES.heritage!, design.theme.tokens), [design.theme.id, design.theme.tokens]);
 
   const setToken = (path: Path, value: unknown): void =>
     update((d) => {

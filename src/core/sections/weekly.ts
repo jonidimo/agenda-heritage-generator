@@ -394,7 +394,7 @@ function dailyPage(ctx: LayoutContext, page: PagePlan): void {
     hp.push(line(head.x, head.y + head.h, head.x + head.w, head.y + head.h, ctx.stroke('rule', 'ink')));
     ctx.add(`daily.${i}.head`, day.iso, hp);
     if (!single) {
-      ctx.add(`daily.${i}.notes`, day.iso, writingArea(ctx, body, 'auto'));
+      ctx.add(`daily.${i}.notes`, day.iso, writingArea(ctx, body, 'auto'), { role: 'writing' });
       return;
     }
     // Página completa: recordatorios, 3 importantes, notas libres y cierre del día.
@@ -419,7 +419,7 @@ function dailyPage(ctx: LayoutContext, page: PagePlan): void {
     ].filter((x) => x.on);
     const closingH = closing.reduce((sum, x) => sum + 3 + x.lines * pitch + 2, 0) + (ctx.has('mood-log') ? 7 : 0) + (ctx.has('focus-breaks') ? 7 : 0);
     const notesArea = { x: body.x, y, w: body.w, h: Math.max(10, body.y + body.h - y - closingH) };
-    ctx.add('daily.notes', s.top3, writingArea(ctx, notesArea, 'auto'));
+    ctx.add('daily.notes', s.top3, writingArea(ctx, notesArea, 'auto'), { role: 'writing' });
     y = notesArea.y + notesArea.h + 2;
     if (ctx.has('focus-breaks')) {
       const lab = ctx.textAt(s.focus, body.x, y + 3, { role: 'label', size: 'labelSmall', upper: true, tracking: true });

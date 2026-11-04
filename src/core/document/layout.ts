@@ -8,10 +8,12 @@ import { fmt as fmtStr } from '../i18n';
 import { inset } from '../layout/box';
 import { LayoutContext, type DocContext } from '../layout/context';
 import { primsBounds, type Block, type PageModel, type Prim } from '../layout/prims';
-import { dotField, squareGrid, writingArea } from '../layout/widgets';
+import { dotField, ruledLines, squareGrid } from '../layout/widgets';
 import type { PagePlan, SectionModule } from '../sections/types';
 import { compose, composeAll, IDENTITY, rectContains, rotateAround, scale, transformRect, translate, type Matrix, type Rect } from '../util/geometry';
 import { inkBounds } from '../text/shape';
+import { mergeTokens, type ThemeTokens, type WritingStyle } from '../design/themes';
+import { normalizeColor } from '../util/color';
 import type { FontRegistry } from '../text/fonts';
 import { assetPrims } from './assets';
 import { pageGeometry } from './context';
@@ -37,6 +39,25 @@ export function overrideMatrix(bbox: Rect, o: Pick<BlockOverride, 'dx' | 'dy' | 
 /** Caja final de un bloque (con su transformación). */
 export function blockBounds(b: Block): Rect {
   return b.m ? transformRect(b.m, b.bbox) : b.bbox;
+}
+
+/** Estilo de escritura elegido explícitamente para la página (o su tipo), si lo hay. */
+function pageWritingStyle(doc: DocContext, plan: PagePlan): WritingStyle | undefined {
+  const pick = (s: { tokens: Record<string, unknown> } | undefined): WritingStyle | undefined => (s?.tokens.writing as { style?: WritingStyle } | undefined)?.style;
+  const styles = doc.design.pageStyles.filter((s) => s.pageType === plan.type);
+  return pick(styles.find((s) => s.pageKey === plan.key)) ?? pick(styles.find((s) => s.pageKey === null));
+}
+
+/** Tema de una página: el del documento más el estilo de escritura de su tipo y, encima, el de la página. */
+function pageTheme(doc: DocContext, plan: PagePlan): ThemeTokens | undefined {
+  const styles = doc.design.pageStyles.filter((s) => s.pageType === plan.type && (s.pageKey === null || s.pageKey === plan.key));
+  if (styles.length === 0) return undefined;
+  const byType = styles.find((s) => s.pageKey === null);
+  const byPage = styles.find((s) => s.pageKey === plan.key);
+  let theme = doc.theme;
+  if (byType) theme = mergeTokens(theme, byType.tokens);
+  if (byPage) theme = mergeTokens(theme, byPage.tokens);
+  return theme;
 }
 
 function watermarkApplies(wm: WatermarkPlacement, type: string, key: string): boolean {
@@ -132,7 +153,7 @@ function placeCustomBlock(ctx: LayoutContext, cb: CustomBlock, page: PagePlan): 
         tracking: typeof p.tracking === 'number' ? p.tracking : 0,
         wrap: p.wrap !== false,
         fit: true,
-        ...(typeof p.color === 'string' ? { color: p.color } : {}),
+        ...(normalizeColor(p.color) ? { color: normalizeColor(p.color)! } : {}),
       });
       prims = t.prims;
       break;
@@ -145,7 +166,8 @@ function placeCustomBlock(ctx: LayoutContext, cb: CustomBlock, page: PagePlan): 
       });
       break;
     case 'lines':
-      prims = writingArea(ctx, box, 'lines', typeof p.pitch === 'number' ? p.pitch : undefined);
+      // Un elemento propio de renglones es siempre de renglones (no sigue el estilo de la página).
+      prims = ruledLines(box, typeof p.pitch === 'number' ? p.pitch : ctx.theme.writing.pitch, ctx.stroke('hair'));
       break;
     case 'dots':
       prims = [dotField(box, typeof p.pitch === 'number' ? p.pitch : ctx.theme.dots.pitch, (ctx.theme.dots.radius * 25.4) / 72, ctx.theme.dots.color)];
@@ -154,7 +176,7 @@ function placeCustomBlock(ctx: LayoutContext, cb: CustomBlock, page: PagePlan): 
       prims = squareGrid(box, typeof p.pitch === 'number' ? p.pitch : 5, ctx.stroke('grid'));
       break;
     case 'rect':
-      prims = [{ t: 'rect', ...box, r: typeof p.radius === 'number' ? p.radius : 0, stroke: ctx.stroke('rule', 'ink'), ...(p.fill ? { fill: { color: String(p.fill) } } : {}) }];
+      prims = [{ t: 'rect', ...box, r: typeof p.radius === 'number' ? p.radius : 0, stroke: ctx.stroke('rule', 'ink'), ...(normalizeColor(p.fill) ? { fill: { color: normalizeColor(p.fill)! } } : {}) }];
       break;
     case 'line':
       prims = [{ t: 'line', x1: box.x, y1: box.y + box.h / 2, x2: box.x + box.w, y2: box.y + box.h / 2, stroke: ctx.stroke('rule', 'ink') }];
@@ -172,7 +194,20 @@ function addChrome(ctx: LayoutContext, page: PagePlan, totalPages: number): void
     const outerRight = ctx.page.side === 'recto';
     const x = pn.position === 'center' ? ctx.page.w / 2 : outerRight ? ctx.page.content.x + ctx.page.content.w : ctx.page.content.x;
     const align = pn.position === 'center' ? 'center' : outerRight ? 'right' : 'left';
-    const t = ctx.textAt(String(page.index + 1), x, y, { role: 'number', size: 'labelSmall', align });
+    let t = ctx.textAt(String(page.index + 1), x, y, { role: 'number', size: 'labelSmall', align });
+    // Si una marca de agua ocupa la esquina (el colibrí abajo y afuera), el número se corre hacia
+    // adentro hasta quedar a 2 mm de ella en lugar de pegarse o encimarse.
+    if (align !== 'center') {
+      const pad = 1.5;
+      const hits = ctx.blocks
+        .filter((b) => b.role === 'watermark')
+        .map((b) => b.bbox)
+        .filter((r) => t.bbox.x < r.x + r.w + pad && t.bbox.x + t.bbox.w > r.x - pad && t.bbox.y < r.y + r.h + pad && t.bbox.y + t.bbox.h > r.y - pad);
+      if (hits.length > 0) {
+        const nx = align === 'right' ? Math.min(...hits.map((r) => r.x)) - 2 : Math.max(...hits.map((r) => r.x + r.w)) + 2;
+        t = ctx.textAt(String(page.index + 1), nx, y, { role: 'number', size: 'labelSmall', align });
+      }
+    }
     ctx.add('chrome.pageNumber', 'Número de página', [t.prim], { role: 'chrome', layer: 18 });
   }
   const ti = d.binding.thumbIndex;
@@ -205,7 +240,7 @@ export interface LayoutResult {
 
 export function layoutPage(doc: DocContext, plan: PagePlan, registry: ReadonlyMap<string, SectionModule>, totalPages: number): PageModel {
   const geom = pageGeometry(doc, plan.side);
-  const ctx = new LayoutContext(doc, geom);
+  const ctx = new LayoutContext(doc, geom, pageTheme(doc, plan), pageWritingStyle(doc, plan));
   const design: Design = doc.design;
   const mod = registry.get(plan.module);
   if (mod) {

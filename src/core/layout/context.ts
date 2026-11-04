@@ -100,10 +100,14 @@ export class LayoutContext {
   constructor(
     readonly doc: DocContext,
     readonly page: PageGeometry,
+    /** Tema propio de esta página (estilo de escritura por tipo o por página); si no, el del documento. */
+    private readonly pageTheme?: ThemeTokens,
+    /** Estilo de escritura elegido para esta página o su tipo: manda sobre el de cada sección. */
+    private readonly pageWriting?: WritingStyle,
   ) {}
 
   get theme(): ThemeTokens {
-    return this.doc.theme;
+    return this.pageTheme ?? this.doc.theme;
   }
   get s(): AgendaStrings {
     return this.doc.strings;
@@ -236,6 +240,7 @@ export class LayoutContext {
   }
 
   writingStyle(override?: WritingStyle | 'auto'): WritingStyle {
+    if (this.pageWriting) return this.pageWriting;
     return override && override !== 'auto' ? override : this.theme.writing.style;
   }
 

@@ -2,13 +2,60 @@
 import type { AgendaDocument } from '@core/document';
 import { blockBounds } from '@core/document/layout';
 import type { CustomBlock } from '@core/design/schema';
-import type { PageModel, PageWarning } from '@core/layout/prims';
-import { newId } from '@core/util/hash';
-import { AlertTriangle, CheckCircle2, EyeOff, Image as ImageIcon, Info, Minus, Play, RotateCcw, Square, StretchHorizontal, Trash2, Type } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import type { Block, PageModel, PageWarning } from '@core/layout/prims';
+import { unionRect, type AlignMode } from '@core/layout/align';
+import type { WritingStyle } from '@core/design/themes';
+import {
+  AlertTriangle,
+  AlignCenterHorizontal,
+  AlignCenterVertical,
+  AlignEndHorizontal,
+  AlignEndVertical,
+  AlignHorizontalDistributeCenter,
+  AlignStartHorizontal,
+  AlignStartVertical,
+  AlignVerticalDistributeCenter,
+  CheckCircle2,
+  Crosshair,
+  EyeOff,
+  Grid3x3,
+  Image as ImageIcon,
+  Info,
+  Minus,
+  Play,
+  RotateCcw,
+  Scaling,
+  Square,
+  StretchHorizontal,
+  Trash2,
+  Type,
+} from 'lucide-react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { blockLabel, warningText } from '../i18n/messages';
 import { sectionName, useT } from '../i18n/ui';
-import { clampMoveDelta, currentOverride, hideBlock, moveBlock, patchOverride, resetBlock, typeMirrored } from '../state/actions';
+import { addAssetFiles, pickFiles } from '../state/uploads';
+import {
+  addCustomBlock,
+  alignBlocks,
+  centerBlocks,
+  clampMoveDelta,
+  currentOverride,
+  distributeBlocks,
+  hideBlock,
+  hideBlocks,
+  matchScale,
+  moveBlocks,
+  pageStyleOf,
+  patchOverride,
+  resetBlock,
+  resetBlocks,
+  resetPageStyle,
+  setPageStyle,
+  tidyBlocks,
+  typeMirrored,
+  type AlignRef,
+} from '../state/actions';
+import { useDocument } from '../state/doc';
 import { useStore } from '../state/store';
 import { Button, Field, NumberInput, Segmented, Select, Slider, TextArea, Toggle } from './ui';
 
@@ -16,21 +63,23 @@ export function Inspector({ doc }: { doc: AgendaDocument }) {
   const t = useT();
   const design = useStore((s) => s.design)!;
   const selection = useStore((s) => s.selection);
+  const selectedIds = useStore((s) => s.selectedIds);
   const scope = useStore((s) => s.scope);
   const setScope = useStore((s) => s.setScope);
-  const update = useStore((s) => s.update);
   const select = useStore((s) => s.select);
   const pageIndex = useStore((s) => Math.min(s.pageIndex, doc.pageCount - 1));
   const selPageIndex = selection ? doc.indexOfKey(selection.pageKey) : -1;
   const page: PageModel = doc.page(selPageIndex >= 0 ? selPageIndex : pageIndex);
   const block = selection ? page.blocks.find((b) => b.id === selection.blockId) : undefined;
+  const group = selection ? page.blocks.filter((b) => selectedIds.includes(b.id)) : [];
+  const movable = group.filter((b) => b.editable);
 
-  // Teclado: flechas mueven, Supr oculta, Esc deselecciona.
+  // Teclado: flechas mueven (a todo lo seleccionado), Supr oculta, Esc deselecciona.
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
       const tag = (e.target as HTMLElement | null)?.tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
-      if (!block || !block.editable) {
+      if (movable.length === 0) {
         if (e.key === 'Escape') select(null);
         return;
       }
@@ -38,37 +87,21 @@ export function Inspector({ doc }: { doc: AgendaDocument }) {
       const map: Record<string, [number, number]> = { ArrowLeft: [-stepMm, 0], ArrowRight: [stepMm, 0], ArrowUp: [0, -stepMm], ArrowDown: [0, stepMm] };
       const mv = map[e.key];
       if (mv) {
-        const c = clampMoveDelta(page, blockBounds(block), mv[0], mv[1]);
-        moveBlock(page, block, c.dx, c.dy, scope, `nudge:${block.id}`);
+        const c = clampMoveDelta(page, unionRect(movable.map(blockBounds)), mv[0], mv[1]);
+        moveBlocks(page, movable.map((b) => ({ block: b, dx: c.dx, dy: c.dy })), scope, `nudge:${movable.map((b) => b.id).join(',')}`);
         e.preventDefault();
       } else if (e.key === 'Delete' || e.key === 'Backspace') {
-        hideBlock(page, block, scope);
+        hideBlocks(page, movable, scope);
         select(null);
         e.preventDefault();
       } else if (e.key === 'Escape') select(null);
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [block, page, scope, select]);
+  }, [movable, page, scope, select]);
 
-  const addCustom = (kind: CustomBlock['kind']): void => {
-    const c = page.content;
-    const id = newId('el');
-    const base = { id, pageType: page.type, pageKey: null, kind, mirror: true, props: {} as Record<string, unknown> };
-    const blockDef: CustomBlock =
-      kind === 'text'
-        ? { ...base, x: c.x, y: c.y + c.h - 14, w: c.w, h: 10, props: { text: '{name}', role: 'quote', size: 11, align: 'right', label: t('insp.addText') } }
-        : kind === 'image'
-          ? { ...base, x: c.x + c.w - 30, y: c.y + c.h - 30, w: 30, h: 30, props: { assetId: design.assets[0]?.id ?? '', fit: 'contain', opacity: 1, label: t('insp.addImage') } }
-          : kind === 'rect'
-            ? { ...base, x: c.x, y: c.y + c.h - 30, w: c.w, h: 30, props: { label: t('insp.addRect') } }
-            : { ...base, x: c.x, y: c.y + c.h - 30, w: c.w, h: 30, props: { label: t(kind === 'lines' ? 'insp.addLines' : 'insp.addDots') } };
-    if (selection?.pageKey === page.key) blockDef.pageKey = scope === 'page' ? page.key : null;
-    update((d) => {
-      d.customBlocks.push(blockDef);
-    });
-    select({ pageKey: page.key, pageType: page.type, blockId: `custom.${id}`, role: 'custom' });
-  };
+  const addCustom = (kind: CustomBlock['kind']): void =>
+    void addCustomBlock(page, kind, { text: t('insp.addText'), image: t('insp.addImage'), rect: t('insp.addRect'), lines: t('insp.addLines'), dots: t('insp.addDots') }, selection?.pageKey === page.key ? scope : 'type');
 
   const sideLabel = page.side === 'recto' ? t('insp.recto') : t('insp.verso');
   return (
@@ -77,10 +110,12 @@ export function Inspector({ doc }: { doc: AgendaDocument }) {
       <div className="scroll-thin min-h-0 flex-1 overflow-y-auto px-3 py-2">
         <h3 className="mb-1 text-[11px] font-extrabold tracking-[0.08em] uppercase">{t('insp.title')}</h3>
         {!block && <p className="text-[12px] leading-snug text-ink-soft">{t('insp.none')}</p>}
-        {block && (
+        {block && group.length > 1 && <MultiFields page={page} blocks={group} primary={block} scope={scope} setScope={setScope} />}
+        {block && group.length <= 1 && (
           <div>
             <p className="mb-2 text-[13px] font-semibold">{blockLabel(t, block.id, block.label)}</p>
             {!block.editable && <p className="text-[12px] text-ink-soft">{t('insp.locked')}</p>}
+            {block.editable && block.role === 'writing' && <WritingFields page={page} scope={scope} setScope={setScope} />}
             {block.editable && block.role === 'watermark' && <WatermarkFields id={block.id.slice(3)} />}
             {block.editable && block.role === 'custom' && <CustomFields id={block.id.slice(7)} />}
             {block.editable && block.role !== 'watermark' && block.role !== 'custom' && (
@@ -105,6 +140,7 @@ export function Inspector({ doc }: { doc: AgendaDocument }) {
               </div>
             )}
             <p className="mt-3 text-[11px] text-ink-soft">{t('insp.keys')}</p>
+            <p className="mt-1 text-[11px] text-ink-soft">{t('multi.hint')}</p>
           </div>
         )}
         <div className="mt-4 border-t border-line pt-3">
@@ -129,6 +165,106 @@ export function Inspector({ doc }: { doc: AgendaDocument }) {
         </div>
         <Preflight doc={doc} />
       </div>
+    </div>
+  );
+}
+
+/** Varios elementos: alinear, repartir, ordenar en cuadrícula, igualar escala, restablecer u ocultar. */
+function MultiFields({ page, blocks, primary, scope, setScope }: { page: PageModel; blocks: Block[]; primary: Block; scope: 'type' | 'page'; setScope: (s: 'type' | 'page') => void }) {
+  const t = useT();
+  const select = useStore((s) => s.select);
+  const [ref, setRef] = useState<AlignRef>('selection');
+  const editable = blocks.filter((b) => b.editable);
+  const align = (mode: AlignMode) => () => alignBlocks(page, editable, mode, ref, scope);
+  const tool = (label: string, icon: ReactNode, onClick: () => void, disabled = false) => (
+    <button type="button" title={label} aria-label={label} disabled={disabled} onClick={onClick} className="flex h-8 w-8 items-center justify-center rounded-md border border-line bg-white text-ink hover:bg-paper disabled:opacity-40">
+      {icon}
+    </button>
+  );
+  return (
+    <div>
+      <p className="mb-2 text-[13px] font-semibold">{t('multi.count', { n: blocks.length })}</p>
+      {page.type !== 'custom' && (
+        <Field label={t('insp.scope')} group>
+          <Segmented value={scope} onChange={setScope} options={[{ value: 'type', label: t('insp.scopeType') }, { value: 'page', label: t('insp.scopePage') }]} />
+        </Field>
+      )}
+      <Field label={t('align.ref')} group>
+        <Segmented value={ref} onChange={setRef} options={[{ value: 'selection', label: t('align.refSelection') }, { value: 'margins', label: t('align.refMargins') }, { value: 'page', label: t('align.refPage') }]} />
+      </Field>
+      <div className="mb-2 flex flex-wrap gap-1">
+        {tool(t('align.left'), <AlignStartVertical size={16} />, align('left'))}
+        {tool(t('align.centerH'), <AlignCenterVertical size={16} />, align('centerH'))}
+        {tool(t('align.right'), <AlignEndVertical size={16} />, align('right'))}
+        {tool(t('align.top'), <AlignStartHorizontal size={16} />, align('top'))}
+        {tool(t('align.middle'), <AlignCenterHorizontal size={16} />, align('middle'))}
+        {tool(t('align.bottom'), <AlignEndHorizontal size={16} />, align('bottom'))}
+        {tool(t('align.distributeH'), <AlignHorizontalDistributeCenter size={16} />, () => distributeBlocks(page, editable, 'x', scope), editable.length < 3)}
+        {tool(t('align.distributeV'), <AlignVerticalDistributeCenter size={16} />, () => distributeBlocks(page, editable, 'y', scope), editable.length < 3)}
+      </div>
+      <div className="grid gap-1.5">
+        <Button onClick={() => tidyBlocks(page, editable, scope)}>
+          <Grid3x3 size={14} /> {t('align.tidy')}
+        </Button>
+        <p className="-mt-0.5 text-[11px] leading-snug text-ink-soft">{t('align.tidyHint')}</p>
+        <Button onClick={() => centerBlocks(page, editable, ref === 'page' ? 'page' : 'margins', 'x', scope)}>
+          <Crosshair size={14} /> {t('align.centerMargins')}
+        </Button>
+        <Button onClick={() => matchScale(page, editable, primary, scope)}>
+          <Scaling size={14} /> {t('align.matchScale', { name: blockLabel(t, primary.id, primary.label) })}
+        </Button>
+        <div className="flex flex-wrap gap-1.5">
+          <Button variant="ghost" onClick={() => resetBlocks(page, editable.map((b) => b.id), scope)}>
+            <RotateCcw size={14} /> {t('multi.reset')}
+          </Button>
+          <Button
+            variant="ghost"
+            onClick={() => {
+              hideBlocks(page, editable, scope);
+              select(null);
+            }}
+          >
+            <EyeOff size={14} /> {t('multi.hide')}
+          </Button>
+          <Button variant="ghost" onClick={() => select(null)}>
+            {t('multi.deselect')}
+          </Button>
+        </div>
+      </div>
+      <p className="mt-3 text-[11px] text-ink-soft">{t('multi.hint')}</p>
+    </div>
+  );
+}
+
+/** Renglones, puntos o cuadrícula de este tipo de página (o de esta página): estilo, pasos, tamaño y grosor. */
+function WritingFields({ page, scope, setScope }: { page: PageModel; scope: 'type' | 'page'; setScope: (s: 'type' | 'page') => void }) {
+  const t = useT();
+  const design = useStore((s) => s.design)!;
+  const { doc } = useDocument();
+  const theme = doc?.ctx.theme;
+  const tokens = pageStyleOf(design, page, scope) as { writing?: { style?: WritingStyle; pitch?: number }; dots?: { pitch?: number; pitchY?: number; radius?: number }; strokes?: { hair?: number } };
+  const style = tokens.writing?.style ?? theme?.writing.style ?? 'lines';
+  const set = (path: string[], v: unknown): void => setPageStyle(page, scope, path, v, `ps:${page.type}:${path.join('.')}`);
+  return (
+    <div className="mb-2 rounded-md border border-line bg-white/60 p-2">
+      <h4 className="mb-1 text-[11px] font-extrabold tracking-[0.08em] uppercase">{t('writing.title')}</h4>
+      {page.type !== 'custom' && (
+        <Field label={t('insp.scope')} group>
+          <Segmented value={scope} onChange={setScope} options={[{ value: 'type', label: t('insp.scopeType') }, { value: 'page', label: t('insp.scopePage') }]} />
+        </Field>
+      )}
+      <Field label={t('writing.style')} group>
+        <Segmented value={style} onChange={(v) => set(['writing', 'style'], v)} options={(['lines', 'dots', 'grid', 'blank'] as const).map((v) => ({ value: v, label: t(`val.${v}`) }))} />
+      </Field>
+      {style === 'lines' && <Slider label={t('writing.pitch')} value={tokens.writing?.pitch ?? theme?.writing.pitch ?? 6} min={3} max={15} step={0.1} onChange={(v) => set(['writing', 'pitch'], v)} />}
+      {style === 'lines' && <Slider label={t('writing.lineWeight')} value={(tokens.strokes?.hair ?? theme?.strokes.hair ?? 0.3)} min={0.1} max={1.5} step={0.05} onChange={(v) => set(['strokes', 'hair'], v)} />}
+      {(style === 'dots' || style === 'grid') && <Slider label={t('writing.dotPitchX')} value={tokens.dots?.pitch ?? theme?.dots.pitch ?? 5} min={2} max={15} step={0.1} onChange={(v) => set(['dots', 'pitch'], v)} />}
+      {style === 'dots' && <Slider label={t('writing.dotPitchY')} value={tokens.dots?.pitchY ?? theme?.dots.pitchY ?? 0} min={0} max={15} step={0.1} onChange={(v) => set(['dots', 'pitchY'], v)} />}
+      {style === 'dots' && <Slider label={t('writing.dotSize')} value={tokens.dots?.radius ?? theme?.dots.radius ?? 0.5} min={0.1} max={2.5} step={0.05} onChange={(v) => set(['dots', 'radius'], v)} />}
+      <p className="text-[11px] leading-snug text-ink-soft">{t('writing.hint')}</p>
+      <Button variant="ghost" onClick={() => resetPageStyle(page, scope)}>
+        <RotateCcw size={14} /> {t('writing.reset')}
+      </Button>
     </div>
   );
 }
@@ -191,15 +327,43 @@ function BlockFields({ page, blockId, scope, setScope }: { page: PageModel; bloc
 export function WatermarkFields({ id }: { id: string }) {
   const t = useT();
   const wm = useStore((s) => s.design?.watermarks.find((w) => w.id === id));
+  const assets = useStore((s) => s.design?.assets ?? []);
   const update = useStore((s) => s.update);
+  const select = useStore((s) => s.select);
+  const setNotice = useStore((s) => s.setNotice);
   if (!wm) return null;
   const set = <K extends keyof typeof wm>(k: K, v: (typeof wm)[K]): void =>
     update((d) => {
       const w = d.watermarks.find((x) => x.id === id);
       if (w) (w as Record<string, unknown>)[k as string] = v;
     }, `wm:${id}:${String(k)}`);
+  /** Sube una imagen nueva y la usa en esta marca de agua. */
+  const uploadAndUse = async (): Promise<void> => {
+    const files = await pickFiles('image/*,.svg', false);
+    if (files.length === 0) return;
+    const r = await addAssetFiles(files, (name) => t('assets.unsupported', { name }));
+    if (r.ids[0]) set('assetId', r.ids[0]);
+    if (r.messages.length > 0) setNotice(r.messages.join(' '));
+  };
   return (
     <div>
+      <Field label={t('wm.image')}>
+        <Select value={wm.assetId} onChange={(v) => set('assetId', v)} options={assets.filter((a) => a.kind !== 'pdf').map((a) => ({ value: a.id, label: a.name }))} />
+      </Field>
+      <div className="mb-1 flex flex-wrap gap-1.5">
+        <Button onClick={() => void uploadAndUse()}>
+          <ImageIcon size={14} /> {t('wm.upload')}
+        </Button>
+        <Button
+          variant="ghost"
+          onClick={() => {
+            update((d) => void (d.watermarks = d.watermarks.filter((w) => w.id !== id)));
+            select(null);
+          }}
+        >
+          <Trash2 size={14} /> {t('wm.delete')}
+        </Button>
+      </div>
       {wm.excludePages.length > 0 && (
         <p className="mb-1 text-[11px] leading-snug text-ink-soft">
           {t('wm.hiddenPages', { n: wm.excludePages.length })}{' '}

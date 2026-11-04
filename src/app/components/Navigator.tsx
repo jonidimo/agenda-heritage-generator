@@ -4,7 +4,9 @@ import { monthNames } from '@core/calendar/locale';
 import { useEffect, useMemo, useRef } from 'react';
 import { pageTitle, useT } from '../i18n/ui';
 import { useStore } from '../state/store';
+import { thumbMenu } from './canvas/menus';
 import { Thumb } from './canvas/Thumb';
+import { openMenuAt } from './ContextMenu';
 
 export function Navigator({ doc }: { doc: AgendaDocument }) {
   const t = useT();
@@ -50,6 +52,7 @@ export function Navigator({ doc }: { doc: AgendaDocument }) {
             type="button"
             data-thumb={i}
             onClick={() => goToPage(i)}
+            onContextMenu={(e) => openMenuAt(e, thumbMenu(t, doc, i))}
             title={`${i + 1} · ${pageTitle(t, p)}`}
             className={`flex shrink-0 flex-col items-center gap-0.5 ${i % 2 === 1 ? 'ml-1.5' : ''}`}
           >

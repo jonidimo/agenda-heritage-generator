@@ -27,13 +27,14 @@ export function ruledLines(r: Rect, pitch: number, stroke: Stroke, opts: { inclu
   return out;
 }
 
-export function dotField(r: Rect, pitch: number, radiusMm: number, color: string, opts: { snap?: boolean } = {}): DotsPrim {
+export function dotField(r: Rect, pitch: number, radiusMm: number, color: string, opts: { snap?: boolean; pitchY?: number } = {}): DotsPrim {
+  const py = opts.pitchY && opts.pitchY > 0 ? opts.pitchY : pitch;
   const nx = Math.max(1, Math.floor((r.w + 1e-6) / pitch));
-  const ny = Math.max(1, Math.floor((r.h + 1e-6) / pitch));
+  const ny = Math.max(1, Math.floor((r.h + 1e-6) / py));
   const ox = opts.snap ? r.x + pitch / 2 : r.x + (r.w - (nx - 1) * pitch) / 2;
-  const oy = opts.snap ? r.y + pitch / 2 : r.y + (r.h - (ny - 1) * pitch) / 2;
+  const oy = opts.snap ? r.y + py / 2 : r.y + (r.h - (ny - 1) * py) / 2;
   const pts: number[] = [];
-  for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) pts.push(ox + i * pitch, oy + j * pitch);
+  for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) pts.push(ox + i * pitch, oy + j * py);
   return { t: 'dots', pts, r: radiusMm, color };
 }
 
@@ -55,7 +56,7 @@ export function writingArea(ctx: LayoutContext, r: Rect, style?: WritingStyle | 
   const s = ctx.writingStyle(style);
   const p = pitch ?? (s === 'dots' || s === 'grid' ? ctx.theme.dots.pitch : ctx.theme.writing.pitch);
   if (s === 'lines') return ruledLines(r, p, ctx.stroke('hair'));
-  if (s === 'dots') return [dotField(r, p, ptToMm(ctx.theme.dots.radius), ctx.theme.dots.color)];
+  if (s === 'dots') return [dotField(r, p, ptToMm(ctx.theme.dots.radius), ctx.theme.dots.color, pitch === undefined ? { pitchY: ctx.theme.dots.pitchY } : {})];
   if (s === 'grid') return squareGrid(r, p, ctx.stroke('grid', 'ruleSoft'));
   return [];
 }

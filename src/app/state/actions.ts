@@ -3,9 +3,12 @@
  * lienzo: mover, escalar, ocultar o restablecer bloques; mover marcas de agua y
  * elementos propios respetando sus anclajes y su espejado.
  */
-import type { BlockOverride, Design } from '@core/design/schema';
+import type { BlockOverride, CustomBlock, Design } from '@core/design/schema';
+import { newId } from '@core/util/hash';
 import type { Block, PageModel } from '@core/layout/prims';
 import type { Rect } from '@core/util/geometry';
+import { blockBounds } from '@core/document/layout';
+import { alignDeltas, centerGroupDeltas, distributeDeltas, tidyGridDeltas, unionRect, type AlignMode, type Delta } from '@core/layout/align';
 import type { Draft } from 'immer';
 import { documentFor } from './doc';
 import { useStore } from './store';
@@ -74,48 +77,161 @@ export function clampMoveDelta(page: Pick<PageModel, 'w' | 'h'>, o: Rect, dx: nu
 
 const r2 = (v: number): number => Number(v.toFixed(2));
 
+/** Aplica un desplazamiento a un bloque dentro de un borrador del diseño (sin crear un paso de historial). */
+function moveInDraft(d: Draft<Design>, page: PageModel, block: Block, dx: number, dy: number, sc: Scope, mirrored: boolean): void {
+  if (Math.abs(dx) < 1e-4 && Math.abs(dy) < 1e-4) return;
+  if (block.role === 'watermark' && block.id.startsWith('wm.')) {
+    const wm = d.watermarks.find((w) => w.id === block.id.slice(3));
+    if (!wm) return;
+    const right = anchorRight(wm.hAnchor, page);
+    wm.dx = r2(right === true ? wm.dx - dx : wm.dx + dx);
+    wm.dy = r2(wm.vAnchor === 'bottom' ? wm.dy - dy : wm.dy + dy);
+    return;
+  }
+  if (block.role === 'custom' && block.id.startsWith('custom.')) {
+    const cb = d.customBlocks.find((c) => c.id === block.id.slice(7));
+    if (!cb) return;
+    const flipped = cb.mirror && page.side === 'verso';
+    cb.x = r2(flipped ? cb.x - dx : cb.x + dx);
+    cb.y = r2(cb.y + dy);
+    return;
+  }
+  const flip = sc === 'type' && mirrored;
+  upsertOverride(
+    d,
+    page,
+    block.id,
+    sc,
+    (o) => {
+      o.dx = r2(o.dx + (flip ? -dx : dx));
+      o.dy = r2(o.dy + dy);
+    },
+    mirrored,
+  );
+  // «Todas las páginas» desde una página que tiene su propio ajuste: ese ajuste manda en
+  // esta página, así que también se mueve (si no, lo arrastrado no se movería en pantalla).
+  const own = sc === 'type' ? findOverride(d, page, block.id, 'page') : undefined;
+  if (own) {
+    own.dx = r2(own.dx + dx);
+    own.dy = r2(own.dy + dy);
+  }
+}
+
 /** Desplaza un bloque (dx, dy en mm de página). */
 export function moveBlock(page: PageModel, block: Block, dx: number, dy: number, scope: Scope, coalesce?: string): void {
-  if (Math.abs(dx) < 1e-4 && Math.abs(dy) < 1e-4) return;
+  moveBlocks(page, [{ block, dx, dy }], scope, coalesce);
+}
+
+/** Desplaza varios bloques en un solo paso de la historia (deshacer los vuelve a todos). */
+export function moveBlocks(page: PageModel, moves: Array<{ block: Block; dx: number; dy: number }>, scope: Scope, coalesce?: string): void {
+  const real = moves.filter((m) => Math.abs(m.dx) >= 1e-4 || Math.abs(m.dy) >= 1e-4);
+  if (real.length === 0) return;
   const sc = effectiveScope(page, scope);
   const mirrored = typeMirrored(page);
-  const flip = sc === 'type' && mirrored;
   useStore.getState().update((d) => {
-    if (block.role === 'watermark' && block.id.startsWith('wm.')) {
-      const wm = d.watermarks.find((w) => w.id === block.id.slice(3));
-      if (!wm) return;
-      const right = anchorRight(wm.hAnchor, page);
-      wm.dx = Number((right === true ? wm.dx - dx : wm.dx + dx).toFixed(2));
-      wm.dy = Number((wm.vAnchor === 'bottom' ? wm.dy - dy : wm.dy + dy).toFixed(2));
-      return;
-    }
-    if (block.role === 'custom' && block.id.startsWith('custom.')) {
-      const cb = d.customBlocks.find((c) => c.id === block.id.slice(7));
-      if (!cb) return;
-      const mirrored = cb.mirror && page.side === 'verso';
-      cb.x = Number((mirrored ? cb.x - dx : cb.x + dx).toFixed(2));
-      cb.y = Number((cb.y + dy).toFixed(2));
-      return;
-    }
-    upsertOverride(
-      d,
-      page,
-      block.id,
-      sc,
-      (o) => {
-        o.dx = Number((o.dx + (flip ? -dx : dx)).toFixed(2));
-        o.dy = Number((o.dy + dy).toFixed(2));
-      },
-      mirrored,
-    );
-    // «Todas las páginas» desde una página que tiene su propio ajuste: ese ajuste manda en
-    // esta página, así que también se mueve (si no, lo arrastrado no se movería en pantalla).
-    const own = sc === 'type' ? findOverride(d, page, block.id, 'page') : undefined;
-    if (own) {
-      own.dx = r2(own.dx + dx);
-      own.dy = r2(own.dy + dy);
-    }
+    for (const m of real) moveInDraft(d, page, m.block, m.dx, m.dy, sc, mirrored);
   }, coalesce);
+}
+
+/** Referencia para alinear: la caja de la selección, los márgenes de la página o la página entera. */
+export type AlignRef = 'selection' | 'margins' | 'page';
+
+function refRect(page: PageModel, rects: Rect[], ref: AlignRef): Rect {
+  if (ref === 'margins') return page.content;
+  if (ref === 'page') return { x: 0, y: 0, w: page.w, h: page.h };
+  return unionRect(rects);
+}
+
+function applyDeltas(page: PageModel, blocks: Block[], deltas: Delta[], scope: Scope): void {
+  moveBlocks(
+    page,
+    blocks.map((block, i) => {
+      const c = clampMoveDelta(page, blockBounds(block), deltas[i]!.dx, deltas[i]!.dy);
+      return { block, dx: c.dx, dy: c.dy };
+    }),
+    scope,
+  );
+}
+
+export function alignBlocks(page: PageModel, blocks: Block[], mode: AlignMode, ref: AlignRef, scope: Scope): void {
+  const rects = blocks.map(blockBounds);
+  // Un solo elemento se alinea con los márgenes aunque se pida «la selección».
+  applyDeltas(page, blocks, alignDeltas(rects, mode, refRect(page, rects, blocks.length === 1 && ref === 'selection' ? 'margins' : ref)), scope);
+}
+
+export function distributeBlocks(page: PageModel, blocks: Block[], axis: 'x' | 'y', scope: Scope): void {
+  applyDeltas(page, blocks, distributeDeltas(blocks.map(blockBounds), axis), scope);
+}
+
+export function centerBlocks(page: PageModel, blocks: Block[], ref: Exclude<AlignRef, 'selection'>, axis: 'x' | 'y' | 'both', scope: Scope): void {
+  const rects = blocks.map(blockBounds);
+  applyDeltas(page, blocks, centerGroupDeltas(rects, refRect(page, rects, ref), axis), scope);
+}
+
+export function tidyBlocks(page: PageModel, blocks: Block[], scope: Scope): void {
+  applyDeltas(page, blocks, tidyGridDeltas(blocks.map(blockBounds)), scope);
+}
+
+/** Iguala la escala de los bloques a la del principal (o a 1 si no tiene ajuste). */
+export function matchScale(page: PageModel, blocks: Block[], primary: Block, scope: Scope): void {
+  const design = useStore.getState().design;
+  if (!design) return;
+  const target = currentOverride(design, page, primary.id, 'page')?.scale ?? currentOverride(design, page, primary.id, 'type')?.scale ?? 1;
+  const mirrored = typeMirrored(page);
+  const sc = effectiveScope(page, scope);
+  useStore.getState().update((d) => {
+    for (const b of blocks) {
+      if (b.id === primary.id || b.role === 'watermark' || b.role === 'custom') continue;
+      upsertOverride(d, page, b.id, sc, (o) => void (o.scale = target), mirrored);
+      const own = sc === 'type' ? findOverride(d, page, b.id, 'page') : undefined;
+      if (own) own.scale = target;
+    }
+  });
+}
+
+/** Restablece varios bloques (quita sus ajustes en el alcance elegido) en un solo paso. */
+export function resetBlocks(page: PageModel, ids: string[], scope: Scope): void {
+  useStore.getState().update((d) => {
+    const key = effectiveScope(page, scope) === 'page' ? page.key : null;
+    d.overrides = d.overrides.filter((o) => !(ids.includes(o.blockId) && o.pageType === page.type && o.pageKey === key));
+  });
+}
+
+/** Bloques de la página cuyo id comparte prefijo con este (los doce meses, los siete días…). */
+export function similarBlocks(page: PageModel, block: Block): Block[] {
+  // El mismo id con otros números: `birthdays.1` … `birthdays.12`, `daily.2.notes`, `goal.3`.
+  const pattern = new RegExp(`^${block.id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\d+/g, '\\d+')}$`);
+  return [block, ...page.blocks.filter((b) => b.id !== block.id && b.editable && b.role === block.role && pattern.test(b.id))];
+}
+
+/* ---------- Estilo de escritura por tipo de página o por página ---------- */
+
+export function pageStyleOf(design: Design, page: PageModel, scope: Scope): Record<string, unknown> {
+  const key = effectiveScope(page, scope) === 'page' ? page.key : null;
+  return design.pageStyles.find((s) => s.pageType === page.type && s.pageKey === key)?.tokens ?? {};
+}
+
+/** Cambia un valor del estilo de escritura (p. ej. `['dots', 'pitch']`) para el tipo o la página. */
+export function setPageStyle(page: PageModel, scope: Scope, path: string[], value: unknown, coalesce?: string): void {
+  const key = effectiveScope(page, scope) === 'page' ? page.key : null;
+  useStore.getState().update((d) => {
+    let st = d.pageStyles.find((s) => s.pageType === page.type && s.pageKey === key);
+    if (!st) {
+      d.pageStyles.push({ pageType: page.type, pageKey: key, tokens: {} });
+      st = d.pageStyles[d.pageStyles.length - 1]!;
+    }
+    let node = st.tokens as Record<string, unknown>;
+    for (const k of path.slice(0, -1)) {
+      if (typeof node[k] !== 'object' || node[k] === null) node[k] = {};
+      node = node[k] as Record<string, unknown>;
+    }
+    node[path[path.length - 1]!] = value;
+  }, coalesce);
+}
+
+export function resetPageStyle(page: PageModel, scope: Scope): void {
+  const key = effectiveScope(page, scope) === 'page' ? page.key : null;
+  useStore.getState().update((d) => void (d.pageStyles = d.pageStyles.filter((s) => !(s.pageType === page.type && s.pageKey === key))));
 }
 
 /**
@@ -180,27 +296,76 @@ export function resetBlock(page: PageModel, blockId: string, scope: Scope): void
 }
 
 export function hideBlock(page: PageModel, block: Block, scope: Scope): void {
-  if (block.role === 'watermark' && block.id.startsWith('wm.')) {
-    useStore.getState().update((d) => {
-      const wm = d.watermarks.find((w) => w.id === block.id.slice(3));
-      if (!wm) return;
-      // «Solo esta página» la quita de esta página; «todas las páginas de este tipo», del tipo.
-      if (effectiveScope(page, scope) === 'page') {
-        if (!wm.excludePages.includes(page.key)) wm.excludePages.push(page.key);
-      } else if (!wm.exclude.includes(page.type)) wm.exclude.push(page.type);
-    });
-    return;
-  }
-  if (block.role === 'custom' && block.id.startsWith('custom.')) {
-    useStore.getState().update((d) => {
-      d.customBlocks = d.customBlocks.filter((c) => c.id !== block.id.slice(7));
-    });
-    return;
-  }
-  patchOverride(page, block.id, scope, { hidden: true });
+  hideBlocks(page, [block], scope);
+}
+
+/**
+ * Oculta varios elementos en un solo paso: marcas de agua (en esta página o en su tipo, según el
+ * alcance), elementos propios (se quitan) y los demás (ajuste «oculto»).
+ */
+export function hideBlocks(page: PageModel, blocks: Block[], scope: Scope): void {
+  const sc = effectiveScope(page, scope);
+  const mirrored = typeMirrored(page);
+  useStore.getState().update((d) => {
+    for (const block of blocks) {
+      if (block.role === 'watermark' && block.id.startsWith('wm.')) {
+        const wm = d.watermarks.find((w) => w.id === block.id.slice(3));
+        if (!wm) continue;
+        if (sc === 'page') {
+          if (!wm.excludePages.includes(page.key)) wm.excludePages.push(page.key);
+        } else if (!wm.exclude.includes(page.type)) wm.exclude.push(page.type);
+      } else if (block.role === 'custom' && block.id.startsWith('custom.')) {
+        d.customBlocks = d.customBlocks.filter((c) => c.id !== block.id.slice(7));
+      } else {
+        upsertOverride(d, page, block.id, sc, (o) => void (o.hidden = true), mirrored);
+      }
+    }
+  });
 }
 
 export function currentOverride(design: Design, page: PageModel, blockId: string, scope: Scope): BlockOverride | undefined {
   const key = effectiveScope(page, scope) === 'page' ? page.key : null;
   return design.overrides.find((o) => o.blockId === blockId && o.pageType === page.type && o.pageKey === key);
+}
+
+/* ---------- Elementos propios ---------- */
+
+/**
+ * Agrega un elemento propio al tipo de página (o solo a esta página). Si se indica un punto
+ * (clic derecho), el elemento se ubica ahí; si no, abajo del área de contenido.
+ */
+export function addCustomBlock(page: PageModel, kind: CustomBlock['kind'], labels: { text: string; image: string; rect: string; lines: string; dots: string }, scope: Scope, at?: { x: number; y: number }, assetId?: string): string {
+  const design = useStore.getState().design;
+  const c = page.content;
+  const id = newId('el');
+  const size: Record<string, { w: number; h: number }> = { text: { w: c.w, h: 10 }, image: { w: 30, h: 30 }, rect: { w: c.w, h: 30 }, lines: { w: c.w, h: 30 }, dots: { w: c.w, h: 30 } };
+  const { w, h } = size[kind] ?? { w: 30, h: 30 };
+  const def = at
+    ? { x: Math.min(Math.max(0, at.x), page.w - w), y: Math.min(Math.max(0, at.y), page.h - h) }
+    : kind === 'image'
+      ? { x: c.x + c.w - w, y: c.y + c.h - h }
+      : { x: c.x, y: c.y + c.h - (kind === 'text' ? 14 : h) };
+  // Lo que se ve en una página izquierda se guarda como en una derecha (el elemento se espeja).
+  const x = page.side === 'verso' ? page.w - def.x - w : def.x;
+  const props: Record<string, unknown> =
+    kind === 'text'
+      ? { text: '{name}', role: 'quote', size: 11, align: 'right', label: labels.text }
+      : kind === 'image'
+        ? { assetId: assetId ?? design?.assets.find((a) => a.kind !== 'pdf')?.id ?? '', fit: 'contain', opacity: 1, label: labels.image }
+        : { label: labels[kind as 'rect' | 'lines' | 'dots'] ?? kind };
+  const block: CustomBlock = { id, pageType: page.type, pageKey: effectiveScope(page, scope) === 'page' || page.type === 'custom' ? page.key : null, kind, mirror: true, x: r2(x), y: r2(def.y), w, h, props };
+  useStore.getState().update((d) => void d.customBlocks.push(block));
+  useStore.getState().select({ pageKey: page.key, pageType: page.type, blockId: `custom.${id}`, role: 'custom' });
+  return id;
+}
+
+/** Copia un elemento propio, corrido 5 mm. */
+export function duplicateCustomBlock(page: PageModel, block: Block): void {
+  if (!block.id.startsWith('custom.')) return;
+  const id = newId('el');
+  useStore.getState().update((d) => {
+    const src = d.customBlocks.find((c) => c.id === block.id.slice(7));
+    if (src) d.customBlocks.push({ ...JSON.parse(JSON.stringify(src)), id, x: r2(src.x + 5), y: r2(src.y + 5) });
+  });
+  useStore.getState().select({ pageKey: page.key, pageType: page.type, blockId: `custom.${id}`, role: 'custom' });
 }

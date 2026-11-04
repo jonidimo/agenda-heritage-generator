@@ -41,7 +41,11 @@ export function Canvas({ doc }: { doc: AgendaDocument }) {
   const [ref, size] = useSize();
   const pad = 48;
 
-  const contentMm = view === 'page' ? { w: doc.format.w, h: doc.format.h } : view === 'spread' ? { w: doc.format.w * 2, h: doc.format.h } : { w: doc.format.sheetW, h: doc.format.sheetH };
+  // Un pliego con una sola página (la primera o la última) se muestra como página suelta, centrada.
+  const [spreadL, spreadR] = spreadOf(pageIndex, doc.pageCount);
+  const singleSpread = view === 'spread' && (spreadL === null || spreadR === null);
+  const contentMm =
+    view === 'page' || singleSpread ? { w: doc.format.w, h: doc.format.h } : view === 'spread' ? { w: doc.format.w * 2, h: doc.format.h } : { w: doc.format.sheetW, h: doc.format.sheetH };
   const fitScale = Math.max(0.5, Math.min((size.w - pad) / contentMm.w, (size.h - pad - 40) / contentMm.h));
   const scale = fit ? fitScale : fitScale * zoom;
 
@@ -69,17 +73,22 @@ export function Canvas({ doc }: { doc: AgendaDocument }) {
   const plan = doc.plan.pages[pageIndex];
   return (
     <div className="relative flex min-h-0 flex-1 flex-col">
-      <div ref={ref} className="desk scroll-thin relative flex min-h-0 flex-1 items-center justify-center overflow-auto">
+      {/* Centrado con márgenes automáticos: al acercar, todo el contenido sigue alcanzable con el desplazamiento. */}
+      <div ref={ref} className="desk scroll-thin relative flex min-h-0 flex-1 overflow-auto">
         {view === 'book' ? (
           <BookView doc={doc} />
         ) : view === 'sheet' ? (
-          <SheetView doc={doc} index={pageIndex} scale={scale} />
+          <div className="m-auto">
+            <SheetView doc={doc} index={pageIndex} scale={scale} />
+          </div>
         ) : view === 'page' ? (
-          <div className="p-6">
+          <div className="m-auto p-6">
             <PageView doc={doc} index={pageIndex} scale={scale} />
           </div>
         ) : (
-          <SpreadView doc={doc} index={pageIndex} scale={scale} />
+          <div className="m-auto">
+            <SpreadView doc={doc} index={pageIndex} scale={scale} />
+          </div>
         )}
       </div>
       {view !== 'book' && (
@@ -101,13 +110,16 @@ export function Canvas({ doc }: { doc: AgendaDocument }) {
 
 function SpreadView({ doc, index, scale }: { doc: AgendaDocument; index: number; scale: number }) {
   const [left, right] = spreadOf(index, doc.pageCount);
-  const w = doc.format.w * scale;
   const h = doc.format.h * scale;
+  if (left === null || right === null) {
+    const only = left ?? right;
+    return <div className="p-6">{only !== null && <PageView doc={doc} index={only} scale={scale} />}</div>;
+  }
   return (
     <div className="flex p-6">
-      {left !== null ? <PageView doc={doc} index={left} scale={scale} /> : <div style={{ width: w, height: h }} />}
+      <PageView doc={doc} index={left} scale={scale} />
       <div className="w-px bg-black/20" style={{ height: h }} aria-hidden="true" />
-      {right !== null ? <PageView doc={doc} index={right} scale={scale} /> : <div style={{ width: w, height: h }} />}
+      <PageView doc={doc} index={right} scale={scale} />
     </div>
   );
 }

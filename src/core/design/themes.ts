@@ -5,6 +5,7 @@
  * grosor de renglón» al tema, así cambiar la estética no requiere código.
  */
 import type { FontSpec } from '../text/fonts';
+import { normalizeColor } from '../util/color';
 
 export type WritingStyle = 'lines' | 'dots' | 'grid' | 'blank';
 
@@ -62,7 +63,8 @@ export interface ThemeTokens {
   /** Márgenes de página en mm (el margen interior suma además el lomo de la encuadernación). */
   margins: { top: number; bottom: number; inner: number; outer: number };
   writing: { style: WritingStyle; pitch: number };
-  dots: { pitch: number; radius: number; color: string };
+  /** Puntos: paso horizontal, paso vertical (0 = igual al horizontal), radio en pt y color. */
+  dots: { pitch: number; pitchY: number; radius: number; color: string };
   weekendShading: boolean;
   /** Tamaño mínimo legible (pt) que respeta el ajuste automático de textos largos. */
   minTextPt: number;
@@ -102,7 +104,7 @@ const heritage: ThemeTokens = {
   tracking: { label: 0.05, heading: 0.1 },
   margins: { top: 15, bottom: 15, inner: 15, outer: 15 },
   writing: { style: 'lines', pitch: 6.2 },
-  dots: { pitch: 5, radius: 0.5, color: '#303030' },
+  dots: { pitch: 5, pitchY: 0, radius: 0.5, color: '#303030' },
   weekendShading: true,
   minTextPt: 5.5,
 };
@@ -141,7 +143,7 @@ const clara: ThemeTokens = {
   },
   tracking: { label: 0.03, heading: 0.06 },
   writing: { style: 'lines', pitch: 7.5 },
-  dots: { pitch: 6, radius: 0.6, color: '#202020' },
+  dots: { pitch: 6, pitchY: 0, radius: 0.6, color: '#202020' },
   minTextPt: 7,
 };
 
@@ -222,10 +224,71 @@ export function deepMerge<T>(base: T, patch: unknown): T {
   return out as T;
 }
 
+/* ---------- Ajustes del usuario validados ---------- */
+
+/** Rango aceptado para cada número del tema, según dónde está. */
+function numberRange(path: string): [number, number] {
+  if (path.startsWith('sizes.')) return [2, 300];
+  if (path.startsWith('strokes.')) return [0, 10];
+  if (path.startsWith('tracking.')) return [-0.2, 1];
+  if (path.startsWith('margins.')) return [0, 80];
+  if (path === 'writing.pitch') return [2, 40];
+  if (path === 'dots.pitch') return [1, 40];
+  if (path === 'dots.pitchY') return [0, 40];
+  if (path === 'dots.radius') return [0.02, 5];
+  if (path === 'minTextPt') return [2, 30];
+  if (/^fonts\.\w+\.weight$/.test(path)) return [100, 1000];
+  return [-1000, 1000];
+}
+
+const BLOCKED_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
+
+/**
+ * Se queda solo con los ajustes válidos: claves que el tema tiene, con valores del mismo tipo
+ * (número finito en su rango, texto, sí/no), colores hexadecimales y opciones conocidas. Un
+ * archivo malformado o malicioso no rompe la agenda ni inyecta nada en la vista previa.
+ */
+export function pruneTokens(patch: unknown, base: unknown = heritage, path = ''): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  if (!isObject(patch) || !isObject(base)) return out;
+  for (const [k, v] of Object.entries(patch)) {
+    if (BLOCKED_KEYS.has(k) || !Object.prototype.hasOwnProperty.call(base, k)) continue;
+    const b = base[k];
+    const p = `${path}${k}`;
+    if (isObject(b)) {
+      const sub = pruneTokens(v, b, `${p}.`);
+      if (Object.keys(sub).length > 0) out[k] = sub;
+    } else if (Array.isArray(b)) {
+      if (Array.isArray(v) && v.length <= 20 && v.every((x) => typeof x === 'string' && x.length <= 80)) out[k] = v;
+    } else if (typeof b === 'number') {
+      const [min, max] = numberRange(p);
+      if (typeof v === 'number' && Number.isFinite(v)) out[k] = Math.min(max, Math.max(min, v));
+    } else if (typeof b === 'boolean') {
+      if (typeof v === 'boolean') out[k] = v;
+    } else if (typeof b === 'string') {
+      if (typeof v !== 'string') continue;
+      if (p.startsWith('colors.') || p === 'dots.color') {
+        const c = normalizeColor(v);
+        if (c) out[k] = c;
+      } else if (/^fonts\.\w+\.style$/.test(p)) {
+        if (v === 'normal' || v === 'italic') out[k] = v;
+      } else if (p === 'writing.style') {
+        if (v === 'lines' || v === 'dots' || v === 'grid' || v === 'blank') out[k] = v;
+      } else if (v.length <= 120) out[k] = v;
+    }
+  }
+  return out;
+}
+
+/** Tema base + ajustes del usuario (validados). */
+export function mergeTokens(base: ThemeTokens, tokens: unknown): ThemeTokens {
+  return deepMerge(base, pruneTokens(tokens, base));
+}
+
 /** Tema efectivo: tema base + ajustes del usuario + nivel de comodidad. */
 export function resolveTheme(id: string, tokens: Record<string, unknown>, comfort: 'compact' | 'normal' | 'wide'): ThemeTokens {
   const base = THEMES[id] ?? heritage;
-  const merged = deepMerge(base, tokens);
+  const merged = mergeTokens(base, tokens);
   const f = COMFORT_FACTOR[comfort];
   if (f.pitch === 1 && f.text === 1) return merged;
   const sizes = Object.fromEntries(
@@ -235,7 +298,7 @@ export function resolveTheme(id: string, tokens: Record<string, unknown>, comfor
     ...merged,
     sizes,
     writing: { ...merged.writing, pitch: Number((merged.writing.pitch * f.pitch).toFixed(2)) },
-    dots: { ...merged.dots, pitch: Number((merged.dots.pitch * f.pitch).toFixed(2)) },
+    dots: { ...merged.dots, pitch: Number((merged.dots.pitch * f.pitch).toFixed(2)), pitchY: Number((merged.dots.pitchY * f.pitch).toFixed(2)) },
   };
 }
 

@@ -165,3 +165,29 @@ describe('duplicar para otro año', () => {
     expect(parsed.personalDates[0]!.day).toBe(30);
   });
 });
+
+describe('estilo de escritura por página', () => {
+  it('cambia renglones por puntos y los pasos en un tipo de página, sin tocar las demás', async () => {
+    const base = await openDocument(norma());
+    const notes = base.doc.plan.pages.find((p) => p.type === 'notes')!;
+    const other = base.doc.plan.pages.find((p) => p.type === 'monthLog')!;
+    const styled = await openDocument(
+      norma((d) => void d.pageStyles.push({ pageType: 'notes', pageKey: null, tokens: { writing: { style: 'lines', pitch: 9 }, dots: { pitch: 4, pitchY: 8, radius: 0.9 } } })),
+    );
+    const area = (doc: typeof base.doc, i: number) => doc.page(i).blocks.find((b) => b.id === 'notes.area')!;
+    // Antes: puntos. Después: renglones cada 9 mm.
+    expect(area(base.doc, notes.index).prims[0]!.t).toBe('dots');
+    const lines = area(styled.doc, notes.index).prims.filter((p) => p.t === 'line') as Array<{ y1: number }>;
+    expect(lines.length).toBeGreaterThan(5);
+    expect(lines[1]!.y1 - lines[0]!.y1).toBeCloseTo(9, 6);
+    // Otra página no cambia.
+    expect(pageToSvg(styled.doc.page(other.index), { fonts: styled.doc.ctx.fonts })).toBe(pageToSvg(base.doc.page(other.index), { fonts: base.doc.ctx.fonts }));
+    // Puntos con pasos distintos en horizontal y vertical.
+    const dotted = await openDocument(norma((d) => void d.pageStyles.push({ pageType: 'notes', pageKey: notes.key, tokens: { dots: { pitch: 4, pitchY: 8 } } })));
+    const dots = area(dotted.doc, notes.index).prims[0] as { t: string; pts: number[] };
+    expect(dots.t).toBe('dots');
+    expect(dots.pts[2]! - dots.pts[0]!).toBeCloseTo(4, 6);
+    const secondRowY = dots.pts.find((_, k) => k % 2 === 1 && dots.pts[k]! > dots.pts[1]! + 1e-6)!;
+    expect(secondRowY - dots.pts[1]!).toBeCloseTo(8, 6);
+  });
+});

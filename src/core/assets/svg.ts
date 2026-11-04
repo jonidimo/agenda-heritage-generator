@@ -113,6 +113,8 @@ function parseColor(v: string, gradients: Map<string, string>, current: string):
   }
   if (s.startsWith('#')) {
     const h = s.slice(1);
+    // Solo cifras hexadecimales: un color de un archivo nunca lleva otro texto a la vista previa.
+    if (!/^[0-9a-f]+$/.test(h)) return { color: '#000000', alpha: 1 };
     if (h.length === 3 || h.length === 4) {
       const alphaHex = h[3];
       return {

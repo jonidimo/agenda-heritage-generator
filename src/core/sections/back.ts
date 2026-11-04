@@ -220,7 +220,7 @@ export const notes: SectionModule = {
   },
   layout(ctx, page) {
     const style = param<string>(page, 'style', 'auto');
-    ctx.add('notes.area', 'Área de notas', writingArea(ctx, ctx.content, style === 'auto' ? 'dots' : (style as 'dots')), { editable: false });
+    ctx.add('notes.area', 'Área de notas', writingArea(ctx, ctx.content, style === 'auto' ? 'dots' : (style as 'dots')), { role: 'writing' });
   },
 };
 
@@ -234,7 +234,7 @@ export const filler: SectionModule = {
   layout(ctx, page: PagePlan) {
     const style = param<string>(page, 'style', 'dots');
     if (style === 'blank') return;
-    ctx.add('notes.area', 'Área de notas', writingArea(ctx, ctx.content, style as 'dots'), { editable: false });
+    ctx.add('notes.area', 'Área de notas', writingArea(ctx, ctx.content, style as 'dots'), { role: 'writing' });
   },
 };
 
@@ -251,7 +251,7 @@ export const custom: SectionModule = {
     if (!cp) return;
     const c = cp.content;
     const area: Rect = c.area === 'page' ? { x: 0, y: 0, w: ctx.page.w, h: ctx.page.h } : ctx.content;
-    if (c.background !== 'blank') ctx.add('custom.background', 'Fondo', writingArea(ctx, ctx.content, c.background), { editable: false, layer: 0 });
+    if (c.background !== 'blank') ctx.add('custom.background', 'Fondo', writingArea(ctx, ctx.content, c.background), { role: 'writing', layer: 0 });
     if (cp.title && c.kind !== 'artwork') {
       const t = ctx.textAt(cp.title, ctx.content.x, ctx.content.y + 8, { role: 'title', size: 'titleSmall' });
       ctx.add('custom.title', 'Título', [t.prim]);

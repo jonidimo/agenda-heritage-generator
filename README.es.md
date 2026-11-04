@@ -17,8 +17,7 @@ en cuadernillos plegados y cosidos a mano.**
 Heritage Studio empezó como una sola agenda artesanal para 2026. Hoy es una aplicación
 que arma el libro completo para cualquier año: calendario, feriados, registros de hábitos
 y páginas de planificación basadas en la ciencia del comportamiento. Ubica las páginas en
-hojas listas para una impresora dúplex, para que las pliegues, las cosas y las
-encuadernes.
+hojas listas para una impresora dúplex, listas para plegar, coser y encuadernar.
 
 Funciona entera en el navegador, también sin conexión, en Linux, Windows y Android. No
 se sube nada a ningún lado.

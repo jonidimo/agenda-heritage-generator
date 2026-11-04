@@ -3,15 +3,17 @@ import { createDesign, duplicateForYear, TEMPLATES, type TemplateId } from '@cor
 import type { Design } from '@core/design/schema';
 import { countryName } from '@core/holidays';
 import { langOf } from '@core/i18n';
-import { Copy, Download, FileUp, Plus, Trash2, X } from 'lucide-react';
+import { Archive, Copy, Download, FileUp, Plus, Trash2, X } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { uiText, useT } from '../i18n/ui';
-import { deleteDesign, exportDesignFile, importDesignFile, listDesigns, loadDesign, saveAsset, saveDesign, saveUserFont, type DesignMeta } from '../state/persist';
+import { deleteDesign, deleteTemplate, exportDesignFile, listDesigns, listTemplates, loadDesign, saveDesign, type DesignMeta, type TemplateRecord } from '../state/persist';
+import { backupAll, openAnyFile } from '../state/fileActions';
+import { designFromTemplate, exportTemplateFile, importText, saveAsTemplate } from '../state/files';
 import { download, fileBase } from '../state/exporter';
 import { resources } from '../state/resources';
 import { useStore } from '../state/store';
 import { LOCALES } from './panels/CalendarPanel';
-import { Button, Field, NumberInput, Select, TextInput } from './ui';
+import { Button, Field, NumberInput, Select, TextArea, TextInput, Toggle } from './ui';
 
 const FOCUSABLE = 'button:not([disabled]), [href], input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
@@ -68,7 +70,9 @@ export function WelcomeDialog() {
   const setDesign = useStore((s) => s.setDesign);
   const setShow = useStore((s) => s.setShowWelcome);
   const hasDesign = useStore((s) => s.design !== null);
-  const [template, setTemplate] = useState<TemplateId>('heritage-norma');
+  const [template, setTemplate] = useState<string>('heritage-norma');
+  const [userTpls, setUserTpls] = useState<TemplateRecord[]>([]);
+  useEffect(() => void listTemplates().then(setUserTpls), []);
   const [year, setYear] = useState(new Date().getFullYear() + 1);
   const [locale, setLocale] = useState('es-AR');
   const [country, setCountry] = useState('AR');
@@ -77,7 +81,13 @@ export function WelcomeDialog() {
   const countries = useMemo(() => (resources.holidayIndex?.countries ?? []).map((c) => ({ value: c.code, label: countryName(resources.holidayIndex, c.code, lang) })).sort((a, b) => a.label.localeCompare(b.label)), [lang]);
 
   const create = (): void => {
-    const d = createDesign(template, { year, locale, country: country || null, ...(name.trim() ? { name: name.trim() } : {}) });
+    const own = template.startsWith('user:') ? userTpls.find((x) => `user:${x.id}` === template) : undefined;
+    if (own) {
+      setDesign(designFromTemplate(own.design, { year, locale, country: country || null, name }));
+      setShow(false);
+      return;
+    }
+    const d = createDesign(template as TemplateId, { year, locale, country: country || null, ...(name.trim() ? { name: name.trim() } : {}) });
     if (template !== 'heritage-norma' && name.trim()) d.persona.name = name.trim();
     if (template === 'heritage-norma') {
       d.locale = locale;
@@ -89,7 +99,7 @@ export function WelcomeDialog() {
 
   return (
     <Modal title={t('welcome.title')} onClose={() => hasDesign && setShow(false)}>
-      <Field label={t('welcome.template')}>
+      <Field label={t('welcome.template')} group>
         <div className="grid gap-1.5">
           {TEMPLATES.map((tp) => (
             <label key={tp.id} className={`flex cursor-pointer gap-2 rounded-md border px-2 py-1.5 ${template === tp.id ? 'border-accent bg-accent-soft' : 'border-line bg-white/60'}`}>
@@ -97,6 +107,16 @@ export function WelcomeDialog() {
               <span>
                 <span className="block text-[13px] font-semibold">{uiText(t, `tpl.${tp.id}`, tp.name)}</span>
                 <span className="block text-[11.5px] text-ink-soft">{uiText(t, `tpl.${tp.id}.desc`, tp.description)}</span>
+              </span>
+            </label>
+          ))}
+          {userTpls.length > 0 && <p className="mt-1 text-[11px] font-extrabold tracking-[0.08em] text-ink-soft uppercase">{t('tpl.mine')}</p>}
+          {userTpls.map((tp) => (
+            <label key={tp.id} className={`flex cursor-pointer gap-2 rounded-md border px-2 py-1.5 ${template === `user:${tp.id}` ? 'border-accent bg-accent-soft' : 'border-line bg-white/60'}`}>
+              <input type="radio" name="tpl" checked={template === `user:${tp.id}`} onChange={() => setTemplate(`user:${tp.id}`)} className="mt-0.5" />
+              <span>
+                <span className="block text-[13px] font-semibold">{tp.name}</span>
+                {tp.description && <span className="block text-[11.5px] text-ink-soft">{tp.description}</span>}
               </span>
             </label>
           ))}
@@ -130,8 +150,51 @@ export function WelcomeDialog() {
             {t('welcome.cancel')}
           </Button>
         )}
+        <Button variant="ghost" onClick={() => void openAnyFile()}>
+          <FileUp size={14} /> {t('welcome.openFile')}
+        </Button>
         <Button variant="primary" onClick={create}>
           {t('welcome.create')}
+        </Button>
+      </div>
+    </Modal>
+  );
+}
+
+/** «Guardar como plantilla»: el diseño completo para empezar otras agendas. */
+export function SaveTemplateDialog() {
+  const t = useT();
+  const design = useStore((s) => s.design);
+  const setShow = useStore((s) => s.setShowSaveTemplate);
+  const setNotice = useStore((s) => s.setNotice);
+  const [name, setName] = useState(design?.name ?? '');
+  const [description, setDescription] = useState('');
+  const [strip, setStrip] = useState(false);
+  if (!design) return null;
+  return (
+    <Modal title={t('tpl.saveTitle')} onClose={() => setShow(false)}>
+      <p className="pb-2 text-[12px] leading-snug text-ink-soft">{t('tpl.saveHelp')}</p>
+      <Field label={t('tpl.name')}>
+        <TextInput value={name} onChange={setName} />
+      </Field>
+      <Field label={t('tpl.description')}>
+        <TextArea value={description} onChange={setDescription} rows={2} />
+      </Field>
+      <Toggle label={t('tpl.stripPersonal')} checked={strip} onChange={setStrip} />
+      <div className="mt-3 flex justify-end gap-2">
+        <Button variant="ghost" onClick={() => setShow(false)}>
+          {t('welcome.cancel')}
+        </Button>
+        <Button
+          variant="primary"
+          disabled={!name.trim()}
+          onClick={async () => {
+            const tpl = await saveAsTemplate(design, name, description, strip);
+            setNotice(t('tpl.saved', { name: tpl.name }));
+            setShow(false);
+          }}
+        >
+          {t('tpl.save')}
         </Button>
       </div>
     </Modal>
@@ -146,9 +209,12 @@ export function LibraryDialog() {
   const setShowWelcome = useStore((s) => s.setShowWelcome);
   const closeDesign = useStore((s) => s.closeDesign);
   const setNotice = useStore((s) => s.setNotice);
-  const bump = useStore((s) => s.bumpResources);
   const [items, setItems] = useState<DesignMeta[]>([]);
   const [err, setErr] = useState<string | null>(null);
+  const [info, setInfo] = useState<string | null>(null);
+  const [tpls, setTpls] = useState<TemplateRecord[]>([]);
+  const refreshTemplates = (): void => void listTemplates().then(setTpls);
+  useEffect(refreshTemplates, []);
   const fileRef = useRef<HTMLInputElement | null>(null);
   const refresh = (): void => void listDesigns().then(setItems);
   useEffect(refresh, []);
@@ -175,29 +241,23 @@ export function LibraryDialog() {
   const onImport = async (files: FileList | null): Promise<void> => {
     const f = files?.[0];
     if (!f) return;
-    let parsed: Awaited<ReturnType<typeof importDesignFile>>;
     try {
-      parsed = await importDesignFile(await f.text());
+      const r = await importText(await f.text());
+      if (r.kind === 'design') {
+        setDesign(r.design);
+        setNotice(null);
+        setShow(false);
+      } else if (r.kind === 'template') {
+        setInfo(t('file.templateAdded', { name: r.template.name }));
+        refreshTemplates();
+      } else {
+        setInfo(t('file.restored', { designs: r.designs, templates: r.templates }));
+        refresh();
+        refreshTemplates();
+      }
     } catch (e) {
       setErr(`${t('notice.importFailed')} ${(e as Error).message}`);
-      return;
     }
-    const { design: d, assets, fonts } = parsed;
-    for (const a of assets) {
-      await saveAsset(a.id, a.bytes);
-      resources.assetBytes.set(a.id, a.bytes);
-    }
-    for (const fo of fonts) {
-      await saveUserFont(fo.id, fo.bytes, fo.spec);
-      const face = resources.fonts.register(fo.bytes, { ...fo.spec, source: 'user', file: fo.id });
-      resources.userFontBytes.set(fo.id, { bytes: fo.bytes, spec: { family: face.family, weight: face.weight, style: face.style } });
-    }
-    resources.bump();
-    bump(resources.version);
-    await saveDesign(d);
-    setDesign(d);
-    setNotice(null);
-    setShow(false);
   };
 
   return (
@@ -205,6 +265,11 @@ export function LibraryDialog() {
       {err && (
         <p role="alert" className="mb-2 rounded-md border border-warn/40 bg-[#fbf3e4] px-2 py-1.5 text-[12px] break-words text-ink">
           {err}
+        </p>
+      )}
+      {info && (
+        <p role="status" className="mb-2 rounded-md border border-line bg-accent-soft px-2 py-1.5 text-[12px] break-words text-ink">
+          {info}
         </p>
       )}
       <div className="mb-3 flex flex-wrap gap-1.5">
@@ -284,6 +349,40 @@ export function LibraryDialog() {
           ))}
         </ul>
       )}
+      <h3 className="mt-4 mb-1 text-[11px] font-extrabold tracking-[0.08em] uppercase">{t('tpl.mine')}</h3>
+      {tpls.length === 0 ? (
+        <p className="text-[12px] text-ink-soft">{t('tpl.none')}</p>
+      ) : (
+        <ul className="divide-y divide-line rounded-md border border-line bg-white/60">
+          {tpls.map((tp) => (
+            <li key={tp.id} className="flex items-center gap-2 px-2 py-1.5">
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-[13px] font-semibold">{tp.name}</span>
+                {tp.description && <span className="block truncate text-[11px] text-ink-soft">{tp.description}</span>}
+              </span>
+              <Button variant="ghost" title={t('tpl.export')} onClick={() => void exportTemplateFile(tp)}>
+                <Download size={14} />
+              </Button>
+              <Button
+                variant="ghost"
+                title={t('tpl.delete')}
+                onClick={async () => {
+                  if (!window.confirm(t('tpl.confirmDelete', { name: tp.name }))) return;
+                  await deleteTemplate(tp.id);
+                  refreshTemplates();
+                }}
+              >
+                <Trash2 size={14} />
+              </Button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <div className="mt-3">
+        <Button onClick={() => void backupAll()}>
+          <Archive size={14} /> {t('file.backup')}
+        </Button>
+      </div>
       <p className="mt-3 text-[11px] text-ink-soft">{t('lib.storageNote')}</p>
     </Modal>
   );

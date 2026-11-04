@@ -325,7 +325,7 @@ export const bestSelf: SectionModule = {
     ctx.add('bestSelf.prompt', 'Consigna', prompt.prims);
     r = takeTop(r, prompt.bbox.h + 4)[1];
     const [main, bottom] = takeBottom(r, 52, 4);
-    ctx.add('bestSelf.writing', 'Espacio para escribir', writingArea(ctx, main));
+    ctx.add('bestSelf.writing', 'Espacio para escribir', writingArea(ctx, main), { role: 'writing' });
     const vh = sectionHeader(ctx, bottom, s.values, 'bestSelf.valuesHeader');
     const vals = { x: bottom.x, y: bottom.y + vh, w: bottom.w, h: 3 * ctx.theme.writing.pitch };
     ctx.add('bestSelf.values', 'Valores', checklist(ctx, vals, ctx.theme.writing.pitch, { circles: true }));

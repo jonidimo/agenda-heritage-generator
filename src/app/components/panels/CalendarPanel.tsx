@@ -3,7 +3,7 @@ import { computeHolidays, countryName, HOLIDAY_TYPES, type HolidayType } from '@
 import { langOf } from '@core/i18n';
 import { Plus, RotateCcw, Trash2 } from 'lucide-react';
 import { useMemo, useState } from 'react';
-import { useT, type UiKey } from '../../i18n/ui';
+import { isUiLang, UI_LANG_NAMES, useT, type UiKey } from '../../i18n/ui';
 import { resources } from '../../state/resources';
 import { useStore } from '../../state/store';
 import { Button, Field, Group, NumberInput, Select, TextInput, Toggle } from '../ui';
@@ -26,6 +26,8 @@ export const LOCALES = [
 export function CalendarPanel() {
   const t = useT();
   const design = useStore((s) => s.design)!;
+  const uiLang = useStore((s) => s.uiLang);
+  const setUiLang = useStore((s) => s.setUiLang);
   const update = useStore((s) => s.update);
   const resVersion = useStore((s) => s.resVersion);
   const c = design.calendar;
@@ -70,9 +72,17 @@ export function CalendarPanel() {
         <Field label={t('cal.startMonth')}>
           <Select value={String(c.startMonth)} onChange={(v) => update((d) => void (d.calendar.startMonth = Number(v)))} options={months.map((m, i) => ({ value: String(i + 1), label: m }))} />
         </Field>
-        <Field label={t('cal.locale')}>
+        <Field label={t('cal.locale')} hint={t('cal.uiHint')}>
           <Select value={design.locale} onChange={(v) => update((d) => void (d.locale = v))} options={LOCALES.some((l) => l.value === design.locale) ? LOCALES : [...LOCALES, { value: design.locale, label: design.locale }]} />
         </Field>
+        {(() => {
+          const l = langOf(design.locale);
+          return isUiLang(l) && l !== uiLang ? (
+            <button type="button" className="mb-1 text-left text-[12px] font-semibold text-accent underline" onClick={() => setUiLang(l)}>
+              {t('cal.useForUi', { lang: UI_LANG_NAMES[l] })}
+            </button>
+          ) : null;
+        })()}
         <div className="grid grid-cols-2 gap-2">
           <Field label={t('cal.weekStart')}>
             <Select value={c.weekStart} onChange={(v) => update((d) => void (d.calendar.weekStart = v))} options={(['auto', 'monday', 'sunday', 'saturday'] as const).map((v) => ({ value: v, label: t(`cal.weekStart.${v}`) }))} />

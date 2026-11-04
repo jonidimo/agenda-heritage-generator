@@ -4,6 +4,7 @@
  * así un archivo viejo o incompleto siempre se completa y valida.
  */
 import { z } from 'zod';
+import { pruneTokens } from './themes';
 
 export const SCHEMA_VERSION = 1;
 
@@ -142,7 +143,8 @@ export const ThemeRefZ = z
   .object({
     id: z.string().default('heritage'),
     comfort: z.enum(['compact', 'normal', 'wide']).default('normal'),
-    tokens: z.record(z.string(), z.unknown()).default({}),
+    // Solo se guardan ajustes válidos (ver `pruneTokens`).
+    tokens: z.record(z.string(), z.unknown()).default({}).transform((t) => pruneTokens(t)),
   })
   .prefault({});
 
@@ -270,6 +272,17 @@ export const BlockOverrideZ = z.object({
 });
 export type BlockOverride = z.infer<typeof BlockOverrideZ>;
 
+/**
+ * Estilo de escritura (renglones, puntos, cuadrícula, pasos, tamaño de punto, grosor) para un
+ * tipo de página o una página puntual. Los valores son ajustes del tema, validados.
+ */
+export const PageStyleZ = z.object({
+  pageType: z.string(),
+  pageKey: z.string().nullable().default(null),
+  tokens: z.record(z.string(), z.unknown()).default({}).transform((t) => pruneTokens(t)),
+});
+export type PageStyle = z.infer<typeof PageStyleZ>;
+
 export const AssetRefZ = z.object({
   id: z.string(),
   name: z.string(),
@@ -322,6 +335,7 @@ export const DesignZ = z.object({
   customBlocks: z.array(CustomBlockZ).default([]),
   watermarks: z.array(WatermarkZ).default([]),
   overrides: z.array(BlockOverrideZ).default([]),
+  pageStyles: z.array(PageStyleZ).default([]),
   assets: z.array(AssetRefZ).default([]),
   cover: CoverZ,
 });

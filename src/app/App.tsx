@@ -2,7 +2,9 @@ import clsx from 'clsx';
 import { BookMarked, CalendarDays, Image as ImageIcon, LayoutList, Palette, Printer, SlidersHorizontal, UserRound, X } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { Canvas } from './components/canvas/Canvas';
-import { LibraryDialog, WelcomeDialog } from './components/Dialogs';
+import { ContextMenuHost } from './components/ContextMenu';
+import { LibraryDialog, SaveTemplateDialog, WelcomeDialog } from './components/Dialogs';
+import { openAnyFile, saveCurrent } from './state/fileActions';
 import { Inspector } from './components/Inspector';
 import { Navigator } from './components/Navigator';
 import { AssetsPanel } from './components/panels/AssetsPanel';
@@ -13,7 +15,8 @@ import { PrintPanel } from './components/panels/PrintPanel';
 import { SectionsPanel } from './components/panels/SectionsPanel';
 import { StylePanel } from './components/panels/StylePanel';
 import { Topbar } from './components/Topbar';
-import { useT, type UiKey } from './i18n/ui';
+import { isUiLang, useT, type UiKey } from './i18n/ui';
+import { langOf } from '@core/i18n';
 import { useDocument } from './state/doc';
 import { collectUnusedAssets, listDesigns, loadDesign } from './state/persist';
 import { resources } from './state/resources';
@@ -85,6 +88,7 @@ export function App() {
   const setDesign = useStore((s) => s.setDesign);
   const showWelcome = useStore((s) => s.showWelcome);
   const showLibrary = useStore((s) => s.showLibrary);
+  const showSaveTemplate = useStore((s) => s.showSaveTemplate);
   const setShowWelcome = useStore((s) => s.setShowWelcome);
   const sidebarOpen = useStore((s) => s.sidebarOpen);
   const setSidebarOpen = useStore((s) => s.setSidebarOpen);
@@ -96,7 +100,8 @@ export function App() {
   const [ready, setReady] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const large = useMediaQuery('(min-width: 1024px)');
-  const [sheetOpen, setSheetOpen] = useState(false);
+  const sheetOpen = useStore((s) => s.inspectorOpen);
+  const setSheetOpen = useStore((s) => s.setInspectorOpen);
   const { doc, error } = useDocument();
 
   /** Muestra los problemas de carga nuevos (fuentes, feriados, imágenes). */
@@ -153,6 +158,13 @@ export function App() {
       .finally(reportResourceErrors);
   }, [design, reportResourceErrors, setNotice]);
 
+  // Mientras la persona no elija el idioma de la interfaz, la interfaz habla el idioma de la agenda.
+  const designLang = design ? langOf(design.locale) : null;
+  useEffect(() => {
+    const st = useStore.getState();
+    if (designLang && !st.uiLangChosen && isUiLang(designLang) && st.uiLang !== designLang) st.followLang(designLang);
+  }, [designLang]);
+
   // Si la agenda pasa a tener menos páginas, la página actual se acomoda; y si se pidió ir a
   // una página que recién se creó, se va en cuanto existe.
   useEffect(() => {
@@ -173,7 +185,7 @@ export function App() {
   // En pantallas angostas el inspector es una hoja inferior que se abre al tocar un elemento.
   useEffect(() => {
     if (!large && selection) setSheetOpen(true);
-  }, [large, selection]);
+  }, [large, selection, setSheetOpen]);
 
   // Sin fuentes no hay páginas: en lugar de «Cargando…» para siempre, el motivo y un botón para reintentar.
   const noFonts = ready && !doc && resources.fonts.list().length === 0 && resources.errors.length > 0;
@@ -190,6 +202,13 @@ export function App() {
         e.preventDefault();
       } else if (mod && e.key.toLowerCase() === 'y') {
         useStore.getState().redo();
+        e.preventDefault();
+      } else if (mod && e.key.toLowerCase() === 's') {
+        // Ctrl+S guarda en el archivo elegido (Ctrl+Mayús+S: «Guardar como»).
+        void saveCurrent(e.shiftKey);
+        e.preventDefault();
+      } else if (mod && e.key.toLowerCase() === 'o') {
+        void openAnyFile();
         e.preventDefault();
       }
     };
@@ -267,8 +286,10 @@ export function App() {
           </div>
         )}
       </div>
+      <ContextMenuHost />
       {showWelcome && <WelcomeDialog />}
       {showLibrary && <LibraryDialog />}
+      {showSaveTemplate && <SaveTemplateDialog />}
     </div>
   );
 }

@@ -9,7 +9,7 @@ import { parseDesign, type Design, type DesignInput, type SectionItem, type Sect
 export type TemplateId = 'heritage-norma' | 'heritage' | 'clara' | 'minimal';
 
 export const TEMPLATES: Array<{ id: TemplateId; name: string; description: string }> = [
-  { id: 'heritage-norma', name: 'Heritage · Norma', description: 'La agenda 2026 de Norma, actualizada: dedicatoria, frases, cumpleaños y colibrí.' },
+  { id: 'heritage-norma', name: 'Heritage · Norma', description: 'La agenda de Norma: dedicatoria, frases del mes, cumpleaños y colibrí.' },
   { id: 'heritage', name: 'Heritage', description: 'Diseño clásico, durable y legible. Semana Alastair sin horas fijas.' },
   { id: 'clara', name: 'Lectura clara', description: 'Letra grande, alto contraste y renglones amplios (personas mayores o baja visión).' },
   { id: 'minimal', name: 'Mínima', description: 'Una sola tipografía, puntos en vez de renglones, sin sombreado.' },
@@ -193,6 +193,7 @@ export function duplicateForYear(d: Design, year: number): Design {
     overrides: d.overrides.map((o) => ({ ...o, pageKey: shift(o.pageKey) })),
     customBlocks: d.customBlocks.map((c) => ({ ...c, pageKey: shift(c.pageKey) })),
     watermarks: d.watermarks.map((w) => ({ ...w, excludePages: w.excludePages.map((k) => shiftKeyYears(k, delta)) })),
+    pageStyles: d.pageStyles.map((p) => ({ ...p, pageKey: shift(p.pageKey) })),
     // Si el ancla no existe en el año nuevo, la página propia cae por su respaldo.
     customPages: d.customPages.map((c) => ({ ...c, after: shift(c.after), fallback: shift(c.fallback) })),
   });

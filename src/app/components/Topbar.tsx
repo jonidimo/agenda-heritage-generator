@@ -1,4 +1,6 @@
-import { BookOpen, Columns2, File, FolderOpen, Grid3x3, Magnet, Maximize, PanelLeft, Printer, Redo2, Ruler, Undo2, ZoomIn, ZoomOut } from 'lucide-react';
+import { Archive, BookOpen, Columns2, File, FileDown, FolderOpen, Grid3x3, LayoutTemplate, Magnet, Maximize, PanelLeft, Printer, Redo2, Ruler, Save, Undo2, Upload, ZoomIn, ZoomOut } from 'lucide-react';
+import { backupAll, openAnyFile, saveCurrent } from '../state/fileActions';
+import { openMenuAt } from './ContextMenu';
 import { useT, type UiLang } from '../i18n/ui';
 import { useStore, type View } from '../state/store';
 import { IconButton, Segmented } from './ui';
@@ -19,6 +21,7 @@ export function Topbar() {
   const lang = useStore((s) => s.uiLang);
   const setLang = useStore((s) => s.setUiLang);
   const setShowLibrary = useStore((s) => s.setShowLibrary);
+  const setShowSaveTemplate = useStore((s) => s.setShowSaveTemplate);
   const setPanel = useStore((s) => s.setPanel);
   const sidebarOpen = useStore((s) => s.sidebarOpen);
   const setSidebarOpen = useStore((s) => s.setSidebarOpen);
@@ -39,6 +42,26 @@ export function Topbar() {
       <button type="button" onClick={() => setShowLibrary(true)} className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-[12.5px] font-semibold hover:bg-black/5" title={t('top.library')}>
         <FolderOpen size={16} />
         <span className="hidden sm:inline">{t('top.library')}</span>
+      </button>
+      <button
+        type="button"
+        aria-haspopup="menu"
+        title={t('file.menu')}
+        className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-[12.5px] font-semibold hover:bg-black/5"
+        onClick={(e) => {
+          const r = e.currentTarget.getBoundingClientRect();
+          openMenuAt({ clientX: r.left, clientY: r.bottom + 4, preventDefault: () => undefined }, [
+            { label: t('file.save'), icon: <Save size={14} />, disabled: !design, onSelect: () => void saveCurrent(false) },
+            { label: t('file.saveAs'), icon: <FileDown size={14} />, disabled: !design, onSelect: () => void saveCurrent(true) },
+            { label: t('file.open'), icon: <Upload size={14} />, onSelect: () => void openAnyFile() },
+            { separator: true },
+            { label: t('file.saveTemplate'), icon: <LayoutTemplate size={14} />, disabled: !design, onSelect: () => setShowSaveTemplate(true) },
+            { label: t('file.backup'), icon: <Archive size={14} />, onSelect: () => void backupAll() },
+          ]);
+        }}
+      >
+        <Save size={16} />
+        <span className="hidden sm:inline">{t('file.menu')}</span>
       </button>
       {design && (
         <input

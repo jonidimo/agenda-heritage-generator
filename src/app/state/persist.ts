@@ -12,6 +12,40 @@ import { createStore, del, get, keys, set } from 'idb-keyval';
 const designs = createStore('agenda-studio', 'designs');
 const assets = createStore('agenda-studio-assets', 'assets');
 const fonts = createStore('agenda-studio-fonts', 'fonts');
+const templates = createStore('agenda-studio-templates', 'templates');
+
+/** Plantilla propia: una agenda guardada como punto de partida para otras (otro año, otra persona). */
+export interface TemplateRecord {
+  id: string;
+  name: string;
+  description: string;
+  createdAt: string;
+  design: Design;
+}
+
+export async function listTemplates(): Promise<TemplateRecord[]> {
+  return safe(async () => {
+    const out: TemplateRecord[] = [];
+    for (const k of await keys(templates)) {
+      const raw = await get<TemplateRecord>(k, templates);
+      if (!raw) continue;
+      try {
+        out.push({ ...raw, design: parseDesign(raw.design) });
+      } catch {
+        /* una plantilla que no valida no se muestra */
+      }
+    }
+    return out.sort((a, b) => a.name.localeCompare(b.name));
+  }, []);
+}
+
+export async function saveTemplate(t: TemplateRecord): Promise<void> {
+  await safe(() => set(t.id, t, templates), undefined);
+}
+
+export async function deleteTemplate(id: string): Promise<void> {
+  await safe(() => del(id, templates), undefined);
+}
 
 export interface DesignMeta {
   id: string;
@@ -40,7 +74,7 @@ export async function listDesigns(): Promise<DesignMeta[]> {
   }, []);
 }
 
-/** Lee una agenda guardada. Si no existe devuelve null; si no se puede leer, avisa con el motivo. */
+/** Lee una agenda guardada. Si no existe devuelve null; si no se puede validar, lanza un error con el motivo. */
 export async function loadDesign(id: string): Promise<Design | null> {
   const raw = await safe(() => get<unknown>(id, designs), undefined);
   return raw ? parseDesign(raw) : null;
@@ -69,6 +103,11 @@ export async function collectUnusedAssets(): Promise<number> {
     for (const k of await keys(designs)) {
       const d = await get<{ assets?: Array<{ id?: string }> }>(k, designs);
       for (const a of d?.assets ?? []) if (a?.id) used.add(a.id);
+    }
+    // Las imágenes de las plantillas propias también se conservan.
+    for (const k of await keys(templates)) {
+      const t = await get<{ design?: { assets?: Array<{ id?: string }> } }>(k, templates);
+      for (const a of t?.design?.assets ?? []) if (a?.id) used.add(a.id);
     }
     let removed = 0;
     for (const k of await keys(assets)) {
@@ -125,7 +164,12 @@ export async function exportDesignFile(d: Design, assetBytes: ReadonlyMap<string
 }
 
 export async function importDesignFile(text: string): Promise<{ design: Design; assets: Array<{ id: string; bytes: Uint8Array }>; fonts: Array<{ id: string; bytes: Uint8Array; spec: Partial<FontSpec> }> }> {
-  const raw = JSON.parse(text) as Record<string, unknown> & { userFonts?: Array<{ id: string; spec: Partial<FontSpec>; data: string }> };
+  return importDesignData(JSON.parse(text));
+}
+
+/** Como `importDesignFile`, a partir del objeto ya leído (archivos de plantilla y copias de seguridad). */
+export async function importDesignData(data: unknown): Promise<{ design: Design; assets: Array<{ id: string; bytes: Uint8Array }>; fonts: Array<{ id: string; bytes: Uint8Array; spec: Partial<FontSpec> }> }> {
+  const raw = data as Record<string, unknown> & { userFonts?: Array<{ id: string; spec: Partial<FontSpec>; data: string }> };
   const design = parseDesign(raw);
   const assetsOut: Array<{ id: string; bytes: Uint8Array }> = [];
   for (const a of design.assets) if (a.data) assetsOut.push({ id: a.id, bytes: fromBase64(a.data) });

@@ -1,45 +1,22 @@
-import { rasterInfo } from '@core/assets/image';
 import { holidayName } from '@core/holidays';
 import { langOf, listStringKeys, resolveStrings } from '@core/i18n';
-import { assetInfoFromBytes, facesForDesign } from '@core/resources';
+import { facesForDesign } from '@core/resources';
 import { PAGE_TYPES } from '@core/sections/registry';
 import { detectFaceMeta } from '@core/text/fonts';
 import { openFont } from '@core/text/fontkit';
 import { newId } from '@core/util/hash';
 import { FilePlus2, Image as ImageIcon, Stamp, Trash2, Type, Upload } from 'lucide-react';
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { sectionName, useT } from '../../i18n/ui';
-import { assetHref } from '../../state/assetUrls';
+import { assetHref, onAssetUrlsChange } from '../../state/assetUrls';
 import { customPageHere } from '../../state/customPages';
 import { useDocument } from '../../state/doc';
-import { saveAsset, saveUserFont } from '../../state/persist';
+import { saveUserFont } from '../../state/persist';
+import { addAssetFiles } from '../../state/uploads';
 import { resources } from '../../state/resources';
 import { useStore } from '../../state/store';
 import { WatermarkFields } from '../Inspector';
 import { Badge, Button, Field, Group, Select, Toggle } from '../ui';
-
-function kindOf(file: File, bytes: Uint8Array): { kind: 'raster' | 'vector' | 'pdf'; mime: string } | null {
-  if (file.type === 'image/svg+xml' || /\.svg$/i.test(file.name)) return { kind: 'vector', mime: 'image/svg+xml' };
-  if (file.type === 'application/pdf' || /\.pdf$/i.test(file.name)) return { kind: 'pdf', mime: 'application/pdf' };
-  const r = rasterInfo(bytes);
-  if (r) return { kind: 'raster', mime: r.mime };
-  return null;
-}
-
-/** Convierte WebP/HEIC/GIF/AVIF (lo que el navegador sepa abrir) a PNG sin pérdida. */
-async function toPng(file: File): Promise<Uint8Array | null> {
-  try {
-    const bmp = await createImageBitmap(file);
-    const canvas = document.createElement('canvas');
-    canvas.width = bmp.width;
-    canvas.height = bmp.height;
-    canvas.getContext('2d')?.drawImage(bmp, 0, 0);
-    const blob = await new Promise<Blob | null>((r) => canvas.toBlob(r, 'image/png'));
-    return blob ? new Uint8Array(await blob.arrayBuffer()) : null;
-  } catch {
-    return null;
-  }
-}
 
 export function AssetsPanel() {
   const t = useT();
@@ -53,40 +30,15 @@ export function AssetsPanel() {
   const fontRef = useRef<HTMLInputElement | null>(null);
   const [error, setError] = useState<string | null>(null);
   const resVersion = useStore((s) => s.resVersion);
+  // Las vistas previas de PDF llegan después: al estar listas, la lista se vuelve a dibujar.
+  const [, repaint] = useReducer((x: number) => x + 1, 0);
+  useEffect(() => onAssetUrlsChange(repaint), []);
 
   const onFiles = async (files: FileList | null): Promise<void> => {
     if (!files) return;
     setError(null);
-    // Si mientras se procesa se abre otra agenda, la imagen no se le agrega a esa.
-    const designId = design.id;
-    for (const file of Array.from(files)) {
-      let bytes: Uint8Array = new Uint8Array(await file.arrayBuffer());
-      let k = kindOf(file, bytes);
-      if (!k) {
-        const png = await toPng(file);
-        if (!png) {
-          setError(t('assets.unsupported', { name: file.name }));
-          continue;
-        }
-        bytes = png;
-        k = { kind: 'raster', mime: 'image/png' };
-      }
-      const id = newId('img');
-      const ref = { id, name: file.name, kind: k.kind, mime: k.mime, width: 0, height: 0, builtin: null };
-      try {
-        const info = await assetInfoFromBytes(ref, bytes);
-        resources.assetBytes.set(id, bytes);
-        resources.assetInfos.set(id, info);
-        await saveAsset(id, bytes);
-        if (useStore.getState().design?.id !== designId) continue;
-        update((d) => void d.assets.push({ ...ref, width: info.width, height: info.height, ...(info.pages ? { pages: info.pages } : {}) }));
-        resources.bump();
-        bump(resources.version);
-        if (info.vector?.warnings.length) setError(info.vector.warnings.join(' '));
-      } catch (err) {
-        setError(`${file.name}: ${(err as Error).message}`);
-      }
-    }
+    const r = await addAssetFiles(Array.from(files), (name) => t('assets.unsupported', { name }));
+    if (r.messages.length > 0) setError(r.messages.join(' '));
   };
 
   const onFonts = async (files: FileList | null): Promise<void> => {
