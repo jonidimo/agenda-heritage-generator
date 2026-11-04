@@ -92,3 +92,16 @@ export function pickFiles(accept: string, multiple = true): Promise<File[]> {
 }
 
 export const IMAGE_ACCEPT = 'image/*,.svg,.pdf,application/pdf';
+
+/**
+ * Elige una imagen (o un PDF, si se acepta), la agrega a los recursos de la agenda y devuelve su
+ * identificador; los avisos (formato no admitido) van a la barra de avisos. Lo usan la marca de
+ * agua, los elementos de imagen y los ornamentos.
+ */
+export async function uploadOne(accept: string, unsupported: (name: string) => string): Promise<string | null> {
+  const files = await pickFiles(accept, false);
+  if (files.length === 0) return null;
+  const r = await addAssetFiles(files, unsupported);
+  if (r.messages.length > 0) useStore.getState().setNotice(r.messages.join(' '));
+  return r.ids[0] ?? null;
+}

@@ -34,7 +34,7 @@ import { pageLinks, safeUrl } from '@core/document/links';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { blockLabel, warningText } from '../i18n/messages';
 import { sectionName, useT } from '../i18n/ui';
-import { addAssetFiles, pickFiles } from '../state/uploads';
+import { IMAGE_ACCEPT, uploadOne } from '../state/uploads';
 import {
   addCustomBlock,
   alignBlocks,
@@ -335,7 +335,6 @@ export function WatermarkFields({ id }: { id: string }) {
   const assets = useStore((s) => s.design?.assets ?? []);
   const update = useStore((s) => s.update);
   const select = useStore((s) => s.select);
-  const setNotice = useStore((s) => s.setNotice);
   if (!wm) return null;
   const set = <K extends keyof typeof wm>(k: K, v: (typeof wm)[K]): void =>
     update((d) => {
@@ -344,11 +343,8 @@ export function WatermarkFields({ id }: { id: string }) {
     }, `wm:${id}:${String(k)}`);
   /** Sube una imagen nueva y la usa en esta marca de agua. */
   const uploadAndUse = async (): Promise<void> => {
-    const files = await pickFiles('image/*,.svg', false);
-    if (files.length === 0) return;
-    const r = await addAssetFiles(files, (name) => t('assets.unsupported', { name }));
-    if (r.ids[0]) set('assetId', r.ids[0]);
-    if (r.messages.length > 0) setNotice(r.messages.join(' '));
+    const id = await uploadOne('image/*,.svg', (name) => t('assets.unsupported', { name }));
+    if (id) set('assetId', id);
   };
   return (
     <div>
@@ -475,7 +471,29 @@ function CustomFields({ id }: { id: string }) {
       {cb.kind === 'image' && (
         <>
           <Field label={t('cover.image')}>
-            <Select value={String(p.assetId ?? '')} onChange={(v) => setProp('assetId', v)} options={assets.map((a) => ({ value: a.id, label: a.name }))} />
+            <Select value={String(p.assetId ?? '')} onChange={(v) => setProp('assetId', v)} options={assets.filter((a) => a.kind !== 'font').map((a) => ({ value: a.id, label: a.name }))} />
+          </Field>
+          <div className="mb-1">
+            <Button
+              onClick={() =>
+                void uploadOne(IMAGE_ACCEPT, (name) => t('assets.unsupported', { name })).then((id) => {
+                  if (id) setProp('assetId', id);
+                })
+              }
+            >
+              <ImageIcon size={14} /> {t('insp.uploadImage')}
+            </Button>
+          </div>
+          <Field label={t('cp.fit')}>
+            <Select
+              value={String(p.fit ?? 'contain') as 'contain'}
+              onChange={(v) => setProp('fit', v)}
+              options={[
+                { value: 'contain', label: t('cp.fitContain') },
+                { value: 'cover' as 'contain', label: t('cp.fitCover') },
+                { value: 'fill' as 'contain', label: t('cp.fitFill') },
+              ]}
+            />
           </Field>
           <Slider label={t('insp.opacity')} value={Number(p.opacity ?? 1)} min={0.05} max={1} step={0.05} onChange={(v) => setProp('opacity', v)} />
         </>
