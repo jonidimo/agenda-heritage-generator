@@ -310,7 +310,7 @@ npm run pdf -- designs/mia-2028.agenda.json --mode imposed --out output/mia-2028
 ```
 
 `check` elenca cosa verrebbe ignorato o corretto in un file e gli avvisi dell’agenda
-composta. `npm run agenda -- schema` e `npm run agenda -- catalog` mostrano il formato del
+composta. `npm run -s agenda -- schema` e `npm run -s agenda -- catalog` mostrano il formato del
 file e tutto ciò che può nominare. `npm run -s mcp` avvia il server MCP per i modelli di
 intelligenza artificiale (vedi [la guida](docs/llm-templates.md)).
 

@@ -87,6 +87,9 @@ export function createServer(opts: ServerOptions): McpServer {
     if ((input.path === undefined) === (input.design === undefined)) throw new Error('Indicá la agenda con «path» (un archivo) o con «design» (el JSON), una de las dos.');
     let raw: unknown = input.design;
     if (input.path !== undefined) raw = parseJson((await ws.read(input.path, JSON_EXT)).text, input.path);
+    // Una plantilla guardada desde la aplicación trae la agenda adentro.
+    const wrapped = raw as { kind?: unknown; design?: unknown } | null;
+    if (wrapped?.kind === 'heritage-template' && wrapped.design) raw = wrapped.design;
     const check = checkDesignData(raw);
     if (!check.design) throw new Error(`La agenda no se puede abrir:\n${check.issues.map((i) => `${i.path}: ${i.message}`).join('\n')}`);
     return { check, design: check.design };
@@ -111,7 +114,7 @@ export function createServer(opts: ServerOptions): McpServer {
     {
       title: 'Esquema JSON',
       description:
-        'Esquema JSON (draft 2020-12) del archivo .agenda.json. Con «part» devuelve solo esa parte, con las referencias resueltas: p. ej. "calendar", "theme", "theme.tokens.lines", "sections", "customBlocks", "pageTemplates", "$defs.sectionItem". Sin «part», el esquema entero (unos 30 KB).',
+        'Esquema JSON (draft 2020-12) del archivo .agenda.json. Con «part» devuelve solo esa parte, con las referencias resueltas: p. ej. "calendar", "theme", "theme.tokens.lines", "sections", "customBlocks", "pageTemplates", "$defs.sectionItem". Sin «part», el esquema entero (unos 40 KB).',
       inputSchema: { part: z.string().optional().describe('Parte del esquema, con puntos') },
       annotations: { readOnlyHint: true },
     },

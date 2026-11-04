@@ -311,7 +311,7 @@ npm run pdf -- designs/mi-2028.agenda.json --mode imposed --out output/mi-2028-i
 ```
 
 `check` lista lo que se ignoraría o corregiría en un archivo y los avisos de la agenda
-armada. `npm run agenda -- schema` y `npm run agenda -- catalog` muestran el formato del
+armada. `npm run -s agenda -- schema` y `npm run -s agenda -- catalog` muestran el formato del
 archivo y todo lo que puede nombrar. `npm run -s mcp` inicia el servidor MCP para modelos
 de inteligencia artificial (ver [la guía](docs/plantillas-llm.md)).
 

@@ -39,11 +39,12 @@ export function sectionOptionFields(type: string): OptionField[] {
 }
 
 /**
- * Opciones que guardan el id de otro elemento de la agenda (no se editan en el formulario: las
- * maneja su propio editor). Por «tipo.opción» → lista del diseño donde está ese id.
+ * Opciones que el formulario no muestra (las maneja otro editor o solo se escriben en el archivo),
+ * con su esquema JSON. Por «tipo.opción».
  */
-export const OPTION_REFERENCES: Readonly<Record<string, 'pageTemplates'>> = {
-  'pageTemplate.template': 'pageTemplates',
+export const EXTRA_OPTIONS: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
+  'pageTemplate.template': { type: 'string', description: 'id de un elemento de «pageTemplates»' },
+  'vision.categories': { type: 'array', items: { type: 'string', maxLength: 80 }, description: 'Áreas de la matriz de visión (por defecto, las del idioma de la agenda)' },
 };
 
 /** Valor que se guarda al elegir de una lista: «true» y «false» quedan como sí/no. */

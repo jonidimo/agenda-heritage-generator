@@ -312,7 +312,7 @@ npm run pdf -- designs/minha-2028.agenda.json --mode imposed --out output/minha-
 ```
 
 `check` lista o que seria ignorado ou corrigido num arquivo e os avisos da agenda montada.
-`npm run agenda -- schema` e `npm run agenda -- catalog` mostram o formato do arquivo e tudo
+`npm run -s agenda -- schema` e `npm run -s agenda -- catalog` mostram o formato do arquivo e tudo
 o que ele pode nomear. `npm run -s mcp` inicia o servidor MCP para modelos de inteligência
 artificial (veja [o guia](docs/llm-templates.md)).
 

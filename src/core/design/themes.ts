@@ -5,7 +5,7 @@
  * grosor de renglón» al tema, así cambiar la estética no requiere código.
  */
 import type { FontSpec } from '../text/fonts';
-import { normalizeColor } from '../util/color';
+import { COLOR_PATTERN, normalizeColor } from '../util/color';
 
 export type WritingStyle = 'lines' | 'dots' | 'grid' | 'blank';
 
@@ -375,9 +375,9 @@ export function tokenSchema(base: unknown = heritage, path = ''): Record<string,
   const r = stringRule(p);
   switch (r.kind) {
     case 'color':
-      return { type: 'string', pattern: '^#[0-9a-fA-F]{6}$', description: 'Color #rrggbb' };
+      return { type: 'string', pattern: COLOR_PATTERN, description: 'Color #rrggbb' };
     case 'colorOrEmpty':
-      return { type: 'string', pattern: '^(|#[0-9a-fA-F]{6})$', description: 'Color #rrggbb, o vacío para usar el de la línea' };
+      return { type: 'string', anyOf: [{ const: '' }, { pattern: COLOR_PATTERN }], description: 'Color #rrggbb, o vacío para usar el de la línea' };
     case 'ornament':
       return { type: 'string', pattern: ORNAMENT_REF.source, description: 'Ornamento: builtin:<id> o asset:<id de una imagen de la agenda>; vacío: ninguno' };
     case 'enum':

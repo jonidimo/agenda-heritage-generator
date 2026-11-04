@@ -3,6 +3,7 @@
  * rangos. Las usan el dibujo de la página, el inspector y el esquema JSON, así los tres hablan de
  * lo mismo.
  */
+import { COLOR_PATTERN } from '../util/color';
 import type { ThemeTokens } from './themes';
 
 /** Tipos de texto (cada uno con la fuente y el color que le da el tema). */
@@ -39,7 +40,7 @@ export function enumProp<T extends string>(v: unknown, values: readonly T[], def
 type Json = Record<string, unknown>;
 
 const range = (r: { min: number; max: number }, description: string): Json => ({ type: 'number', minimum: r.min, maximum: r.max, description });
-const color = (description: string): Json => ({ type: 'string', pattern: '^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$', description });
+const color = (description: string): Json => ({ type: 'string', pattern: COLOR_PATTERN, description });
 
 /** Esquema JSON de las propiedades de un tipo de elemento propio. */
 export function customBlockPropsSchema(kind: string): Json {

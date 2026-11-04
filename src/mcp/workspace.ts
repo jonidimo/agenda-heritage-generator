@@ -53,12 +53,17 @@ export class Workspace {
     const full = this.lexical(path);
     const lower = full.toLowerCase();
     if (!opts.extensions.some((e) => lower.endsWith(e))) throw new Error(`El archivo tiene que terminar en ${opts.extensions.join(' o ')}.`);
+    // Antes de crear carpetas: la más cercana que ya existe tiene que estar adentro (un enlace
+    // simbólico en el camino no puede hacer crear carpetas en otro lado).
+    let existing = dirname(full);
+    while (!(await lstat(existing).catch(() => null))) existing = dirname(existing);
+    if (!this.inside(await realpath(existing))) throw new Error(`«${path}» lleva fuera de la carpeta de trabajo.`);
     await mkdir(dirname(full), { recursive: true });
     const parent = await realpath(dirname(full));
     if (!this.inside(parent)) throw new Error(`«${path}» lleva fuera de la carpeta de trabajo.`);
-    const existing = await lstat(full).catch(() => null);
-    if (existing?.isSymbolicLink()) throw new Error(`«${path}» es un enlace simbólico: no se escribe a través de él.`);
-    if (existing && !opts.overwrite) throw new Error(`«${path}» ya existe (para reemplazarlo, pedilo con overwrite).`);
+    const current = await lstat(full).catch(() => null);
+    if (current?.isSymbolicLink()) throw new Error(`«${path}» es un enlace simbólico: no se escribe a través de él.`);
+    if (current && !opts.overwrite) throw new Error(`«${path}» ya existe (para reemplazarlo, pedilo con overwrite).`);
     await writeFile(full, data);
     return full;
   }

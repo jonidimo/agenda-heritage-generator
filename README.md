@@ -294,7 +294,7 @@ npm run pdf -- designs/my-2028.agenda.json --mode imposed --out output/my-2028-p
 ```
 
 `check` lists what would be ignored or corrected in a file and the warnings of the built
-planner. `npm run agenda -- schema` and `npm run agenda -- catalog` print the file format and
+planner. `npm run -s agenda -- schema` and `npm run -s agenda -- catalog` print the file format and
 everything it can name. `npm run -s mcp` starts the MCP server for AI models (see
 [the guide](docs/llm-templates.md)).
 

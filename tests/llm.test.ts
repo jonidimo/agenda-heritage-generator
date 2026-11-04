@@ -63,7 +63,7 @@ describe('revisión de un archivo', () => {
   it('informa lo que se ignora o corrige, con su ruta', () => {
     const raw = JSON.parse(JSON.stringify(createDesign('heritage', { year: 2027 })));
     raw.calendar.weekstart = 'sunday';
-    raw.theme.tokens = { colors: { ink: 'red' } };
+    raw.theme.tokens = { colors: { ink: 'rojo' } };
     const months = raw.sections.findIndex((s: { type: string }) => s.type === 'months');
     const weeks = raw.sections[months].items.findIndex((s: { type: string }) => s.type === 'weeks');
     raw.sections[months].items[weeks].options.variant = 'alastar';
@@ -130,6 +130,45 @@ describe('plantilla para regalar', () => {
     expect(createDesign('clara', { year: 2027, locale: 'pt-BR' }).name).toBe('Agenda 2027 · Leitura clara');
     expect(createDesign('heritage-norma', { year: 2027, locale: 'en-US', name: 'Ana' }).name).toBe('Ana’s planner 2027');
     for (const t of TEMPLATES) expect(createDesign(t.id, { name: ' Ana ' }).persona.name).toBe('Ana');
+  });
+});
+
+describe('hallazgos de la revisión', () => {
+  it('una agenda que pediría cientos de miles de páginas se rechaza sin agotar la memoria', async () => {
+    const raw = JSON.parse(JSON.stringify(createDesign('minimal', { year: 2027 })));
+    raw.calendar.monthCount = 24;
+    const months = raw.sections.find((x: { type: string }) => x.type === 'months');
+    for (let i = 0; i < 3; i++) months.items.push({ id: `n${i}`, type: 'notes', options: { count: 200 }, repeat: 'day' });
+    await expect(openDocument(parseDesign(raw))).rejects.toThrow(/más de \d+ páginas/);
+  });
+
+  it('la parte «sections» del esquema conserva los campos de cada sección', () => {
+    const part = schemaPart(designJsonSchema(), 'sections') as { items: { properties: Record<string, unknown> } };
+    expect(Object.keys(part.items.properties)).toEqual(expect.arrayContaining(['id', 'type', 'options', 'repeat', 'items']));
+  });
+
+  it('avisa los valores que se acomodan a su rango y los ornamentos que no existen', () => {
+    const r = checkDesignData({ paper: { preset: 'CUSTOM', width: 5000 }, calendar: { monthCount: 30 }, theme: { tokens: { lines: { separator: { ornament: 'builtin:fleuronn' } } } } });
+    const paths = r.issues.map((i) => i.path);
+    expect(paths).toEqual(expect.arrayContaining(['/paper/width', '/calendar/monthCount', '/theme/tokens/lines/separator/ornament']));
+    expect(r.issues.find((i) => i.path === '/paper/width')?.message).toContain('se ajusta');
+  });
+
+  it('no marca valores que el programa sí usa', () => {
+    const r = checkDesignData({
+      theme: { tokens: { colors: { ink: '#333', rule: ' #ABCDEF ', accent: 'black' } } },
+      customBlocks: [{ id: 'a', pageType: 'tpl:diário', kind: 'text', x: 1, y: 1, w: 10, h: 5 }],
+      sections: [{ id: 'v', type: 'vision', options: { categories: ['Salud', 'Familia'] } }],
+    });
+    expect(r.issues).toEqual([]);
+  });
+
+  it('los mensajes nombran la clave y señalan lo que falta en su lugar', () => {
+    const r = checkDesignData({ sections: [{ id: 's', type: 'notes', otra: 1 }], customBlocks: [{ id: 'b', pageType: 'notes', kind: 'text', y: 1, w: 1, h: 1 }] });
+    expect(r.issues.find((i) => i.path === '/sections/0')?.message).toContain('«otra»');
+    const missing = r.issues.filter((i) => i.path === '/customBlocks/0/x');
+    expect(missing).toHaveLength(1);
+    expect(missing[0]).toMatchObject({ severity: 'error', message: 'falta este valor' });
   });
 });
 
@@ -248,6 +287,10 @@ describe('servidor MCP', () => {
   });
 
   it('no sale de su carpeta ni escribe otros tipos de archivo', async () => {
+    // Una carpeta enlazada hacia afuera: no se crea nada del otro lado.
+    await symlink(outside, join(dir, 'enlace-carpeta'));
+    expect((await call('export_pdf', { design: {}, mode: 'cover', out: 'enlace-carpeta/nueva/tapa.pdf' })).isError).toBe(true);
+    await expect(readFile(join(outside, 'nueva'))).rejects.toThrow();
     for (const path of ['../fuera.agenda.json', join(outside, 'secreto.agenda.json'), 'enlace.agenda.json']) {
       const r = await call('check_design', { path });
       expect(r.isError, path).toBe(true);

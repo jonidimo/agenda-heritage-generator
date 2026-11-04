@@ -28,6 +28,17 @@ export interface PlanOptions {
   only?: (sectionType: string, options: Record<string, unknown>) => boolean;
 }
 
+/**
+ * Tope de páginas de una agenda. Una agenda diaria de 24 meses con varias páginas por día queda
+ * muy por debajo; un archivo que pide cientos de miles (cantidades altas repetidas cada día) se
+ * rechaza en lugar de agotar la memoria al armarlo.
+ */
+export const MAX_PAGES = 6000;
+
+function checkSize(drafts: readonly PagePlanDraft[]): void {
+  if (drafts.length > MAX_PAGES) throw new Error(`La agenda tendría más de ${MAX_PAGES} páginas: bajá las cantidades o las repeticiones por día o por semana.`);
+}
+
 export function draftPages(doc: DocContext, registry: ReadonlyMap<string, SectionModule>, opts: PlanOptions = {}): PagePlanDraft[] {
   const drafts: PagePlanDraft[] = [];
   const include = opts.only ?? ((_t: string, o: Record<string, unknown>) => o.separate !== true);
@@ -35,13 +46,17 @@ export function draftPages(doc: DocContext, registry: ReadonlyMap<string, Sectio
     if (!section.enabled) continue;
     if (section.type === 'months') {
       if (!include('months', section.options)) continue;
-      for (const month of doc.cal.months) drafts.push(...planMonth(doc, registry, section.items ?? [], month));
+      for (const month of doc.cal.months) {
+        drafts.push(...planMonth(doc, registry, section.items ?? [], month));
+        checkSize(drafts);
+      }
       continue;
     }
     if (!include(section.type, section.options)) continue;
     const mod = registry.get(section.type);
     if (!mod) continue;
     drafts.push(...mod.plan(doc, section).map((d) => ({ ...d, module: d.module ?? mod.type })));
+    checkSize(drafts);
   }
   return drafts;
 }

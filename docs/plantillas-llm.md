@@ -14,19 +14,20 @@ Hay dos maneras de trabajar con un modelo:
   cambiarla, revisarla, *ver* sus páginas como imágenes y exportar el PDF o el tema. Funciona con
   Claude Desktop, Claude Code y cualquier otro cliente MCP.
 - **Con cualquier chat.** Le pasás el esquema JSON y el catálogo, le pedís el archivo y lo revisás
-  con `npm run agenda -- check`.
+  con `npm run -s agenda -- check`.
 
 ## 1. El servidor MCP
 
 Hace falta una copia de este repositorio con sus dependencias instaladas (`npm ci`). El servidor
 corre en tu computadora y solo lee y escribe archivos dentro de su **carpeta de trabajo**. Se
 elige con `AGENDA_MCP_ROOT`, por ejemplo una carpeta `~/Agendas`. Sin esa variable, es la carpeta
-desde donde se lanza.
+desde donde se lanza. El primer arranque genera los datos de feriados, que tarda alrededor de un
+minuto.
 
 **Claude Code:**
 
 ```bash
-claude mcp add --transport stdio --env AGENDA_MCP_ROOT="$HOME/Agendas" agenda -- npm run -s --prefix /ruta/a/agenda-heritage-generator mcp
+claude mcp add agenda --env AGENDA_MCP_ROOT="$HOME/Agendas" -- npm run -s --prefix /ruta/a/agenda-heritage-generator mcp
 ```
 
 **Claude Desktop** (`claude_desktop_config.json`, en *Configuración → Desarrollador*):
@@ -75,10 +76,10 @@ Los recursos `agenda://guide/es` (esta guía), `agenda://guide` (en inglés), `a
 ## 2. Sin MCP: esquema, catálogo y revisión
 
 ```bash
-npm run agenda -- schema --out agenda.schema.json   # esquema JSON (draft 2020-12)
-npm run agenda -- catalog --out catalogo.json       # qué significa cada nombre y opción
+npm run -s agenda -- schema --out agenda.schema.json   # esquema JSON (draft 2020-12)
+npm run -s agenda -- catalog --out catalogo.json       # qué significa cada nombre y opción
 npm run agenda -- new --template heritage --year 2027 --locale es-AR --out mi.agenda.json
-npm run agenda -- check mi.agenda.json              # problemas y resumen (--json, --strict)
+npm run -s agenda -- check mi.agenda.json              # problemas y resumen (--json, --strict)
 npm run pdf -- mi.agenda.json --mode pages --out mi.pdf
 ```
 
@@ -186,7 +187,7 @@ están en el esquema (`get_schema` con la parte `customBlocks`).
 
 ```json
 { "op": "add", "path": "/theme/tokens", "value": {
-  "fonts": { "title": { "family": "EB Garamond", "weight": 500, "style": "italic" } },
+  "fonts": { "title": { "family": "EB Garamond", "weight": 600, "style": "italic" } },
   "colors": { "ink": "#2b2a33", "roles": { "title": "#5b3a6e" } },
   "lines": {
     "separator": { "pattern": "center", "ornament": "builtin:fleuron", "size": 4 },

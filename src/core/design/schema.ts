@@ -34,8 +34,9 @@ export const PaperPresetZ = z.enum(Object.keys(PAPER_PRESETS) as [PaperPresetId,
  * (un «4,5» tipeado en «hojas por cuadernillo» no deja la agenda sin poder abrirse).
  */
 const clampTo = (min: number, max: number) => (v: number): number => Math.min(max, Math.max(min, v));
-const num = (def: number, min = -10_000, max = 10_000) => z.number().transform(clampTo(min, max)).default(def);
-const intIn = (min: number, max: number) => z.number().transform((v) => clampTo(min, max)(Math.round(v)));
+// El rango va también como metadato: así el esquema JSON lo muestra y la revisión avisa qué se acomoda.
+const num = (def: number, min = -10_000, max = 10_000) => z.number().meta({ minimum: min, maximum: max }).transform(clampTo(min, max)).default(def);
+const intIn = (min: number, max: number) => z.number().meta({ minimum: min, maximum: max, multipleOf: 1 }).transform((v) => clampTo(min, max)(Math.round(v)));
 
 export const CalendarZ = z
   .object({

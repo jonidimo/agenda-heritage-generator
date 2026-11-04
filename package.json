@@ -23,6 +23,7 @@
     "agenda": "tsx src/cli/agenda.ts",
     "pdf": "tsx src/cli/agenda.ts pdf",
     "mcp": "tsx src/mcp/main.ts",
+    "premcp": "tsx scripts/build-holidays.ts --if-missing 1>&2",
     "holidays": "tsx scripts/build-holidays.ts",
     "fonts": "tsx scripts/fetch-fonts.ts",
     "predev": "tsx scripts/build-holidays.ts --if-missing",

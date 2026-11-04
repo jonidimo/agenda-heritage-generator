@@ -31,11 +31,13 @@ function schemaValidator(): ValidateFunction {
 
 const list = (v: unknown): string => (Array.isArray(v) ? v.map((x) => JSON.stringify(x)).join(', ') : String(v));
 
-function describe(e: ErrorObject): string {
+/** El mensaje de un error del esquema; `adjusted`: el archivo abre y el valor se ignora o se corrige. */
+function describe(e: ErrorObject, adjusted: boolean): string {
   const p = e.params as Record<string, unknown>;
   switch (e.keyword) {
     case 'additionalProperties':
-      return `clave desconocida «${String(p.additionalProperty)}» (se ignora)`;
+    case 'unevaluatedProperties':
+      return `clave desconocida «${String(p.additionalProperty ?? p.unevaluatedProperty)}»${adjusted ? ' (se ignora)' : ''}`;
     case 'enum':
       return `valor no válido; opciones: ${list(p.allowedValues)}`;
     case 'const':
@@ -48,9 +50,11 @@ function describe(e: ErrorObject): string {
     }
     case 'minimum':
     case 'maximum':
-      return `fuera de rango (${e.keyword === 'minimum' ? 'mínimo' : 'máximo'} ${String(p.limit)}): se ajusta`;
+      return `fuera de rango (${e.keyword === 'minimum' ? 'mínimo' : 'máximo'} ${String(p.limit)})${adjusted ? ': se ajusta' : ''}`;
+    case 'multipleOf':
+      return `debe ser un número entero${adjusted ? ': se redondea' : ''}`;
     case 'required':
-      return `falta «${String(p.missingProperty)}»`;
+      return 'falta este valor';
     case 'maxLength':
       return `demasiado largo (máximo ${String(p.limit)} caracteres)`;
     default:
@@ -91,14 +95,16 @@ function schemaErrors(errors: readonly ErrorObject[]): ErrorObject[] {
  */
 export function checkDesignData(raw: unknown): CheckResult {
   const parsed = DesignZ.safeParse(raw);
-  const blocking = parsed.success ? [] : parsed.error.issues.map((i) => ({ path: `/${i.path.join('/')}`, message: i.message }));
+  const blocking = parsed.success ? [] : parsed.error.issues.map((i) => ({ path: pointer(i.path), message: i.message }));
   const failing = new Set(blocking.map((i) => i.path));
   const validate = schemaValidator();
   const fromSchema: CheckIssue[] = validate(raw)
     ? []
     : schemaErrors(validate.errors ?? []).map((e) => {
-        const path = e.instancePath || '/';
-        return { path, message: describe(e), severity: failing.has(path) ? 'error' : 'adjusted' };
+        // Lo que falta se señala en su propio lugar (como lo hace el validador del programa).
+        const path = (e.keyword === 'required' ? `${e.instancePath}/${escapeKey(String((e.params as { missingProperty: string }).missingProperty))}` : e.instancePath) || '/';
+        const adjusted = !failing.has(path);
+        return { path, message: describe(e, adjusted), severity: adjusted ? 'adjusted' : 'error' };
       });
   const explained = new Set(fromSchema.filter((i) => i.severity === 'error').map((i) => i.path));
   const issues: CheckIssue[] = [...blocking.filter((i) => !explained.has(i.path)).map((i) => ({ ...i, severity: 'error' as const })), ...fromSchema];
@@ -111,6 +117,11 @@ export function checkDesignData(raw: unknown): CheckResult {
     .sort((a, b) => (a.severity === b.severity ? 0 : a.severity === 'error' ? -1 : 1));
   return { design: parsed.success ? parsed.data : null, issues: unique.slice(0, MAX_ISSUES) };
 }
+
+const escapeKey = (k: string): string => k.replace(/~/g, '~0').replace(/\//g, '~1');
+
+/** Puntero JSON (RFC 6901) de una ruta del validador del programa. */
+const pointer = (path: readonly PropertyKey[]): string => `/${path.map((k) => escapeKey(String(k))).join('/')}`;
 
 /** Revisa el texto de un archivo `.agenda.json`. */
 export function checkDesignJson(text: string): CheckResult {

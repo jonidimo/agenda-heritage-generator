@@ -14,19 +14,20 @@ There are two ways to work with a model:
   check it, *see* its pages as images and export the PDF or the theme. It works with Claude
   Desktop, Claude Code and any other MCP client.
 - **With any chat model.** Give it the JSON Schema and the catalogue, ask for the file, and check
-  it with `npm run agenda -- check`.
+  it with `npm run -s agenda -- check`.
 
 ## 1. The MCP server
 
 You need a copy of this repository with its dependencies installed (`npm ci`). The server runs
 on your computer and only reads and writes files inside its **working folder**. Set it with
 `AGENDA_MCP_ROOT`, for example a folder `~/Planners`. Without it, the folder is the one the
-server starts from.
+server is started from. The first start generates the holiday data, which takes about a
+minute.
 
 **Claude Code:**
 
 ```bash
-claude mcp add --transport stdio --env AGENDA_MCP_ROOT="$HOME/Planners" agenda -- npm run -s --prefix /path/to/agenda-heritage-generator mcp
+claude mcp add agenda --env AGENDA_MCP_ROOT="$HOME/Planners" -- npm run -s --prefix /path/to/agenda-heritage-generator mcp
 ```
 
 **Claude Desktop** (`claude_desktop_config.json`, under *Settings → Developer*):
@@ -74,10 +75,10 @@ same reference for clients that read resources.
 ## 2. Without MCP: schema, catalogue and check
 
 ```bash
-npm run agenda -- schema --out agenda.schema.json   # JSON Schema (draft 2020-12)
-npm run agenda -- catalog --out catalogue.json      # what each name and option means
+npm run -s agenda -- schema --out agenda.schema.json   # JSON Schema (draft 2020-12)
+npm run -s agenda -- catalog --out catalogue.json      # what each name and option means
 npm run agenda -- new --template heritage --year 2027 --locale en-US --out my.agenda.json
-npm run agenda -- check my.agenda.json              # problems and summary (--json, --strict)
+npm run -s agenda -- check my.agenda.json              # problems and summary (--json, --strict)
 npm run pdf -- my.agenda.json --mode pages --out my.pdf
 ```
 
@@ -184,7 +185,7 @@ margin is wider. The props of each element kind are in the schema (`get_schema` 
 
 ```json
 { "op": "add", "path": "/theme/tokens", "value": {
-  "fonts": { "title": { "family": "EB Garamond", "weight": 500, "style": "italic" } },
+  "fonts": { "title": { "family": "EB Garamond", "weight": 600, "style": "italic" } },
   "colors": { "ink": "#2b2a33", "roles": { "title": "#5b3a6e" } },
   "lines": {
     "separator": { "pattern": "center", "ornament": "builtin:fleuron", "size": 4 },

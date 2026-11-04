@@ -69,8 +69,8 @@ export async function fullCatalogue(): Promise<Record<string, unknown>> {
   const fonts = (await manifest).families.map((f) => ({
     family: f.family,
     category: f.category,
-    weights: [...new Set(f.faces.map((x) => x.weight))].sort((a, b) => a - b),
-    styles: [...new Set(f.faces.map((x) => x.style))],
+    // Las caras que existen (peso y estilo juntos: no todo peso tiene itálica).
+    faces: f.faces.map((x) => ({ weight: x.weight, style: x.style })).sort((a, b) => a.weight - b.weight || a.style.localeCompare(b.style)),
   }));
   return { ...designCatalogue(), fonts };
 }

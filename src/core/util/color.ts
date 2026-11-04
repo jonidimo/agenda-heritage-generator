@@ -15,6 +15,15 @@ const NAMED: Record<string, string> = {
   blue: '#0000ff',
 };
 
+/**
+ * Patrón (esquema JSON) de lo que acepta `normalizeColor`: #rgb o #rrggbb, o un nombre conocido,
+ * sin importar mayúsculas ni espacios alrededor.
+ */
+export const COLOR_PATTERN = (() => {
+  const anyCase = (w: string): string => [...w].map((c) => `[${c}${c.toUpperCase()}]`).join('');
+  return `^\\s*(#[0-9a-fA-F]{3}|#[0-9a-fA-F]{6}|${Object.keys(NAMED).map(anyCase).join('|')})\\s*$`;
+})();
+
 /** `#rrggbb` si el valor es un color hexadecimal (3 o 6 cifras) o un nombre conocido; si no, null. */
 export function normalizeColor(v: unknown): string | null {
   if (typeof v !== 'string') return null;

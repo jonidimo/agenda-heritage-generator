@@ -10,7 +10,7 @@
 import { z } from 'zod';
 import { BUILTIN_ORNAMENTS } from '../layout/ornaments';
 import { PAGE_TEXT_VARIABLES } from '../sections/common';
-import { choiceValue, OPTION_COUNT, OPTION_REFERENCES, sectionOptionFields } from '../sections/options';
+import { choiceValue, EXTRA_OPTIONS, OPTION_COUNT, sectionOptionFields } from '../sections/options';
 import { PAGE_TYPES, SECTION_MODULES } from '../sections/registry';
 import { customBlockPropsSchema } from './customBlocks';
 import { TEMPLATES } from './defaults';
@@ -31,9 +31,9 @@ function optionsSchema(type: string): Json {
     else if (f.kind === 'boolean') properties[f.key] = { type: 'boolean', default: f.default };
     else properties[f.key] = { type: 'integer', minimum: OPTION_COUNT.min, maximum: OPTION_COUNT.max, default: f.default };
   }
-  for (const [path, list] of Object.entries(OPTION_REFERENCES)) {
+  for (const [path, schema] of Object.entries(EXTRA_OPTIONS)) {
     const [t, key] = path.split('.') as [string, string];
-    if (t === type) properties[key] = { type: 'string', description: `id de un elemento de «${list}»` };
+    if (t === type) properties[key] = schema;
   }
   return { type: 'object', properties };
 }
@@ -41,9 +41,25 @@ function optionsSchema(type: string): Json {
 /** Un tipo de página: los del programa o el de una plantilla de página (`tpl:<id>`). */
 const pageTypeSchema = (extra: readonly string[] = []): Json => ({
   type: 'string',
-  anyOf: [{ enum: [...extra, ...PAGE_TYPES] }, { pattern: '^tpl:[\\w-]+$' }],
+  anyOf: [{ enum: [...extra, ...PAGE_TYPES] }, { pattern: '^tpl:.+$' }],
   description: 'Tipo de página (ver pageTypes en el catálogo) o «tpl:<id>» para una plantilla de página',
 });
+
+/** Los ornamentos integrados por nombre: uno mal escrito no se dibuja, así que se marca. */
+function ornamentNames(tokens: Json): Json {
+  const names = ['', ...BUILTIN_ORNAMENTS.map((o) => `builtin:${o.id}`)];
+  const walk = (n: unknown): void => {
+    if (!n || typeof n !== 'object') return;
+    const o = n as Json;
+    if (typeof o.description === 'string' && o.description.startsWith('Ornamento:') && typeof o.pattern === 'string') {
+      delete o.pattern;
+      o.anyOf = [{ enum: names }, { pattern: '^asset:[\\w.-]{1,80}$' }];
+    }
+    Object.values(o).forEach(walk);
+  };
+  walk(tokens);
+  return tokens;
+}
 
 /** Marca las claves desconocidas como error en todo objeto con propiedades fijas. */
 function closeObjects(node: unknown): void {
@@ -95,7 +111,9 @@ export function designJsonSchema(): Json {
   // Los ajustes del tema se validan aparte (pruneTokens): acá se describe su forma completa.
   (props.theme!.properties as Json).tokens = ref('themeTokens');
   ((props.pageStyles!.items as Json).properties as Json).tokens = ref('themeTokens');
-  schema.$defs = { ...(schema.$defs as Json | undefined), themeTokens: tokenSchema(), sectionItem, monthItem: { $ref: '#/$defs/sectionItem', unevaluatedProperties: false } };
+  schema.$defs = { ...(schema.$defs as Json | undefined), themeTokens: ornamentNames(tokenSchema()), sectionItem, monthItem: { $ref: '#/$defs/sectionItem', unevaluatedProperties: false } };
+  // La hora de creación no es un valor por defecto útil (y cambiaría el esquema en cada uso).
+  for (const k of ['createdAt', 'updatedAt']) delete (props[k] as Json).default;
   // Claves que agrega el archivo autocontenido o un editor (no son parte del diseño).
   Object.assign(props, {
     $schema: { type: 'string', description: 'Ruta o dirección de este esquema (para el autocompletado del editor).' },
@@ -132,7 +150,10 @@ export function schemaPart(schema: Json, path: string): Json | undefined {
     const target = typeof n.$ref === 'string' && n.$ref.startsWith('#/') && depth < 8 ? pointer(schema, n.$ref.slice(2).split('/')) : undefined;
     const { $ref: _ref, ...rest } = n;
     const base = target ? (deref(target, depth + 1) as Json) : n.$ref ? { $ref: n.$ref } : {};
-    return { ...base, ...Object.fromEntries(Object.entries(rest).map(([k, v]) => [k, deref(v, depth)])) };
+    const own = Object.fromEntries(Object.entries(rest).map(([k, v]) => [k, deref(v, depth)])) as Json;
+    // Las propiedades de al lado de una referencia se suman a las de la referencia.
+    if (base.properties && own.properties) own.properties = { ...(base.properties as Json), ...(own.properties as Json) };
+    return { ...base, ...own };
   };
   let node: unknown = schema;
   let container = false;
