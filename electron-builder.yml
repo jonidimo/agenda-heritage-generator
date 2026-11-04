@@ -1,0 +1,58 @@
+# Desktop packaging with electron-builder (see docs/desktop.md).
+# Build the web app first (`npm run build`), then `npx electron-builder --publish never`
+# packages it for the current OS into release/ (`npm run desktop:build` does both).
+appId: io.github.jonidimo.heritagestudio
+productName: Heritage Studio
+directories:
+  output: release
+# The web app (dist/) and the Electron main process only. dist/ already bundles every runtime
+# dependency, so no node_modules are shipped (electron-builder would otherwise copy all production
+# dependencies, ~150 MB) and there is nothing native to rebuild. Source maps are left out too.
+files:
+  - dist/**
+  - electron/**
+  - package.json
+  - '!node_modules{,/**/*}'
+  - '!dist/**/*.map'
+npmRebuild: false
+icon: public/icons/icon-512.png
+artifactName: heritage-studio-${version}-${os}-${arch}.${ext}
+# No auto-update feed: CI attaches the installers to the GitHub Release itself.
+publish: null
+
+linux:
+  target: [AppImage, deb]
+  category: Office
+  synopsis: Design and print handmade planners
+  maintainer: Jonatan <jonidimo@gmail.com>
+  # Electron names its windows (X11 WM_CLASS, Wayland app_id) after `desktopName` in package.json;
+  # this makes the .desktop file match, so the dock/taskbar links the window to its launcher.
+  syncDesktopName: true
+appImage:
+  # The AppImage launcher already adds --no-sandbox by itself only where the system blocks
+  # Chromium's sandbox (e.g. Ubuntu 24.04+); don't force it in the menu entry everywhere.
+  executableArgs: []
+
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+    - target: portable
+      arch: [x64]
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  artifactName: heritage-studio-${version}-win-${arch}-setup.${ext}
+portable:
+  artifactName: heritage-studio-${version}-win-${arch}-portable.${ext}
+
+mac:
+  target:
+    - target: dmg
+      arch: [x64, arm64]
+  category: public.app-category.productivity
+  # No Apple certificate: ad-hoc signature, which Apple Silicon needs to launch the app at all.
+  # Ad-hoc signing requires hardened runtime off; notarization needs a real certificate.
+  identity: '-'
+  hardenedRuntime: false
+  notarize: false

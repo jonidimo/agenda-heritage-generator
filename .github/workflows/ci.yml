@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  push:
+    branches: [main, refactor-v2]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Typecheck, lint, unit tests and build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      # Holiday data is generated from date-holidays and is not committed.
+      - run: npm run holidays
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm test
+      - run: npx vite build
+      - name: Example planners print without warnings
+        run: |
+          for f in designs/*.agenda.json; do
+            npx tsx src/cli/agenda.ts info "$f" | tee /tmp/info.txt
+            grep -q "^Avisos: 0$" /tmp/info.txt
+          done
+
+  e2e:
+    name: Browser tests
+    runs-on: ubuntu-latest
+    needs: check
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run build
+      - run: npm run test:e2e

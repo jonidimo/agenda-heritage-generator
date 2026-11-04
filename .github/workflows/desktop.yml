@@ -1,0 +1,88 @@
+name: Desktop apps
+
+# Builds the desktop installers (Electron) for Linux, Windows and macOS; see docs/desktop.md.
+# Every change to the app or its packaging on main or refactor-v2 builds new installers (as
+# artifacts of the run), so the latest ones always match the code. Push a tag such as v2.1.0
+# to also publish them in a GitHub Release, or run it by hand (Actions → Desktop apps → Run
+# workflow, once this file is on the default branch).
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+    branches: [main, refactor-v2]
+    # Only for branches: GitHub does not apply path filters to tags. Changes to the docs or
+    # the tests alone do not rebuild the installers.
+    paths:
+      - 'src/**'
+      - 'public/**'
+      - 'scripts/**'
+      - 'index.html'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'vite.config.ts'
+      - 'tsconfig*.json'
+      - 'electron/**'
+      - 'electron-builder.yml'
+      - '.github/workflows/desktop.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    name: Package (${{ matrix.name }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest, name: linux }
+          - { os: windows-latest, name: windows }
+          - { os: macos-latest, name: macos }
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      # Also generates the holiday data (prebuild hook, about a minute).
+      - run: npm run build
+      # Targets per OS are in electron-builder.yml. No certificates: Windows builds are unsigned
+      # and macOS builds ad-hoc signed.
+      - run: npx electron-builder --publish never
+      - uses: actions/upload-artifact@v7
+        with:
+          name: heritage-studio-${{ matrix.name }}
+          path: |
+            release/*.AppImage
+            release/*.deb
+            release/*.exe
+            release/*.dmg
+          if-no-files-found: error
+          compression-level: 0
+
+  release:
+    name: GitHub Release
+    # Also when one system failed (for example, no Mac machine was free): the release goes out
+    # with the files that were built. Re-running the failed job and then this one adds the rest.
+    if: ${{ !cancelled() && github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') }}
+    needs: package
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: heritage-studio-*
+          path: release
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v3
+        with:
+          files: release/*
+          fail_on_unmatched_files: true
+          generate_release_notes: true
+          # v2.1.0-beta.1 and similar tags become pre-releases.
+          prerelease: ${{ contains(github.ref_name, '-') }}

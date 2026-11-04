@@ -1,4 +1,28 @@
+# Dependencias y builds
+node_modules/
+dist/
+dist-ssr/
+*.local
+.vite/
+coverage/
+
+# Datos generados (se regeneran con `npm run holidays`)
+public/holidays/
+
+# Salidas de la CLI y pruebas
+output/
+test-results/
+playwright-report/
+blob-report/
+.playwright/
+
+# Python legado
 venv/
 __pycache__/
-output/*.pdf
+
+# Sistema
 .DS_Store
+Thumbs.db
+
+# Instaladores de escritorio (electron-builder)
+release/

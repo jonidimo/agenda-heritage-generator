@@ -1,0 +1,406 @@
+{
+  "schemaVersion": 1,
+  "id": "agenda-mw1qs4t613rcl4",
+  "name": "Agenda 2027",
+  "createdAt": "2026-11-04T06:34:53.658Z",
+  "updatedAt": "2026-11-04T06:34:53.658Z",
+  "locale": "en-US",
+  "calendar": {
+    "year": 2027,
+    "startMonth": 1,
+    "monthCount": 12,
+    "weekStart": "monday",
+    "weekend": "auto",
+    "numbering": "iso",
+    "timeZone": "auto"
+  },
+  "holidays": {
+    "country": "US",
+    "subdivision": null,
+    "types": [
+      "public",
+      "bank"
+    ],
+    "language": "auto",
+    "added": [],
+    "removed": [],
+    "renamed": {}
+  },
+  "personalDates": [],
+  "astronomy": {
+    "moonPhases": true,
+    "hemisphere": "auto",
+    "showIn": [
+      "monthLog",
+      "week",
+      "monthGrid",
+      "daily"
+    ]
+  },
+  "paper": {
+    "preset": "A4",
+    "width": 210,
+    "height": 297
+  },
+  "binding": {
+    "method": "sewn",
+    "signature": {
+      "mode": "uniform",
+      "sheets": 4,
+      "custom": [],
+      "last": "shrink"
+    },
+    "fillWith": "dots",
+    "gutter": 2,
+    "creep": {
+      "mode": "off",
+      "caliper": 0.1,
+      "measured": 0
+    },
+    "duplex": "short-edge",
+    "manualReverseBacks": false,
+    "manualRotateBacks": false,
+    "sewing": {
+      "stations": 6,
+      "pairs": true,
+      "endInset": 12,
+      "pairGap": 10
+    },
+    "backOffset": {
+      "x": 0,
+      "y": 0
+    },
+    "marks": {
+      "fold": true,
+      "crop": false,
+      "collation": true,
+      "signatureLabel": true
+    },
+    "trim": {
+      "top": 0,
+      "bottom": 0,
+      "outer": 0
+    },
+    "nonPrintable": 4.2,
+    "pageNumbers": {
+      "enabled": false,
+      "position": "outer",
+      "skipFirst": 2
+    },
+    "thumbIndex": {
+      "enabled": false,
+      "width": 4
+    }
+  },
+  "theme": {
+    "id": "heritage",
+    "comfort": "normal",
+    "tokens": {}
+  },
+  "persona": {
+    "name": "",
+    "title": "",
+    "subtitle": "",
+    "dedicationTitle": "",
+    "dedication": "",
+    "phrases": [],
+    "labels": {}
+  },
+  "methods": {
+    "enabled": [
+      "implementation-intentions",
+      "progress-monitoring",
+      "habit-timeline",
+      "habit-anchoring",
+      "streaks",
+      "alastair-method",
+      "top-priorities",
+      "weekly-review",
+      "three-good-things",
+      "woop",
+      "fresh-start",
+      "external-memory",
+      "password-log"
+    ],
+    "custom": [],
+    "guide": {
+      "evidence": true,
+      "references": true
+    }
+  },
+  "sections": [
+    {
+      "id": "titlePage",
+      "type": "titlePage",
+      "enabled": true,
+      "options": {
+        "showName": true,
+        "showKicker": true
+      }
+    },
+    {
+      "id": "dedication",
+      "type": "dedication",
+      "enabled": true,
+      "options": {}
+    },
+    {
+      "id": "personalInfo",
+      "type": "personalInfo",
+      "enabled": true,
+      "options": {
+        "emergency": true,
+        "medical": true
+      }
+    },
+    {
+      "id": "toc",
+      "type": "toc",
+      "enabled": false,
+      "options": {}
+    },
+    {
+      "id": "guide",
+      "type": "guide",
+      "enabled": true,
+      "options": {}
+    },
+    {
+      "id": "yearOverview",
+      "type": "yearOverview",
+      "enabled": true,
+      "options": {
+        "years": 2,
+        "perPage": 6
+      }
+    },
+    {
+      "id": "birthdays",
+      "type": "birthdays",
+      "enabled": true,
+      "options": {
+        "pages": 1
+      }
+    },
+    {
+      "id": "bestSelf",
+      "type": "bestSelf",
+      "enabled": false,
+      "options": {}
+    },
+    {
+      "id": "vision",
+      "type": "vision",
+      "enabled": true,
+      "options": {
+        "perPage": 2
+      }
+    },
+    {
+      "id": "actionPlan",
+      "type": "actionPlan",
+      "enabled": true,
+      "options": {
+        "goals": 3,
+        "mantra": true
+      }
+    },
+    {
+      "id": "moodYear",
+      "type": "moodYear",
+      "enabled": false,
+      "options": {}
+    },
+    {
+      "id": "months",
+      "type": "months",
+      "enabled": true,
+      "options": {},
+      "items": [
+        {
+          "id": "cover",
+          "type": "monthCover",
+          "enabled": true,
+          "options": {}
+        },
+        {
+          "id": "notes-a",
+          "type": "monthNotes",
+          "enabled": true,
+          "options": {
+            "count": 1,
+            "style": "auto"
+          }
+        },
+        {
+          "id": "log",
+          "type": "monthLog",
+          "enabled": true,
+          "options": {}
+        },
+        {
+          "id": "grid",
+          "type": "monthGrid",
+          "enabled": false,
+          "options": {
+            "spread": "auto"
+          }
+        },
+        {
+          "id": "weeks",
+          "type": "weeks",
+          "enabled": true,
+          "options": {
+            "variant": "alastair",
+            "priorities": "auto",
+            "footer": "expenses"
+          }
+        },
+        {
+          "id": "balance",
+          "type": "balance",
+          "enabled": true,
+          "options": {}
+        },
+        {
+          "id": "review",
+          "type": "review",
+          "enabled": true,
+          "options": {
+            "variant": "auto"
+          }
+        },
+        {
+          "id": "habits",
+          "type": "habits",
+          "enabled": true,
+          "options": {
+            "rows": 10,
+            "total": true
+          }
+        },
+        {
+          "id": "notes-b",
+          "type": "monthNotes",
+          "enabled": true,
+          "options": {
+            "count": 1,
+            "style": "auto"
+          }
+        }
+      ]
+    },
+    {
+      "id": "health",
+      "type": "health",
+      "enabled": false,
+      "options": {
+        "pages": 1
+      }
+    },
+    {
+      "id": "sleepDiary",
+      "type": "sleepDiary",
+      "enabled": false,
+      "options": {
+        "pages": 2
+      }
+    },
+    {
+      "id": "unstuck",
+      "type": "unstuck",
+      "enabled": false,
+      "options": {
+        "pages": 1
+      }
+    },
+    {
+      "id": "estimates",
+      "type": "estimates",
+      "enabled": false,
+      "options": {
+        "pages": 1
+      }
+    },
+    {
+      "id": "passwords",
+      "type": "passwords",
+      "enabled": true,
+      "options": {
+        "pages": 2,
+        "separate": false,
+        "detailed": "auto"
+      }
+    },
+    {
+      "id": "contacts",
+      "type": "contacts",
+      "enabled": true,
+      "options": {
+        "pages": 1
+      }
+    },
+    {
+      "id": "notes",
+      "type": "notes",
+      "enabled": true,
+      "options": {
+        "count": 0,
+        "style": "auto"
+      }
+    }
+  ],
+  "customPages": [],
+  "customBlocks": [],
+  "watermarks": [
+    {
+      "id": "colibri",
+      "enabled": true,
+      "assetId": "colibri",
+      "scope": [
+        "all"
+      ],
+      "exclude": [
+        "monthCover",
+        "titlePage",
+        "custom",
+        "yearOverview"
+      ],
+      "excludePages": [],
+      "hAnchor": "outer",
+      "vAnchor": "bottom",
+      "dx": 13,
+      "dy": 4.8,
+      "width": 12,
+      "opacity": 1,
+      "rotation": 0,
+      "mirrorOnVerso": true,
+      "layer": "above",
+      "minStrokePt": 0.3
+    }
+  ],
+  "overrides": [],
+  "assets": [
+    {
+      "id": "colibri",
+      "name": "Colibrí (Heritage)",
+      "kind": "vector",
+      "mime": "image/svg+xml",
+      "width": 147.31465,
+      "height": 121.12654,
+      "builtin": "watermarks/colibri.svg"
+    }
+  ],
+  "cover": {
+    "enabled": true,
+    "style": "board",
+    "imageAssetId": null,
+    "boardOverhang": 3,
+    "turnIn": 15,
+    "bleed": 3,
+    "spine": "auto",
+    "showYear": true,
+    "showName": true,
+    "showTitle": true
+  }
+}

@@ -1,0 +1,140 @@
+/**
+ * Recursos del navegador: fuentes (integradas y subidas), feriados y recursos
+ * gráficos. Se cargan bajo demanda y quedan en caché; cada cambio incrementa
+ * `version` para que el documento se reconstruya.
+ */
+import type { Design } from '@core/design/schema';
+import type { HolidayCountryData, HolidayIndex } from '@core/holidays';
+import type { AssetInfo } from '@core/layout/context';
+import { assetInfoFromBytes, facesForDesign, fromBase64, loadBuiltinFonts, loadFontManifest, loadHolidayIndex, type FontManifest, type ResourceIO } from '@core/resources';
+import { FontRegistry, type FontSpec } from '@core/text/fonts';
+import { listUserAssets, listUserFonts } from './persist';
+
+const BASE = import.meta.env.BASE_URL ?? './';
+
+/**
+ * Lo que se descargó antes de que el service worker controlara la página no quedó en su
+ * caché: se guarda a mano para que la próxima apertura sin conexión lo encuentre.
+ */
+function keepOffline(cacheName: string, path: string): void {
+  if (typeof caches === 'undefined' || typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return;
+  void navigator.serviceWorker.ready
+    .then(async () => {
+      const url = new URL(`${BASE}${path}`, location.href).href;
+      const cache = await caches.open(cacheName);
+      if (!(await cache.match(url))) await cache.add(url);
+    })
+    .catch(() => undefined);
+}
+
+export const io: ResourceIO = {
+  async read(path: string): Promise<Uint8Array> {
+    const res = await fetch(`${BASE}${path}`);
+    if (!res.ok) throw new Error(`No se pudo cargar ${path} (${res.status})`);
+    return new Uint8Array(await res.arrayBuffer());
+  },
+};
+
+export class Resources {
+  readonly fonts = new FontRegistry();
+  manifest: FontManifest | null = null;
+  holidayIndex: HolidayIndex | null = null;
+  readonly holidayData = new Map<string, HolidayCountryData | null>();
+  readonly assetBytes = new Map<string, Uint8Array>();
+  readonly assetInfos = new Map<string, AssetInfo>();
+  /** Fuentes subidas por el usuario: id → bytes (para el Worker de PDF). */
+  readonly userFontBytes = new Map<string, { bytes: Uint8Array; spec: FontSpec }>();
+  /** Problemas al cargar (se muestran en la interfaz). */
+  readonly errors: string[] = [];
+  version = 0;
+  private listeners = new Set<() => void>();
+
+  subscribe(fn: () => void): () => void {
+    this.listeners.add(fn);
+    return () => this.listeners.delete(fn);
+  }
+
+  bump(): void {
+    this.version++;
+    for (const l of this.listeners) l();
+  }
+
+  private addError(msg: string): void {
+    if (!this.errors.includes(msg)) this.errors.push(msg);
+  }
+
+  async init(): Promise<void> {
+    this.manifest = await loadFontManifest(io);
+    this.holidayIndex = await loadHolidayIndex(io);
+    keepOffline('agenda-holidays', 'holidays/index.json');
+    for (const f of await listUserFonts()) {
+      try {
+        const face = this.fonts.register(f.bytes, { ...f.spec, source: 'user', file: f.id });
+        this.userFontBytes.set(f.id, { bytes: f.bytes, spec: { family: face.family, weight: face.weight, style: face.style } });
+      } catch (err) {
+        this.addError(`Fuente «${f.id}»: ${(err as Error).message}`);
+      }
+    }
+    for (const a of await listUserAssets()) this.assetBytes.set(a.id, a.bytes);
+    this.bump();
+  }
+
+  /** Carga lo que necesita un diseño (caras del tema, datos del país, recursos). */
+  async ensureFor(design: Design): Promise<void> {
+    let changed = false;
+    if (this.manifest) {
+      const before = this.fonts.list().length;
+      for (const e of await loadBuiltinFonts(io, this.fonts, this.manifest, facesForDesign(design))) this.addError(`Fuente ${e}`);
+      if (this.fonts.list().length !== before) changed = true;
+    }
+    const country = design.holidays.country;
+    if (country && !this.holidayData.has(country)) {
+      const path = `holidays/${country}.json`;
+      try {
+        const res = await fetch(`${BASE}${path}`);
+        // Un 404 es definitivo (país sin datos); un error de red se reintenta en la próxima carga.
+        if (res.ok) {
+          this.holidayData.set(country, (await res.json()) as HolidayCountryData);
+          keepOffline('agenda-holidays', path);
+        } else if (res.status === 404) this.holidayData.set(country, null);
+        else this.addError(`Feriados ${country}: HTTP ${res.status}`);
+      } catch (err) {
+        this.addError(`Feriados ${country}: ${(err as Error).message}`);
+      }
+      changed = true;
+    }
+    for (const ref of design.assets) {
+      if (this.assetInfos.has(ref.id)) continue;
+      try {
+        let bytes = this.assetBytes.get(ref.id);
+        if (!bytes && ref.builtin) bytes = await io.read(ref.builtin);
+        if (!bytes && ref.data) {
+          bytes = fromBase64(ref.data);
+        }
+        if (!bytes) continue;
+        this.assetBytes.set(ref.id, bytes);
+        this.assetInfos.set(ref.id, await assetInfoFromBytes(ref, bytes));
+        changed = true;
+      } catch (err) {
+        this.addError(`Recurso «${ref.name}»: ${(err as Error).message}`);
+      }
+    }
+    if (changed) this.bump();
+  }
+
+  /** Carga todas las caras de una familia integrada (para el selector de pesos). */
+  async ensureFamily(family: string): Promise<void> {
+    if (!this.manifest) return;
+    const fam = this.manifest.families.find((f) => f.family === family);
+    if (!fam) return;
+    const before = this.fonts.list().length;
+    for (const e of await loadBuiltinFonts(io, this.fonts, this.manifest, fam.faces.map((f) => ({ family, weight: f.weight, style: f.style })))) this.addError(`Fuente ${e}`);
+    if (this.fonts.list().length !== before) this.bump();
+  }
+
+  holidaysFor(country: string | null): HolidayCountryData | null {
+    return country ? (this.holidayData.get(country) ?? null) : null;
+  }
+}
+
+export const resources = new Resources();
