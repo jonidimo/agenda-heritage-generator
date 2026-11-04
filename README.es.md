@@ -47,6 +47,15 @@ se sube nada a ningún lado.
   (que sigue siendo vectorial en el PDF final), o una página de renglones, puntos o
   cuadrícula. El resto del libro se reacomoda solo.
 - Textos, imágenes, renglones y marcos propios en cualquier tipo de página.
+- **Clic derecho** (o pulsación larga en el teléfono) sobre cualquier elemento, página o
+  miniatura: cambiar la imagen de la marca de agua, ocultar algo en una página o en todas
+  las de ese tipo, seleccionar elementos similares, agregar textos o imágenes donde
+  hiciste clic.
+- **Varios elementos a la vez** con Ctrl o Mayús, o arrastrando un recuadro desde un
+  lugar vacío: moverlos juntos, alinearlos, repartirlos con espacios iguales u ordenarlos
+  en una cuadrícula que encuentra sus filas y columnas.
+- **Renglones, puntos o cuadrícula por tipo de página o por página**: separación de
+  renglones, separación horizontal y vertical de puntos, tamaño de punto y grosor.
 
 ### Cualquier año, idioma y país
 
@@ -92,11 +101,25 @@ se sube nada a ningún lado.
 - Hoja de calibración, plantilla de perforado para las estaciones de costura y una tapa
   con el ancho del lomo calculado según la cantidad de hojas.
 
+### Tus archivos y plantillas
+
+- **Archivo → Guardar** (Ctrl+S) escribe un archivo `.agenda.json` con sus imágenes y
+  fuentes adentro. En Chrome, Edge y la aplicación de escritorio, las veces siguientes se
+  reescribe el mismo archivo.
+- **Guardar como plantilla** conserva el diseño completo para empezar otras agendas: otro
+  año, otra persona u otro idioma. Las plantillas se pueden exportar y compartir como
+  archivos.
+- **Copia de seguridad de todo** guarda todas las agendas y plantillas en un solo
+  archivo; al abrirlo se restauran.
+- Las agendas también quedan en el navegador, pero solo en ese navegador y en esa
+  dirección de la aplicación: los archivos son la copia segura.
+
 ### Hecha para durar
 
-- Las agendas se guardan en el navegador y se exportan como archivos `.agenda.json` que
-  podés guardar, versionar y volver a abrir años después. *Duplicar para 2028* lleva tu
-  diseño al año siguiente.
+- *Duplicar para 2028* lleva un diseño al año siguiente, con sus páginas y ajustes en su
+  lugar.
+- Los archivos se validan al abrirlos: colores, números y ajustes del tema se revisan,
+  así un archivo dañado o manipulado no rompe la aplicación ni ejecuta código.
 - El mismo motor funciona en el navegador, en un proceso en segundo plano y en la línea de
   comandos.
 

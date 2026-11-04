@@ -47,6 +47,14 @@ is uploaded anywhere.
   in the final PDF), or a page of lines, dots or grid. The rest of the book reflows
   around them.
 - Your own text, images, lines and frames on any page type.
+- **Right-click** (or long-press on a phone) any element, page or thumbnail for its
+  options: change the watermark image, hide something on one page or on all pages of
+  that type, select similar elements, add text or images where you clicked.
+- **Select several elements** with Ctrl or Shift, or by dragging a box from an empty
+  spot. Move them together, align them, distribute them with equal gaps, or tidy them
+  into a grid that finds their rows and columns.
+- **Lines, dots or grid per page type or per page**: line spacing, horizontal and
+  vertical dot spacing, dot size and line weight.
 
 ### Any year, language and country
 
@@ -92,11 +100,23 @@ is uploaded anywhere.
 - Calibration sheet, punching template for the sewing stations, and a cover with the
   spine width computed from the number of sheets.
 
+### Your files and templates
+
+- **File → Save** (Ctrl+S) writes a `.agenda.json` file with its images and fonts inside.
+  In Chrome, Edge and the desktop app, the next saves rewrite the same file.
+- **Save as template** keeps a whole design to start new planners from it, for another
+  year, person or language. Templates can be exported and shared as files.
+- **Back up everything** saves all planners and templates in one file; opening it
+  restores them.
+- Planners are also kept in the browser, but only in that browser and at that app
+  address, so files are the safe copy.
+
 ### Made to last
 
-- Planners are saved in the browser and exported as `.agenda.json` files you can keep,
-  version and reopen years later. *Duplicate for 2028* carries your design to the next
-  year.
+- *Duplicate for 2028* carries a design to the next year, with its pages and
+  adjustments in place.
+- Files are validated when they are opened: colours, numbers and theme settings are
+  checked, so a damaged or tampered file can neither break the app nor run code in it.
 - The same engine runs in the browser, in a background worker and on the command line.
 
 ## Screenshots

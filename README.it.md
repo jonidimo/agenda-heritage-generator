@@ -48,6 +48,15 @@ caricato nulla da nessuna parte.
   PDF (che resta vettoriale nel PDF finale), oppure una pagina a righe, a puntini o a
   quadretti. Il resto del libro si riorganizza da solo.
 - Aggiungi testi, immagini, righe e cornici a qualsiasi tipo di pagina.
+- **Clic destro** (o pressione prolungata sul telefono) su qualsiasi elemento, pagina o
+  miniatura: cambiare l’immagine della filigrana, nascondere qualcosa in una pagina o in
+  tutte quelle di quel tipo, selezionare elementi simili, aggiungere testi o immagini dove
+  hai cliccato.
+- **Più elementi insieme** con Ctrl o Maiusc, o trascinando un riquadro da un punto vuoto:
+  spostarli insieme, allinearli, distribuirli con spazi uguali o ordinarli in una griglia
+  che ne trova righe e colonne.
+- **Righe, puntini o quadretti per tipo di pagina o per pagina**: interlinea, passo
+  orizzontale e verticale dei puntini, dimensione del puntino e spessore.
 
 ### Qualsiasi anno, lingua e Paese
 
@@ -95,11 +104,25 @@ caricato nulla da nessuna parte.
 - Foglio di calibrazione, dima di foratura per le stazioni di cucitura e una copertina con
   la larghezza del dorso calcolata in base al numero di fogli.
 
+### I tuoi file e modelli
+
+- **File → Salva** (Ctrl+S) scrive un file `.agenda.json` con immagini e caratteri al suo
+  interno. In Chrome, Edge e nell’app per computer, le volte successive riscrive lo stesso
+  file.
+- **Salva come modello** conserva tutto il progetto per iniziare altre agende: un altro
+  anno, un’altra persona o un’altra lingua. I modelli si possono esportare e condividere
+  come file.
+- **Backup di tutto** salva tutte le agende e i modelli in un solo file; aprendolo vengono
+  ripristinati.
+- Le agende restano anche nel browser, ma solo in quel browser e a quell’indirizzo
+  dell’app: i file sono la copia sicura.
+
 ### Fatta per durare
 
-- Le agende vengono salvate nel browser ed esportate come file `.agenda.json` che puoi
-  conservare, versionare e riaprire anni dopo. *Duplica per il 2028* porta il tuo progetto
-  all’anno successivo.
+- *Duplica per il 2028* porta un progetto all’anno successivo, con pagine e regolazioni al
+  loro posto.
+- I file vengono convalidati all’apertura: colori, numeri e impostazioni del tema sono
+  controllati, così un file danneggiato o manomesso non rompe l’app né esegue codice.
 - Lo stesso motore funziona nel browser, in un processo in background e da riga di
   comando.
 

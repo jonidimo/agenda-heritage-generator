@@ -49,6 +49,15 @@ Android. Nada é enviado para lugar nenhum.
   de um PDF (que continua vetorial no PDF final), ou uma página de linhas, pontos ou
   quadriculado. O resto do livro se reorganiza sozinho.
 - Adicione seus próprios textos, imagens, linhas e molduras a qualquer tipo de página.
+- **Clique direito** (ou toque longo no celular) em qualquer elemento, página ou
+  miniatura: trocar a imagem da marca d’água, ocultar algo numa página ou em todas as
+  desse tipo, selecionar elementos semelhantes, adicionar textos ou imagens onde você
+  clicou.
+- **Vários elementos de uma vez** com Ctrl ou Shift, ou arrastando um retângulo a partir
+  de um lugar vazio: movê-los juntos, alinhá-los, distribuí-los com espaços iguais ou
+  organizá-los numa grade que encontra suas linhas e colunas.
+- **Linhas, pontos ou quadriculado por tipo de página ou por página**: espaçamento das
+  linhas, espaçamento horizontal e vertical dos pontos, tamanho do ponto e espessura.
 
 ### Qualquer ano, idioma e país
 
@@ -96,11 +105,25 @@ Android. Nada é enviado para lugar nenhum.
 - Folha de calibração, gabarito de furação para as estações de costura e uma capa com a
   largura da lombada calculada pelo número de folhas.
 
+### Seus arquivos e modelos
+
+- **Arquivo → Salvar** (Ctrl+S) grava um arquivo `.agenda.json` com as imagens e fontes
+  dentro. No Chrome, no Edge e no aplicativo para computador, as próximas vezes regravam
+  o mesmo arquivo.
+- **Salvar como modelo** guarda o design completo para começar outras agendas: outro ano,
+  outra pessoa ou outro idioma. Os modelos podem ser exportados e compartilhados como
+  arquivos.
+- **Backup de tudo** salva todas as agendas e modelos num só arquivo; ao abri-lo, eles são
+  restaurados.
+- As agendas também ficam no navegador, mas só nesse navegador e nesse endereço do
+  aplicativo: os arquivos são a cópia segura.
+
 ### Feita para durar
 
-- As agendas ficam salvas no navegador e são exportadas como arquivos `.agenda.json` que
-  você pode guardar, versionar e reabrir anos depois. *Duplicar para 2028* leva o seu
-  design para o ano seguinte.
+- *Duplicar para 2028* leva um design para o ano seguinte, com as páginas e os ajustes no
+  lugar.
+- Os arquivos são validados ao abrir: cores, números e ajustes do tema são conferidos,
+  então um arquivo danificado ou adulterado não quebra o aplicativo nem executa código.
 - O mesmo motor roda no navegador, num processo em segundo plano e na linha de comando.
 
 ## Capturas de tela
