@@ -77,7 +77,7 @@ se sube nada a ningún lado.
   avance, un registro de hábitos que cuenta días hechos en lugar de rachas, revisión
   semanal, tres cosas buenas, diario de sueño, memoria externa y más.
 - Cada método cambia las páginas que corresponden y se explica en una **guía impresa**
-  con su nivel de evidencia (fuerte, moderada, limitada, práctica sin estudios directos o
+  con su nivel de evidencia (sólida, moderada, limitada, práctica sin estudios directos o
   discutida) y sus referencias. Ver [el informe de evidencia](docs/evidencia-metodos.md).
 - Podés agregar tus propios métodos desde la interfaz, sin programar.
 
