@@ -238,6 +238,23 @@ export function resetPageStyle(page: PageModel, scope: Scope): void {
  * Escala un bloque por un factor. Marcas de agua y elementos propios cambian su tamaño real y
  * corrigen su anclaje para que la esquina superior izquierda quede donde la mostró la vista previa.
  */
+/**
+ * Nuevo tamaño y lugar de un elemento propio (la caja tal como se ve en esta página). En una página
+ * izquierda, un elemento espejado guarda su posición como la de la página derecha.
+ */
+export function resizeCustomBlock(page: PageModel, block: Block, box: Rect, coalesce?: string): void {
+  if (block.role !== 'custom' || !block.id.startsWith('custom.')) return;
+  useStore.getState().update((d) => {
+    const cb = d.customBlocks.find((c) => c.id === block.id.slice(7));
+    if (!cb) return;
+    const w = r2(Math.max(0.5, box.w));
+    cb.x = r2(cb.mirror && page.side === 'verso' ? page.w - box.x - box.w : box.x);
+    cb.y = r2(box.y);
+    cb.w = w;
+    cb.h = r2(Math.max(0.5, box.h));
+  }, coalesce);
+}
+
 export function scaleBlock(page: PageModel, block: Block, factor: number, scope: Scope, coalesce?: string): void {
   if (!Number.isFinite(factor) || factor <= 0) return;
   useStore.getState().update((d) => {

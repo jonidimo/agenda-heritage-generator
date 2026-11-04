@@ -411,3 +411,29 @@ test('tocar una sección lleva a sus páginas, se puede repetir cada semana y «
   await page.getByRole('button', { name: 'Adelante (Alt+→)' }).click();
   await expect.poll(async () => (await state(page)).pageIndex).toBeGreaterThan(0);
 });
+
+test('un texto propio se estira solo a lo ancho con el tirador del lado, y en proporción con Mayús', async ({ page }) => {
+  await open(page);
+  await page.getByRole('button', { name: 'Texto' }).first().click();
+  const custom = () => page.evaluate(() => (globalThis as unknown as { __agenda: { getState: () => { design: { customBlocks: Array<{ w: number; h: number }> } } } }).__agenda.getState().design.customBlocks.at(-1)!);
+  const before = await custom();
+  const side = (await page.locator('[data-handle="e"]').boundingBox())!;
+  await page.mouse.move(side.x + side.width / 2, side.y + side.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(side.x - 40, side.y + side.height / 2 + 30, { steps: 6 });
+  await page.mouse.up();
+  await expect.poll(async () => (await custom()).w).toBeLessThan(before.w - 5);
+  expect((await custom()).h).toBeCloseTo(before.h, 1);
+  // Esquina con Mayús: ancho y alto en la misma proporción.
+  const mid = await custom();
+  const corner = (await page.locator('[data-handle="se"]').boundingBox())!;
+  await page.keyboard.down('Shift');
+  await page.mouse.move(corner.x + corner.width / 2, corner.y + corner.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(corner.x + 30, corner.y + 5, { steps: 6 });
+  await page.mouse.up();
+  await page.keyboard.up('Shift');
+  await expect.poll(async () => (await custom()).w).toBeGreaterThan(mid.w + 3);
+  const after = await custom();
+  expect(after.w / after.h).toBeCloseTo(mid.w / mid.h, 1);
+});

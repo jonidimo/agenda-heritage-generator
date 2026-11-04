@@ -9,7 +9,8 @@ import { pageInnerSvg } from '@core/render/svg';
 import { fmt, type Rect } from '@core/util/geometry';
 import { useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { unionRect } from '@core/layout/align';
-import { clampMoveDelta, moveBlocks, scaleBlock } from '../../state/actions';
+import { clampMoveDelta, moveBlocks, resizeCustomBlock, scaleBlock } from '../../state/actions';
+import { HANDLES, resizeRect, type Handle } from '@core/layout/resize';
 import { openMenuAt } from '../ContextMenu';
 import { blockMenu, multiMenu, pageMenu } from './menus';
 import { assetHref, onAssetUrlsChange } from '../../state/assetUrls';
@@ -41,10 +42,14 @@ interface Drag {
   dx: number;
   dy: number;
   factor: number;
+  /** Tirador con el que se redimensiona y caja resultante (elementos propios). */
+  handle: Handle;
+  box: Rect | null;
   moved: boolean;
 }
 
 const SNAP_PX = 7;
+const RESIZE_CURSOR: Record<Handle, string> = { n: 'ns-resize', s: 'ns-resize', e: 'ew-resize', w: 'ew-resize', ne: 'nesw-resize', sw: 'nesw-resize', nw: 'nwse-resize', se: 'nwse-resize' };
 /** Movimiento mínimo (px de pantalla) para que un clic se convierta en arrastre. */
 const DRAG_START_PX = 3;
 
@@ -157,7 +162,7 @@ export function PageView({ doc, index, scale, interactive = true }: Props) {
     else select(null);
   };
 
-  const startDrag = (e: React.PointerEvent<HTMLDivElement>, block: Block, mode: 'move' | 'resize', members: Block[] = [block]): void => {
+  const startDrag = (e: React.PointerEvent<HTMLDivElement>, block: Block, mode: 'move' | 'resize', members: Block[] = [block], handle: Handle = 'se'): void => {
     const p = toMm(e);
     const parts = members
       .filter((b) => b.editable)
@@ -178,6 +183,8 @@ export function PageView({ doc, index, scale, interactive = true }: Props) {
       dx: 0,
       dy: 0,
       factor: 1,
+      handle,
+      box: null,
       moved: false,
       additive: false,
     };
@@ -192,7 +199,8 @@ export function PageView({ doc, index, scale, interactive = true }: Props) {
     const touch = e.pointerType === 'touch';
     const additive = e.ctrlKey || e.metaKey || e.shiftKey;
     const target = e.target as Element | null;
-    if (target?.closest('[data-handle]') && selected?.editable && single) return startDrag(e, selected, 'resize');
+    const grip = target?.closest('[data-handle]')?.getAttribute('data-handle') as Handle | null | undefined;
+    if (grip && selected?.editable && single) return startDrag(e, selected, 'resize', [selected], grip);
     // Con el dedo se arrastra lo que ya está seleccionado (sin que la página se desplace).
     if (target?.closest('[data-sel-surface]') && touch && selected?.editable && !additive) return startDrag(e, selected, 'move');
     const block = blockAt(e);
@@ -203,7 +211,7 @@ export function PageView({ doc, index, scale, interactive = true }: Props) {
       }
       // Recuadro de selección desde un lugar vacío.
       const p = toMm(e);
-      drag.current = { block: page.blocks[0]!, mode: 'marquee', pointerId: e.pointerId, startClientX: e.clientX, startClientY: e.clientY, startX: p.x, startY: p.y, origin: { x: p.x, y: p.y, w: 0, h: 0 }, parts: [], dx: 0, dy: 0, factor: 1, moved: false, additive };
+      drag.current = { block: page.blocks[0]!, mode: 'marquee', pointerId: e.pointerId, startClientX: e.clientX, startClientY: e.clientY, startX: p.x, startY: p.y, origin: { x: p.x, y: p.y, w: 0, h: 0 }, parts: [], dx: 0, dy: 0, factor: 1, handle: 'se', box: null, moved: false, additive };
       wrapRef.current?.setPointerCapture?.(e.pointerId);
       e.preventDefault();
       return;
@@ -258,13 +266,18 @@ export function PageView({ doc, index, scale, interactive = true }: Props) {
       if (d.parts.length === 1) setLive({ x: o.x + dx, y: o.y + dy, w: o.w, h: o.h });
     } else {
       const o = d.origin;
-      const w0 = Math.max(1, o.w);
-      const h0 = Math.max(1, o.h);
-      const factor = Math.max(0.1, Math.max((p.x - o.x) / w0, (p.y - o.y) / h0));
-      d.factor = factor;
       const m = d.parts[0];
-      m?.el?.setAttribute('transform', `translate(${fmt(o.x)} ${fmt(o.y)}) scale(${fmt(factor, 4)}) translate(${fmt(-o.x)} ${fmt(-o.y)}) ${m.base ?? ''}`);
-      setLive({ x: o.x, y: o.y, w: o.w * factor, h: o.h * factor });
+      const pageBox = { x: 0, y: 0, w: page.w, h: page.h };
+      // Un elemento propio cambia de ancho y alto por separado; los demás (composiciones del diseño)
+      // solo en proporción. Mayús mantiene la proporción también en los propios.
+      const free = d.block.role === 'custom';
+      const r = resizeRect(o, free ? d.handle : 'se', p.x - d.startX, p.y - d.startY, { keepAspect: !free || e.shiftKey, min: 2, bounds: pageBox });
+      d.box = r;
+      d.factor = r.w / Math.max(0.01, o.w);
+      const sx = r.w / Math.max(0.01, o.w);
+      const sy = r.h / Math.max(0.01, o.h);
+      m?.el?.setAttribute('transform', `translate(${fmt(r.x)} ${fmt(r.y)}) scale(${fmt(sx, 4)} ${fmt(sy, 4)}) translate(${fmt(-o.x)} ${fmt(-o.y)}) ${m.base ?? ''}`);
+      setLive(r);
     }
   };
 
@@ -305,6 +318,7 @@ export function PageView({ doc, index, scale, interactive = true }: Props) {
     setLiveDelta(null);
     if (!commit || !d.moved) return;
     if (d.mode === 'move') moveBlocks(page, d.parts.map((m) => ({ block: m.block, dx: d.dx, dy: d.dy })), scope);
+    else if (d.block.role === 'custom' && d.box) resizeCustomBlock(page, d.block, d.box);
     else scaleBlock(page, d.block, d.factor, scope);
   };
 
@@ -420,11 +434,23 @@ export function PageView({ doc, index, scale, interactive = true }: Props) {
         <>
           {/* Capa del elemento seleccionado: con el dedo se arrastra desde acá sin desplazar la página. */}
           <div data-sel-surface="" className="absolute cursor-move" style={{ left: selBounds.x * scale, top: selBounds.y * scale, width: selBounds.w * scale, height: selBounds.h * scale, touchAction: 'none' }} />
-          <div
-            data-handle="resize"
-            className="absolute rounded-sm border-2 border-accent bg-white"
-            style={{ left: (selBounds.x + selBounds.w) * scale - 9, top: (selBounds.y + selBounds.h) * scale - 9, width: 18, height: 18, touchAction: 'none', cursor: 'nwse-resize' }}
-          />
+          {(selected.role === 'custom' ? HANDLES : (['se'] as const)).map((h) => {
+            // Esquinas: cuadrados; lados: barras sobre el borde. Grandes para el dedo.
+            const corner = h.length === 2;
+            const cx = (h.includes('w') ? selBounds.x : h.includes('e') ? selBounds.x + selBounds.w : selBounds.x + selBounds.w / 2) * scale;
+            const cy = (h.includes('n') ? selBounds.y : h.includes('s') ? selBounds.y + selBounds.h : selBounds.y + selBounds.h / 2) * scale;
+            const [w, hh] = corner ? [14, 14] : h === 'n' || h === 's' ? [22, 8] : [8, 22];
+            return (
+              <div
+                key={h}
+                data-handle={h}
+                aria-label={t(`resize.${h}`)}
+                title={t(corner ? 'resize.cornerHint' : 'resize.sideHint')}
+                className="absolute rounded-sm border-2 border-accent bg-white"
+                style={{ left: cx - w / 2, top: cy - hh / 2, width: w, height: hh, touchAction: 'none', cursor: RESIZE_CURSOR[h] }}
+              />
+            );
+          })}
         </>
       )}
     </div>
