@@ -76,28 +76,41 @@ export function Field(props: { label: string; children: ReactNode; hint?: string
 
 const inputCls = 'w-full rounded-md border border-line bg-white px-2 py-1.5 text-[12.5px] text-ink outline-none focus:border-accent focus:ring-2 focus:ring-accent/20';
 
-export function TextInput(props: { value: string; onChange: (v: string) => void; placeholder?: string; type?: string }) {
-  return <input className={inputCls} type={props.type ?? 'text'} value={props.value} placeholder={props.placeholder} onChange={(e) => props.onChange(e.target.value)} />;
+export function TextInput(props: { value: string; onChange: (v: string) => void; placeholder?: string; type?: string; onBlur?: () => void; ariaLabel?: string }) {
+  return (
+    <input
+      className={inputCls}
+      type={props.type ?? 'text'}
+      value={props.value}
+      placeholder={props.placeholder}
+      aria-label={props.ariaLabel}
+      onChange={(e) => props.onChange(e.target.value)}
+      onBlur={props.onBlur}
+    />
+  );
 }
 
 export function TextArea(props: { value: string; onChange: (v: string) => void; rows?: number; placeholder?: string }) {
   return <textarea className={clsx(inputCls, 'resize-y leading-snug')} rows={props.rows ?? 3} value={props.value} placeholder={props.placeholder} onChange={(e) => props.onChange(e.target.value)} />;
 }
 
-export function NumberInput(props: { value: number; onChange: (v: number) => void; min?: number; max?: number; step?: number; className?: string }) {
+/** Campo numérico. Con `integer` redondea (los campos enteros del diseño nunca reciben un 4,5). */
+export function NumberInput(props: { value: number; onChange: (v: number) => void; min?: number; max?: number; step?: number; className?: string; integer?: boolean; ariaLabel?: string }) {
   const [draft, setDraft] = useState<string | null>(null);
   return (
     <input
       className={clsx(inputCls, 'tabular-nums', props.className)}
       type="number"
-      inputMode="decimal"
+      aria-label={props.ariaLabel}
+      inputMode={props.integer ? 'numeric' : 'decimal'}
       value={draft ?? String(Number(props.value.toFixed(3)))}
       min={props.min}
       max={props.max}
       step={props.step ?? 1}
       onChange={(e) => {
         setDraft(e.target.value);
-        const v = Number(e.target.value.replace(',', '.'));
+        const raw = Number(e.target.value.replace(',', '.'));
+        const v = props.integer ? Math.round(raw) : raw;
         if (e.target.value !== '' && Number.isFinite(v)) props.onChange(Math.min(props.max ?? Infinity, Math.max(props.min ?? -Infinity, v)));
       }}
       onBlur={() => setDraft(null)}
@@ -106,7 +119,7 @@ export function NumberInput(props: { value: number; onChange: (v: number) => voi
 }
 
 /** Deslizador con valor numérico editable al lado. */
-export function Slider(props: { label: string; value: number; onChange: (v: number) => void; min: number; max: number; step?: number; unit?: string }) {
+export function Slider(props: { label: string; value: number; onChange: (v: number) => void; min: number; max: number; step?: number; unit?: string; integer?: boolean }) {
   const id = useId();
   return (
     <div className="py-1">
@@ -115,10 +128,10 @@ export function Slider(props: { label: string; value: number; onChange: (v: numb
           {props.label}
         </label>
         <div className="w-[74px]">
-          <NumberInput value={props.value} onChange={props.onChange} min={props.min} max={props.max} step={props.step} className="!py-0.5 text-right" />
+          <NumberInput value={props.value} onChange={props.onChange} min={props.min} max={props.max} step={props.step} integer={props.integer} ariaLabel={props.label} className="!py-0.5 text-right" />
         </div>
       </div>
-      <input id={id} className="w-full" type="range" min={props.min} max={props.max} step={props.step ?? 1} value={props.value} onChange={(e) => props.onChange(Number(e.target.value))} />
+      <input id={id} className="w-full" type="range" min={props.min} max={props.max} step={props.step ?? 1} value={props.value} onChange={(e) => props.onChange(props.integer ? Math.round(Number(e.target.value)) : Number(e.target.value))} />
     </div>
   );
 }

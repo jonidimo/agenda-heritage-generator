@@ -39,7 +39,8 @@ async function loadDesign(path: string): Promise<Design> {
 async function openDocument(design: Design): Promise<{ doc: AgendaDocument; bytes: Map<string, Uint8Array>; errors: string[] }> {
   const fonts = new FontRegistry();
   const manifest = await loadFontManifest(io);
-  await loadBuiltinFonts(io, fonts, manifest, process.argv.includes('--all-fonts') ? undefined : facesForDesign(design));
+  const fontErrors = await loadBuiltinFonts(io, fonts, manifest, process.argv.includes('--all-fonts') ? undefined : facesForDesign(design));
+  if (fontErrors.length > 0) throw new Error(`No se pudieron cargar las fuentes:\n${fontErrors.join('\n')}`);
   const holidays = await loadHolidayData(io, design.holidays.country);
   const assets = await loadAssets(io, design);
   const doc = new AgendaDocument(design, { fonts, holidays, assets: assets.infos });

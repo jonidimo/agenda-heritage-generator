@@ -40,11 +40,10 @@ export async function listDesigns(): Promise<DesignMeta[]> {
   }, []);
 }
 
+/** Lee una agenda guardada. Si no existe devuelve null; si no se puede leer, avisa con el motivo. */
 export async function loadDesign(id: string): Promise<Design | null> {
-  return safe(async () => {
-    const raw = await get<unknown>(id, designs);
-    return raw ? parseDesign(raw) : null;
-  }, null);
+  const raw = await safe(() => get<unknown>(id, designs), undefined);
+  return raw ? parseDesign(raw) : null;
 }
 
 export async function saveDesign(d: Design): Promise<void> {
@@ -57,6 +56,28 @@ export async function deleteDesign(id: string): Promise<void> {
 
 export async function saveAsset(id: string, bytes: Uint8Array): Promise<void> {
   await safe(() => set(id, bytes, assets), undefined);
+}
+
+/**
+ * Borra los bytes de imágenes que ninguna agenda guardada usa. Se llama al abrir la
+ * aplicación, antes de abrir una agenda (quitar una imagen no la borra al instante:
+ * así se puede deshacer y la agenda del año anterior la conserva).
+ */
+export async function collectUnusedAssets(): Promise<number> {
+  return safe(async () => {
+    const used = new Set<string>();
+    for (const k of await keys(designs)) {
+      const d = await get<{ assets?: Array<{ id?: string }> }>(k, designs);
+      for (const a of d?.assets ?? []) if (a?.id) used.add(a.id);
+    }
+    let removed = 0;
+    for (const k of await keys(assets)) {
+      if (used.has(String(k))) continue;
+      await del(k, assets);
+      removed++;
+    }
+    return removed;
+  }, 0);
 }
 
 export async function deleteAsset(id: string): Promise<void> {

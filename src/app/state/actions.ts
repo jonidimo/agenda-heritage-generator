@@ -5,6 +5,7 @@
  */
 import type { BlockOverride, Design } from '@core/design/schema';
 import type { Block, PageModel } from '@core/layout/prims';
+import type { Rect } from '@core/util/geometry';
 import type { Draft } from 'immer';
 import { documentFor } from './doc';
 import { useStore } from './store';
@@ -61,6 +62,18 @@ function anchorRight(hAnchor: string, page: PageModel): boolean | null {
   return null;
 }
 
+/**
+ * Limita un desplazamiento para que un bloque que entra en la página no salga de ella
+ * (el documento lo acomodaría igual: así lo guardado coincide con lo que se ve).
+ */
+export function clampMoveDelta(page: Pick<PageModel, 'w' | 'h'>, o: Rect, dx: number, dy: number): { dx: number; dy: number } {
+  const cx = o.w <= page.w ? Math.min(page.w - o.x - o.w, Math.max(-o.x, dx)) : dx;
+  const cy = o.h <= page.h ? Math.min(page.h - o.y - o.h, Math.max(-o.y, dy)) : dy;
+  return { dx: cx, dy: cy };
+}
+
+const r2 = (v: number): number => Number(v.toFixed(2));
+
 /** Desplaza un bloque (dx, dy en mm de página). */
 export function moveBlock(page: PageModel, block: Block, dx: number, dy: number, scope: Scope, coalesce?: string): void {
   if (Math.abs(dx) < 1e-4 && Math.abs(dy) < 1e-4) return;
@@ -95,23 +108,45 @@ export function moveBlock(page: PageModel, block: Block, dx: number, dy: number,
       },
       mirrored,
     );
+    // «Todas las páginas» desde una página que tiene su propio ajuste: ese ajuste manda en
+    // esta página, así que también se mueve (si no, lo arrastrado no se movería en pantalla).
+    const own = sc === 'type' ? findOverride(d, page, block.id, 'page') : undefined;
+    if (own) {
+      own.dx = r2(own.dx + dx);
+      own.dy = r2(own.dy + dy);
+    }
   }, coalesce);
 }
 
-/** Escala un bloque por un factor (marcas de agua y elementos propios cambian su tamaño real). */
+/**
+ * Escala un bloque por un factor. Marcas de agua y elementos propios cambian su tamaño real y
+ * corrigen su anclaje para que la esquina superior izquierda quede donde la mostró la vista previa.
+ */
 export function scaleBlock(page: PageModel, block: Block, factor: number, scope: Scope, coalesce?: string): void {
   if (!Number.isFinite(factor) || factor <= 0) return;
   useStore.getState().update((d) => {
     if (block.role === 'watermark' && block.id.startsWith('wm.')) {
       const wm = d.watermarks.find((w) => w.id === block.id.slice(3));
-      if (wm) wm.width = Number(Math.max(1, wm.width * factor).toFixed(2));
+      if (!wm) return;
+      const w1 = r2(Math.max(1, wm.width * factor));
+      const dw = w1 - wm.width;
+      const dh = (block.bbox.h || 0) * (w1 / wm.width - 1);
+      const right = anchorRight(wm.hAnchor, page);
+      if (right === true) wm.dx = r2(wm.dx - dw);
+      else if (right === null) wm.dx = r2(wm.dx + dw / 2);
+      if (wm.vAnchor === 'bottom') wm.dy = r2(wm.dy - dh);
+      else if (wm.vAnchor === 'middle') wm.dy = r2(wm.dy + dh / 2);
+      wm.width = w1;
       return;
     }
     if (block.role === 'custom' && block.id.startsWith('custom.')) {
       const cb = d.customBlocks.find((c) => c.id === block.id.slice(7));
       if (cb) {
-        cb.w = Number(Math.max(1, cb.w * factor).toFixed(2));
-        cb.h = Number(Math.max(1, cb.h * factor).toFixed(2));
+        const w1 = r2(Math.max(1, cb.w * factor));
+        // Espejado en una página izquierda: lo que queda fijo es su borde izquierdo dibujado.
+        if (cb.mirror && page.side === 'verso') cb.x = r2(cb.x - (w1 - cb.w));
+        cb.w = w1;
+        cb.h = r2(Math.max(1, cb.h * factor));
       }
       return;
     }
@@ -125,6 +160,8 @@ export function scaleBlock(page: PageModel, block: Block, factor: number, scope:
       },
       typeMirrored(page),
     );
+    const own = effectiveScope(page, scope) === 'type' ? findOverride(d, page, block.id, 'page') : undefined;
+    if (own) own.scale = Number(Math.min(20, Math.max(0.05, own.scale * factor)).toFixed(4));
   }, coalesce);
 }
 
@@ -146,7 +183,11 @@ export function hideBlock(page: PageModel, block: Block, scope: Scope): void {
   if (block.role === 'watermark' && block.id.startsWith('wm.')) {
     useStore.getState().update((d) => {
       const wm = d.watermarks.find((w) => w.id === block.id.slice(3));
-      if (wm && !wm.exclude.includes(page.type)) wm.exclude.push(page.type);
+      if (!wm) return;
+      // «Solo esta página» la quita de esta página; «todas las páginas de este tipo», del tipo.
+      if (effectiveScope(page, scope) === 'page') {
+        if (!wm.excludePages.includes(page.key)) wm.excludePages.push(page.key);
+      } else if (!wm.exclude.includes(page.type)) wm.exclude.push(page.type);
     });
     return;
   }

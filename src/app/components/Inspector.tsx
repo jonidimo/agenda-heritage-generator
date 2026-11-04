@@ -1,5 +1,6 @@
 /** Panel derecho: elemento seleccionado (valores exactos), elementos propios y verificación previa. */
 import type { AgendaDocument } from '@core/document';
+import { blockBounds } from '@core/document/layout';
 import type { CustomBlock } from '@core/design/schema';
 import type { PageModel, PageWarning } from '@core/layout/prims';
 import { newId } from '@core/util/hash';
@@ -7,7 +8,7 @@ import { AlertTriangle, CheckCircle2, EyeOff, Image as ImageIcon, Info, Minus, P
 import { useEffect, useState } from 'react';
 import { blockLabel, warningText } from '../i18n/messages';
 import { sectionName, useT } from '../i18n/ui';
-import { currentOverride, hideBlock, moveBlock, patchOverride, resetBlock, typeMirrored } from '../state/actions';
+import { clampMoveDelta, currentOverride, hideBlock, moveBlock, patchOverride, resetBlock, typeMirrored } from '../state/actions';
 import { useStore } from '../state/store';
 import { Button, Field, NumberInput, Segmented, Select, Slider, TextArea, Toggle } from './ui';
 
@@ -37,7 +38,8 @@ export function Inspector({ doc }: { doc: AgendaDocument }) {
       const map: Record<string, [number, number]> = { ArrowLeft: [-stepMm, 0], ArrowRight: [stepMm, 0], ArrowUp: [0, -stepMm], ArrowDown: [0, stepMm] };
       const mv = map[e.key];
       if (mv) {
-        moveBlock(page, block, mv[0], mv[1], scope, `nudge:${block.id}`);
+        const c = clampMoveDelta(page, blockBounds(block), mv[0], mv[1]);
+        moveBlock(page, block, c.dx, c.dy, scope, `nudge:${block.id}`);
         e.preventDefault();
       } else if (e.key === 'Delete' || e.key === 'Backspace') {
         hideBlock(page, block, scope);
@@ -134,12 +136,19 @@ export function Inspector({ doc }: { doc: AgendaDocument }) {
 function BlockFields({ page, blockId, scope, setScope }: { page: PageModel; blockId: string; scope: 'type' | 'page'; setScope: (s: 'type' | 'page') => void }) {
   const t = useT();
   const design = useStore((s) => s.design)!;
-  const o = currentOverride(design, page, blockId, scope);
-  // En páginas izquierdas de tipos espejados, el valor «por tipo» se muestra tal como actúa en esta página.
-  const flip = scope === 'type' && page.type !== 'custom' && typeMirrored(page);
-  const v = { dx: (flip ? -1 : 1) * (o?.dx ?? 0), dy: o?.dy ?? 0, scale: o?.scale ?? 1, rotation: o?.rotation ?? 0, opacity: o?.opacity ?? 1 };
+  const level: 'type' | 'page' = page.type === 'custom' ? 'page' : scope;
+  const typeO = page.type === 'custom' ? undefined : currentOverride(design, page, blockId, 'type');
+  const pageO = currentOverride(design, page, blockId, 'page');
+  // En páginas izquierdas de tipos espejados, el ajuste «por tipo» se muestra tal como actúa en esta página.
+  const mirrored = page.type !== 'custom' && typeMirrored(page);
+  // Lo que se muestra es lo que rige en esta página: sin ajuste propio, la página hereda el de su tipo.
+  const inherited = level === 'page' && !pageO;
+  const o = level === 'page' ? (pageO ?? typeO) : typeO;
+  const showFlipped = mirrored && (level === 'type' || inherited);
+  const v = { dx: (showFlipped ? -1 : 1) * (o?.dx ?? 0), dy: o?.dy ?? 0, scale: o?.scale ?? 1, rotation: o?.rotation ?? 0, opacity: o?.opacity ?? 1 };
+  const flipOnWrite = mirrored && level === 'type';
   const set = (patch: Partial<typeof v>, key: string): void =>
-    patchOverride(page, blockId, scope, patch.dx !== undefined && flip ? { ...patch, dx: -patch.dx } : patch, `insp:${blockId}:${key}`);
+    patchOverride(page, blockId, scope, patch.dx !== undefined && flipOnWrite ? { ...patch, dx: -patch.dx } : patch, `insp:${blockId}:${key}`);
   return (
     <div>
       {page.type !== 'custom' && (
@@ -162,7 +171,16 @@ function BlockFields({ page, blockId, scope, setScope }: { page: PageModel; bloc
           <NumberInput value={v.dy} step={0.5} onChange={(x) => set({ dy: x }, 'dy')} />
         </Field>
       </div>
-      {flip && <p className="mb-1 text-[11px] leading-snug text-ink-soft">{t('insp.mirrored')}</p>}
+      {level === 'type' && mirrored && <p className="mb-1 text-[11px] leading-snug text-ink-soft">{t('insp.mirrored')}</p>}
+      {level === 'type' && pageO && (
+        <p className="mb-1 text-[11px] leading-snug text-warn">
+          {t('insp.pageWins')}{' '}
+          <button type="button" className="font-semibold underline" onClick={() => setScope('page')}>
+            {t('insp.editThisPage')}
+          </button>
+        </p>
+      )}
+      {inherited && typeO && <p className="mb-1 text-[11px] leading-snug text-ink-soft">{t('insp.inherits')}</p>}
       <Slider label={t('insp.scale')} value={v.scale} min={0.2} max={3} step={0.01} onChange={(x) => set({ scale: x }, 'scale')} />
       <Slider label={t('insp.rotation')} value={v.rotation} min={-180} max={180} step={1} onChange={(x) => set({ rotation: x }, 'rotation')} />
       <Slider label={t('insp.opacity')} value={v.opacity} min={0} max={1} step={0.05} onChange={(x) => set({ opacity: x }, 'opacity')} />
@@ -182,6 +200,14 @@ export function WatermarkFields({ id }: { id: string }) {
     }, `wm:${id}:${String(k)}`);
   return (
     <div>
+      {wm.excludePages.length > 0 && (
+        <p className="mb-1 text-[11px] leading-snug text-ink-soft">
+          {t('wm.hiddenPages', { n: wm.excludePages.length })}{' '}
+          <button type="button" className="font-semibold text-accent underline" onClick={() => set('excludePages', [])}>
+            {t('wm.showAgain')}
+          </button>
+        </p>
+      )}
       <div className="grid grid-cols-2 gap-2">
         <Field label={t('wm.hAnchor')}>
           <Select

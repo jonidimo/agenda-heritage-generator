@@ -22,15 +22,22 @@ export const PAPER_PRESETS = {
 export type PaperPresetId = keyof typeof PAPER_PRESETS;
 export const PaperPresetZ = z.enum(Object.keys(PAPER_PRESETS) as [PaperPresetId, ...PaperPresetId[]]);
 
-const num = (def: number, min = -10_000, max = 10_000) => z.number().min(min).max(max).default(def);
+/**
+ * Números tolerantes: un valor fuera de rango (un archivo editado a mano, un dato viejo) se
+ * acomoda al rango en lugar de invalidar toda la agenda, y los enteros se redondean
+ * (un «4,5» tipeado en «hojas por cuadernillo» no deja la agenda sin poder abrirse).
+ */
+const clampTo = (min: number, max: number) => (v: number): number => Math.min(max, Math.max(min, v));
+const num = (def: number, min = -10_000, max = 10_000) => z.number().transform(clampTo(min, max)).default(def);
+const intIn = (min: number, max: number) => z.number().transform((v) => clampTo(min, max)(Math.round(v)));
 
 export const CalendarZ = z
   .object({
-    year: z.number().int().min(1900).max(2200).default(new Date().getFullYear() + 1),
-    startMonth: z.number().int().min(1).max(12).default(1),
-    monthCount: z.number().int().min(1).max(24).default(12),
+    year: intIn(1900, 2200).default(new Date().getFullYear() + 1),
+    startMonth: intIn(1, 12).default(1),
+    monthCount: intIn(1, 24).default(12),
     weekStart: z.enum(['auto', 'monday', 'sunday', 'saturday']).default('monday'),
-    weekend: z.union([z.literal('auto'), z.array(z.number().int().min(1).max(7))]).default('auto'),
+    weekend: z.union([z.literal('auto'), z.array(intIn(1, 7))]).default('auto'),
     numbering: z.enum(['iso', 'simple', 'none']).default('iso'),
     timeZone: z.string().default('auto'),
   })
@@ -50,9 +57,9 @@ export const HolidaysZ = z
 
 export const PersonalDateZ = z.object({
   id: z.string(),
-  month: z.number().int().min(1).max(12),
-  day: z.number().int().min(1).max(31),
-  year: z.number().int().nullable().optional(),
+  month: intIn(1, 12),
+  day: intIn(1, 31),
+  year: intIn(1, 9999).nullable().optional(),
   label: z.string(),
   kind: z.enum(['birthday', 'anniversary', 'reminder', 'other']).default('birthday'),
 });
@@ -79,8 +86,8 @@ export const BindingZ = z
     signature: z
       .object({
         mode: z.enum(['uniform', 'balanced', 'custom']).default('uniform'),
-        sheets: z.number().int().min(1).max(32).default(4),
-        custom: z.array(z.number().int().min(1).max(32)).default([]),
+        sheets: intIn(1, 32).default(4),
+        custom: z.array(intIn(1, 32)).default([]),
         last: z.enum(['shrink', 'pad']).default('shrink'),
       })
       .prefault({}),
@@ -98,7 +105,7 @@ export const BindingZ = z
     manualRotateBacks: z.boolean().default(false),
     sewing: z
       .object({
-        stations: z.number().int().min(2).max(16).default(6),
+        stations: intIn(2, 16).default(6),
         pairs: z.boolean().default(true),
         endInset: num(12, 4, 40),
         pairGap: num(10, 3, 30),
@@ -119,7 +126,7 @@ export const BindingZ = z
       .object({
         enabled: z.boolean().default(false),
         position: z.enum(['outer', 'center']).default('outer'),
-        skipFirst: z.number().int().min(0).max(50).default(2),
+        skipFirst: intIn(0, 50).default(2),
       })
       .prefault({}),
     thumbIndex: z
@@ -201,7 +208,7 @@ export const CustomPageZ = z.object({
     .object({
       kind: z.enum(['artwork', 'template', 'text']).default('artwork'),
       assetId: z.string().nullable().default(null),
-      pdfPage: z.number().int().min(1).default(1),
+      pdfPage: intIn(1, 100_000).default(1),
       fit: z.enum(['contain', 'cover', 'fill']).default('contain'),
       area: z.enum(['page', 'content']).default('content'),
       background: z.enum(['blank', 'dots', 'lines', 'grid']).default('blank'),
@@ -234,6 +241,8 @@ export const WatermarkZ = z.object({
   assetId: z.string(),
   scope: z.array(z.string()).default(['all']),
   exclude: z.array(z.string()).default([]),
+  /** Páginas puntuales (clave semántica) donde no va, aunque su tipo sí la lleve. */
+  excludePages: z.array(z.string()).default([]),
   hAnchor: z.enum(['outer', 'inner', 'left', 'right', 'center']).default('outer'),
   vAnchor: z.enum(['top', 'middle', 'bottom']).default('bottom'),
   dx: num(13),
@@ -273,7 +282,7 @@ export const AssetRefZ = z.object({
   builtin: z.string().nullable().default(null),
   /** Contenido en base64 cuando el diseño se exporta como archivo autocontenido. */
   data: z.string().nullable().optional(),
-  pages: z.number().int().optional(),
+  pages: intIn(0, 100_000).optional(),
 });
 export type AssetRef = z.infer<typeof AssetRefZ>;
 

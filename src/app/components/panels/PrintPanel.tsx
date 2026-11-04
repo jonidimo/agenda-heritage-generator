@@ -18,6 +18,7 @@ export function PrintPanel() {
   const [status, setStatus] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [sigNo, setSigNo] = useState(1);
+  const [customText, setCustomText] = useState<string | null>(null);
 
   const run = async (kind: ExportKind, suffix: string, signature?: number): Promise<void> => {
     setBusy(true);
@@ -36,6 +37,8 @@ export function PrintPanel() {
 
   const plan = doc?.plan;
   const sigCount = plan?.signatures.signatures.length ?? 0;
+  // Si la cantidad de cuadernillos baja, el número elegido se acomoda.
+  const sig = Math.min(Math.max(1, sigNo), Math.max(1, sigCount));
   const thickness = plan ? (plan.signatures.totalSheets * 2 * (b.creep.caliper || 0.1)).toFixed(1) : '—';
   const presets = Object.entries(PAPER_PRESETS) as Array<[PaperPresetId, (typeof PAPER_PRESETS)[PaperPresetId]]>;
 
@@ -57,46 +60,46 @@ export function PrintPanel() {
 
       <Group title={t('print.exports')}>
         <div className="grid gap-1.5">
-          <Button variant="primary" disabled={busy} onClick={() => void run('imposed', 'imprimir')}>
+          <Button variant="primary" disabled={busy} onClick={() => void run('imposed', t('file.imposed'))}>
             <Printer size={14} /> {t('export.imposed')}
           </Button>
-          <Button disabled={busy} onClick={() => void run('calibration', 'calibracion')}>
+          <Button disabled={busy} onClick={() => void run('calibration', t('file.calibration'))}>
             <Ruler size={14} /> {t('export.calibration')}
           </Button>
-          <Button disabled={busy} onClick={() => void run('pages', 'paginas')}>
+          <Button disabled={busy} onClick={() => void run('pages', t('file.pages'))}>
             <FileDown size={14} /> {t('export.pages')}
           </Button>
           {b.duplex === 'manual' && (
             <div className="grid grid-cols-2 gap-1.5">
-              <Button disabled={busy} onClick={() => void run('fronts', 'frentes')}>
+              <Button disabled={busy} onClick={() => void run('fronts', t('file.fronts'))}>
                 {t('export.fronts')}
               </Button>
-              <Button disabled={busy} onClick={() => void run('backs', 'dorsos')}>
+              <Button disabled={busy} onClick={() => void run('backs', t('file.backs'))}>
                 {t('export.backs')}
               </Button>
             </div>
           )}
           {sigCount > 1 && (
             <div className="flex items-center gap-1.5">
-              <Button disabled={busy} onClick={() => void run('signature', `cuadernillo-${sigNo}`, sigNo - 1)}>
+              <Button disabled={busy} onClick={() => void run('signature', t('file.signature', { n: sig }), sig - 1)}>
                 <Download size={14} /> {t('export.signature')}
               </Button>
               <div className="w-16">
-                <NumberInput value={sigNo} min={1} max={sigCount} onChange={(v) => setSigNo(Math.round(v))} />
+                <NumberInput value={sig} min={1} max={sigCount} integer ariaLabel={t('export.signature')} onChange={(v) => setSigNo(v)} />
               </div>
               <span className="text-[11px] text-ink-soft">/ {sigCount}</span>
             </div>
           )}
           {b.method === 'sewn' && (
-            <Button disabled={busy} onClick={() => void run('sewing', 'perforado')}>
+            <Button disabled={busy} onClick={() => void run('sewing', t('file.sewing'))}>
               <Scissors size={14} /> {t('export.sewing')}
             </Button>
           )}
-          <Button disabled={busy} onClick={() => void run('cover', 'tapa')}>
+          <Button disabled={busy} onClick={() => void run('cover', t('file.cover'))}>
             {t('export.cover')}
           </Button>
           {doc?.hasSeparate() && (
-            <Button disabled={busy} onClick={() => void run('separate', 'libreta-aparte')}>
+            <Button disabled={busy} onClick={() => void run('separate', t('file.separate'))}>
               {t('export.separate')}
             </Button>
           )}
@@ -136,21 +139,25 @@ export function PrintPanel() {
             </Field>
             {b.signature.mode !== 'custom' ? (
               <>
-                <Slider label={t('print.sheets')} value={b.signature.sheets} min={1} max={16} step={1} onChange={(v) => update((d) => void (d.binding.signature.sheets = v), 'sig:sheets')} />
+                <Slider label={t('print.sheets')} value={b.signature.sheets} min={1} max={16} step={1} integer onChange={(v) => update((d) => void (d.binding.signature.sheets = v), 'sig:sheets')} />
                 <p className="text-[11.5px] text-ink-soft">{t('print.pagesPer', { n: b.signature.sheets * 4 })}</p>
               </>
             ) : (
               <Field label={t('print.customList')}>
                 <TextInput
-                  value={b.signature.custom.join(', ')}
-                  onChange={(v) =>
+                  // Mientras se escribe se conserva el texto tal cual (comas y espacios); la agenda se actualiza en vivo.
+                  value={customText ?? b.signature.custom.join(', ')}
+                  onChange={(v) => {
+                    setCustomText(v);
                     update((d) => {
                       d.binding.signature.custom = v
                         .split(/[\s,;]+/)
+                        .filter((x) => x !== '')
                         .map((x) => Math.round(Number(x)))
                         .filter((x) => Number.isFinite(x) && x >= 1 && x <= 32);
-                    }, 'sig:custom')
-                  }
+                    }, 'sig:custom');
+                  }}
+                  onBlur={() => setCustomText(null)}
                 />
               </Field>
             )}
@@ -214,7 +221,7 @@ export function PrintPanel() {
 
       {b.method === 'sewn' && (
         <Group title={t('print.sewing')} defaultOpen={false}>
-          <Slider label={t('print.stations')} value={b.sewing.stations} min={2} max={12} step={1} onChange={(v) => update((d) => void (d.binding.sewing.stations = v), 'sew:n')} />
+          <Slider label={t('print.stations')} value={b.sewing.stations} min={2} max={12} step={1} integer onChange={(v) => update((d) => void (d.binding.sewing.stations = v), 'sew:n')} />
           <Toggle label={t('print.pairs')} checked={b.sewing.pairs} onChange={(v) => update((d) => void (d.binding.sewing.pairs = v))} />
         </Group>
       )}

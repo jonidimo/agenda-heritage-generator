@@ -1,5 +1,6 @@
 /** Biblioteca de agendas y asistente de nueva agenda. */
 import { createDesign, duplicateForYear, TEMPLATES, type TemplateId } from '@core/design/defaults';
+import type { Design } from '@core/design/schema';
 import { countryName } from '@core/holidays';
 import { langOf } from '@core/i18n';
 import { Copy, Download, FileUp, Plus, Trash2, X } from 'lucide-react';
@@ -12,17 +13,43 @@ import { useStore } from '../state/store';
 import { LOCALES } from './panels/CalendarPanel';
 import { Button, Field, NumberInput, Select, TextInput } from './ui';
 
+const FOCUSABLE = 'button:not([disabled]), [href], input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
 function Modal(props: { title: string; onClose: () => void; children: React.ReactNode }) {
   const t = useT();
+  const boxRef = useRef<HTMLDivElement | null>(null);
+  const onCloseRef = useRef(props.onClose);
+  onCloseRef.current = props.onClose;
+  // Foco: entra al diálogo, no se escapa con Tab y vuelve a donde estaba al cerrar.
   useEffect(() => {
+    const before = document.activeElement as HTMLElement | null;
+    const box = boxRef.current;
+    const items = (): HTMLElement[] => Array.from(box?.querySelectorAll<HTMLElement>(FOCUSABLE) ?? []).filter((el) => el.offsetParent !== null);
+    (items().find((el) => el.tagName !== 'BUTTON' || !el.getAttribute('aria-label')) ?? items()[0])?.focus();
     const onKey = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') props.onClose();
+      if (e.key === 'Escape') onCloseRef.current();
+      else if (e.key === 'Tab') {
+        const list = items();
+        if (list.length === 0) return;
+        const first = list[0]!;
+        const last = list[list.length - 1]!;
+        if (e.shiftKey && document.activeElement === first) {
+          last.focus();
+          e.preventDefault();
+        } else if (!e.shiftKey && document.activeElement === last) {
+          first.focus();
+          e.preventDefault();
+        }
+      }
     };
     window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [props]);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      before?.focus?.();
+    };
+  }, []);
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/30 p-4 sm:items-center" role="dialog" aria-modal="true" aria-label={props.title}>
+    <div ref={boxRef} className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/30 p-4 sm:items-center" role="dialog" aria-modal="true" aria-label={props.title}>
       <div className="w-full max-w-lg rounded-xl border border-line bg-paper shadow-2xl">
         <div className="flex items-center justify-between border-b border-line px-4 py-2.5">
           <h2 className="font-display text-[22px] italic">{props.title}</h2>
@@ -77,7 +104,7 @@ export function WelcomeDialog() {
       </Field>
       <div className="grid grid-cols-2 gap-2">
         <Field label={t('welcome.year')}>
-          <NumberInput value={year} min={1900} max={2200} onChange={(v) => setYear(Math.round(v))} />
+          <NumberInput value={year} min={1900} max={2200} integer onChange={(v) => setYear(Math.round(v))} />
         </Field>
         <Field label={t('welcome.language')}>
           <Select
@@ -117,16 +144,45 @@ export function LibraryDialog() {
   const setDesign = useStore((s) => s.setDesign);
   const setShow = useStore((s) => s.setShowLibrary);
   const setShowWelcome = useStore((s) => s.setShowWelcome);
+  const closeDesign = useStore((s) => s.closeDesign);
+  const setNotice = useStore((s) => s.setNotice);
   const bump = useStore((s) => s.bumpResources);
   const [items, setItems] = useState<DesignMeta[]>([]);
+  const [err, setErr] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
   const refresh = (): void => void listDesigns().then(setItems);
   useEffect(refresh, []);
 
+  const close = (): void => {
+    setShow(false);
+    // Sin agenda abierta (p. ej. se borró la actual), se ofrece crear una.
+    if (!useStore.getState().design) setShowWelcome(true);
+  };
+
+  const open = async (id: string, transform?: (d: Design) => Design): Promise<void> => {
+    try {
+      const d = await loadDesign(id);
+      if (!d) return;
+      const next = transform ? transform(d) : d;
+      if (transform) await saveDesign(next);
+      setDesign(next);
+      setShow(false);
+    } catch (e) {
+      setErr(`${t('notice.loadFailed')} ${(e as Error).message}`);
+    }
+  };
+
   const onImport = async (files: FileList | null): Promise<void> => {
     const f = files?.[0];
     if (!f) return;
-    const { design: d, assets, fonts } = await importDesignFile(await f.text());
+    let parsed: Awaited<ReturnType<typeof importDesignFile>>;
+    try {
+      parsed = await importDesignFile(await f.text());
+    } catch (e) {
+      setErr(`${t('notice.importFailed')} ${(e as Error).message}`);
+      return;
+    }
+    const { design: d, assets, fonts } = parsed;
     for (const a of assets) {
       await saveAsset(a.id, a.bytes);
       resources.assetBytes.set(a.id, a.bytes);
@@ -140,11 +196,17 @@ export function LibraryDialog() {
     bump(resources.version);
     await saveDesign(d);
     setDesign(d);
+    setNotice(null);
     setShow(false);
   };
 
   return (
-    <Modal title={t('lib.title')} onClose={() => setShow(false)}>
+    <Modal title={t('lib.title')} onClose={close}>
+      {err && (
+        <p role="alert" className="mb-2 rounded-md border border-warn/40 bg-[#fbf3e4] px-2 py-1.5 text-[12px] break-words text-ink">
+          {err}
+        </p>
+      )}
       <div className="mb-3 flex flex-wrap gap-1.5">
         <Button
           variant="primary"
@@ -155,7 +217,19 @@ export function LibraryDialog() {
         >
           <Plus size={14} /> {t('lib.new')}
         </Button>
-        <input ref={fileRef} type="file" accept=".json,.agenda.json,application/json" className="hidden" onChange={(e) => void onImport(e.target.files)} />
+        <input
+          ref={fileRef}
+          type="file"
+          accept=".json,.agenda.json,application/json"
+          className="hidden"
+          onChange={(e) => {
+            const files = e.target.files;
+            void onImport(files).finally(() => {
+              // Permite volver a elegir el mismo archivo.
+              e.target.value = '';
+            });
+          }}
+        />
         <Button onClick={() => fileRef.current?.click()}>
           <FileUp size={14} /> {t('lib.import')}
         </Button>
@@ -179,13 +253,7 @@ export function LibraryDialog() {
               <button
                 type="button"
                 className="flex-1 text-left"
-                onClick={async () => {
-                  const d = await loadDesign(it.id);
-                  if (d) {
-                    setDesign(d);
-                    setShow(false);
-                  }
-                }}
+                onClick={() => void open(it.id)}
               >
                 <span className="block text-[13px] font-semibold">{it.name}</span>
                 <span className="block text-[11px] text-ink-soft">
@@ -195,14 +263,7 @@ export function LibraryDialog() {
               <Button
                 variant="ghost"
                 title={t('lib.duplicate', { year: it.year + 1 })}
-                onClick={async () => {
-                  const d = await loadDesign(it.id);
-                  if (!d) return;
-                  const n = duplicateForYear(d, d.calendar.year + 1);
-                  await saveDesign(n);
-                  setDesign(n);
-                  setShow(false);
-                }}
+                onClick={() => void open(it.id, (d) => duplicateForYear(d, d.calendar.year + 1))}
               >
                 <Copy size={14} /> {it.year + 1}
               </Button>
@@ -211,6 +272,8 @@ export function LibraryDialog() {
                 title={t('lib.delete')}
                 onClick={async () => {
                   if (!window.confirm(t('lib.confirmDelete', { name: it.name }))) return;
+                  // Si es la agenda abierta, se cierra sin volver a guardarla.
+                  if (useStore.getState().design?.id === it.id) closeDesign();
                   await deleteDesign(it.id);
                   refresh();
                 }}

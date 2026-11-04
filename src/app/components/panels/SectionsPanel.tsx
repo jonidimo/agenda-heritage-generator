@@ -1,10 +1,10 @@
-import type { CustomPage, SectionItem } from '@core/design/schema';
+import type { SectionItem } from '@core/design/schema';
 import { SECTION_REGISTRY } from '@core/sections/registry';
-import { newId } from '@core/util/hash';
 import clsx from 'clsx';
 import { ArrowDown, ArrowUp, FilePlus2, Settings2, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { sectionName, useT, type UiKey } from '../../i18n/ui';
+import { customPageHere } from '../../state/customPages';
 import { useDocument } from '../../state/doc';
 import { useStore } from '../../state/store';
 import { Button, Field, Group, NumberInput, Select, TextInput, Toggle } from '../ui';
@@ -51,7 +51,7 @@ function OptionsForm({ type, options, onChange }: { type: string; options: Recor
           return (
             <Field key={k} label={label} inline>
               <div className="w-20">
-                <NumberInput value={Number(cur)} min={0} max={200} step={1} onChange={(v) => onChange(k, v)} />
+                <NumberInput value={Number(cur)} min={0} max={200} step={1} integer onChange={(v) => onChange(k, v)} />
               </div>
             </Field>
           );
@@ -93,6 +93,7 @@ export function SectionsPanel() {
   const design = useStore((s) => s.design)!;
   const update = useStore((s) => s.update);
   const pageIndex = useStore((s) => s.pageIndex);
+  const setGoToKey = useStore((s) => s.setGoToKey);
   const goToPage = useStore((s) => s.goToPage);
   const { doc } = useDocument();
 
@@ -105,19 +106,11 @@ export function SectionsPanel() {
   };
 
   const addCustomPage = (): void => {
-    const anchor = doc?.plan.pages[pageIndex];
-    const cp: CustomPage = {
-      id: newId('pagina'),
-      after: anchor?.key ?? null,
-      fallback: anchor?.group ?? null,
-      startOn: 'any',
-      title: '',
-      content: { kind: 'template', assetId: design.assets.find((a) => !a.builtin)?.id ?? null, pdfPage: 1, fit: 'contain', area: 'content', background: 'dots', text: '', rotation: 0, opacity: 1 },
-    };
+    const cp = customPageHere(doc, pageIndex, { assetId: design.assets.find((a) => !a.builtin)?.id ?? null });
     update((d) => {
       d.customPages.push(cp);
     });
-    setTimeout(() => goToPage(pageIndex + 1), 0);
+    setGoToKey(`custom:${cp.id}`);
   };
 
   return (
@@ -211,6 +204,16 @@ export function SectionsPanel() {
                       options={[{ value: '', label: '—' }, ...design.assets.map((a) => ({ value: a.id, label: a.name }))]}
                     />
                   </Field>
+                  {(() => {
+                    // Un PDF de varias páginas: se elige cuál usar.
+                    const ref = design.assets.find((x) => x.id === cp.content.assetId);
+                    const total = ref?.kind === 'pdf' ? (ref.pages ?? 1) : 0;
+                    return total > 1 ? (
+                      <Field label={t('cp.pdfPage', { n: total })}>
+                        <NumberInput value={Math.min(cp.content.pdfPage, total)} min={1} max={total} integer onChange={(v) => update((d) => void (d.customPages[i]!.content.pdfPage = v), `cp:${cp.id}:pdfPage`)} />
+                      </Field>
+                    ) : null;
+                  })()}
                   <div className="grid grid-cols-2 gap-2">
                     <Field label={t('cp.fit')}>
                       <Select

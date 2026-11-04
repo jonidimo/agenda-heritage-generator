@@ -73,7 +73,7 @@ export function colibriWatermark(): Design['watermarks'][number] {
     enabled: true,
     assetId: 'colibri',
     scope: ['all'],
-    exclude: ['monthCover', 'titlePage', 'custom', 'yearOverview'],
+    exclude: ['monthCover', 'titlePage', 'custom', 'yearOverview'], excludePages: [],
     hAnchor: 'outer',
     vAnchor: 'bottom',
     dx: 13,
@@ -169,7 +169,18 @@ export function createDesign(template: TemplateId, opts: CreateOptions = {}): De
 }
 
 /** Duplica un diseño para el año siguiente (conserva todo, cambia año y nombre). */
+/**
+ * Corre los años de una clave semántica (`week:2027-W12:left`, `month:2027-03:log`,
+ * `day:2027-05-03`, `month:2027-03`) para que anclas y ajustes sigan en su lugar al
+ * duplicar la agenda para otro año.
+ */
+export function shiftKeyYears(key: string, delta: number): string {
+  return key.replace(/(^|[:+])(\d{4})(?=-)/g, (_m, pre: string, y: string) => `${pre}${Number(y) + delta}`);
+}
+
 export function duplicateForYear(d: Design, year: number): Design {
+  const delta = year - d.calendar.year;
+  const shift = (k: string | null): string | null => (k === null ? null : shiftKeyYears(k, delta));
   return parseDesign({
     ...d,
     id: newId('agenda'),
@@ -177,8 +188,12 @@ export function duplicateForYear(d: Design, year: number): Design {
     calendar: { ...d.calendar, year },
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
-    // Las páginas sueltas ancladas a fechas del año anterior se reubican por su respaldo.
+    // Los feriados agregados o quitados a mano son del año anterior (puentes por decreto).
     holidays: { ...d.holidays, added: [], removed: [], renamed: {} },
-    overrides: d.overrides.filter((o) => o.pageKey === null),
+    overrides: d.overrides.map((o) => ({ ...o, pageKey: shift(o.pageKey) })),
+    customBlocks: d.customBlocks.map((c) => ({ ...c, pageKey: shift(c.pageKey) })),
+    watermarks: d.watermarks.map((w) => ({ ...w, excludePages: w.excludePages.map((k) => shiftKeyYears(k, delta)) })),
+    // Si el ancla no existe en el año nuevo, la página propia cae por su respaldo.
+    customPages: d.customPages.map((c) => ({ ...c, after: shift(c.after), fallback: shift(c.fallback) })),
   });
 }

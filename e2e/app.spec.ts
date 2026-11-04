@@ -1,6 +1,6 @@
-import { expect, test, type Page } from '@playwright/test';
+import { devices, expect, test, type Page } from '@playwright/test';
 
-type StoreHandle = { getState: () => { design: { overrides: unknown[]; theme: { comfort: string } } | null; pageIndex: number } };
+type StoreHandle = { getState: () => { design: { overrides: unknown[]; theme: { comfort: string }; binding: { signature: { sheets: number } } } | null; pageIndex: number; goToPage: (i: number) => void } };
 
 async function open(page: Page): Promise<void> {
   await page.addInitScript(() => localStorage.setItem('agenda-studio.uiLang', 'es'));
@@ -71,4 +71,40 @@ test('la interfaz cambia de idioma y traduce los nombres de los elementos', asyn
   const box = await block.boundingBox();
   await page.mouse.click(box!.x + box!.width / 2, box!.y + box!.height / 2);
   await expect(page.getByText('Mini calendar', { exact: true })).toBeVisible();
+});
+
+test('un clic con un temblor de 1 px no mueve ni encaja el elemento', async ({ page }) => {
+  await open(page);
+  for (let i = 0; i < 11; i++) await page.keyboard.press('PageDown');
+  const box = (await page.locator('[data-block="week.minical"]').first().boundingBox())!;
+  const before = (await state(page)).design!.overrides.length;
+  const cx = box.x + box.width / 2;
+  const cy = box.y + box.height / 2;
+  await page.mouse.move(cx, cy);
+  await page.mouse.down();
+  await page.mouse.move(cx + 1, cy + 1);
+  await page.mouse.up();
+  await page.waitForTimeout(400);
+  expect((await state(page)).design!.overrides.length).toBe(before);
+});
+
+test('un número con decimales en un campo entero se redondea', async ({ page }) => {
+  await open(page);
+  await page.getByRole('tab', { name: 'Impresión' }).click();
+  await page.getByRole('spinbutton', { name: 'Hojas por cuadernillo' }).fill('4.5');
+  await expect.poll(async () => (await state(page)).design!.binding.signature.sheets).toBe(5);
+});
+
+test('en un teléfono, tocar un elemento abre su panel', async ({ browser }) => {
+  const ctx = await browser.newContext({ ...devices['Pixel 7'] });
+  const page = await ctx.newPage();
+  await open(page);
+  await page.evaluate(() => (globalThis as unknown as { __agenda: StoreHandle }).__agenda.getState().goToPage(55));
+  const block = page.locator('[data-block="week.minical"]').first();
+  await expect(block).toBeVisible();
+  const box = (await block.boundingBox())!;
+  await page.touchscreen.tap(box.x + box.width / 2, box.y + box.height / 2);
+  await expect(page.getByRole('dialog', { name: 'Elemento' })).toBeVisible();
+  await expect(page.getByText('Minicalendario', { exact: true })).toBeVisible();
+  await ctx.close();
 });

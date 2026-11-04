@@ -130,3 +130,38 @@ describe('salida', () => {
     await expect(doc.exportPdf('separate', { assetBytes: (id) => bytes.get(id) })).rejects.toThrow(/aparte/);
   });
 });
+
+describe('duplicar para otro año', () => {
+  it('las páginas propias y los ajustes por página siguen en su lugar', async () => {
+    const { duplicateForYear, shiftKeyYears } = await import('../src/core/design/defaults');
+    expect(shiftKeyYears('week:2027-W12:left', 1)).toBe('week:2028-W12:left');
+    expect(shiftKeyYears('month:2027-03', 1)).toBe('month:2028-03');
+    expect(shiftKeyYears('day:2027-05-01+', 1)).toBe('day:2028-05-01+');
+    expect(shiftKeyYears('front:title', 1)).toBe('front:title');
+    const base = norma((d) => {
+      d.customPages.push({ id: 'p', after: null, fallback: 'month:2027-03', startOn: 'any', title: 'Marzo', content: { kind: 'text', text: 'x' } } as Design['customPages'][number]);
+    });
+    const { doc: d27 } = await openDocument(base);
+    const anchor = d27.plan.pages.find((p) => p.group === 'month:2027-03' && p.type === 'weekRight')!.key;
+    const withAnchor = norma((d) => {
+      d.customPages.push({ id: 'p', after: anchor, fallback: 'month:2027-03', startOn: 'any', title: 'Marzo', content: { kind: 'text', text: 'x' } } as Design['customPages'][number]);
+    });
+    const next = duplicateForYear(withAnchor, 2028);
+    expect(next.customPages[0]!.after).toBe(shiftKeyYears(anchor, 1));
+    const { doc: d28 } = await openDocument(next);
+    const i = d28.plan.pages.findIndex((p) => p.key === 'custom:p');
+    expect(d28.plan.pages[i - 1]!.group).toBe('month:2028-03');
+  });
+
+  it('un número fuera de rango o con decimales no deja la agenda sin abrir', () => {
+    const d = norma();
+    const raw = JSON.parse(JSON.stringify(d)) as { binding: { signature: { sheets: number }; gutter: number }; personalDates: unknown[] };
+    raw.binding.signature.sheets = 4.5;
+    raw.binding.gutter = 99;
+    raw.personalDates = [{ id: 'x', month: 2, day: 30.2, label: 'x', kind: 'other' }];
+    const parsed = parseDesign(raw);
+    expect(parsed.binding.signature.sheets).toBe(5);
+    expect(parsed.binding.gutter).toBe(40);
+    expect(parsed.personalDates[0]!.day).toBe(30);
+  });
+});

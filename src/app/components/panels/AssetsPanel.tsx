@@ -1,6 +1,7 @@
 import { rasterInfo } from '@core/assets/image';
-import { resolveStrings, listStringKeys } from '@core/i18n';
-import { assetInfoFromBytes } from '@core/resources';
+import { holidayName } from '@core/holidays';
+import { langOf, listStringKeys, resolveStrings } from '@core/i18n';
+import { assetInfoFromBytes, facesForDesign } from '@core/resources';
 import { PAGE_TYPES } from '@core/sections/registry';
 import { detectFaceMeta } from '@core/text/fonts';
 import { openFont } from '@core/text/fontkit';
@@ -8,8 +9,10 @@ import { newId } from '@core/util/hash';
 import { FilePlus2, Image as ImageIcon, Stamp, Trash2, Type, Upload } from 'lucide-react';
 import { useMemo, useRef, useState } from 'react';
 import { sectionName, useT } from '../../i18n/ui';
-import { assetHref, forgetAsset } from '../../state/assetUrls';
-import { deleteAsset, saveAsset, saveUserFont } from '../../state/persist';
+import { assetHref } from '../../state/assetUrls';
+import { customPageHere } from '../../state/customPages';
+import { useDocument } from '../../state/doc';
+import { saveAsset, saveUserFont } from '../../state/persist';
 import { resources } from '../../state/resources';
 import { useStore } from '../../state/store';
 import { WatermarkFields } from '../Inspector';
@@ -44,6 +47,8 @@ export function AssetsPanel() {
   const update = useStore((s) => s.update);
   const bump = useStore((s) => s.bumpResources);
   const pageIndex = useStore((s) => s.pageIndex);
+  const setGoToKey = useStore((s) => s.setGoToKey);
+  const { doc } = useDocument();
   const fileRef = useRef<HTMLInputElement | null>(null);
   const fontRef = useRef<HTMLInputElement | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -52,13 +57,15 @@ export function AssetsPanel() {
   const onFiles = async (files: FileList | null): Promise<void> => {
     if (!files) return;
     setError(null);
+    // Si mientras se procesa se abre otra agenda, la imagen no se le agrega a esa.
+    const designId = design.id;
     for (const file of Array.from(files)) {
       let bytes: Uint8Array = new Uint8Array(await file.arrayBuffer());
       let k = kindOf(file, bytes);
       if (!k) {
         const png = await toPng(file);
         if (!png) {
-          setError(`${file.name}: formato no soportado`);
+          setError(t('assets.unsupported', { name: file.name }));
           continue;
         }
         bytes = png;
@@ -71,6 +78,7 @@ export function AssetsPanel() {
         resources.assetBytes.set(id, bytes);
         resources.assetInfos.set(id, info);
         await saveAsset(id, bytes);
+        if (useStore.getState().design?.id !== designId) continue;
         update((d) => void d.assets.push({ ...ref, width: info.width, height: info.height, ...(info.pages ? { pages: info.pages } : {}) }));
         resources.bump();
         bump(resources.version);
@@ -100,56 +108,79 @@ export function AssetsPanel() {
     }
   };
 
+  /**
+   * Quita la imagen de esta agenda junto con lo que la usaba (en un solo paso que se puede
+   * deshacer). Los bytes quedan guardados: otra agenda (p. ej. la del año anterior) puede
+   * usarlos, y los que ya nadie usa se limpian al abrir la aplicación.
+   */
   const removeAsset = (id: string): void => {
     update((d) => {
       d.assets = d.assets.filter((a) => a.id !== id);
       d.watermarks = d.watermarks.filter((w) => w.assetId !== id);
       if (d.cover.imageAssetId === id) d.cover.imageAssetId = null;
+      d.customBlocks = d.customBlocks.filter((c) => !(c.kind === 'image' && c.props.assetId === id));
+      for (const cp of d.customPages) if (cp.content.assetId === id) cp.content.assetId = null;
     });
-    forgetAsset(id);
-    void deleteAsset(id);
   };
 
   const addWatermark = (assetId: string): void =>
     update((d) =>
-      void d.watermarks.push({ id: newId('wm'), enabled: true, assetId, scope: ['all'], exclude: ['monthCover', 'titlePage', 'custom'], hAnchor: 'outer', vAnchor: 'bottom', dx: 13, dy: 5, width: 14, opacity: 1, rotation: 0, mirrorOnVerso: true, layer: 'above', minStrokePt: 0.3 }),
+      void d.watermarks.push({ id: newId('wm'), enabled: true, assetId, scope: ['all'], exclude: ['monthCover', 'titlePage', 'custom'], excludePages: [], hAnchor: 'outer', vAnchor: 'bottom', dx: 13, dy: 5, width: 14, opacity: 1, rotation: 0, mirrorOnVerso: true, layer: 'above', minStrokePt: 0.3 }),
     );
 
+  /** Página propia con esta imagen, después de la página actual (y se va a ella). */
   const addAsPage = (assetId: string): void => {
-    update((d) =>
-      void d.customPages.push({
-        id: newId('pagina'),
-        after: null,
-        fallback: null,
-        startOn: 'any',
-        title: '',
-        content: { kind: 'artwork', assetId, pdfPage: 1, fit: 'contain', area: 'page', background: 'blank', text: '', rotation: 0, opacity: 1 },
-      }),
-    );
-    void pageIndex;
+    const cp = customPageHere(doc, pageIndex, { kind: 'artwork', assetId, area: 'page', background: 'blank' });
+    update((d) => void d.customPages.push(cp));
+    setGoToKey(`custom:${cp.id}`);
   };
 
-  // Cobertura de caracteres de cada familia frente a todos los textos de la agenda.
+  // Cobertura de caracteres: todos los textos de la agenda (incluidos feriados, textos propios y
+  // métodos propios) frente a cada cara que la agenda usa. Falta un carácter si le falta a alguna cara.
   const coverage = useMemo(() => {
     const strings = resolveStrings(design.locale, design.persona.labels);
-    const text = [...listStringKeys(strings).map((r) => r.value), design.persona.name, design.persona.title, design.persona.dedication, ...design.persona.phrases, ...design.personalDates.map((p) => p.label)].join(' ');
+    const data = resources.holidaysFor(design.holidays.country);
+    // Los nombres de feriados en el idioma en que se van a imprimir.
+    const hlang = design.holidays.language === 'auto' ? langOf(design.locale) : design.holidays.language;
+    const holidayNames = data ? data.dict.map((_, i) => holidayName(data, i, hlang)) : [];
+    const own = [
+      ...design.customBlocks.map((c) => String(c.props.text ?? '')),
+      ...design.customPages.flatMap((c) => [c.title, c.content.text]),
+      ...design.methods.custom.flatMap((m) => [m.name, m.text, m.evidenceText]),
+      ...design.holidays.added.map((h) => h.name),
+      ...Object.values(design.holidays.renamed),
+    ];
+    const text = [...listStringKeys(strings).map((r) => r.value), design.persona.name, design.persona.title, design.persona.dedication, ...design.persona.phrases, ...design.personalDates.map((p) => p.label), ...holidayNames, ...own].join(' ');
     const cps = [...new Set(Array.from(text).map((c) => c.codePointAt(0)!))].filter((cp) => cp > 32);
+    const used = new Map(facesForDesign(design).map((spec) => {
+      const face = resources.fonts.resolveWithFallback(spec);
+      return [face.key, face] as const;
+    }));
     const out = new Map<string, string[]>();
-    for (const f of resources.fonts.list()) {
+    for (const f of used.values()) {
       const missing = cps.filter((cp) => !f.font.hasGlyphForCodePoint(cp)).map((cp) => String.fromCodePoint(cp));
-      const prev = out.get(f.family);
-      out.set(f.family, prev ? prev.filter((c) => missing.includes(c)) : missing);
+      out.set(f.family, [...new Set([...(out.get(f.family) ?? []), ...missing])]);
     }
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [design.locale, design.persona, design.personalDates, resVersion]);
+  }, [design, resVersion]);
 
   return (
     <div>
       {error && <p className="my-2 rounded-md bg-[#fbeee6] px-2 py-1.5 text-[11.5px] text-warn">{error}</p>}
       <Group title={t('assets.images')}>
         <p className="pb-2 text-[11.5px] leading-snug text-ink-soft">{t('assets.uploadHelp')}</p>
-        <input ref={fileRef} type="file" multiple accept="image/*,.svg,.pdf,application/pdf" className="hidden" onChange={(e) => void onFiles(e.target.files)} />
+        <input
+          ref={fileRef}
+          type="file"
+          multiple
+          accept="image/*,.svg,.pdf,application/pdf"
+          className="hidden"
+          onChange={(e) => {
+            const input = e.target;
+            void onFiles(input.files).finally(() => (input.value = ''));
+          }}
+        />
         <Button variant="primary" onClick={() => fileRef.current?.click()}>
           <Upload size={14} /> {t('assets.upload')}
         </Button>
@@ -232,7 +263,17 @@ export function AssetsPanel() {
 
       <Group title={t('assets.fonts')}>
         <p className="pb-2 text-[11.5px] leading-snug text-ink-soft">{t('assets.fontsHelp')}</p>
-        <input ref={fontRef} type="file" multiple accept=".ttf,.otf,.woff,.woff2,font/*" className="hidden" onChange={(e) => void onFonts(e.target.files)} />
+        <input
+          ref={fontRef}
+          type="file"
+          multiple
+          accept=".ttf,.otf,.woff,.woff2,font/*"
+          className="hidden"
+          onChange={(e) => {
+            const input = e.target;
+            void onFonts(input.files).finally(() => (input.value = ''));
+          }}
+        />
         <Button onClick={() => fontRef.current?.click()}>
           <Type size={14} /> {t('assets.uploadFont')}
         </Button>

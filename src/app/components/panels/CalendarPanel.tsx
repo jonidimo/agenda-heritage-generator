@@ -61,10 +61,10 @@ export function CalendarPanel() {
       <Group title={t('tab.calendar')}>
         <div className="grid grid-cols-2 gap-2">
           <Field label={t('cal.year')}>
-            <NumberInput value={c.year} min={1900} max={2200} onChange={(v) => update((d) => void (d.calendar.year = Math.round(v)), 'cal:year')} />
+            <NumberInput value={c.year} min={1900} max={2200} integer onChange={(v) => update((d) => void (d.calendar.year = Math.round(v)), 'cal:year')} />
           </Field>
           <Field label={t('cal.monthCount')}>
-            <NumberInput value={c.monthCount} min={1} max={24} onChange={(v) => update((d) => void (d.calendar.monthCount = Math.round(v)), 'cal:count')} />
+            <NumberInput value={c.monthCount} min={1} max={24} integer onChange={(v) => update((d) => void (d.calendar.monthCount = Math.round(v)), 'cal:count')} />
           </Field>
         </div>
         <Field label={t('cal.startMonth')}>

@@ -74,7 +74,8 @@ export function facesForDesign(design: Design): FontSpec[] {
  * Carga en el registro las caras integradas pedidas (o todas). Para cada cara
  * pedida se carga la más cercana disponible de la familia.
  */
-export async function loadBuiltinFonts(io: ResourceIO, registry: FontRegistry, manifest: FontManifest, wanted?: FontSpec[]): Promise<void> {
+/** Carga caras integradas. Devuelve los errores (una cara que falla no impide cargar las demás). */
+export async function loadBuiltinFonts(io: ResourceIO, registry: FontRegistry, manifest: FontManifest, wanted?: FontSpec[]): Promise<string[]> {
   const files: Array<{ family: string; weight: number; style: 'normal' | 'italic'; file: string }> = [];
   for (const fam of manifest.families) {
     for (const f of fam.faces) {
@@ -93,13 +94,14 @@ export async function loadBuiltinFonts(io: ResourceIO, registry: FontRegistry, m
       }
     }
   }
-  await Promise.all(
+  const results = await Promise.allSettled(
     files.map(async (f) => {
       if (registry.has(f)) return;
       const bytes = await io.read(`fonts/${f.file}`);
       registry.register(bytes, { family: f.family, weight: f.weight, style: f.style, source: 'builtin', file: f.file });
     }),
   );
+  return results.flatMap((r, i) => (r.status === 'rejected' ? [`${files[i]!.family} ${files[i]!.weight}: ${(r.reason as Error)?.message ?? r.reason}`] : []));
 }
 
 export async function loadHolidayIndex(io: ResourceIO): Promise<HolidayIndex | null> {

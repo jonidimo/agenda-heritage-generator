@@ -39,7 +39,18 @@ interface StoreState {
   sidebarOpen: boolean;
   guides: boolean;
   snap: boolean;
+  /** Aviso para el usuario (errores de carga, archivos inválidos…). */
+  notice: string | null;
+  /** Página a la que ir en cuanto exista (p. ej. una página propia recién creada). */
+  goToKey: string | null;
+  /** Se instaló una versión nueva de la aplicación (hay que recargar para usarla). */
+  updateReady: boolean;
+  setUpdateReady(b: boolean): void;
+  setGoToKey(key: string | null): void;
   setDesign(d: Design, opts?: { keepHistory?: boolean }): void;
+  /** Cierra la agenda abierta (p. ej. al borrarla) sin volver a guardarla. */
+  closeDesign(): void;
+  setNotice(msg: string | null): void;
   update(recipe: (d: Draft<Design>) => void, coalesceKey?: string): void;
   undo(): void;
   redo(): void;
@@ -74,9 +85,38 @@ function initialLang(): UiLang {
 }
 
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
+let pendingSave: Design | null = null;
+
 function scheduleSave(d: Design): void {
+  // Otra agenda con cambios sin guardar: se guarda ya, no se pisa.
+  if (pendingSave && pendingSave.id !== d.id) void flushSave();
+  pendingSave = d;
   if (saveTimer) clearTimeout(saveTimer);
-  saveTimer = setTimeout(() => void saveDesign(d), 500);
+  saveTimer = setTimeout(() => void flushSave(), 500);
+}
+
+/** Guarda ya lo pendiente (antes de cambiar de agenda, al ocultar la página o al cerrarla). */
+export async function flushSave(): Promise<void> {
+  if (saveTimer) clearTimeout(saveTimer);
+  saveTimer = null;
+  const d = pendingSave;
+  pendingSave = null;
+  if (d) await saveDesign(d);
+}
+
+/** Descarta lo pendiente de una agenda (al borrarla, para que no reaparezca). */
+export function cancelSave(id: string): void {
+  if (pendingSave?.id !== id) return;
+  pendingSave = null;
+  if (saveTimer) clearTimeout(saveTimer);
+  saveTimer = null;
+}
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('pagehide', () => void flushSave());
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') void flushSave();
+  });
 }
 
 export const useStore = create<StoreState>((set, get) => ({
@@ -99,6 +139,9 @@ export const useStore = create<StoreState>((set, get) => ({
   sidebarOpen: true,
   guides: false,
   snap: true,
+  notice: null,
+  goToKey: null,
+  updateReady: false,
 
   setDesign(d, opts) {
     set((s) => ({
@@ -111,6 +154,16 @@ export const useStore = create<StoreState>((set, get) => ({
     }));
     scheduleSave(d);
   },
+
+  closeDesign() {
+    const d = get().design;
+    if (d) cancelSave(d.id);
+    set({ design: null, past: [], future: [], coalesce: null, selection: null, pageIndex: 0 });
+  },
+
+  setNotice: (notice) => set({ notice }),
+  setGoToKey: (goToKey) => set({ goToKey }),
+  setUpdateReady: (updateReady) => set({ updateReady }),
 
   update(recipe, coalesceKey) {
     const { design, past, coalesce } = get();

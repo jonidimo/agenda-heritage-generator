@@ -22,7 +22,9 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       injectRegister: 'auto',
-      includeAssets: ['icons/*.png', 'icons/*.svg', 'watermarks/*', 'fonts/fonts.json'],
+      // Las fuentes integradas y el índice de feriados se guardan al instalar: la primera
+      // apertura sin conexión ya los tiene (los feriados de cada país se guardan al usarlos).
+      includeAssets: ['icons/*.png', 'icons/*.svg', 'watermarks/*', 'fonts/fonts.json', 'fonts/**/*.ttf', 'holidays/index.json'],
       manifest: {
         name: 'Agenda Heritage Studio',
         short_name: 'Agenda Studio',

@@ -87,6 +87,7 @@ export function MethodsPanel() {
   const design = useStore((s) => s.design)!;
   const update = useStore((s) => s.update);
   const [draft, setDraft] = useState<CustomMethod>({ id: '', name: '', text: '', evidence: 'practice', evidenceText: '', references: [] });
+  const [refsText, setRefsText] = useState('');
   return (
     <div>
       <p className="py-2 text-[12px] leading-snug text-ink-soft">{t('methods.intro')}</p>
@@ -133,15 +134,17 @@ export function MethodsPanel() {
           <TextArea value={draft.evidenceText} onChange={(v) => setDraft({ ...draft, evidenceText: v })} rows={2} />
         </Field>
         <Field label={t('methods.refList')}>
-          <TextArea value={draft.references.join('\n')} onChange={(v) => setDraft({ ...draft, references: v.split('\n').map((x) => x.trim()).filter(Boolean) })} rows={2} />
+          <TextArea value={refsText} onChange={setRefsText} rows={2} />
         </Field>
         <Button
           variant="primary"
           disabled={!draft.name.trim()}
           onClick={() => {
-            const m = { ...draft, id: newId('metodo') };
+            // Las referencias se separan recién al agregar: así se pueden escribir espacios y renglones.
+            const m = { ...draft, id: newId('metodo'), references: refsText.split('\n').map((x) => x.trim()).filter(Boolean) };
             update((d) => void d.methods.custom.push(m));
             setDraft({ id: '', name: '', text: '', evidence: 'practice', evidenceText: '', references: [] });
+            setRefsText('');
           }}
         >
           <Plus size={14} /> {t('methods.add')}

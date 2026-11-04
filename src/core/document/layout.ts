@@ -39,9 +39,9 @@ export function blockBounds(b: Block): Rect {
   return b.m ? transformRect(b.m, b.bbox) : b.bbox;
 }
 
-function watermarkApplies(wm: WatermarkPlacement, type: string): boolean {
+function watermarkApplies(wm: WatermarkPlacement, type: string, key: string): boolean {
   if (!wm.enabled) return false;
-  if (wm.exclude.includes(type)) return false;
+  if (wm.exclude.includes(type) || wm.excludePages.includes(key)) return false;
   return wm.scope.includes('all') || wm.scope.includes(type);
 }
 
@@ -218,7 +218,7 @@ export function layoutPage(doc: DocContext, plan: PagePlan, registry: ReadonlyMa
   for (const cb of design.customBlocks) {
     if (cb.pageType === plan.type && (cb.pageKey === null || cb.pageKey === plan.key)) placeCustomBlock(ctx, cb, plan);
   }
-  for (const wm of design.watermarks) if (watermarkApplies(wm, plan.type)) placeWatermark(ctx, wm);
+  for (const wm of design.watermarks) if (watermarkApplies(wm, plan.type, plan.key)) placeWatermark(ctx, wm);
   addChrome(ctx, plan, totalPages);
 
   // Ajustes del editor.

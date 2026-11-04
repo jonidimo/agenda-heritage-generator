@@ -12,6 +12,21 @@ import { listUserAssets, listUserFonts } from './persist';
 
 const BASE = import.meta.env.BASE_URL ?? './';
 
+/**
+ * Lo que se descargó antes de que el service worker controlara la página no quedó en su
+ * caché: se guarda a mano para que la próxima apertura sin conexión lo encuentre.
+ */
+function keepOffline(cacheName: string, path: string): void {
+  if (typeof caches === 'undefined' || typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return;
+  void navigator.serviceWorker.ready
+    .then(async () => {
+      const url = new URL(`${BASE}${path}`, location.href).href;
+      const cache = await caches.open(cacheName);
+      if (!(await cache.match(url))) await cache.add(url);
+    })
+    .catch(() => undefined);
+}
+
 export const io: ResourceIO = {
   async read(path: string): Promise<Uint8Array> {
     const res = await fetch(`${BASE}${path}`);
@@ -29,6 +44,7 @@ export class Resources {
   readonly assetInfos = new Map<string, AssetInfo>();
   /** Fuentes subidas por el usuario: id → bytes (para el Worker de PDF). */
   readonly userFontBytes = new Map<string, { bytes: Uint8Array; spec: FontSpec }>();
+  /** Problemas al cargar (se muestran en la interfaz). */
   readonly errors: string[] = [];
   version = 0;
   private listeners = new Set<() => void>();
@@ -43,15 +59,20 @@ export class Resources {
     for (const l of this.listeners) l();
   }
 
+  private addError(msg: string): void {
+    if (!this.errors.includes(msg)) this.errors.push(msg);
+  }
+
   async init(): Promise<void> {
     this.manifest = await loadFontManifest(io);
     this.holidayIndex = await loadHolidayIndex(io);
+    keepOffline('agenda-holidays', 'holidays/index.json');
     for (const f of await listUserFonts()) {
       try {
         const face = this.fonts.register(f.bytes, { ...f.spec, source: 'user', file: f.id });
         this.userFontBytes.set(f.id, { bytes: f.bytes, spec: { family: face.family, weight: face.weight, style: face.style } });
       } catch (err) {
-        this.errors.push(`Fuente «${f.id}»: ${(err as Error).message}`);
+        this.addError(`Fuente «${f.id}»: ${(err as Error).message}`);
       }
     }
     for (const a of await listUserAssets()) this.assetBytes.set(a.id, a.bytes);
@@ -63,16 +84,22 @@ export class Resources {
     let changed = false;
     if (this.manifest) {
       const before = this.fonts.list().length;
-      await loadBuiltinFonts(io, this.fonts, this.manifest, facesForDesign(design));
+      for (const e of await loadBuiltinFonts(io, this.fonts, this.manifest, facesForDesign(design))) this.addError(`Fuente ${e}`);
       if (this.fonts.list().length !== before) changed = true;
     }
     const country = design.holidays.country;
     if (country && !this.holidayData.has(country)) {
+      const path = `holidays/${country}.json`;
       try {
-        const res = await fetch(`${BASE}holidays/${country}.json`);
-        this.holidayData.set(country, res.ok ? ((await res.json()) as HolidayCountryData) : null);
-      } catch {
-        this.holidayData.set(country, null);
+        const res = await fetch(`${BASE}${path}`);
+        // Un 404 es definitivo (país sin datos); un error de red se reintenta en la próxima carga.
+        if (res.ok) {
+          this.holidayData.set(country, (await res.json()) as HolidayCountryData);
+          keepOffline('agenda-holidays', path);
+        } else if (res.status === 404) this.holidayData.set(country, null);
+        else this.addError(`Feriados ${country}: HTTP ${res.status}`);
+      } catch (err) {
+        this.addError(`Feriados ${country}: ${(err as Error).message}`);
       }
       changed = true;
     }
@@ -89,7 +116,7 @@ export class Resources {
         this.assetInfos.set(ref.id, await assetInfoFromBytes(ref, bytes));
         changed = true;
       } catch (err) {
-        this.errors.push(`Recurso «${ref.name}»: ${(err as Error).message}`);
+        this.addError(`Recurso «${ref.name}»: ${(err as Error).message}`);
       }
     }
     if (changed) this.bump();
@@ -101,7 +128,7 @@ export class Resources {
     const fam = this.manifest.families.find((f) => f.family === family);
     if (!fam) return;
     const before = this.fonts.list().length;
-    await loadBuiltinFonts(io, this.fonts, this.manifest, fam.faces.map((f) => ({ family, weight: f.weight, style: f.style })));
+    for (const e of await loadBuiltinFonts(io, this.fonts, this.manifest, fam.faces.map((f) => ({ family, weight: f.weight, style: f.style })))) this.addError(`Fuente ${e}`);
     if (this.fonts.list().length !== before) this.bump();
   }
 

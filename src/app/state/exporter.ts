@@ -11,6 +11,9 @@ import { resources } from './resources';
 let worker: Worker | null = null;
 let seq = 0;
 
+/** El trabajo falló dentro del Worker (datos, recursos): no se repite en el hilo principal. */
+class JobError extends Error {}
+
 function getWorker(): Worker | null {
   if (worker) return worker;
   try {
@@ -60,7 +63,7 @@ export async function exportPdf(design: Design, kind: ExportKind, onProgress: (d
             w.removeEventListener('message', onMsg);
             w.removeEventListener('error', onErr);
             if (r.type === 'done') resolve(r.bytes);
-            else reject(new Error(r.message));
+            else reject(new JobError(r.message));
           }
         };
         const onErr = (e: ErrorEvent): void => {
@@ -73,6 +76,8 @@ export async function exportPdf(design: Design, kind: ExportKind, onProgress: (d
         w.postMessage(job);
       });
     } catch (err) {
+      if (err instanceof JobError) throw err;
+      // Solo si el Worker no pudo arrancar o se cayó: se genera en el hilo principal.
       console.warn('Worker no disponible, se genera en el hilo principal', err);
       worker?.terminate();
       worker = null;

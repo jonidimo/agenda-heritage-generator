@@ -8,8 +8,9 @@ import type { Block } from '@core/layout/prims';
 import { pageInnerSvg } from '@core/render/svg';
 import { fmt, type Rect } from '@core/util/geometry';
 import { useEffect, useMemo, useReducer, useRef, useState } from 'react';
-import { moveBlock, scaleBlock } from '../../state/actions';
+import { clampMoveDelta, moveBlock, scaleBlock } from '../../state/actions';
 import { assetHref, onAssetUrlsChange } from '../../state/assetUrls';
+import { useT } from '../../i18n/ui';
 import { useStore } from '../../state/store';
 
 interface Props {
@@ -23,11 +24,14 @@ interface Props {
 interface Drag {
   block: Block;
   mode: 'move' | 'resize';
+  pointerId: number;
+  startClientX: number;
+  startClientY: number;
   startX: number;
   startY: number;
   origin: Rect;
   el: SVGGElement | null;
-  baseTransform: string;
+  baseTransform: string | null;
   dx: number;
   dy: number;
   factor: number;
@@ -35,12 +39,15 @@ interface Drag {
 }
 
 const SNAP_PX = 7;
+/** Movimiento mínimo (px de pantalla) para que un clic se convierta en arrastre. */
+const DRAG_START_PX = 3;
 
 export function PageView({ doc, index, scale, interactive = true }: Props) {
   const page = useMemo(() => doc.page(index), [doc, index]);
   const [assetTick, bumpAssets] = useReducer((x: number) => x + 1, 0);
   useEffect(() => onAssetUrlsChange(bumpAssets), []);
   const svgRef = useRef<SVGSVGElement | null>(null);
+  const wrapRef = useRef<HTMLDivElement | null>(null);
   const drag = useRef<Drag | null>(null);
   const [guides, setGuides] = useState<{ x: number[]; y: number[] }>({ x: [], y: [] });
   const [live, setLive] = useState<Rect | null>(null);
@@ -49,6 +56,7 @@ export function PageView({ doc, index, scale, interactive = true }: Props) {
   const scope = useStore((s) => s.scope);
   const showGuides = useStore((s) => s.guides);
   const snapOn = useStore((s) => s.snap);
+  const t = useT();
 
   // Cambia de identidad cuando llega una vista previa de imagen/PDF: así se vuelve a dibujar la página.
   const hrefFor = useMemo(() => {
@@ -96,21 +104,48 @@ export function PageView({ doc, index, scale, interactive = true }: Props) {
     return { delta: best.delta, hit: best.hit };
   };
 
-  const onPointerDown = (e: React.PointerEvent<SVGSVGElement>) => {
-    if (!interactive) return;
-    const target = (e.target as Element).closest('[data-block]');
-    const handle = (e.target as Element).closest('[data-handle]');
-    if (handle && selected) {
-      const el = svgRef.current?.querySelector<SVGGElement>(`[data-block="${CSS.escape(selected.id)}"]`) ?? null;
-      const p = toMm(e);
-      drag.current = { block: selected, mode: 'resize', startX: p.x, startY: p.y, origin: blockBounds(selected), el, baseTransform: el?.getAttribute('transform') ?? '', dx: 0, dy: 0, factor: 1, moved: false };
-      (e.target as Element).setPointerCapture?.(e.pointerId);
-      e.preventDefault();
-      return;
+  /** Un bloque que entra en la página no se puede llevar fuera (el documento lo acomodaría igual). */
+  const clampMove = (o: Rect, dx: number, dy: number): { dx: number; dy: number } => clampMoveDelta(page, o, dx, dy);
+
+  const startDrag = (e: React.PointerEvent<HTMLDivElement>, block: Block, mode: 'move' | 'resize'): void => {
+    const el = svgRef.current?.querySelector<SVGGElement>(`[data-block="${CSS.escape(block.id)}"]`) ?? null;
+    const p = toMm(e);
+    drag.current = {
+      block,
+      mode,
+      pointerId: e.pointerId,
+      startClientX: e.clientX,
+      startClientY: e.clientY,
+      startX: p.x,
+      startY: p.y,
+      origin: blockBounds(block),
+      el,
+      baseTransform: el?.getAttribute('transform') ?? null,
+      dx: 0,
+      dy: 0,
+      factor: 1,
+      moved: false,
+    };
+    wrapRef.current?.setPointerCapture?.(e.pointerId);
+    e.preventDefault();
+  };
+
+  const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!interactive || drag.current) return;
+    // Solo el puntero principal y el botón izquierdo: un segundo dedo (pellizco) o el botón derecho no arrastran.
+    if (!e.isPrimary || (e.pointerType === 'mouse' && e.button !== 0)) return;
+    const touch = e.pointerType === 'touch';
+    let target = e.target as Element | null;
+    if (target?.closest('[data-handle]') && selected?.editable) return startDrag(e, selected, 'resize');
+    if (target?.closest('[data-sel-surface]')) {
+      // Con el dedo se arrastra lo que ya está seleccionado; con ratón o lápiz cuenta lo que hay debajo.
+      if (touch && selected?.editable) return startDrag(e, selected, 'move');
+      target = document.elementsFromPoint(e.clientX, e.clientY).find((n) => n !== e.target && svgRef.current?.contains(n)) ?? null;
     }
     let block: Block | undefined;
-    if (target) {
-      const id = target.getAttribute('data-block') ?? '';
+    const hit = target?.closest('[data-block]');
+    if (hit) {
+      const id = hit.getAttribute('data-block') ?? '';
       block = page.blocks.find((b) => b.id === id);
     }
     if (!block) {
@@ -129,19 +164,20 @@ export function PageView({ doc, index, scale, interactive = true }: Props) {
       return;
     }
     select({ pageKey: page.key, pageType: page.type, blockId: block.id, role: block.role });
-    if (!block.editable) return;
-    const el = svgRef.current?.querySelector<SVGGElement>(`[data-block="${CSS.escape(block.id)}"]`) ?? null;
-    const p = toMm(e);
-    drag.current = { block, mode: 'move', startX: p.x, startY: p.y, origin: blockBounds(block), el, baseTransform: el?.getAttribute('transform') ?? '', dx: 0, dy: 0, factor: 1, moved: false };
-    svgRef.current?.setPointerCapture(e.pointerId);
-    e.preventDefault();
+    // Con el dedo, el primer toque solo selecciona: así el mismo gesto sigue desplazando la página.
+    if (!block.editable || touch) return;
+    startDrag(e, block, 'move');
   };
 
-  const onPointerMove = (e: React.PointerEvent<SVGSVGElement>) => {
+  const onPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
     const d = drag.current;
-    if (!d) return;
+    if (!d || e.pointerId !== d.pointerId) return;
+    // Unos píxeles de movimiento real antes de arrastrar: un clic con temblor no mueve ni encaja nada.
+    if (!d.moved && Math.hypot(e.clientX - d.startClientX, e.clientY - d.startClientY) < DRAG_START_PX) return;
+    d.moved = true;
     const p = toMm(e);
     const tol = SNAP_PX / scale;
+    const base = d.baseTransform ?? '';
     if (d.mode === 'move') {
       let dx = p.x - d.startX;
       let dy = p.y - d.startY;
@@ -157,10 +193,10 @@ export function PageView({ doc, index, scale, interactive = true }: Props) {
         gx = sx.hit !== null ? [sx.hit] : [];
         gy = sy.hit !== null ? [sy.hit] : [];
       }
+      ({ dx, dy } = clampMove(o, dx, dy));
       d.dx = dx;
       d.dy = dy;
-      d.moved = d.moved || Math.abs(dx) > 0.2 || Math.abs(dy) > 0.2;
-      d.el?.setAttribute('transform', `translate(${fmt(dx)} ${fmt(dy)}) ${d.baseTransform}`);
+      d.el?.setAttribute('transform', `translate(${fmt(dx)} ${fmt(dy)}) ${base}`);
       setGuides({ x: gx, y: gy });
       setLive({ x: o.x + dx, y: o.y + dy, w: o.w, h: o.h });
     } else {
@@ -169,18 +205,23 @@ export function PageView({ doc, index, scale, interactive = true }: Props) {
       const h0 = Math.max(1, o.h);
       const factor = Math.max(0.1, Math.max((p.x - o.x) / w0, (p.y - o.y) / h0));
       d.factor = factor;
-      d.moved = true;
-      d.el?.setAttribute('transform', `translate(${fmt(o.x)} ${fmt(o.y)}) scale(${fmt(factor, 4)}) translate(${fmt(-o.x)} ${fmt(-o.y)}) ${d.baseTransform}`);
+      d.el?.setAttribute('transform', `translate(${fmt(o.x)} ${fmt(o.y)}) scale(${fmt(factor, 4)}) translate(${fmt(-o.x)} ${fmt(-o.y)}) ${base}`);
       setLive({ x: o.x, y: o.y, w: o.w * factor, h: o.h * factor });
     }
   };
 
-  const onPointerUp = () => {
+  const finish = (e: React.PointerEvent<HTMLDivElement>, commit: boolean) => {
     const d = drag.current;
+    if (!d || e.pointerId !== d.pointerId) return;
     drag.current = null;
+    // La vista previa vuelve a su lugar: la posición final la dibuja el documento (aunque no cambie).
+    if (d.el) {
+      if (d.baseTransform === null) d.el.removeAttribute('transform');
+      else d.el.setAttribute('transform', d.baseTransform);
+    }
     setGuides({ x: [], y: [] });
     setLive(null);
-    if (!d || !d.moved) return;
+    if (!commit || !d.moved) return;
     if (d.mode === 'move') moveBlock(page, d.block, d.dx, d.dy, scope);
     else scaleBlock(page, d.block, d.factor, scope);
   };
@@ -189,17 +230,34 @@ export function PageView({ doc, index, scale, interactive = true }: Props) {
   const h = page.h * scale;
   const c = page.content;
   return (
-    <div className="page-shadow relative shrink-0 bg-white" style={{ width: w, height: h }} data-page-index={index}>
+    <div
+      ref={wrapRef}
+      className="page-shadow relative shrink-0 bg-white"
+      style={{ width: w, height: h }}
+      data-page-index={index}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={(e) => finish(e, true)}
+      onPointerCancel={(e) => finish(e, false)}
+      tabIndex={interactive ? 0 : undefined}
+      aria-label={interactive ? t('page.keys', { n: index + 1 }) : undefined}
+      onKeyDown={(e) => {
+        // Teclado: [ y ] recorren los elementos editables de la página (las flechas los mueven).
+        if (!interactive || (e.key !== '[' && e.key !== ']')) return;
+        const list = page.blocks.filter((b) => b.editable && b.role !== 'chrome');
+        if (list.length === 0) return;
+        const cur = selected ? list.findIndex((b) => b.id === selected.id) : -1;
+        const next = list[(cur + (e.key === ']' ? 1 : -1) + list.length) % list.length]!;
+        select({ pageKey: page.key, pageType: page.type, blockId: next.id, role: next.role });
+        e.preventDefault();
+      }}
+    >
       <svg
         ref={svgRef}
         width={w}
         height={h}
         viewBox={`0 0 ${page.w} ${page.h}`}
-        className="block touch-none select-none"
-        onPointerDown={onPointerDown}
-        onPointerMove={onPointerMove}
-        onPointerUp={onPointerUp}
-        onPointerCancel={onPointerUp}
+        className="block select-none"
         role="img"
         aria-label={`${page.title} — ${index + 1}`}
       >
@@ -220,12 +278,20 @@ export function PageView({ doc, index, scale, interactive = true }: Props) {
         {interactive && selBounds && (
           <g>
             <rect x={selBounds.x - 0.6} y={selBounds.y - 0.6} width={selBounds.w + 1.2} height={selBounds.h + 1.2} fill="none" stroke="#4f6b3a" strokeWidth={1.4 / scale} strokeDasharray={selected?.editable === false ? `${3 / scale} ${2 / scale}` : undefined} pointerEvents="none" />
-            {selected?.editable !== false && (
-              <rect data-handle="resize" x={selBounds.x + selBounds.w + 0.6 - 5 / scale} y={selBounds.y + selBounds.h + 0.6 - 5 / scale} width={10 / scale} height={10 / scale} fill="#ffffff" stroke="#4f6b3a" strokeWidth={1.4 / scale} style={{ cursor: 'nwse-resize' }} />
-            )}
           </g>
         )}
       </svg>
+      {interactive && selBounds && selected?.editable && (
+        <>
+          {/* Capa del elemento seleccionado: con el dedo se arrastra desde acá sin desplazar la página. */}
+          <div data-sel-surface="" className="absolute cursor-move" style={{ left: selBounds.x * scale, top: selBounds.y * scale, width: selBounds.w * scale, height: selBounds.h * scale, touchAction: 'none' }} />
+          <div
+            data-handle="resize"
+            className="absolute rounded-sm border-2 border-accent bg-white"
+            style={{ left: (selBounds.x + selBounds.w) * scale - 9, top: (selBounds.y + selBounds.h) * scale - 9, width: 18, height: 18, touchAction: 'none', cursor: 'nwse-resize' }}
+          />
+        </>
+      )}
     </div>
   );
 }

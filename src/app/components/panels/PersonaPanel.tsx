@@ -48,7 +48,7 @@ export function PersonaPanel() {
         <ul className="space-y-1.5">
           {design.personalDates.map((pd, i) => (
             <li key={pd.id} className="grid grid-cols-[52px_1fr_1.6fr_28px] items-center gap-1.5">
-              <NumberInput value={pd.day} min={1} max={31} onChange={(v) => update((d) => void (d.personalDates[i]!.day = v), `pd:${pd.id}:d`)} />
+              <NumberInput value={pd.day} min={1} max={31} integer onChange={(v) => update((d) => void (d.personalDates[i]!.day = v), `pd:${pd.id}:d`)} />
               <Select value={String(pd.month)} onChange={(v) => update((d) => void (d.personalDates[i]!.month = Number(v)))} options={months.map((m, k) => ({ value: String(k + 1), label: m }))} />
               <TextInput value={pd.label} onChange={(v) => update((d) => void (d.personalDates[i]!.label = v), `pd:${pd.id}:l`)} />
               <button type="button" className="rounded p-1 text-warn hover:bg-black/5" onClick={() => update((d) => void d.personalDates.splice(i, 1))} aria-label={t('common.remove')}>

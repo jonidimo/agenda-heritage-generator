@@ -3,6 +3,7 @@ import type { AgendaDocument } from '@core/document';
 import { pagePrims } from '@core/document/layout';
 import { useEffect, useRef, useState } from 'react';
 import { paintPrims } from '../../canvas/paint';
+import { onAssetUrlsChange } from '../../state/assetUrls';
 
 const queue: Array<() => void> = [];
 let running = false;
@@ -27,6 +28,8 @@ export function Thumb({ doc, index, width }: { doc: AgendaDocument; index: numbe
   const pw = doc.format.w;
   const ph = doc.format.h;
   const height = Math.round((width * ph) / pw);
+  // Cuando termina de prepararse la vista previa de una imagen o un PDF, se vuelve a dibujar.
+  useEffect(() => onAssetUrlsChange(() => setTick((t) => t + 1)), []);
 
   useEffect(() => {
     const el = ref.current;
