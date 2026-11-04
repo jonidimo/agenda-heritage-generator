@@ -1,0 +1,242 @@
+{
+  "generatedBy": "scripts/fetch-fonts.ts",
+  "families": [
+    {
+      "family": "Cormorant Garamond",
+      "category": "serif",
+      "designer": "Christian Thalmann (Catharsis Fonts)",
+      "license": "cormorant-garamond/OFL.txt",
+      "note": "Títulos del tema Heritage.",
+      "faces": [
+        {
+          "weight": 300,
+          "style": "normal",
+          "file": "cormorant-garamond/CormorantGaramond-Light.ttf",
+          "bytes": 206128
+        },
+        {
+          "weight": 400,
+          "style": "normal",
+          "file": "cormorant-garamond/CormorantGaramond-Regular.ttf",
+          "bytes": 206528
+        },
+        {
+          "weight": 500,
+          "style": "normal",
+          "file": "cormorant-garamond/CormorantGaramond-Medium.ttf",
+          "bytes": 206660
+        },
+        {
+          "weight": 600,
+          "style": "normal",
+          "file": "cormorant-garamond/CormorantGaramond-SemiBold.ttf",
+          "bytes": 206560
+        },
+        {
+          "weight": 700,
+          "style": "normal",
+          "file": "cormorant-garamond/CormorantGaramond-Bold.ttf",
+          "bytes": 206240
+        },
+        {
+          "weight": 300,
+          "style": "italic",
+          "file": "cormorant-garamond/CormorantGaramond-LightItalic.ttf",
+          "bytes": 211264
+        },
+        {
+          "weight": 400,
+          "style": "italic",
+          "file": "cormorant-garamond/CormorantGaramond-RegularItalic.ttf",
+          "bytes": 211460
+        },
+        {
+          "weight": 500,
+          "style": "italic",
+          "file": "cormorant-garamond/CormorantGaramond-MediumItalic.ttf",
+          "bytes": 211588
+        },
+        {
+          "weight": 600,
+          "style": "italic",
+          "file": "cormorant-garamond/CormorantGaramond-SemiBoldItalic.ttf",
+          "bytes": 211652
+        },
+        {
+          "weight": 700,
+          "style": "italic",
+          "file": "cormorant-garamond/CormorantGaramond-BoldItalic.ttf",
+          "bytes": 211624
+        }
+      ]
+    },
+    {
+      "family": "Manrope",
+      "category": "sans",
+      "designer": "Mikhail Sharanda",
+      "license": "manrope/OFL.txt",
+      "note": "Datos y rótulos del tema Heritage.",
+      "faces": [
+        {
+          "weight": 200,
+          "style": "normal",
+          "file": "manrope/Manrope-ExtraLight.ttf",
+          "bytes": 70924
+        },
+        {
+          "weight": 300,
+          "style": "normal",
+          "file": "manrope/Manrope-Light.ttf",
+          "bytes": 70928
+        },
+        {
+          "weight": 400,
+          "style": "normal",
+          "file": "manrope/Manrope-Regular.ttf",
+          "bytes": 71060
+        },
+        {
+          "weight": 500,
+          "style": "normal",
+          "file": "manrope/Manrope-Medium.ttf",
+          "bytes": 71132
+        },
+        {
+          "weight": 600,
+          "style": "normal",
+          "file": "manrope/Manrope-SemiBold.ttf",
+          "bytes": 71180
+        },
+        {
+          "weight": 700,
+          "style": "normal",
+          "file": "manrope/Manrope-Bold.ttf",
+          "bytes": 71060
+        },
+        {
+          "weight": 800,
+          "style": "normal",
+          "file": "manrope/Manrope-ExtraBold.ttf",
+          "bytes": 71536
+        }
+      ]
+    },
+    {
+      "family": "Atkinson Hyperlegible Next",
+      "category": "sans",
+      "designer": "Braille Institute, Applied Design Works, Elliott Scott, Megan Eiswerth, Linus Boman, Theodore Petrosky",
+      "license": "atkinson-hyperlegible-next/OFL.txt",
+      "note": "Máxima legibilidad (baja visión, personas mayores).",
+      "faces": [
+        {
+          "weight": 300,
+          "style": "normal",
+          "file": "atkinson-hyperlegible-next/AtkinsonHyperlegibleNext-Light.ttf",
+          "bytes": 43916
+        },
+        {
+          "weight": 400,
+          "style": "normal",
+          "file": "atkinson-hyperlegible-next/AtkinsonHyperlegibleNext-Regular.ttf",
+          "bytes": 43960
+        },
+        {
+          "weight": 500,
+          "style": "normal",
+          "file": "atkinson-hyperlegible-next/AtkinsonHyperlegibleNext-Medium.ttf",
+          "bytes": 43864
+        },
+        {
+          "weight": 600,
+          "style": "normal",
+          "file": "atkinson-hyperlegible-next/AtkinsonHyperlegibleNext-SemiBold.ttf",
+          "bytes": 43788
+        },
+        {
+          "weight": 700,
+          "style": "normal",
+          "file": "atkinson-hyperlegible-next/AtkinsonHyperlegibleNext-Bold.ttf",
+          "bytes": 43856
+        },
+        {
+          "weight": 400,
+          "style": "italic",
+          "file": "atkinson-hyperlegible-next/AtkinsonHyperlegibleNext-RegularItalic.ttf",
+          "bytes": 47936
+        },
+        {
+          "weight": 700,
+          "style": "italic",
+          "file": "atkinson-hyperlegible-next/AtkinsonHyperlegibleNext-BoldItalic.ttf",
+          "bytes": 47916
+        }
+      ]
+    },
+    {
+      "family": "EB Garamond",
+      "category": "serif",
+      "designer": "Georg Duffner, Octavio Pardo",
+      "license": "eb-garamond/OFL.txt",
+      "note": "Garamond clásica para textos largos.",
+      "faces": [
+        {
+          "weight": 400,
+          "style": "normal",
+          "file": "eb-garamond/EBGaramond-Regular.ttf",
+          "bytes": 197648
+        },
+        {
+          "weight": 500,
+          "style": "normal",
+          "file": "eb-garamond/EBGaramond-Medium.ttf",
+          "bytes": 198680
+        },
+        {
+          "weight": 600,
+          "style": "normal",
+          "file": "eb-garamond/EBGaramond-SemiBold.ttf",
+          "bytes": 198868
+        },
+        {
+          "weight": 700,
+          "style": "normal",
+          "file": "eb-garamond/EBGaramond-Bold.ttf",
+          "bytes": 198748
+        },
+        {
+          "weight": 400,
+          "style": "italic",
+          "file": "eb-garamond/EBGaramond-RegularItalic.ttf",
+          "bytes": 159600
+        },
+        {
+          "weight": 600,
+          "style": "italic",
+          "file": "eb-garamond/EBGaramond-SemiBoldItalic.ttf",
+          "bytes": 161048
+        }
+      ]
+    },
+    {
+      "family": "Caveat",
+      "category": "handwriting",
+      "designer": "Impallari Type",
+      "license": "caveat/OFL.txt",
+      "note": "Manuscrita para frases y acentos.",
+      "faces": [
+        {
+          "weight": 400,
+          "style": "normal",
+          "file": "caveat/Caveat-Regular.ttf",
+          "bytes": 137400
+        },
+        {
+          "weight": 600,
+          "style": "normal",
+          "file": "caveat/Caveat-SemiBold.ttf",
+          "bytes": 137808
+        }
+      ]
+    }
+  ]
+}

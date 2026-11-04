@@ -1,0 +1,184 @@
+/**
+ * Plantillas de diseño listas para usar. Todas producen un `Design` válido y
+ * completo; la interfaz parte de una de ellas y el usuario ajusta el resto.
+ */
+import { DEFAULT_METHODS } from '../methods/catalog';
+import { newId } from '../util/hash';
+import { parseDesign, type Design, type DesignInput, type SectionItem, type SectionSpec } from './schema';
+
+export type TemplateId = 'heritage-norma' | 'heritage' | 'clara' | 'minimal';
+
+export const TEMPLATES: Array<{ id: TemplateId; name: string; description: string }> = [
+  { id: 'heritage-norma', name: 'Heritage · Norma', description: 'La agenda 2026 de Norma, actualizada: dedicatoria, frases, cumpleaños y colibrí.' },
+  { id: 'heritage', name: 'Heritage', description: 'Diseño clásico, durable y legible. Semana Alastair sin horas fijas.' },
+  { id: 'clara', name: 'Lectura clara', description: 'Letra grande, alto contraste y renglones amplios (personas mayores o baja visión).' },
+  { id: 'minimal', name: 'Mínima', description: 'Una sola tipografía, puntos en vez de renglones, sin sombreado.' },
+];
+
+const item = (type: string, options: Record<string, unknown> = {}, enabled = true): SectionItem => ({ id: type, type, enabled, options });
+const section = (type: string, options: Record<string, unknown> = {}, enabled = true): SectionSpec => ({ id: type, type, enabled, options });
+
+/** Mes Heritage (orden de 2026): portada, notas, registro diario, semanas, balance, resumen, hábitos, notas. */
+export function heritageMonthItems(opts: { grid?: boolean; weekly?: string } = {}): SectionItem[] {
+  return [
+    { ...item('monthCover'), id: 'cover' },
+    { ...item('monthNotes', { count: 1, style: 'auto' }), id: 'notes-a' },
+    { ...item('monthLog'), id: 'log' },
+    { ...item('monthGrid', { spread: 'auto' }, opts.grid ?? false), id: 'grid' },
+    { ...item('weeks', { variant: opts.weekly ?? 'alastair', priorities: 'auto', footer: 'expenses' }), id: 'weeks' },
+    { ...item('balance'), id: 'balance' },
+    { ...item('review', { variant: 'auto' }), id: 'review' },
+    { ...item('habits', { rows: 10, total: true }), id: 'habits' },
+    { ...item('monthNotes', { count: 1, style: 'auto' }), id: 'notes-b' },
+  ];
+}
+
+export function defaultSections(opts: { personal?: boolean; guide?: boolean; health?: boolean; moodYear?: boolean; bestSelf?: boolean; grid?: boolean; toc?: boolean } = {}): SectionSpec[] {
+  return [
+    section('titlePage', { showName: true, showKicker: true }),
+    section('dedication'),
+    section('personalInfo', { emergency: true, medical: true }, opts.personal ?? true),
+    section('toc', {}, opts.toc ?? false),
+    section('guide', {}, opts.guide ?? true),
+    section('yearOverview', { years: 2, perPage: 6 }),
+    section('birthdays', { pages: 1 }),
+    section('bestSelf', {}, opts.bestSelf ?? false),
+    section('vision', { perPage: 2 }),
+    section('actionPlan', { goals: 3, mantra: true }),
+    section('moodYear', {}, opts.moodYear ?? false),
+    { ...section('months'), items: heritageMonthItems({ grid: opts.grid ?? false }) },
+    section('health', { pages: 1 }, opts.health ?? false),
+    section('sleepDiary', { pages: 2 }, false),
+    section('unstuck', { pages: 1 }, false),
+    section('estimates', { pages: 1 }, false),
+    section('passwords', { pages: 2, separate: false, detailed: 'auto' }),
+    section('contacts', { pages: 1 }),
+    section('notes', { count: 0, style: 'auto' }),
+  ];
+}
+
+export const COLIBRI_ASSET = {
+  id: 'colibri',
+  name: 'Colibrí (Heritage)',
+  kind: 'vector' as const,
+  mime: 'image/svg+xml',
+  width: 147.31465,
+  height: 121.12654,
+  builtin: 'watermarks/colibri.svg',
+};
+
+export function colibriWatermark(): Design['watermarks'][number] {
+  return {
+    id: 'colibri',
+    enabled: true,
+    assetId: 'colibri',
+    scope: ['all'],
+    exclude: ['monthCover', 'titlePage', 'custom', 'yearOverview'],
+    hAnchor: 'outer',
+    vAnchor: 'bottom',
+    dx: 13,
+    // En el margen inferior: entre el fin del contenido y la zona que la impresora no imprime,
+    // así el dibujo no pisa los renglones de escritura.
+    dy: 4.8,
+    width: 12,
+    opacity: 1,
+    rotation: 0,
+    mirrorOnVerso: true,
+    layer: 'above',
+    minStrokePt: 0.3,
+  };
+}
+
+const NORMA_PHRASES = [
+  '365 días por delante. Empezar de cero, una vez más.',
+  'Días de verano. Tiempo para lo que te gusta.',
+  '{marchEquinox}: comienza el otoño. Cosechar lo sembrado.',
+  'Anotar lo importante, organizar el resto.',
+  'Días frescos. El placer de estar en casa.',
+  '{juneSolstice}: comienza el invierno. Pausa y reflexión.',
+  'El valor de lo analógico: papel, lápiz y tiempo.',
+  'Nuevos planes para la segunda mitad del año.',
+  '{septemberEquinox}: comienza la primavera. Tiempo de florecer.',
+  '1 de octubre: tu día. ¡Feliz cumpleaños, {name}!',
+  'Registrar los logros. Gratitud por lo vivido.',
+  'Últimos 31 días. Brindar por lo que pasó.',
+];
+
+export interface CreateOptions {
+  year?: number;
+  locale?: string;
+  country?: string | null;
+  name?: string;
+}
+
+export function createDesign(template: TemplateId, opts: CreateOptions = {}): Design {
+  const year = opts.year ?? new Date().getFullYear() + 1;
+  const locale = opts.locale ?? 'es-AR';
+  const country = opts.country === undefined ? (locale.split('-')[1]?.toUpperCase() ?? null) : opts.country;
+  const now = new Date().toISOString();
+  const base: DesignInput = {
+    id: newId('agenda'),
+    name: `Agenda ${year}`,
+    createdAt: now,
+    updatedAt: now,
+    locale,
+    calendar: { year, weekStart: 'monday', numbering: 'iso' },
+    holidays: { country, types: ['public', 'bank'] },
+    paper: { preset: 'A4' },
+    binding: { method: 'sewn', signature: { mode: 'uniform', sheets: 4, last: 'shrink' } },
+    theme: { id: 'heritage', comfort: 'normal' },
+    methods: { enabled: [...DEFAULT_METHODS] },
+    sections: defaultSections(),
+    assets: [COLIBRI_ASSET],
+    watermarks: [colibriWatermark()],
+  };
+
+  switch (template) {
+    case 'heritage-norma':
+      return parseDesign({
+        ...base,
+        name: `Agenda Norma ${year}`,
+        locale: 'es-AR',
+        holidays: { country: 'AR', types: ['public', 'bank'] },
+        persona: {
+          name: opts.name ?? 'Norma',
+          title: 'Arquitectura del Tiempo',
+          dedicationTitle: '{year}: El tiempo de florecer.',
+          dedication:
+            'Cada rama de tu historia es un refugio de amor. Hoy, la vida te invita a descansar en tu propia luz, a sembrar nuevos sueños y a disfrutar de la cosecha más dulce: el presente. Florecer no tiene edad; es el arte de habitar tu propia calma con la sabiduría del corazón.',
+          phrases: NORMA_PHRASES,
+          labels: { 'review.moods.0': 'CALMA', 'review.moods.1': 'CON PILAS', 'review.moods.2': 'CANSADA' },
+        },
+        personalDates: [{ id: 'cumple-norma', month: 10, day: 1, label: 'Cumpleaños de Norma', kind: 'birthday' }],
+        sections: defaultSections({ personal: true, guide: true, health: true }),
+      });
+    case 'clara':
+      return parseDesign({
+        ...base,
+        name: `Agenda ${year} · Lectura clara`,
+        theme: { id: 'clara', comfort: 'wide' },
+        methods: { enabled: [...DEFAULT_METHODS, 'legibility'] },
+        sections: defaultSections({ personal: true, guide: true, health: true, grid: true }),
+        watermarks: [{ ...colibriWatermark(), width: 11, opacity: 0.85 }],
+      });
+    case 'minimal':
+      return parseDesign({ ...base, name: `Agenda ${year} · Mínima`, theme: { id: 'minimal', comfort: 'normal' }, watermarks: [] });
+    default:
+      return parseDesign(base);
+  }
+}
+
+/** Duplica un diseño para el año siguiente (conserva todo, cambia año y nombre). */
+export function duplicateForYear(d: Design, year: number): Design {
+  return parseDesign({
+    ...d,
+    id: newId('agenda'),
+    name: d.name.replace(String(d.calendar.year), String(year)),
+    calendar: { ...d.calendar, year },
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    // Las páginas sueltas ancladas a fechas del año anterior se reubican por su respaldo.
+    holidays: { ...d.holidays, added: [], removed: [], renamed: {} },
+    overrides: d.overrides.filter((o) => o.pageKey === null),
+  });
+}

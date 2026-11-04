@@ -1,0 +1,408 @@
+/**
+ * Semanas: variantes Alastair (la de 2026), horizontal (días apilados en dos
+ * páginas), vertical (columnas) y día por página. Ninguna impone horas fijas:
+ * cada persona organiza su tiempo.
+ */
+import type { DayInfo, MonthInfo, WeekInfo } from '../calendar';
+import { weekdayLabel, weekdayLetter } from '../calendar/locale';
+import { fmt } from '../i18n';
+import { cols, flex, hsplit, rows, takeBottom, takeTop } from '../layout/box';
+import type { LayoutContext } from '../layout/context';
+import { circle, line, rect, type Prim } from '../layout/prims';
+import { checkCircle, heartIcon, isSouthern, miniCalendar, moonIcon, ruledLines, signifierIcon, writingArea, type Signifier } from '../layout/widgets';
+import { TABULAR_FEATURES } from '../text/shape';
+import { ptToMm, type Rect } from '../util/geometry';
+import { checklist, order } from './common';
+import { opt, param, type PagePlan, type PagePlanDraft, type SectionModule } from './types';
+
+type Variant = 'alastair' | 'horizontal' | 'vertical' | 'daily';
+
+function weekOf(ctx: LayoutContext, page: PagePlan): WeekInfo {
+  const key = page.params?.week as string | undefined;
+  const w = ctx.doc.cal.weeks.find((x) => x.key === key);
+  if (!w) throw new Error(`Semana no encontrada: ${key}`);
+  return w;
+}
+
+function draft(week: WeekInfo, month: MonthInfo, itemId: string, side: string, type: string, extra: Partial<PagePlanDraft> = {}): PagePlanDraft {
+  return {
+    key: `week:${week.key}:${side}`,
+    type,
+    section: itemId,
+    title: `${week.label} · ${week.number}`,
+    group: `month:${month.key}`,
+    ...extra,
+    params: { week: week.key, weekNumber: week.number, month: { y: month.y, m: month.m }, monthName: month.name, ...(extra.params ?? {}) },
+  };
+}
+
+const showMoon = (ctx: LayoutContext): boolean => ctx.doc.design.astronomy.moonPhases && ctx.doc.design.astronomy.showIn.includes('week');
+const south = (ctx: LayoutContext): boolean => isSouthern(ctx.doc.design.holidays.country, ctx.doc.design.astronomy.hemisphere);
+
+export const weeks: SectionModule = {
+  type: 'weeks',
+  scope: 'month',
+  defaults: { variant: 'alastair', priorities: 'auto', footer: 'expenses', undated: false, miniWeeks: 2 },
+  plan(_doc, item, month) {
+    if (!month) return [];
+    const variant = opt<Variant>(item, 'variant', 'alastair');
+    const out: PagePlanDraft[] = [];
+    for (const week of month.weeks) {
+      if (variant === 'daily') {
+        const workdays = week.days.filter((d) => !d.isWeekend);
+        const weekend = week.days.filter((d) => d.isWeekend);
+        workdays.forEach((d, i) =>
+          out.push(draft(week, month, item.id, `day:${d.iso}`, 'daily', { key: `day:${d.iso}`, startOn: i === 0 ? 'verso' : 'any', title: d.iso, params: { ...item.options, days: [d.iso] } })),
+        );
+        if (weekend.length > 0) out.push(draft(week, month, item.id, 'weekend', 'daily', { key: `day:${weekend[0]!.iso}+`, title: weekend[0]!.iso, params: { ...item.options, days: weekend.map((d) => d.iso) } }));
+        continue;
+      }
+      out.push(draft(week, month, item.id, 'left', 'weekLeft', { startOn: 'verso', params: { ...item.options, variant } }));
+      out.push(draft(week, month, item.id, 'right', 'weekRight', { params: { ...item.options, variant } }));
+    }
+    return out;
+  },
+  layout(ctx, page) {
+    const variant = param<Variant>(page, 'variant', 'alastair');
+    if (page.type === 'daily') return dailyPage(ctx, page);
+    const week = weekOf(ctx, page);
+    const left = page.type === 'weekLeft';
+    if (variant === 'alastair') return left ? alastairLeft(ctx, page, week) : alastairRight(ctx, page, week);
+    if (variant === 'vertical') return verticalWeek(ctx, page, week, left);
+    return horizontalWeek(ctx, page, week, left);
+  },
+};
+
+/* ---------- Encabezado semanal ---------- */
+
+function weekHeader(ctx: LayoutContext, week: WeekInfo, page: PagePlan, withMiniCal: boolean): Rect {
+  const c = ctx.content;
+  const s = ctx.s;
+  const headH = 17;
+  const [head, rest] = takeTop(c, headH, 5);
+  const labelRun = ctx.run(fmt(s.week.label, { n: week.number }), { role: 'label', size: ctx.theme.sizes.label + 1, upper: true, tracking: true });
+  const lb = head.y + labelRun.capHeight + 0.5;
+  const p: Prim[] = [ctx.textAt(fmt(s.week.label, { n: week.number }), head.x, lb, { role: 'label', size: ctx.theme.sizes.label + 1, upper: true, tracking: true }).prim];
+  p.push(ctx.textAt(week.label, head.x, lb + ptToMm(ctx.theme.sizes.subtitle) * 1.15, { role: 'title', size: 'subtitle' }).prim);
+  ctx.add('week.title', 'Semana y mes', p);
+  if (withMiniCal) {
+    const nWeeks = Math.max(1, Math.min(3, Number(param(page, 'miniWeeks', 2))));
+    const idx = ctx.doc.cal.weeks.indexOf(week);
+    const rowsData: DayInfo[][] = [week.days];
+    for (let k = 1; k < nWeeks; k++) {
+      const next = ctx.doc.cal.weeks[idx + k];
+      if (next) rowsData.push(next.days);
+      else {
+        const last = rowsData[rowsData.length - 1]!;
+        rowsData.push(last.map((d) => ctx.doc.cal.day(isoPlus(d.iso, 7))!));
+      }
+    }
+    const w = Math.min(46, c.w * 0.42);
+    const box = { x: head.x + head.w - w, y: head.y, w, h: headH - 2.5 };
+    const prims = miniCalendar(ctx, box, rowsData, {
+      order: order(ctx),
+      highlight: new Set(week.days.map((d) => d.iso)),
+      month: null,
+      otherMonth: 'show',
+      numberSize: ctx.theme.sizes.label + 1.5,
+      headerSize: ctx.theme.sizes.label + 1.5,
+      headerH: 4.6,
+      weekendStyle: 'none',
+      holidays: 'none',
+      headerRule: true,
+    });
+    ctx.add('week.minical', 'Minicalendario', prims);
+  }
+  ctx.add('week.headRule', 'Filete del encabezado', [line(head.x, head.y + headH, head.x + head.w, head.y + headH, ctx.stroke('rule', 'ink'))], { editable: false });
+  return rest;
+}
+
+function isoPlus(iso: string, days: number): string {
+  const [y, m, d] = iso.split('-').map(Number);
+  const t = new Date(Date.UTC(y!, m! - 1, d! + days));
+  return t.toISOString().slice(0, 10);
+}
+
+function dayHeading(ctx: LayoutContext, day: DayInfo, x: number, baseline: number, maxW: number): Prim[] {
+  const label = `${weekdayLabel(ctx.doc.locale, day.dow)} ${day.d}`;
+  const t = ctx.textAt(label, x, baseline, { role: 'labelStrong', size: 'dayLabel' });
+  const out: Prim[] = [t.prim];
+  let cx = x + t.width + 2;
+  if (day.events.length > 0) {
+    out.push(heartIcon(ctx, cx + 0.9, baseline - 1.1, 1.6));
+    const e = ctx.textIn(day.events.map((e2) => e2.label).join(' · '), { x: cx + 2.4, y: baseline - 2.6, w: Math.max(0, x + maxW - cx - 2.4), h: 3 }, { role: 'body', size: ctx.theme.sizes.small - 0.5, ellipsis: true });
+    out.push(...e.prims);
+    cx += 2.4 + e.bbox.w + 2;
+  }
+  const h = day.holidays[0];
+  if (h) {
+    const avail = x + maxW - cx - (showMoon(ctx) && day.moon ? 4 : 0);
+    if (avail > 6) out.push(...ctx.textIn(`— ${h.name}`, { x: cx, y: baseline - 2.6, w: avail, h: 3 }, { role: 'body', size: ctx.theme.sizes.small - 0.5, ellipsis: true }).prims);
+  }
+  if (showMoon(ctx) && day.moon) out.push(...moonIcon(ctx, x + maxW - 1.6, baseline - 1.2, 1.25, day.moon, south(ctx)));
+  return out;
+}
+
+/* ---------- Alastair: izquierda (días) ---------- */
+
+function alastairLeft(ctx: LayoutContext, page: PagePlan, week: WeekInfo): void {
+  const r = weekHeader(ctx, week, page, true);
+  const prioritiesOpt = param<string | boolean>(page, 'priorities', 'auto');
+  const priorities = prioritiesOpt === true || (prioritiesOpt === 'auto' && ctx.has('top-priorities'));
+  const openLoops = ctx.has('open-loops');
+  const notesH = Math.max(24, 4 + 3 * Math.max(6, ctx.theme.writing.pitch));
+  const [daysArea, notes] = takeBottom(r, notesH, 4);
+  const dayRows = rows(daysArea, 7);
+  week.days.forEach((day, i) => {
+    const row = dayRows[i]!;
+    const p: Prim[] = [];
+    if (day.isWeekend && ctx.theme.weekendShading) p.push(rect(row, { fill: ctx.fill('weekend') }));
+    p.push(line(row.x, row.y, row.x + row.w, row.y, ctx.stroke('rule', 'ink')));
+    p.push(...dayHeading(ctx, day, row.x + 1.5, row.y + 1.2 + ptToMm(ctx.theme.sizes.dayLabel) * 0.75, row.w - 3));
+    ctx.add(`day.${i}`, `${weekdayLabel(ctx.doc.locale, day.dow)} ${day.d}`, p, { bbox: row });
+  });
+  ctx.add('days.bottom', 'Cierre de los días', [line(daysArea.x, daysArea.y + daysArea.h, daysArea.x + daysArea.w, daysArea.y + daysArea.h, ctx.stroke('rule', 'ink'))], { editable: false });
+  const np: Prim[] = [line(notes.x, notes.y, notes.x + notes.w, notes.y, ctx.stroke('heavy', 'ink'))];
+  const s = ctx.s;
+  const label = openLoops ? s.pages.weekly.openLoops : priorities ? s.week.priorities : s.week.notes;
+  np.push(...ctx.textIn(label, { x: notes.x, y: notes.y + 2, w: notes.w, h: 3 }, { role: 'label', size: ctx.theme.sizes.label, upper: true, tracking: true }).prims);
+  const area = { x: notes.x, y: notes.y + 4, w: notes.w, h: notes.h - 4 };
+  const pitch = Math.max(5.5, (area.h - 0.5) / 3);
+  if (priorities && !openLoops) {
+    for (let k = 1; k <= 3; k++) {
+      const y = area.y + k * pitch;
+      np.push(ctx.textAt(`${k}.`, area.x, y - 1.2, { role: 'labelStrong', size: 'label' }).prim);
+      np.push(line(area.x + 4, y, area.x + area.w, y, ctx.stroke('hair')));
+    }
+  } else if (openLoops) {
+    const [a, b, c] = hsplit(area, [flex(1.3), flex(1.3), flex(0.6)], 3);
+    np.push(...ctx.textIn(s.pages.weekly.nextStep, { ...b!, h: 3 }, { role: 'label', size: 'tiny', upper: true, tracking: true }).prims);
+    np.push(...ctx.textIn(s.pages.weekly.when, { ...c!, h: 3 }, { role: 'label', size: 'tiny', upper: true, tracking: true }).prims);
+    for (const col of [a!, b!, c!]) np.push(...ruledLines(col, pitch, ctx.stroke('hair')));
+  } else {
+    np.push(...ruledLines(area, pitch, ctx.stroke('hair')));
+  }
+  ctx.add('week.notes', label, np);
+}
+
+/* ---------- Alastair: derecha (tareas × días) ---------- */
+
+const ALASTAIR_LEGEND: Signifier[] = ['task', 'done', 'migrated', 'scheduled'];
+
+function alastairRight(ctx: LayoutContext, page: PagePlan, week: WeekInfo): void {
+  const c = ctx.content;
+  const s = ctx.s;
+  const footer = param<string>(page, 'footer', 'expenses');
+  const footerH = footer === 'none' ? 0 : footer === 'review' ? 26 : 14;
+  const legendOn = ctx.has('alastair-method') || ctx.has('bullet-journal');
+  const legendH = legendOn ? 6 : 0;
+  const [gridArea, bottom] = takeBottom(c, footerH + legendH, footerH + legendH > 0 ? 4 : 0);
+  const undated = param(page, 'undated', false);
+  const dayW = Math.max(6.5, ctx.theme.writing.pitch * 1.05);
+  const ncols = 7 + (undated ? 1 : 0);
+  const taskW = gridArea.w - ncols * dayW;
+  const headH = 9;
+  const pitch = ctx.theme.writing.pitch;
+  const nRows = Math.floor((gridArea.h - headH) / pitch);
+  const g: Prim[] = [];
+  const x0 = gridArea.x + taskW;
+  const bottomY = gridArea.y + headH + nRows * pitch;
+  week.days.forEach((day, i) => {
+    const x = x0 + i * dayW;
+    if (day.isWeekend && ctx.theme.weekendShading) g.push(rect({ x, y: gridArea.y, w: dayW, h: bottomY - gridArea.y }, { fill: ctx.fill('weekend') }));
+    g.push(...ctx.textIn(weekdayLetter(s, day.dow), { x, y: gridArea.y + 1.2, w: dayW, h: 3.6 }, { role: 'labelStrong', size: ctx.theme.sizes.label + 1, align: 'center', valign: 'middle' }).prims);
+    g.push(...ctx.textIn(String(day.d), { x, y: gridArea.y + 4.8, w: dayW, h: 3 }, { role: 'number', size: ctx.theme.sizes.labelSmall, align: 'center', valign: 'middle', features: TABULAR_FEATURES }).prims);
+    g.push(line(x, gridArea.y, x, bottomY, ctx.stroke('hair', 'ruleSoft')));
+  });
+  if (undated) {
+    const x = x0 + 7 * dayW;
+    g.push(line(x, gridArea.y, x, bottomY, ctx.stroke('hair', 'ruleSoft')));
+    g.push(...ctx.textIn('?', { x, y: gridArea.y + 1.2, w: dayW, h: 3.6 }, { role: 'labelStrong', size: ctx.theme.sizes.label + 1, align: 'center', valign: 'middle' }).prims);
+  }
+  g.push(...ctx.textIn(s.week.tasks, { x: gridArea.x, y: gridArea.y + 2.5, w: taskW - 2, h: 3 }, { role: 'label', size: 'labelSmall', upper: true, tracking: true }).prims);
+  g.push(line(gridArea.x, gridArea.y, gridArea.x + gridArea.w, gridArea.y, ctx.stroke('rule', 'ink')));
+  g.push(line(gridArea.x, gridArea.y + headH, gridArea.x + gridArea.w, gridArea.y + headH, ctx.stroke('rule', 'ink')));
+  for (let k = 1; k <= nRows; k++) {
+    const y = gridArea.y + headH + k * pitch;
+    g.push(line(gridArea.x, y, gridArea.x + gridArea.w, y, ctx.stroke('hair')));
+  }
+  ctx.add('tasks.grid', 'Grilla de tareas', g);
+  let y = bottom.y;
+  if (legendOn) {
+    const lp: Prim[] = [];
+    const items = ALASTAIR_LEGEND.map((k) => ({ k, label: s.pages.signifiers[k] }));
+    const lc = cols({ x: bottom.x, y, w: bottom.w, h: legendH }, items.length, 2);
+    items.forEach((it, i) => {
+      const cell = lc[i]!;
+      lp.push(...signifierIcon(ctx, it.k, cell.x + 1.5, cell.y + legendH / 2, 2.6));
+      lp.push(...ctx.textIn(it.label, { x: cell.x + 3.6, y: cell.y, w: cell.w - 3.6, h: legendH }, { role: 'body', size: 'tiny', valign: 'middle', fit: true }).prims);
+    });
+    ctx.add('tasks.legend', s.pages.weekly.legend, lp);
+    y += legendH;
+  }
+  if (footer === 'expenses') {
+    const f = { x: bottom.x, y: y + 1, w: bottom.w, h: footerH - 1 };
+    const p: Prim[] = [line(f.x, f.y, f.x + f.w, f.y, ctx.stroke('rule', 'ink'))];
+    p.push(...ctx.textIn(s.week.expenses, { x: f.x, y: f.y + 2, w: f.w, h: 3 }, { role: 'label', size: ctx.theme.sizes.label, upper: true, tracking: true }).prims);
+    const t = ctx.textAt(s.week.expensesTotal, f.x, f.y + f.h - 1.5, { role: 'body', size: 'body', upper: true });
+    p.push(t.prim, line(f.x + t.width + 3, f.y + f.h - 1.1, f.x + f.w, f.y + f.h - 1.1, ctx.stroke('strong', 'ink')));
+    ctx.add('tasks.expenses', s.week.expenses, p);
+  } else if (footer === 'review') {
+    const f = { x: bottom.x, y: y + 1, w: bottom.w, h: footerH - 1 };
+    const p: Prim[] = [line(f.x, f.y, f.x + f.w, f.y, ctx.stroke('rule', 'ink'))];
+    p.push(...ctx.textIn(s.week.review, { x: f.x, y: f.y + 2, w: f.w, h: 3 }, { role: 'label', size: ctx.theme.sizes.label, upper: true, tracking: true }).prims);
+    const steps = s.pages.weekly.reviewSteps;
+    const half = Math.ceil(steps.length / 2);
+    const colsR = hsplit({ x: f.x, y: f.y + 5, w: f.w, h: f.h - 5 }, [flex(), flex()], 4);
+    steps.forEach((st, i) => {
+      const col = colsR[i < half ? 0 : 1]!;
+      const k = i < half ? i : i - half;
+      const yy = col.y + 2 + k * 4.4;
+      p.push(rect({ x: col.x, y: yy - 2.2, w: 2.4, h: 2.4 }, { stroke: ctx.stroke('hair', 'ink') }));
+      p.push(...ctx.textIn(st, { x: col.x + 3.4, y: yy - 2.4, w: col.w - 3.4, h: 3 }, { role: 'body', size: 'tiny', fit: true }).prims);
+    });
+    ctx.add('tasks.review', s.week.review, p);
+  }
+}
+
+/* ---------- Horizontal: días apilados (lun–mié + notas | jue–dom) ---------- */
+
+function horizontalWeek(ctx: LayoutContext, page: PagePlan, week: WeekInfo, left: boolean): void {
+  const r = left ? weekHeader(ctx, week, page, true) : takeTop(ctx.content, 0)[1];
+  const days = left ? week.days.slice(0, 3) : week.days.slice(3);
+  const slots = left ? 4 : 4;
+  const parts = rows(r, slots, 2);
+  days.forEach((day, i) => {
+    const row = parts[i]!;
+    const p: Prim[] = [];
+    if (day.isWeekend && ctx.theme.weekendShading) p.push(rect(row, { fill: ctx.fill('weekend') }));
+    p.push(line(row.x, row.y, row.x + row.w, row.y, ctx.stroke('rule', 'ink')));
+    p.push(...dayHeading(ctx, day, row.x + 1.5, row.y + 4, row.w - 3));
+    p.push(...writingArea(ctx, { x: row.x, y: row.y + 5, w: row.w, h: row.h - 5 }, 'auto'));
+    ctx.add(`day.${left ? i : i + 3}`, `${day.d}`, p, { bbox: row });
+  });
+  if (left) {
+    const nrow = parts[3]!;
+    const p: Prim[] = [line(nrow.x, nrow.y, nrow.x + nrow.w, nrow.y, ctx.stroke('heavy', 'ink'))];
+    const pr = ctx.has('top-priorities');
+    p.push(...ctx.textIn(pr ? ctx.s.week.priorities : ctx.s.week.notes, { x: nrow.x, y: nrow.y + 2, w: nrow.w, h: 3 }, { role: 'label', size: 'label', upper: true, tracking: true }).prims);
+    p.push(...(pr ? checklist(ctx, { x: nrow.x, y: nrow.y + 4, w: nrow.w, h: nrow.h - 4 }, ctx.theme.writing.pitch, { circles: true, max: 3 }) : writingArea(ctx, { x: nrow.x, y: nrow.y + 4, w: nrow.w, h: nrow.h - 4 }, 'auto')));
+    ctx.add('week.notes', ctx.s.week.notes, p);
+  }
+}
+
+/* ---------- Vertical: columnas por día ---------- */
+
+function verticalWeek(ctx: LayoutContext, page: PagePlan, week: WeekInfo, left: boolean): void {
+  const r = left ? weekHeader(ctx, week, page, false) : weekHeaderRight(ctx, week);
+  const days = left ? week.days.slice(0, 4) : week.days.slice(4);
+  const colRects = hsplit(r, [...days.map(() => flex()), ...(left ? [] : [flex()])], 2);
+  days.forEach((day, i) => {
+    const col = colRects[i]!;
+    const p: Prim[] = [];
+    if (day.isWeekend && ctx.theme.weekendShading) p.push(rect(col, { fill: ctx.fill('weekend') }));
+    p.push(line(col.x, col.y, col.x + col.w, col.y, ctx.stroke('rule', 'ink')));
+    p.push(...ctx.textIn(weekdayLabel(ctx.doc.locale, day.dow), { x: col.x, y: col.y + 1.5, w: col.w, h: 3 }, { role: 'labelStrong', size: 'label', align: 'center' }).prims);
+    p.push(...ctx.textIn(String(day.d), { x: col.x, y: col.y + 5, w: col.w, h: 6 }, { role: 'display', size: ctx.theme.sizes.subtitle + 4, align: 'center', features: TABULAR_FEATURES }).prims);
+    const h = day.holidays[0];
+    if (h) p.push(...ctx.textIn(h.name, { x: col.x + 0.5, y: col.y + 12.5, w: col.w - 1, h: 5 }, { role: 'label', size: 'tiny', upper: true, align: 'center', wrap: true, maxLines: 2, ellipsis: true, fit: true }).prims);
+    if (showMoon(ctx) && day.moon) p.push(...moonIcon(ctx, col.x + col.w - 2, col.y + 3, 1.2, day.moon, south(ctx)));
+    p.push(...ruledLines({ x: col.x + 0.5, y: col.y + 18, w: col.w - 1, h: col.h - 18 }, ctx.theme.writing.pitch, ctx.stroke('hair')));
+    ctx.add(`day.${left ? i : i + 4}`, `${day.d}`, p, { bbox: col });
+  });
+  if (!left) {
+    const nc = colRects[days.length]!;
+    const p: Prim[] = [line(nc.x, nc.y, nc.x + nc.w, nc.y, ctx.stroke('heavy', 'ink'))];
+    p.push(...ctx.textIn(ctx.s.common.notes, { x: nc.x, y: nc.y + 1.5, w: nc.w, h: 3 }, { role: 'label', size: 'label', upper: true, tracking: true, align: 'center' }).prims);
+    p.push(...writingArea(ctx, { x: nc.x, y: nc.y + 6, w: nc.w, h: nc.h - 6 }, 'auto'));
+    ctx.add('week.notes', ctx.s.week.notes, p);
+  }
+}
+
+function weekHeaderRight(ctx: LayoutContext, week: WeekInfo): Rect {
+  const [head, rest] = takeTop(ctx.content, 12, 5);
+  const t = ctx.textAt(fmt(ctx.s.week.label, { n: week.number }), head.x + head.w, head.y + 4, { role: 'label', size: ctx.theme.sizes.label + 1, upper: true, tracking: true, align: 'right' });
+  ctx.add('week.title', 'Semana', [t.prim]);
+  return rest;
+}
+
+/* ---------- Día por página ---------- */
+
+function dailyPage(ctx: LayoutContext, page: PagePlan): void {
+  const isos = param<string[]>(page, 'days', []);
+  const days = isos.map((iso) => ctx.doc.cal.day(iso)!).filter(Boolean);
+  const c = ctx.content;
+  const s = ctx.s.pages.daily;
+  const parts = days.length > 1 ? rows(c, days.length, 4) : [c];
+  days.forEach((day, i) => {
+    const area = parts[i]!;
+    const single = days.length === 1;
+    const [head, body] = takeTop(area, single ? 16 : 10, 2);
+    const hp: Prim[] = [];
+    const num = ctx.textAt(String(day.d), head.x, head.y + (single ? 11 : 7), { role: 'display', size: single ? ctx.theme.sizes.monthHero * 0.62 : ctx.theme.sizes.title, features: TABULAR_FEATURES });
+    hp.push(num.prim);
+    const wd = new Intl.DateTimeFormat(ctx.doc.locale, { weekday: 'long', month: 'long', timeZone: 'UTC' }).formatToParts(new Date(`${day.iso}T12:00:00Z`));
+    const wdName = (wd.find((p) => p.type === 'weekday')?.value ?? '').toLocaleUpperCase(ctx.doc.locale);
+    const mName = (wd.find((p) => p.type === 'month')?.value ?? '').toLocaleUpperCase(ctx.doc.locale);
+    hp.push(ctx.textAt(wdName, num.bbox.x + num.width + 3, head.y + (single ? 6 : 4), { role: 'labelStrong', size: 'label', tracking: true }).prim);
+    hp.push(ctx.textAt(`${mName} ${day.y}`, num.bbox.x + num.width + 3, head.y + (single ? 10.5 : 7.5), { role: 'label', size: 'labelSmall', tracking: true }).prim);
+    const hol = day.holidays[0];
+    if (hol) hp.push(...ctx.textIn(hol.name, { x: head.x + head.w * 0.45, y: head.y + 1, w: head.w * 0.5, h: 6 }, { role: 'body', size: 'small', align: 'right', wrap: true, maxLines: 2, ellipsis: true }).prims);
+    if (showMoon(ctx) && day.moon) hp.push(...moonIcon(ctx, head.x + head.w - 2, head.y + head.h - 3, 1.5, day.moon, south(ctx)));
+    hp.push(line(head.x, head.y + head.h, head.x + head.w, head.y + head.h, ctx.stroke('rule', 'ink')));
+    ctx.add(`daily.${i}.head`, day.iso, hp);
+    if (!single) {
+      ctx.add(`daily.${i}.notes`, day.iso, writingArea(ctx, body, 'auto'));
+      return;
+    }
+    // Página completa: recordatorios, 3 importantes, notas libres y cierre del día.
+    const pitch = ctx.theme.writing.pitch;
+    const blocks: Array<{ id: string; label: string; lines: number; on: boolean; circles?: boolean }> = [
+      { id: 'remember', label: s.remember, lines: 2, on: ctx.has('external-memory') },
+      { id: 'top3', label: s.top3, lines: 3, on: true, circles: true },
+    ];
+    let y = body.y;
+    for (const b of blocks) {
+      if (!b.on) continue;
+      const lab = ctx.textIn(b.label, { x: body.x, y, w: body.w, h: 3 }, { role: 'label', size: 'labelSmall', upper: true, tracking: true });
+      const area = { x: body.x, y: y + 2.5, w: body.w, h: b.lines * pitch };
+      ctx.add(`daily.${b.id}`, b.label, [...lab.prims, ...(b.circles ? checklist(ctx, area, pitch, { circles: true }) : ruledLines(area, pitch, ctx.stroke('hair')))]);
+      y = area.y + area.h + 3;
+    }
+    const closing: Array<{ id: string; label: string; on: boolean; lines: number }> = [
+      { id: 'progress', label: s.progress, on: ctx.has('done-list'), lines: 2 },
+      { id: 'good', label: ctx.s.pages.goodThings.title, on: ctx.has('three-good-things'), lines: 3 },
+      { id: 'learned', label: s.learned, on: ctx.has('daily-reflection'), lines: 2 },
+      { id: 'tomorrow', label: s.tomorrow, on: ctx.has('brain-dump'), lines: 2 },
+    ].filter((x) => x.on);
+    const closingH = closing.reduce((sum, x) => sum + 3 + x.lines * pitch + 2, 0) + (ctx.has('mood-log') ? 7 : 0) + (ctx.has('focus-breaks') ? 7 : 0);
+    const notesArea = { x: body.x, y, w: body.w, h: Math.max(10, body.y + body.h - y - closingH) };
+    ctx.add('daily.notes', s.top3, writingArea(ctx, notesArea, 'auto'));
+    y = notesArea.y + notesArea.h + 2;
+    if (ctx.has('focus-breaks')) {
+      const lab = ctx.textAt(s.focus, body.x, y + 3, { role: 'label', size: 'labelSmall', upper: true, tracking: true });
+      const p: Prim[] = [lab.prim];
+      for (let k = 0; k < 8; k++) p.push(circle(body.x + lab.width + 4 + k * 4.5, y + 2, 1.6, { stroke: ctx.stroke('hair', 'ink') }));
+      ctx.add('daily.focus', s.focus, p);
+      y += 7;
+    }
+    for (const b of closing) {
+      const lab = ctx.textIn(b.label, { x: body.x, y, w: body.w, h: 3 }, { role: 'label', size: 'labelSmall', upper: true, tracking: true });
+      const area = { x: body.x, y: y + 2.5, w: body.w, h: b.lines * pitch };
+      ctx.add(`daily.${b.id}`, b.label, [...lab.prims, ...ruledLines(area, pitch, ctx.stroke('hair'))]);
+      y = area.y + area.h + 2;
+    }
+    if (ctx.has('mood-log')) {
+      const lab = ctx.textAt(s.mood, body.x, y + 3, { role: 'label', size: 'labelSmall', upper: true, tracking: true });
+      const p: Prim[] = [lab.prim];
+      for (let k = 1; k <= 5; k++) {
+        const cx = body.x + lab.width + 5 + (k - 1) * 6;
+        p.push(checkCircle(ctx, cx, y + 2, 2));
+        p.push(...ctx.textIn(String(k), { x: cx - 2, y: y + 0.2, w: 4, h: 3.6 }, { role: 'number', size: ctx.theme.sizes.tiny, align: 'center', valign: 'middle' }).prims);
+      }
+      ctx.add('daily.mood', s.mood, p);
+    }
+  });
+}
+
+export const WEEK_SECTIONS: SectionModule[] = [weeks];
