@@ -4,6 +4,8 @@
   "private": true,
   "description": "Design, preview and print handmade planners in signatures, for any year, language and country.",
   "type": "module",
+  "main": "electron/main.mjs",
+  "desktopName": "agenda-heritage-studio.desktop",
   "engines": {
     "node": ">=22.12"
   },
@@ -11,6 +13,8 @@
     "dev": "vite",
     "build": "npm run typecheck && vite build",
     "preview": "vite preview",
+    "desktop": "electron .",
+    "desktop:build": "npm run build && electron-builder --publish never",
     "typecheck": "tsc -p tsconfig.core.json && tsc -p tsconfig.app.json && tsc -p tsconfig.worker.json && tsc -p tsconfig.node.json",
     "lint": "eslint .",
     "test": "vitest run",
@@ -30,7 +34,6 @@
     "@cantoo/pdf-lib": "^2.11.1",
     "astronomy-engine": "^2.1.19",
     "clsx": "^2.1.1",
-    "date-holidays-parser": "^3.4.7",
     "fontkit": "^2.0.4",
     "idb-keyval": "^6.3.0",
     "immer": "^11.2.9",
@@ -53,6 +56,8 @@
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.2.1",
     "date-holidays": "^3.38.0",
+    "electron": "45.2.2",
+    "electron-builder": "26.18.0",
     "eslint": "^10.14.0",
     "eslint-plugin-react-hooks": "^7.1.1",
     "globals": "^17.14.0",
@@ -66,5 +71,6 @@
     "vitest": "^5.1.0",
     "workbox-build": "^7.4.1",
     "workbox-window": "^7.4.1"
-  }
+  },
+  "author": "Jonatan <jonidimo@gmail.com>"
 }

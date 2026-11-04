@@ -19,8 +19,9 @@ que arma el libro completo para cualquier año: calendario, feriados, registros 
 y páginas de planificación basadas en la ciencia del comportamiento. Ubica las páginas en
 hojas listas para una impresora dúplex, listas para plegar, coser y encuadernar.
 
-Funciona entera en el navegador, también sin conexión, en Linux, Windows y Android. No
-se sube nada a ningún lado.
+Funciona entera en el navegador, también sin conexión, en Linux, Windows, macOS y
+Android, y como aplicación de escritorio para Windows, macOS y Linux. No se sube nada a
+ningún lado.
 
 ![Edición de un pliego semanal](docs/images/editor-spread.png)
 
@@ -205,6 +206,10 @@ alrededor de un minuto.
 teléfono Android, elegí *Instalar* o *Agregar a la pantalla principal*. Desde ahí funciona
 sin conexión.
 
+**Aplicación de escritorio.** Los instaladores para Windows, macOS y Linux se compilan en
+GitHub. La [guía de la aplicación de escritorio](docs/desktop.md) (en inglés) explica cómo
+descargarlos, instalarlos y compilarlos.
+
 **Publicar tu propia copia.** `npm run build` genera un sitio estático en `dist/`. El flujo
 de GitHub Pages incluido lo publica: activalo en *Settings → Pages → Source: GitHub
 Actions*.
@@ -237,6 +242,7 @@ paso, con los ajustes para Linux (CUPS), Windows y Android ([in English](docs/pr
 | `src/app` | El editor (React). |
 | `src/workers` | La generación del PDF en segundo plano. |
 | `src/cli` | La línea de comandos. |
+| `electron` | La aplicación de escritorio (Electron). |
 | `designs` | Agendas de ejemplo para 2027 en español, inglés, portugués e italiano. |
 | `tests`, `e2e` | Pruebas unitarias (Vitest) y del navegador (Playwright). |
 | `docs` | Guías y el informe de evidencia. |

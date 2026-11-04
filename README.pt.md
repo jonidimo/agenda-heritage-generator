@@ -20,8 +20,9 @@ páginas de planejamento baseadas na ciência do comportamento. Ele distribui as
 folhas prontas para uma impressora frente e verso, para você dobrar, costurar e
 encadernar.
 
-Funciona inteiramente no navegador, inclusive sem conexão, no Linux, no Windows e no
-Android. Nada é enviado para lugar nenhum.
+Funciona inteiramente no navegador, inclusive sem conexão, no Linux, no Windows, no macOS
+e no Android, e também como aplicativo para computador (Windows, macOS e Linux). Nada é
+enviado para lugar nenhum.
 
 ![Edição de uma página dupla semanal](docs/images/editor-spread.png)
 
@@ -208,6 +209,10 @@ cerca de um minuto.
 Android, escolha *Instalar* ou *Adicionar à tela inicial*. A partir daí, funciona sem
 conexão.
 
+**Aplicativo para computador.** Os instaladores para Windows, macOS e Linux são gerados no
+GitHub. O [guia do aplicativo para computador](docs/desktop.md) (em inglês) explica como
+baixá-los, instalá-los e gerá-los.
+
 **Publicar sua própria cópia.** `npm run build` gera um site estático em `dist/`. O
 projeto inclui um fluxo de trabalho do GitHub Pages que o publica: ative-o em
 *Settings → Pages → Source: GitHub Actions*.
@@ -241,6 +246,7 @@ explica cada passo, com os ajustes para Linux (CUPS), Windows e Android. Há tam
 | `src/app` | O editor (React). |
 | `src/workers` | A geração do PDF num processo em segundo plano. |
 | `src/cli` | A linha de comando. |
+| `electron` | O aplicativo para computador (Electron). |
 | `designs` | Agendas de exemplo para 2027 em espanhol, inglês, português e italiano. |
 | `tests`, `e2e` | Testes unitários (Vitest) e de navegador (Playwright). |
 | `docs` | Guias e o relatório de evidências. |

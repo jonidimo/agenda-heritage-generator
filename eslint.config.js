@@ -4,7 +4,7 @@ import globals from 'globals';
 import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
-  { ignores: ['dist', 'node_modules', 'legacy', 'public', 'coverage', 'test-results', 'playwright-report', 'dev-dist'] },
+  { ignores: ['dist', 'node_modules', 'legacy', 'public', 'coverage', 'test-results', 'playwright-report', 'dev-dist', 'release'] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
@@ -17,7 +17,7 @@ export default tseslint.config(
     },
   },
   {
-    files: ['src/cli/**/*.ts', 'scripts/**/*.ts', 'tests/**/*.ts', 'e2e/**/*.ts', '*.config.ts'],
+    files: ['src/cli/**/*.ts', 'scripts/**/*.ts', 'tests/**/*.ts', 'e2e/**/*.ts', '*.config.ts', 'electron/**/*.mjs'],
     languageOptions: { globals: globals.node },
   },
   {

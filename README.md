@@ -19,8 +19,8 @@ the whole book for any year: calendar, holidays, habit trackers and planning pag
 on behavioural science. It lays the pages out on sheets ready for a duplex printer, so
 you can fold, sew and bind them.
 
-It runs entirely in your browser, also offline, on Linux, Windows and Android. Nothing
-is uploaded anywhere.
+It runs entirely in your browser, also offline, on Linux, Windows, macOS and Android,
+and as a desktop app for Windows, macOS and Linux. Nothing is uploaded anywhere.
 
 ![Editing a weekly spread](docs/images/editor-spread.png)
 
@@ -194,6 +194,9 @@ about a minute.
 **Install it as an app.** In Chrome, Edge or Chromium, on a computer or an Android phone,
 choose *Install* or *Add to home screen*. It then works offline.
 
+**Desktop app.** Installers for Windows, macOS and Linux are built on GitHub. The
+[desktop app guide](docs/desktop.md) explains how to download, install and build them.
+
 **Publish your own copy.** `npm run build` writes a static site to `dist/`. The included
 GitHub Pages workflow publishes it: enable it in *Settings → Pages → Source: GitHub
 Actions*.
@@ -226,6 +229,7 @@ settings for Linux (CUPS), Windows and Android ([en español](docs/impresion.md)
 | `src/app` | The editor (React). |
 | `src/workers` | PDF generation in a background worker. |
 | `src/cli` | Command line. |
+| `electron` | The desktop app (Electron). |
 | `designs` | Example planners for 2027 in Spanish, English, Portuguese and Italian. |
 | `tests`, `e2e` | Unit tests (Vitest) and browser tests (Playwright). |
 | `docs` | Guides and the evidence report. |

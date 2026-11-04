@@ -20,8 +20,8 @@ abitudini e pagine di pianificazione basate sulle scienze comportamentali. Dispo
 pagine su fogli pronti per una stampante fronte-retro, così puoi piegarli, cucirli e
 rilegarli.
 
-Funziona interamente nel browser, anche offline, su Linux, Windows e Android. Non viene
-caricato nulla da nessuna parte.
+Funziona interamente nel browser, anche offline, su Linux, Windows, macOS e Android, e
+come app desktop per Windows, macOS e Linux. Non viene caricato nulla da nessuna parte.
 
 ![Modifica di una doppia pagina settimanale](docs/images/editor-spread.png)
 
@@ -208,6 +208,10 @@ vuole circa un minuto.
 Android, scegli *Installa* o *Aggiungi a schermata Home*. Da quel momento funziona anche
 offline.
 
+**App desktop.** Gli installer per Windows, macOS e Linux vengono compilati su GitHub. La
+[guida all’app desktop](docs/desktop.md) (in inglese) spiega come scaricarli, installarli e
+compilarli.
+
 **Pubblicare la tua copia.** `npm run build` genera un sito statico in `dist/`. Il
 progetto include un workflow di GitHub Pages che lo pubblica: attivalo in
 *Settings → Pages → Source: GitHub Actions*.
@@ -241,6 +245,7 @@ C’è anche una [versione in spagnolo](docs/impresion.md).
 | `src/app` | L’editor (React). |
 | `src/workers` | La generazione del PDF in un processo in background. |
 | `src/cli` | La riga di comando. |
+| `electron` | L’app desktop (Electron). |
 | `designs` | Agende di esempio per il 2027 in spagnolo, inglese, portoghese e italiano. |
 | `tests`, `e2e` | Test unitari (Vitest) e test nel browser (Playwright). |
 | `docs` | Le guide e il rapporto sulle evidenze. |
