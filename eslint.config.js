@@ -17,7 +17,7 @@ export default tseslint.config(
     },
   },
   {
-    files: ['src/cli/**/*.ts', 'scripts/**/*.ts', 'tests/**/*.ts', 'e2e/**/*.ts', '*.config.ts', 'electron/**/*.mjs'],
+    files: ['src/cli/**/*.ts', 'src/node/**/*.ts', 'src/mcp/**/*.ts', 'scripts/**/*.ts', 'tests/**/*.ts', 'e2e/**/*.ts', '*.config.ts', 'electron/**/*.mjs'],
     languageOptions: { globals: globals.node },
   },
   {

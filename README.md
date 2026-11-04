@@ -24,6 +24,22 @@ and as a desktop app for Windows, macOS and Linux. Nothing is uploaded anywhere.
 
 ![Editing a weekly spread](docs/images/editor-spread.png)
 
+## Download
+
+**[Download the latest version](https://github.com/jonidimo/agenda-heritage-generator/releases/latest)** and choose the file for your system under
+*Assets*:
+
+| System | File |
+| --- | --- |
+| Windows 10 and 11 | `…-win-x64-setup.exe` (installer) or `…-win-x64-portable.exe` (no installation) |
+| macOS 13 or later | `…-mac-arm64.dmg` (Apple silicon) or `…-mac-x64.dmg` (Intel) |
+| Linux | `…-linux-x86_64.AppImage` (any distribution) or `…-linux-amd64.deb` (Debian, Ubuntu, Mint) |
+
+The installers are not signed with a paid certificate, so Windows and macOS warn you the
+first time you open them. The [desktop app guide](docs/desktop.md) shows how to open them,
+where your planners are kept and how to build the app yourself. To use it in the browser
+instead, see [Run it](#run-it).
+
 ## Features
 
 ### See it exactly as it will print
@@ -47,6 +63,10 @@ and as a desktop app for Windows, macOS and Linux. Nothing is uploaded anywhere.
   in the final PDF), or a page of lines, dots or grid. The rest of the book reflows
   around them.
 - Your own text, images, lines and frames on any page type.
+- Resize your elements from any edge or corner; hold Shift to keep their proportions.
+- An image element takes any picture: choose one from the planner or upload a PNG, JPG or
+  SVG.
+- Each text element can have its own font and colour, or follow its type of text.
 - **Right-click** (or long-press on a phone) any element, page or thumbnail for its
   options: change the watermark image, hide something on one page or on all pages of
   that type, select similar elements, add text or images where you clicked.
@@ -55,6 +75,22 @@ and as a desktop app for Windows, macOS and Linux. Nothing is uploaded anywhere.
   into a grid that finds their rows and columns.
 - **Lines, dots or grid per page type or per page**: line spacing, horizontal and
   vertical dot spacing, dot size and line weight.
+
+### Sections and page templates
+
+- Click a section in the **Sections** panel to go to its page. Right-click it to move it,
+  turn it off or change how often it repeats.
+- Any section can appear once or **repeat every month, week or day**.
+- **Page templates**: design a page once (a background of lines, dots or grid, texts,
+  images, frames) and repeat it wherever you want. Texts such as `{date}`, `{weekday}` or
+  `{month}` change on each copy.
+
+### Find anything
+
+- **Search** (Ctrl+K, `/` or the magnifier) finds settings, sections, pages and elements,
+  even with typos, without accents or in any case, and takes you there with a highlight.
+- **Back and forward** buttons in the top bar go through the pages you visited, as in a
+  browser.
 
 ### Any year, language and country
 
@@ -73,7 +109,17 @@ and as a desktop app for Windows, macOS and Linux. Nothing is uploaded anywhere.
 
 ### Designed for paper
 
-- 5 themes (Heritage, Clear, Classic, Minimal, Notebook) and 4 templates.
+- 6 themes (Heritage, Clear, Classic, Minimal, Notebook, Filigree) and 4 templates. A
+  theme sets everything at once: the font and colour of each type of text and the style of
+  writing lines, separators, tables and frames.
+- **Lines and flourishes**: solid, dashed, dotted or double lines, ornaments repeated
+  along a line or set in its centre, and corners for frames. Ten ornaments are built in,
+  and you can import your own SVG or PNG.
+- **A palette from one colour**: choose a colour and a harmony (monochrome, analogous,
+  complementary, split complementary or triadic). The app derives every colour in the
+  OKLCH colour space and keeps text dark enough to read on paper.
+- **Your own themes**: save the whole style with a name, use it in other planners and
+  share it as a `.tema.json` file with its ornaments inside.
 - Change fonts, sizes, line weight and spacing, lines, dots or grid, weekend shading and
   a comfort level for older eyes. Everything updates live.
 - 5 bundled open-source font families, embedded in the PDF as subsets. Upload your own
@@ -129,6 +175,15 @@ and as a desktop app for Windows, macOS and Linux. Nothing is uploaded anywhere.
   restores them.
 - Planners are also kept in the browser, but only in that browser and at that app
   address, so files are the safe copy.
+
+### Design with an AI model
+
+- An **MCP server** lets Claude, or any model that speaks MCP, create a planner, change
+  it, check it, look at its pages and export the PDF or a theme. Ask it for "a teacher's
+  planner from March to December" or "a theme with Art Nouveau flourishes".
+- The file format comes with a **JSON Schema** and a catalogue generated from the code,
+  and `npm run agenda -- check` says exactly what would be ignored or corrected. Read the
+  [guide](docs/llm-templates.md) ([en español](docs/plantillas-llm.md)).
 
 ### Made to last
 
@@ -213,8 +268,8 @@ about a minute.
 **Install it as an app.** In Chrome, Edge or Chromium, on a computer or an Android phone,
 choose *Install* or *Add to home screen*. It then works offline.
 
-**Desktop app.** Installers for Windows, macOS and Linux are built on GitHub. The
-[desktop app guide](docs/desktop.md) explains how to download, install and build them.
+**Desktop app.** See [Download](#download). The [desktop app guide](docs/desktop.md)
+explains how to install it and how to build the installers.
 
 **Publish your own copy.** `npm run build` writes a static site to `dist/`. The included
 GitHub Pages workflow publishes it: enable it in *Settings → Pages → Source: GitHub
@@ -231,8 +286,17 @@ npm run agenda -- info designs/my-2028.agenda.json
 ```
 
 ```bash
+npm run agenda -- check designs/my-2028.agenda.json
+```
+
+```bash
 npm run pdf -- designs/my-2028.agenda.json --mode imposed --out output/my-2028-print.pdf
 ```
+
+`check` lists what would be ignored or corrected in a file and the warnings of the built
+planner. `npm run agenda -- schema` and `npm run agenda -- catalog` print the file format and
+everything it can name. `npm run -s mcp` starts the MCP server for AI models (see
+[the guide](docs/llm-templates.md)).
 
 ## Printing and binding
 
@@ -248,6 +312,8 @@ settings for Linux (CUPS), Windows and Android ([en español](docs/impresion.md)
 | `src/app` | The editor (React). |
 | `src/workers` | PDF generation in a background worker. |
 | `src/cli` | Command line. |
+| `src/node` | Shared by the command line, the MCP server and the tests: reads fonts, holidays and images from disk, and checks design files. |
+| `src/mcp` | The MCP server for AI models. |
 | `electron` | The desktop app (Electron). |
 | `designs` | Example planners for 2027 in Spanish, English, Portuguese and Italian. |
 | `tests`, `e2e` | Unit tests (Vitest) and browser tests (Playwright). |

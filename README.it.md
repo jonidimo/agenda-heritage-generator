@@ -25,6 +25,21 @@ come app desktop per Windows, macOS e Linux. Non viene caricato nulla da nessuna
 
 ![Modifica di una doppia pagina settimanale](docs/images/editor-spread.png)
 
+## Scarica
+
+**[Scarica l’ultima versione](https://github.com/jonidimo/agenda-heritage-generator/releases/latest)** e scegli il file per il tuo sistema in *Assets*:
+
+| Sistema | File |
+| --- | --- |
+| Windows 10 e 11 | `…-win-x64-setup.exe` (installer) o `…-win-x64-portable.exe` (senza installazione) |
+| macOS 13 o successivo | `…-mac-arm64.dmg` (Apple silicon) o `…-mac-x64.dmg` (Intel) |
+| Linux | `…-linux-x86_64.AppImage` (qualsiasi distribuzione) o `…-linux-amd64.deb` (Debian, Ubuntu, Mint) |
+
+Gli installer non sono firmati con un certificato a pagamento, quindi Windows e macOS
+mostrano un avviso la prima volta che li apri. La [guida all’app desktop](docs/desktop.md)
+(in inglese) spiega come aprirli, dove vengono salvate le tue agende e come compilare l’app.
+Per usarla nel browser, vedi [Come usarla](#come-usarla).
+
 ## Cosa fa
 
 ### Vedi tutto esattamente come verrà stampato
@@ -48,6 +63,12 @@ come app desktop per Windows, macOS e Linux. Non viene caricato nulla da nessuna
   PDF (che resta vettoriale nel PDF finale), oppure una pagina a righe, a puntini o a
   quadretti. Il resto del libro si riorganizza da solo.
 - Aggiungi testi, immagini, righe e cornici a qualsiasi tipo di pagina.
+- Ridimensiona i tuoi elementi da qualsiasi bordo o angolo; con Maiusc mantengono le
+  proporzioni.
+- Un elemento immagine accetta qualsiasi immagine: scegline una dall’agenda o carica un PNG,
+  JPG o SVG.
+- Ogni testo può avere il suo carattere e il suo colore, oppure seguire quelli del suo tipo
+  di testo.
 - **Clic destro** (o pressione prolungata sul telefono) su qualsiasi elemento, pagina o
   miniatura: cambiare l’immagine della filigrana, nascondere qualcosa in una pagina o in
   tutte quelle di quel tipo, selezionare elementi simili, aggiungere testi o immagini dove
@@ -57,6 +78,23 @@ come app desktop per Windows, macOS e Linux. Non viene caricato nulla da nessuna
   che ne trova righe e colonne.
 - **Righe, puntini o quadretti per tipo di pagina o per pagina**: interlinea, passo
   orizzontale e verticale dei puntini, dimensione del puntino e spessore.
+
+### Sezioni e modelli di pagina
+
+- Clicca una sezione nel pannello **Sezioni** per andare alla sua pagina. Con il clic
+  destro la sposti, la disattivi o cambi ogni quanto si ripete.
+- Qualsiasi sezione può comparire una volta o **ripetersi ogni mese, settimana o giorno**.
+- **Modelli di pagina**: disegni una pagina una volta (sfondo a righe, puntini o quadretti,
+  testi, immagini, cornici) e la ripeti dove vuoi. Testi come `{date}`, `{weekday}` o
+  `{month}` cambiano in ogni copia.
+
+### Trova qualsiasi cosa
+
+- **Ricerca** (Ctrl+K, `/` o la lente): trova impostazioni, sezioni, pagine ed elementi
+  anche con errori di battitura, senza accenti o con maiuscole diverse, e ti porta lì
+  evidenziandoli.
+- I pulsanti **Indietro e Avanti** nella barra superiore ripercorrono le pagine visitate,
+  come nel browser.
 
 ### Qualsiasi anno, lingua e Paese
 
@@ -75,7 +113,17 @@ come app desktop per Windows, macOS e Linux. Non viene caricato nulla da nessuna
 
 ### Pensata per la carta
 
-- 5 temi (Heritage, Chiara, Classica, Minimale, Quaderno) e 4 modelli.
+- 6 temi (Heritage, Chiara, Classica, Minimale, Quaderno, Filigrana) e 4 modelli. Un
+  tema definisce tutto insieme: il carattere e il colore di ogni tipo di testo e lo stile
+  delle righe di scrittura, dei separatori, delle tabelle e delle cornici.
+- **Linee e ghirigori**: linee continue, tratteggiate, punteggiate o doppie, ornamenti
+  ripetuti lungo una linea o al suo centro, e angoli per le cornici. Ci sono dieci
+  ornamenti inclusi e puoi importare i tuoi in SVG o PNG.
+- **Una palette da un colore**: scegli un colore e un’armonia (monocromatica, analoga,
+  complementare, complementare divisa o triadica). L’app ricava tutti i colori nello
+  spazio colore OKLCH e mantiene il testo abbastanza scuro da leggersi bene sulla carta.
+- **Temi personali**: salva tutto lo stile con un nome, usalo in altre agende e
+  condividilo come file `.tema.json`, con i suoi ornamenti dentro.
 - Cambia caratteri, dimensioni, spessore e interlinea delle righe; scegli righe, puntini o
   quadretti; regola l’ombreggiatura del fine settimana e un livello di comodità per chi
   ha la vista stanca. Tutto si aggiorna in tempo reale.
@@ -135,6 +183,15 @@ come app desktop per Windows, macOS e Linux. Non viene caricato nulla da nessuna
   ripristinati.
 - Le agende restano anche nel browser, ma solo in quel browser e a quell’indirizzo
   dell’app: i file sono la copia sicura.
+
+### Progetta con un modello di intelligenza artificiale
+
+- Un **server MCP** permette a Claude, o a qualsiasi modello compatibile con MCP, di creare
+  un’agenda, modificarla, controllarla, guardarne le pagine ed esportare il PDF o un tema.
+  Chiedigli "un’agenda per insegnanti da marzo a dicembre" o "un tema con ghirigori liberty".
+- Il formato del file ha uno **schema JSON** e un catalogo generati dal codice, e
+  `npm run agenda -- check` dice esattamente cosa verrebbe ignorato o corretto. Leggi la
+  [guida](docs/llm-templates.md) (in inglese; [en español](docs/plantillas-llm.md)).
 
 ### Fatta per durare
 
@@ -227,9 +284,8 @@ vuole circa un minuto.
 Android, scegli *Installa* o *Aggiungi a schermata Home*. Da quel momento funziona anche
 offline.
 
-**App desktop.** Gli installer per Windows, macOS e Linux vengono compilati su GitHub. La
-[guida all’app desktop](docs/desktop.md) (in inglese) spiega come scaricarli, installarli e
-compilarli.
+**App desktop.** Vedi [Scarica](#scarica). La [guida all’app desktop](docs/desktop.md) (in
+inglese) spiega come installarla e come compilare gli installer.
 
 **Pubblicare la tua copia.** `npm run build` genera un sito statico in `dist/`. Il
 progetto include un workflow di GitHub Pages che lo pubblica: attivalo in
@@ -246,8 +302,17 @@ npm run agenda -- info designs/mia-2028.agenda.json
 ```
 
 ```bash
+npm run agenda -- check designs/mia-2028.agenda.json
+```
+
+```bash
 npm run pdf -- designs/mia-2028.agenda.json --mode imposed --out output/mia-2028-stampa.pdf
 ```
+
+`check` elenca cosa verrebbe ignorato o corretto in un file e gli avvisi dell’agenda
+composta. `npm run agenda -- schema` e `npm run agenda -- catalog` mostrano il formato del
+file e tutto ciò che può nominare. `npm run -s mcp` avvia il server MCP per i modelli di
+intelligenza artificiale (vedi [la guida](docs/llm-templates.md)).
 
 ## Stampa e rilegatura
 
@@ -264,6 +329,8 @@ C’è anche una [versione in spagnolo](docs/impresion.md).
 | `src/app` | L’editor (React). |
 | `src/workers` | La generazione del PDF in un processo in background. |
 | `src/cli` | La riga di comando. |
+| `src/node` | Condiviso da riga di comando, server MCP e test: legge caratteri, festività e immagini dal disco e controlla i file delle agende. |
+| `src/mcp` | Il server MCP per i modelli di intelligenza artificiale. |
 | `electron` | L’app desktop (Electron). |
 | `designs` | Agende di esempio per il 2027 in spagnolo, inglese, portoghese e italiano. |
 | `tests`, `e2e` | Test unitari (Vitest) e test nel browser (Playwright). |

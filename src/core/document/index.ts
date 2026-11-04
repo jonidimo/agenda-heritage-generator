@@ -18,7 +18,9 @@ import { layoutPage, pagePrims } from './layout';
 import { buildOutline, LinkResolver, pageFullTitle, pageLinks, type ResolvedLink } from './links';
 import { planDocument, type DocumentPlan, type PlanOptions } from './plan';
 
-export type ExportKind = 'pages' | 'imposed' | 'fronts' | 'backs' | 'signature' | 'calibration' | 'sewing' | 'cover' | 'separate';
+/** Los PDF que se pueden generar (páginas sueltas, impuesto para imprimir, hojas auxiliares…). */
+export const EXPORT_KINDS = ['pages', 'imposed', 'fronts', 'backs', 'signature', 'calibration', 'sewing', 'cover', 'separate'] as const;
+export type ExportKind = (typeof EXPORT_KINDS)[number];
 
 export interface ExportOptions {
   assetBytes: (assetId: string) => Uint8Array | undefined;

@@ -3,49 +3,51 @@
  * CLI de Agenda Heritage Studio: genera PDFs y archivos de diseño sin
  * interfaz, con el mismo motor que la aplicación web.
  *
- *   npm run agenda -- new --template heritage-norma --year 2027 --out designs/norma-2027.agenda.json
- *   npm run agenda -- info designs/norma-2027.agenda.json
- *   npm run pdf -- designs/norma-2027.agenda.json --mode imposed --out output/norma-2027-imprimir.pdf
- *   npm run pdf -- designs/norma-2027.agenda.json --mode pages
- *   npm run pdf -- designs/norma-2027.agenda.json --mode calibration
- *   npm run agenda -- svg designs/norma-2027.agenda.json --page 12 --out output/p12.svg
+ *   npm run agenda -- new --template heritage-norma --year 2027 --out designs/mi-agenda-2027.agenda.json
+ *   npm run agenda -- info designs/mi-agenda-2027.agenda.json
+ *   npm run agenda -- check designs/mi-agenda-2027.agenda.json [--json] [--strict]
+ *   npm run agenda -- schema --out agenda.schema.json
+ *   npm run agenda -- catalog [--out catalogo.json]
+ *   npm run pdf -- designs/mi-agenda-2027.agenda.json --mode imposed --out output/mi-agenda-imprimir.pdf
+ *   npm run agenda -- svg designs/mi-agenda-2027.agenda.json --page 12 --out output/p12.svg
  *
  * Modos de PDF: pages, imposed, fronts, backs, signature (--signature N),
  * calibration, sewing, cover, separate.
  */
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
-import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { dirname, resolve } from 'node:path';
 import { createDesign, TEMPLATES, type TemplateId } from '../core/design/defaults';
-import { parseDesign, type Design } from '../core/design/schema';
-import { AgendaDocument, type ExportKind } from '../core/document';
-import { buildOutline } from '../core/document/links';
-import { describeSignatures } from '../core/imposition/signatures';
+import { designJsonSchema } from '../core/design/jsonSchema';
+import { EXPORT_KINDS, type ExportKind } from '../core/document';
+import { documentSummary, formatSummary } from '../core/document/summary';
 import { pageToSvg } from '../core/render/svg';
-import { facesForDesign, loadAssets, loadBuiltinFonts, loadFontManifest, loadHolidayData, type ResourceIO } from '../core/resources';
-import { FontRegistry } from '../core/text/fonts';
-
-const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
-const io: ResourceIO = { read: async (p) => new Uint8Array(await readFile(join(root, 'public', p))) };
+import { fileBase } from '../core/util/filename';
+import { checkDesignJson } from '../node/check';
+import { fullCatalogue, loadFonts, openNodeDocument, readDesignFile } from '../node/env';
 
 function flag(name: string, def?: string): string | undefined {
   const i = process.argv.indexOf(`--${name}`);
   return i >= 0 ? process.argv[i + 1] : def;
 }
 
-async function loadDesign(path: string): Promise<Design> {
-  return parseDesign(JSON.parse(await readFile(resolve(path), 'utf8')));
+const has = (name: string): boolean => process.argv.includes(`--${name}`);
+
+/** Con `--all-fonts`, carga todas las fuentes integradas (para comparar con la aplicación). */
+const allFonts = async () => (has('all-fonts') ? loadFonts() : undefined);
+
+async function writeOut(path: string, data: string | Uint8Array): Promise<string> {
+  const out = resolve(path);
+  await mkdir(dirname(out), { recursive: true });
+  await writeFile(out, data);
+  return out;
 }
 
-async function openDocument(design: Design): Promise<{ doc: AgendaDocument; bytes: Map<string, Uint8Array>; errors: string[] }> {
-  const fonts = new FontRegistry();
-  const manifest = await loadFontManifest(io);
-  const fontErrors = await loadBuiltinFonts(io, fonts, manifest, process.argv.includes('--all-fonts') ? undefined : facesForDesign(design));
-  if (fontErrors.length > 0) throw new Error(`No se pudieron cargar las fuentes:\n${fontErrors.join('\n')}`);
-  const holidays = await loadHolidayData(io, design.holidays.country);
-  const assets = await loadAssets(io, design);
-  const doc = new AgendaDocument(design, { fonts, holidays, assets: assets.infos });
-  return { doc, bytes: assets.bytes, errors: assets.errors };
+/** JSON a un archivo (con `--out`) o a la salida estándar. */
+async function emitJson(value: unknown, what: string): Promise<void> {
+  const text = `${JSON.stringify(value, null, 2)}\n`;
+  const path = flag('out');
+  if (!path) return void process.stdout.write(text);
+  console.log(`${what}: ${await writeOut(path, text)}`);
 }
 
 async function cmdNew(): Promise<void> {
@@ -57,53 +59,42 @@ async function cmdNew(): Promise<void> {
     ...(flag('country') ? { country: flag('country') === 'none' ? null : flag('country')! } : {}),
     ...(flag('name') ? { name: flag('name')! } : {}),
   });
-  const out = resolve(flag('out', `designs/${template}-${design.calendar.year}.agenda.json`)!);
-  await mkdir(dirname(out), { recursive: true });
-  await writeFile(out, `${JSON.stringify(design, null, 2)}\n`);
+  const out = await writeOut(flag('out', `designs/${template}-${design.calendar.year}.agenda.json`)!, `${JSON.stringify(design, null, 2)}\n`);
   console.log(`Diseño creado: ${out}`);
 }
 
 async function cmdInfo(path: string): Promise<void> {
-  const design = await loadDesign(path);
-  const { doc, errors } = await openDocument(design);
-  const p = doc.plan;
-  console.log(`${design.name} — ${design.locale}, ${design.holidays.country ?? 'sin país'}, ${design.calendar.year}`);
-  console.log(`Páginas: ${p.pages.length} (contenido ${p.contentPages}, relleno de paridad ${p.parityFillers}, relleno de cuadernillo ${p.signatureFillers})`);
-  console.log(`Página: ${doc.format.w.toFixed(1)} × ${doc.format.h.toFixed(1)} mm · hoja ${doc.format.sheetW.toFixed(1)} × ${doc.format.sheetH.toFixed(1)} mm · ${doc.format.nUp} por cara`);
-  console.log(`Hojas de papel: ${p.signatures.totalSheets} · ${describeSignatures(p.signatures)}`);
-  if (design.links.enabled || design.links.bookmarks) {
-    let links = 0;
-    let withLinks = 0;
-    for (let i = 0; i < doc.pageCount; i++) {
-      const n = doc.links(i).length;
-      links += n;
-      if (n > 0) withLinks++;
-    }
-    const marks = design.links.bookmarks ? buildOutline(doc.ctx, p.pages).reduce((s, o) => s + 1 + o.children.length, 0) : 0;
-    console.log(`Enlaces del PDF de páginas: ${links} en ${withLinks} páginas · marcadores: ${marks}`);
+  const { doc, errors } = await openNodeDocument(await readDesignFile(path), await allFonts());
+  for (const line of formatSummary(documentSummary(doc, errors))) console.log(line);
+}
+
+/**
+ * Revisa un archivo: si abre, qué valores se ignoran o corrigen al abrirlo, y los avisos de la
+ * agenda armada. Sale con código 1 si no abre (con `--strict`, también si hay valores ajustados).
+ */
+async function cmdCheck(path: string): Promise<void> {
+  const { design, issues } = checkDesignJson(await readFile(resolve(path), 'utf8'));
+  const opened = design ? await openNodeDocument(design, await allFonts()) : null;
+  const summary = opened ? documentSummary(opened.doc, opened.errors) : null;
+  const failed = !design || (has('strict') && issues.length > 0);
+  if (has('json')) process.stdout.write(`${JSON.stringify({ ok: !failed, opens: Boolean(design), issues, summary }, null, 2)}\n`);
+  else {
+    console.log(design ? (issues.length === 0 ? 'El archivo es válido.' : `El archivo abre, con ${issues.length} valor(es) que se ignoran o corrigen:`) : 'El archivo no se puede abrir:');
+    for (const i of issues) console.log(`  · ${i.path}: ${i.message}`);
+    if (summary) for (const line of formatSummary(summary)) console.log(line);
   }
-  const warnings = doc.warnings();
-  const general = doc.documentWarnings();
-  console.log(`Avisos: ${warnings.length + errors.length + general.length}`);
-  for (const e of errors) console.log(`  · ${e}`);
-  for (const w of general) console.log(`  · ${w.message}`);
-  const grouped = new Map<string, number[]>();
-  for (const w of warnings) grouped.set(w.message, [...(grouped.get(w.message) ?? []), w.page + 1]);
-  for (const [msg, pages] of grouped) console.log(`  · ${msg} (págs. ${pages.slice(0, 12).join(', ')}${pages.length > 12 ? '…' : ''})`);
+  if (failed) process.exitCode = 1;
 }
 
 async function cmdPdf(path: string): Promise<void> {
-  const design = await loadDesign(path);
+  const design = await readDesignFile(path);
   const mode = (flag('mode', 'imposed') as ExportKind) ?? 'imposed';
-  const MODES: ExportKind[] = ['pages', 'imposed', 'fronts', 'backs', 'signature', 'calibration', 'sewing', 'cover', 'separate'];
-  if (!MODES.includes(mode)) throw new Error(`Modo desconocido: ${mode}. Opciones: ${MODES.join(', ')}`);
+  if (!EXPORT_KINDS.includes(mode)) throw new Error(`Modo desconocido: ${mode}. Opciones: ${EXPORT_KINDS.join(', ')}`);
   const sigFlag = flag('signature');
   const signature = sigFlag === undefined ? undefined : Number(sigFlag);
   if (mode === 'signature' && (signature === undefined || !Number.isInteger(signature) || signature < 1))
     throw new Error('Con --mode signature indicá el cuadernillo con --signature N (1, 2, 3…).');
-  const { doc, bytes } = await openDocument(design);
-  const out = resolve(flag('out', `output/${(design.name || 'agenda').replace(/[^\p{L}\p{N}]+/gu, '-').toLowerCase()}-${mode}.pdf`)!);
-  await mkdir(dirname(out), { recursive: true });
+  const { doc, bytes } = await openNodeDocument(design, await allFonts());
   const t0 = Date.now();
   const pdf = await doc.exportPdf(mode, {
     assetBytes: (id) => bytes.get(id),
@@ -113,39 +104,56 @@ async function cmdPdf(path: string): Promise<void> {
     },
   });
   process.stdout.write('\n');
-  await writeFile(out, pdf);
+  const out = await writeOut(flag('out', `output/${fileBase(design)}-${mode}.pdf`)!, pdf);
   console.log(`PDF (${mode}) escrito en ${out} — ${(pdf.length / 1024).toFixed(0)} KB en ${((Date.now() - t0) / 1000).toFixed(1)} s`);
 }
 
 async function cmdSvg(path: string): Promise<void> {
-  const design = await loadDesign(path);
-  const { doc } = await openDocument(design);
+  const { doc, assetHref } = await openNodeDocument(await readDesignFile(path), await allFonts());
   const index = Number(flag('page', '1')) - 1;
   const page = doc.page(index);
-  const out = resolve(flag('out', `output/page-${index + 1}.svg`)!);
-  await mkdir(dirname(out), { recursive: true });
-  await writeFile(out, pageToSvg(page, { fonts: doc.ctx.fonts }, { background: '#ffffff' }));
+  const out = await writeOut(flag('out', `output/page-${index + 1}.svg`)!, pageToSvg(page, { fonts: doc.ctx.fonts, assetHref }, { background: '#ffffff' }));
   console.log(`SVG de la página ${index + 1} (${page.type}, ${page.key}) en ${out}`);
 }
 
+const USAGE: Record<string, string> = {
+  info: 'agenda info <diseño.agenda.json>',
+  check: 'agenda check <diseño.agenda.json> [--json] [--strict]',
+  pdf: 'agenda pdf <diseño.agenda.json> [--mode imposed|pages|…] [--out archivo.pdf]',
+  svg: 'agenda svg <diseño.agenda.json> --page N',
+};
+
 async function main(): Promise<void> {
   const [cmd, arg] = process.argv.slice(2);
+  const needFile = (): string => {
+    if (!arg || arg.startsWith('--')) throw new Error(`Uso: ${USAGE[cmd!]}`);
+    return arg;
+  };
   switch (cmd) {
     case 'new':
       return cmdNew();
     case 'info':
-      if (!arg) throw new Error('Uso: agenda info <diseño.agenda.json>');
-      return cmdInfo(arg);
+      return cmdInfo(needFile());
+    case 'check':
+      return cmdCheck(needFile());
+    case 'schema':
+      return emitJson(designJsonSchema(), 'Esquema JSON');
+    case 'catalog':
+      return emitJson(await fullCatalogue(), 'Catálogo');
     case 'pdf':
-      if (!arg) throw new Error('Uso: agenda pdf <diseño.agenda.json> [--mode imposed|pages|…] [--out archivo.pdf]');
-      return cmdPdf(arg);
+      return cmdPdf(needFile());
     case 'svg':
-      if (!arg) throw new Error('Uso: agenda svg <diseño.agenda.json> --page N');
-      return cmdSvg(arg);
+      return cmdSvg(needFile());
     default:
-      console.log('Comandos: new, info, pdf, svg. Ver encabezado de src/cli/agenda.ts.');
+      console.log('Comandos: new, info, check, schema, catalog, pdf, svg. Ver encabezado de src/cli/agenda.ts.');
   }
 }
+
+// Con la salida cortada (`… | head`), terminar en silencio en lugar de mostrar el error del sistema.
+process.stdout.on('error', (err: NodeJS.ErrnoException) => {
+  if (err.code === 'EPIPE') process.exit(process.exitCode ?? 0);
+  throw err;
+});
 
 main().catch((err: unknown) => {
   console.error((err as Error).message ?? err);

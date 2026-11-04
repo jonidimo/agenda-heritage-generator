@@ -324,14 +324,67 @@ const ENUMS: ReadonlyArray<[RegExp, readonly string[]]> = [
 /** Referencia a un ornamento: integrado o un recurso de la agenda (vacío: ninguno). */
 const ORNAMENT_REF = /^(|builtin:[a-z0-9-]{1,40}|asset:[\w.-]{1,80})$/;
 
+/** Regla de un texto del tema según su ruta: la usan la validación y el esquema JSON. */
+type StringRule = { kind: 'color' } | { kind: 'colorOrEmpty' } | { kind: 'ornament' } | { kind: 'enum'; values: readonly string[] } | { kind: 'text' };
+
+function stringRule(path: string): StringRule {
+  if (path.startsWith('colors.') || path === 'dots.color' || path === 'palette.base') return { kind: 'color' };
+  if (/^lines\.\w+\.color$/.test(path)) return { kind: 'colorOrEmpty' };
+  if (/^lines\.\w+\.(ornament|corner)$/.test(path)) return { kind: 'ornament' };
+  const e = ENUMS.find(([re]) => re.test(path));
+  return e ? { kind: 'enum', values: e[1] } : { kind: 'text' };
+}
+
 /** Valida un texto del tema según su ruta; `undefined` si no se acepta. */
 function validString(path: string, v: string): string | undefined {
-  if (path.startsWith('colors.') || path === 'dots.color' || path === 'palette.base') return normalizeColor(v) ?? undefined;
-  if (/^lines\.\w+\.color$/.test(path)) return v === '' ? '' : (normalizeColor(v) ?? undefined);
-  if (/^lines\.\w+\.(ornament|corner)$/.test(path)) return ORNAMENT_REF.test(v) ? v : undefined;
-  const e = ENUMS.find(([re]) => re.test(path));
-  if (e) return e[1].includes(v) ? v : undefined;
-  return v.length <= 120 ? v : undefined;
+  const r = stringRule(path);
+  switch (r.kind) {
+    case 'color':
+      return normalizeColor(v) ?? undefined;
+    case 'colorOrEmpty':
+      return v === '' ? '' : (normalizeColor(v) ?? undefined);
+    case 'ornament':
+      return ORNAMENT_REF.test(v) ? v : undefined;
+    case 'enum':
+      return r.values.includes(v) ? v : undefined;
+    default:
+      return v.length <= 120 ? v : undefined;
+  }
+}
+
+/**
+ * Esquema JSON de los ajustes del tema, derivado del tema base con las mismas reglas que la
+ * validación (rangos de números, colores, opciones cerradas, ornamentos): sirve para que una
+ * persona o un modelo de lenguaje escriba ajustes válidos sin leer el código.
+ */
+export function tokenSchema(base: unknown = heritage, path = ''): Record<string, unknown> {
+  if (isObject(base)) {
+    return {
+      type: 'object',
+      additionalProperties: false,
+      properties: Object.fromEntries(Object.entries(base).map(([k, v]) => [k, tokenSchema(v, `${path}${k}.`)])),
+    };
+  }
+  const p = path.slice(0, -1);
+  if (Array.isArray(base)) return { type: 'array', maxItems: 20, items: { type: 'string', maxLength: 80 } };
+  if (typeof base === 'number') {
+    const [minimum, maximum] = numberRange(p);
+    return { type: 'number', minimum, maximum };
+  }
+  if (typeof base === 'boolean') return { type: 'boolean' };
+  const r = stringRule(p);
+  switch (r.kind) {
+    case 'color':
+      return { type: 'string', pattern: '^#[0-9a-fA-F]{6}$', description: 'Color #rrggbb' };
+    case 'colorOrEmpty':
+      return { type: 'string', pattern: '^(|#[0-9a-fA-F]{6})$', description: 'Color #rrggbb, o vacío para usar el de la línea' };
+    case 'ornament':
+      return { type: 'string', pattern: ORNAMENT_REF.source, description: 'Ornamento: builtin:<id> o asset:<id de una imagen de la agenda>; vacío: ninguno' };
+    case 'enum':
+      return { type: 'string', enum: [...r.values] };
+    default:
+      return { type: 'string', maxLength: 120 };
+  }
 }
 
 /**

@@ -142,7 +142,9 @@ the workflow file is on the default branch (`main`).
 
 If the macOS job is cancelled after about 15 minutes without starting, GitHub had no Mac
 machine free for it; the Linux and Windows files of that run are fine. Open the run and
-click **Re-run failed jobs** to try the Mac again.
+click **Re-run failed jobs** to try the Mac again. On a release, the GitHub Release is still
+created with the files that were built; once the Mac job succeeds on a re-run, re-run the
+**GitHub Release** job too and it adds the missing files.
 
 ## How it works
 

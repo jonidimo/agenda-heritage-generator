@@ -27,8 +27,8 @@ describe('colores de archivos', () => {
     }
   });
 
-  it('el dibujante escapa cualquier texto en atributos', () => {
-    const svg = primsToStandaloneSvg(10, 10, [{ t: 'rect', x: 0, y: 0, w: 5, h: 5, fill: { color: PAYLOAD } }], { fonts: sharedFonts() });
+  it('el dibujante escapa cualquier texto en atributos', async () => {
+    const svg = primsToStandaloneSvg(10, 10, [{ t: 'rect', x: 0, y: 0, w: 5, h: 5, fill: { color: PAYLOAD } }], { fonts: await sharedFonts() });
     expect(svg).not.toContain('<image');
     expect(svg).toContain('&quot;');
   });

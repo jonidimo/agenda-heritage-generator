@@ -25,6 +25,21 @@ ningún lado.
 
 ![Edición de un pliego semanal](docs/images/editor-spread.png)
 
+## Descargar
+
+**[Descargá la última versión](https://github.com/jonidimo/agenda-heritage-generator/releases/latest)** y elegí el archivo de tu sistema en *Assets*:
+
+| Sistema | Archivo |
+| --- | --- |
+| Windows 10 y 11 | `…-win-x64-setup.exe` (instalador) o `…-win-x64-portable.exe` (sin instalar) |
+| macOS 13 o posterior | `…-mac-arm64.dmg` (Apple silicon) o `…-mac-x64.dmg` (Intel) |
+| Linux | `…-linux-x86_64.AppImage` (cualquier distribución) o `…-linux-amd64.deb` (Debian, Ubuntu, Mint) |
+
+Los instaladores no están firmados con un certificado pago, así que Windows y macOS avisan
+la primera vez que se abren. La [guía de la aplicación de escritorio](docs/desktop.md) (en
+inglés) explica cómo abrirlos, dónde se guardan tus agendas y cómo compilar la aplicación.
+Para usarla en el navegador, mirá [Cómo usarla](#cómo-usarla).
+
 ## Qué hace
 
 ### Se ve exactamente como se va a imprimir
@@ -48,6 +63,12 @@ ningún lado.
   (que sigue siendo vectorial en el PDF final), o una página de renglones, puntos o
   cuadrícula. El resto del libro se reacomoda solo.
 - Textos, imágenes, renglones y marcos propios en cualquier tipo de página.
+- Cambiá el tamaño de tus elementos desde cualquier borde o esquina; con Mayús se
+  mantienen las proporciones.
+- Un elemento de imagen acepta cualquier imagen: elegí una de la agenda o subí un PNG, JPG
+  o SVG.
+- Cada texto puede tener su propia letra y su propio color, o seguir los de su tipo de
+  texto.
 - **Clic derecho** (o pulsación larga en el teléfono) sobre cualquier elemento, página o
   miniatura: cambiar la imagen de la marca de agua, ocultar algo en una página o en todas
   las de ese tipo, seleccionar elementos similares, agregar textos o imágenes donde
@@ -57,6 +78,23 @@ ningún lado.
   en una cuadrícula que encuentra sus filas y columnas.
 - **Renglones, puntos o cuadrícula por tipo de página o por página**: separación de
   renglones, separación horizontal y vertical de puntos, tamaño de punto y grosor.
+
+### Secciones y plantillas de página
+
+- Hacé clic en una sección del panel **Secciones** para ir a su página. Con clic derecho
+  la movés, la apagás o cambiás cada cuánto se repite.
+- Cualquier sección puede aparecer una vez o **repetirse cada mes, semana o día**.
+- **Plantillas de página**: diseñás una página una vez (fondo de renglones, puntos o
+  cuadrícula, textos, imágenes, marcos) y la repetís donde quieras. Textos como `{date}`,
+  `{weekday}` o `{month}` cambian en cada copia.
+
+### Encontrar cualquier cosa
+
+- **Buscador** (Ctrl+K, `/` o la lupa): encuentra ajustes, secciones, páginas y elementos
+  aunque escribas con errores, sin tildes o con otras mayúsculas, y te lleva ahí
+  resaltándolo.
+- Botones **Atrás y Adelante** en la barra superior para volver a las páginas que
+  visitaste, como en el navegador.
 
 ### Cualquier año, idioma y país
 
@@ -75,7 +113,18 @@ ningún lado.
 
 ### Pensada para el papel
 
-- 5 temas (Heritage, Clara, Clásica, Mínima, Cuaderno) y 4 plantillas.
+- 6 temas (Heritage, Clara, Clásica, Mínima, Cuaderno, Filigrana) y 4 plantillas. Un
+  tema define todo junto: la letra y el color de cada tipo de texto y el estilo de los
+  renglones, separadores, tablas y marcos.
+- **Líneas y firuletes**: líneas lisas, de guiones, de puntos o dobles, ornamentos
+  repetidos a lo largo de una línea o en su centro, y esquinas para los marcos. Trae diez
+  ornamentos y podés importar los tuyos en SVG o PNG.
+- **Una paleta a partir de un color**: elegís un color y una armonía (monocromática,
+  análoga, complementaria, complementaria dividida o triádica). La aplicación deriva todos
+  los colores en el espacio de color OKLCH y mantiene el texto oscuro para que se lea bien
+  en papel.
+- **Temas propios**: guardás todo el estilo con un nombre, lo usás en otras agendas y lo
+  compartís como archivo `.tema.json`, con sus ornamentos adentro.
 - Cambiá fuentes, tamaños, grosor y separación de renglones, renglones, puntos o
   cuadrícula, sombreado de fin de semana y un nivel de comodidad para leer sin anteojos.
   Todo se actualiza en vivo.
@@ -134,6 +183,15 @@ ningún lado.
   archivo; al abrirlo se restauran.
 - Las agendas también quedan en el navegador, pero solo en ese navegador y en esa
   dirección de la aplicación: los archivos son la copia segura.
+
+### Diseñar con un modelo de inteligencia artificial
+
+- Un **servidor MCP** permite que Claude, o cualquier modelo compatible con MCP, cree una
+  agenda, la cambie, la revise, mire sus páginas y exporte el PDF o un tema. Pedile "una
+  agenda docente de marzo a diciembre" o "un tema con firuletes art nouveau".
+- El formato del archivo tiene un **esquema JSON** y un catálogo que salen del código, y
+  `npm run agenda -- check` dice exactamente qué se ignoraría o corregiría. Leé la
+  [guía](docs/plantillas-llm.md) ([in English](docs/llm-templates.md)).
 
 ### Hecha para durar
 
@@ -226,9 +284,9 @@ alrededor de un minuto.
 teléfono Android, elegí *Instalar* o *Agregar a la pantalla principal*. Desde ahí funciona
 sin conexión.
 
-**Aplicación de escritorio.** Los instaladores para Windows, macOS y Linux se compilan en
-GitHub. La [guía de la aplicación de escritorio](docs/desktop.md) (en inglés) explica cómo
-descargarlos, instalarlos y compilarlos.
+**Aplicación de escritorio.** Mirá [Descargar](#descargar). La
+[guía de la aplicación de escritorio](docs/desktop.md) (en inglés) explica cómo instalarla y
+cómo compilar los instaladores.
 
 **Publicar tu propia copia.** `npm run build` genera un sitio estático en `dist/`. El flujo
 de GitHub Pages incluido lo publica: activalo en *Settings → Pages → Source: GitHub
@@ -245,8 +303,17 @@ npm run agenda -- info designs/mi-2028.agenda.json
 ```
 
 ```bash
+npm run agenda -- check designs/mi-2028.agenda.json
+```
+
+```bash
 npm run pdf -- designs/mi-2028.agenda.json --mode imposed --out output/mi-2028-imprimir.pdf
 ```
+
+`check` lista lo que se ignoraría o corregiría en un archivo y los avisos de la agenda
+armada. `npm run agenda -- schema` y `npm run agenda -- catalog` muestran el formato del
+archivo y todo lo que puede nombrar. `npm run -s mcp` inicia el servidor MCP para modelos
+de inteligencia artificial (ver [la guía](docs/plantillas-llm.md)).
 
 ## Impresión y encuadernación
 
@@ -262,6 +329,8 @@ paso, con los ajustes para Linux (CUPS), Windows y Android ([in English](docs/pr
 | `src/app` | El editor (React). |
 | `src/workers` | La generación del PDF en segundo plano. |
 | `src/cli` | La línea de comandos. |
+| `src/node` | Lo comparten la línea de comandos, el servidor MCP y las pruebas: lee fuentes, feriados e imágenes del disco y revisa archivos de agenda. |
+| `src/mcp` | El servidor MCP para modelos de inteligencia artificial. |
 | `electron` | La aplicación de escritorio (Electron). |
 | `designs` | Agendas de ejemplo para 2027 en español, inglés, portugués e italiano. |
 | `tests`, `e2e` | Pruebas unitarias (Vitest) y del navegador (Playwright). |

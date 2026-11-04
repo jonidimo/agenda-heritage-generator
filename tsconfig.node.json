@@ -5,5 +5,5 @@
     "types": ["node"],
     "paths": { "@core/*": ["./src/core/*"] }
   },
-  "include": ["src/cli/**/*.ts", "scripts/**/*.ts", "tests/**/*.ts", "e2e/**/*.ts", "src/types/**/*.d.ts", "src/core/**/*.ts", "vite.config.ts", "vitest.config.ts", "playwright.config.ts"]
+  "include": ["src/cli/**/*.ts", "src/node/**/*.ts", "src/mcp/**/*.ts", "scripts/**/*.ts", "tests/**/*.ts", "e2e/**/*.ts", "src/types/**/*.d.ts", "src/core/**/*.ts", "vite.config.ts", "vitest.config.ts", "playwright.config.ts"]
 }

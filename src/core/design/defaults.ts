@@ -2,6 +2,8 @@
  * Plantillas de diseño listas para usar. Todas producen un `Design` válido y
  * completo; la interfaz parte de una de ellas y el usuario ajusta el resto.
  */
+import { fmt, langOf, resolveStrings } from '../i18n';
+import { isSouthern } from '../layout/widgets';
 import { DEFAULT_METHODS } from '../methods/catalog';
 import { newId } from '../util/hash';
 import { parseDesign, type Design, type DesignInput, type SectionItem, type SectionSpec } from './schema';
@@ -89,7 +91,12 @@ export function colibriWatermark(): Design['watermarks'][number] {
   };
 }
 
-const NORMA_PHRASES = [
+/**
+ * Frases por mes de la plantilla para regalar, con las estaciones del hemisferio sur y las fechas
+ * reales de equinoccios y solsticios. Solo para agendas en castellano del hemisferio sur; en las
+ * demás se usan las frases del idioma, que no dependen de la estación.
+ */
+const SOUTHERN_SEASON_PHRASES_ES = [
   '365 días por delante. Empezar de cero, una vez más.',
   'Días de verano. Tiempo para lo que te gusta.',
   '{marchEquinox}: comienza el otoño. Cosechar lo sembrado.',
@@ -99,7 +106,7 @@ const NORMA_PHRASES = [
   'El valor de lo analógico: papel, lápiz y tiempo.',
   'Nuevos planes para la segunda mitad del año.',
   '{septemberEquinox}: comienza la primavera. Tiempo de florecer.',
-  '1 de octubre: tu día. ¡Feliz cumpleaños, {name}!',
+  'Días largos y tibios. Disfrutar lo que florece.',
   'Registrar los logros. Gratitud por lo vivido.',
   'Últimos 31 días. Brindar por lo que pasó.',
 ];
@@ -116,9 +123,11 @@ export function createDesign(template: TemplateId, opts: CreateOptions = {}): De
   const locale = opts.locale ?? 'es-AR';
   const country = opts.country === undefined ? (locale.split('-')[1]?.toUpperCase() ?? null) : opts.country;
   const now = new Date().toISOString();
+  const strings = resolveStrings(locale);
+  const named = (key: keyof typeof strings.designName): string => fmt(strings.designName[key], { year, name: opts.name?.trim() ?? '' });
   const base: DesignInput = {
     id: newId('agenda'),
-    name: `Agenda ${year}`,
+    name: named('base'),
     createdAt: now,
     updatedAt: now,
     locale,
@@ -129,37 +138,41 @@ export function createDesign(template: TemplateId, opts: CreateOptions = {}): De
     theme: { id: 'heritage', comfort: 'normal' },
     methods: { enabled: [...DEFAULT_METHODS] },
     sections: defaultSections(),
+    // El nombre de la persona (portada, dedicatoria, variables de texto), en toda plantilla.
+    persona: { name: opts.name?.trim() ?? '' },
     assets: [COLIBRI_ASSET],
     watermarks: [colibriWatermark()],
   };
 
   switch (template) {
-    case 'heritage-norma':
+    case 'heritage-norma': {
+      // Textos de ejemplo en el idioma de la agenda; las frases de estaciones, solo donde valen.
+      const gift = strings.gift;
+      const seasonal = langOf(locale) === 'es' && isSouthern(country);
       return parseDesign({
         ...base,
-        name: opts.name?.trim() ? `Agenda ${opts.name.trim()} ${year}` : `Agenda ${year}`,
+        name: named(opts.name?.trim() ? 'person' : 'base'),
         persona: {
-          name: opts.name ?? '',
-          title: 'Arquitectura del Tiempo',
-          dedicationTitle: '{year}: El tiempo de florecer.',
-          dedication:
-            'Cada rama de tu historia es un refugio de amor. Hoy, la vida te invita a descansar en tu propia luz, a sembrar nuevos sueños y a disfrutar de la cosecha más dulce: el presente. Florecer no tiene edad; es el arte de habitar tu propia calma con la sabiduría del corazón.',
-          phrases: NORMA_PHRASES,
-          labels: { 'review.moods.0': 'CALMA', 'review.moods.1': 'CON PILAS', 'review.moods.2': 'CANSADA' },
+          name: opts.name?.trim() ?? '',
+          title: gift.title,
+          dedicationTitle: gift.dedicationTitle,
+          dedication: gift.dedication,
+          ...(seasonal ? { phrases: SOUTHERN_SEASON_PHRASES_ES } : {}),
         },
         sections: defaultSections({ personal: true, guide: true, health: true }),
       });
+    }
     case 'clara':
       return parseDesign({
         ...base,
-        name: `Agenda ${year} · Lectura clara`,
+        name: named('clara'),
         theme: { id: 'clara', comfort: 'wide' },
         methods: { enabled: [...DEFAULT_METHODS, 'legibility'] },
         sections: defaultSections({ personal: true, guide: true, health: true, grid: true }),
         watermarks: [{ ...colibriWatermark(), width: 11, opacity: 0.85 }],
       });
     case 'minimal':
-      return parseDesign({ ...base, name: `Agenda ${year} · Mínima`, theme: { id: 'minimal', comfort: 'normal' }, watermarks: [] });
+      return parseDesign({ ...base, name: named('minimal'), theme: { id: 'minimal', comfort: 'normal' }, watermarks: [] });
     default:
       return parseDesign(base);
   }

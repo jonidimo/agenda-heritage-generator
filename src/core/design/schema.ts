@@ -250,15 +250,21 @@ export const PageTemplateZ = z.object({
 });
 export type PageTemplate = z.infer<typeof PageTemplateZ>;
 
+/**
+ * Posición y tamaño de un elemento propio, en mm: un valor fuera de rango se acomoda (un archivo
+ * con un recuadro de un kilómetro no puede trabar la vista previa con millones de renglones).
+ */
+export const BLOCK_BOUNDS = { pos: { min: -1000, max: 1000 }, size: { min: 0.5, max: 1000 } } as const;
+
 export const CustomBlockZ = z.object({
   id: z.string(),
   pageType: z.string(),
   pageKey: z.string().nullable().default(null),
   kind: z.enum(['text', 'image', 'lines', 'dots', 'grid', 'rect', 'line']),
-  x: z.number(),
-  y: z.number(),
-  w: z.number().min(0.5),
-  h: z.number().min(0.5),
+  x: z.number().transform(clampTo(BLOCK_BOUNDS.pos.min, BLOCK_BOUNDS.pos.max)),
+  y: z.number().transform(clampTo(BLOCK_BOUNDS.pos.min, BLOCK_BOUNDS.pos.max)),
+  w: z.number().transform(clampTo(BLOCK_BOUNDS.size.min, BLOCK_BOUNDS.size.max)),
+  h: z.number().transform(clampTo(BLOCK_BOUNDS.size.min, BLOCK_BOUNDS.size.max)),
   /** Espejar la posición horizontal en las páginas pares (izquierdas). */
   mirror: z.boolean().default(true),
   props: z.record(z.string(), z.unknown()).default({}),
@@ -354,6 +360,13 @@ export const LinksZ = z
   })
   .prefault({});
 
+/**
+ * Ruta de un recurso integrado, relativa a la carpeta pública («watermarks/colibri.svg»): tramos de
+ * letras, números y guiones, con extensión; sin «..», barra inicial, barra invertida ni esquema. Un
+ * archivo manipulado no puede hacer leer otro archivo del disco (CLI, servidor MCP) ni otro sitio.
+ */
+export const BUILTIN_PATH = /^(?:[\w-]+\/)*[\w-]+(?:\.[\w-]+)+$/;
+
 export const AssetRefZ = z.object({
   id: z.string(),
   name: z.string(),
@@ -363,7 +376,7 @@ export const AssetRefZ = z.object({
   width: z.number().default(0),
   height: z.number().default(0),
   /** Recurso integrado servido desde /public (p. ej. «watermarks/colibri.svg»). */
-  builtin: z.string().nullable().default(null),
+  builtin: z.string().regex(BUILTIN_PATH).nullable().catch(null).default(null),
   /** Contenido en base64 cuando el diseño se exporta como archivo autocontenido. */
   data: z.string().nullable().optional(),
   pages: intIn(0, 100_000).optional(),

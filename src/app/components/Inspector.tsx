@@ -1,4 +1,5 @@
 /** Panel derecho: elemento seleccionado (valores exactos), elementos propios y verificación previa. */
+import { PROP_RANGES, TEXT_ROLES } from '@core/design/customBlocks';
 import type { AgendaDocument } from '@core/document';
 import { blockBounds } from '@core/document/layout';
 import type { CustomBlock } from '@core/design/schema';
@@ -454,11 +455,11 @@ function CustomFields({ id }: { id: string }) {
               <Select
                 value={String(p.role ?? 'body')}
                 onChange={(v) => setProp('role', v)}
-                options={(['display', 'title', 'label', 'labelStrong', 'heading', 'body', 'number', 'quote'] as const).map((r) => ({ value: r, label: t(`role.${r}`) }))}
+                options={TEXT_ROLES.map((r) => ({ value: r, label: t(`role.${r}`) }))}
               />
             </Field>
             <Field label={t('insp.size')}>
-              <NumberInput value={Number(p.size ?? 10)} step={0.5} min={4} max={120} onChange={(v) => setProp('size', v)} />
+              <NumberInput value={Number(p.size ?? 10)} step={0.5} min={PROP_RANGES.textSize.min} max={PROP_RANGES.textSize.max} onChange={(v) => setProp('size', v)} />
             </Field>
           </div>
           <Field label={t('insp.align')} group>
@@ -503,11 +504,11 @@ function CustomFields({ id }: { id: string }) {
               ]}
             />
           </Field>
-          <Slider label={t('insp.opacity')} value={Number(p.opacity ?? 1)} min={0.05} max={1} step={0.05} onChange={(v) => setProp('opacity', v)} />
+          <Slider label={t('insp.opacity')} value={Number(p.opacity ?? 1)} min={PROP_RANGES.opacity.min} max={PROP_RANGES.opacity.max} step={0.05} onChange={(v) => setProp('opacity', v)} />
         </>
       )}
       {(cb.kind === 'lines' || cb.kind === 'dots' || cb.kind === 'grid') && (
-        <Slider label={t('style.pitch')} value={Number(p.pitch ?? 6)} min={3} max={12} step={0.1} onChange={(v) => setProp('pitch', v)} />
+        <Slider label={t('style.pitch')} value={Number(p.pitch ?? 6)} min={PROP_RANGES.pitch.min} max={PROP_RANGES.pitch.max} step={0.1} onChange={(v) => setProp('pitch', v)} />
       )}
     </div>
   );

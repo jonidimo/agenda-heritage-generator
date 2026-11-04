@@ -206,6 +206,20 @@ export const es = {
     turnIn: 'Margen de doblez',
     board: 'Cartón',
   },
+  /** Textos de ejemplo de la plantilla para regalar (la persona los cambia por los suyos). */
+  /** Nombre de una agenda nueva según la plantilla ({year}; {name}: la persona). */
+  designName: {
+    base: 'Agenda {year}',
+    person: 'Agenda {name} {year}',
+    clara: 'Agenda {year} · Lectura clara',
+    minimal: 'Agenda {year} · Mínima',
+  },
+  gift: {
+    title: 'Arquitectura del Tiempo',
+    dedicationTitle: '{year}: El tiempo de florecer.',
+    dedication:
+      'Cada rama de tu historia es un refugio de amor. Hoy, la vida te invita a descansar en tu propia luz, a sembrar nuevos sueños y a disfrutar de la cosecha más dulce: el presente. Florecer no tiene edad; es el arte de habitar tu propia calma con la sabiduría del corazón.',
+  },
   phrases: [
     'Un año nuevo es una página en blanco: escribila con calma.',
     'Lo pequeño, repetido, se vuelve grande.',

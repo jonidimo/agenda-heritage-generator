@@ -200,6 +200,18 @@ export const it: AgendaStrings = {
     turnIn: 'Margine di risvolto',
     board: 'Cartone',
   },
+  designName: {
+    base: 'Agenda {year}',
+    person: 'Agenda di {name} {year}',
+    clara: 'Agenda {year} · Lettura chiara',
+    minimal: 'Agenda {year} · Minimale',
+  },
+  gift: {
+    title: 'L’architettura del tempo',
+    dedicationTitle: '{year}: Il tempo di fiorire.',
+    dedication:
+      'Ogni ramo della tua storia è un rifugio d’amore. Oggi la vita ti invita a riposare nella tua luce, a seminare nuovi sogni e a goderti il raccolto più dolce: il presente. Fiorire non ha età; è l’arte di abitare la propria calma con la saggezza del cuore.',
+  },
   phrases: [
     'Un anno nuovo è una pagina bianca: scrivila con calma.',
     'Le piccole cose, ripetute, diventano grandi.',

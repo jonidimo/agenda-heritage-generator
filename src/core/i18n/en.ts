@@ -200,6 +200,18 @@ export const en: AgendaStrings = {
     turnIn: 'Turn-in allowance',
     board: 'Board',
   },
+  designName: {
+    base: 'Planner {year}',
+    person: '{name}’s planner {year}',
+    clara: 'Planner {year} · Clear reading',
+    minimal: 'Planner {year} · Minimal',
+  },
+  gift: {
+    title: 'The Architecture of Time',
+    dedicationTitle: '{year}: A time to bloom.',
+    dedication:
+      'Every branch of your story is a shelter of love. Today, life invites you to rest in your own light, to sow new dreams and to enjoy the sweetest harvest: the present. Blooming knows no age; it is the art of dwelling in your own calm with the wisdom of the heart.',
+  },
   phrases: [
     'A new year is a blank page: write it calmly.',
     'Small things, repeated, become big.',

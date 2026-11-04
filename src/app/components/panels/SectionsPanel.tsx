@@ -1,6 +1,6 @@
 import type { AgendaDocument } from '@core/document';
 import type { CustomPage, SectionItem } from '@core/design/schema';
-import { SECTION_REGISTRY } from '@core/sections/registry';
+import { choiceValue, OPTION_COUNT, sectionOptionFields } from '@core/sections/options';
 import clsx from 'clsx';
 import type { Draft } from 'immer';
 import { ArrowDown, ArrowUp, CornerDownRight, FilePlus2, LayoutTemplate, MoreHorizontal, Settings2, Trash2 } from 'lucide-react';
@@ -14,54 +14,33 @@ import { openMenuAt, type MenuItem } from '../ContextMenu';
 import { canBeOnce, canRepeat, createTemplate, deleteTemplate, moveToEdge, nextPageOf, sectionPages, setEnabled, setOnce, setRepeat, type SectionPath } from '../../state/sections';
 import { jumpToPage } from '../../state/navigation';
 
-/** Valores posibles de las opciones de texto (por «tipo.opción» o por opción). */
-const OPTION_VALUES: Record<string, string[]> = {
-  'weeks.variant': ['alastair', 'horizontal', 'vertical', 'daily'],
-  'review.variant': ['auto', 'heritage', 'reflective'],
-  footer: ['expenses', 'review', 'none'],
-  style: ['auto', 'dots', 'lines', 'grid', 'blank'],
-  spread: ['auto', 'true', 'false'],
-  woop: ['auto', 'true', 'false'],
-  priorities: ['auto', 'true', 'false'],
-  detailed: ['auto', 'true', 'false'],
-};
-
 function OptionsForm({ type, options, onChange }: { type: string; options: Record<string, unknown>; onChange: (k: string, v: unknown) => void }) {
   const t = useT();
-  const mod = SECTION_REGISTRY.get(type);
-  if (!mod) return null;
-  const keys = Object.keys(mod.defaults);
-  if (keys.length === 0) return null;
+  const fields = sectionOptionFields(type);
+  if (fields.length === 0) return null;
   return (
     <div className="mt-1 rounded-md bg-white/60 px-2 py-1">
-      {keys.map((k) => {
-        const def = mod.defaults[k];
-        const cur = options[k] ?? def;
-        const label = t(`opt.${k}` as UiKey);
-        const values = OPTION_VALUES[`${type}.${k}`] ?? OPTION_VALUES[k];
-        if (values) {
-          const asStr = typeof cur === 'boolean' ? String(cur) : String(cur);
-          return (
-            <Field key={k} label={label}>
-              <Select
-                value={asStr}
-                onChange={(v) => onChange(k, v === 'true' ? true : v === 'false' ? false : v)}
-                options={values.map((v) => ({ value: v, label: t(`val.${v}` as UiKey) }))}
-              />
-            </Field>
-          );
+      {fields.map((f) => {
+        const cur = options[f.key] ?? f.default;
+        const label = t(`opt.${f.key}` as UiKey);
+        switch (f.kind) {
+          case 'choice':
+            return (
+              <Field key={f.key} label={label}>
+                <Select value={String(cur)} onChange={(v) => onChange(f.key, choiceValue(v))} options={f.values.map((v) => ({ value: v, label: t(`val.${v}` as UiKey) }))} />
+              </Field>
+            );
+          case 'boolean':
+            return <Toggle key={f.key} label={label} checked={Boolean(cur)} onChange={(v) => onChange(f.key, v)} />;
+          case 'count':
+            return (
+              <Field key={f.key} label={label} inline>
+                <div className="w-20">
+                  <NumberInput value={Number(cur)} min={OPTION_COUNT.min} max={OPTION_COUNT.max} step={1} integer onChange={(v) => onChange(f.key, v)} />
+                </div>
+              </Field>
+            );
         }
-        if (typeof def === 'boolean') return <Toggle key={k} label={label} checked={Boolean(cur)} onChange={(v) => onChange(k, v)} />;
-        if (typeof def === 'number') {
-          return (
-            <Field key={k} label={label} inline>
-              <div className="w-20">
-                <NumberInput value={Number(cur)} min={0} max={200} step={1} integer onChange={(v) => onChange(k, v)} />
-              </div>
-            </Field>
-          );
-        }
-        return null;
       })}
     </div>
   );
@@ -145,7 +124,7 @@ function ItemRow(props: { item: SectionItem; path: SectionPath; count: number; d
   const pageIndex = useStore((s) => s.pageIndex);
   const [open, setOpen] = useState(false);
   const { item, path, doc } = props;
-  const hasOptions = Object.keys(SECTION_REGISTRY.get(item.type)?.defaults ?? {}).length > 0;
+  const hasOptions = sectionOptionFields(item.type).length > 0;
   const name = nameOf(item);
   const pages = doc && item.enabled ? sectionPages(doc, item.id) : [];
   const target = doc && pages.length > 0 ? nextPageOf(doc, item.id, pageIndex) : undefined;

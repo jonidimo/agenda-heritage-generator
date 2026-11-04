@@ -200,6 +200,18 @@ export const pt: AgendaStrings = {
     turnIn: 'Margem de dobra',
     board: 'Papelão',
   },
+  designName: {
+    base: 'Agenda {year}',
+    person: 'Agenda de {name} {year}',
+    clara: 'Agenda {year} · Leitura clara',
+    minimal: 'Agenda {year} · Mínima',
+  },
+  gift: {
+    title: 'Arquitetura do Tempo',
+    dedicationTitle: '{year}: O tempo de florescer.',
+    dedication:
+      'Cada ramo da sua história é um refúgio de amor. Hoje, a vida convida você a descansar na sua própria luz, a semear novos sonhos e a desfrutar da colheita mais doce: o presente. Florescer não tem idade; é a arte de habitar a sua própria calma com a sabedoria do coração.',
+  },
   phrases: [
     'Um ano novo é uma página em branco: escreva com calma.',
     'O pequeno, repetido, fica grande.',

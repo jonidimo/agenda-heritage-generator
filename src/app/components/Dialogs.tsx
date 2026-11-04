@@ -98,7 +98,6 @@ export function WelcomeDialog() {
       return;
     }
     const d = createDesign(template as TemplateId, { year, locale, country: country || null, ...(name.trim() ? { name: name.trim() } : {}) });
-    if (template !== 'heritage-norma' && name.trim()) d.persona.name = name.trim();
     setDesign(calendar(d));
     setShow(false);
   };

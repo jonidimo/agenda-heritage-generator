@@ -65,7 +65,9 @@ jobs:
 
   release:
     name: GitHub Release
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    # Also when one system failed (for example, no Mac machine was free): the release goes out
+    # with the files that were built. Re-running the failed job and then this one adds the rest.
+    if: ${{ !cancelled() && github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') }}
     needs: package
     runs-on: ubuntu-latest
     timeout-minutes: 15

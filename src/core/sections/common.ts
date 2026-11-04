@@ -67,13 +67,20 @@ export function abbreviated(ctx: LayoutContext, text: string, kind: 'holiday' | 
 
 /**
  * Variables de los textos escritos por la persona (elementos propios, plantillas de página):
- * {year} {name} {title} {month} {week} {page}, y en las copias por día {date} («31 de marzo»),
- * {weekday} y {day}. Las fechas salen en el idioma y el orden de la agenda.
+ * {year} {name} {title} {month} {week} {page} en toda página, y en las copias por día {date}
+ * («31 de marzo»), {weekday} y {day}. Las fechas salen en el idioma y el orden de la agenda.
  */
+export const PAGE_TEXT_VARIABLES = {
+  always: ['year', 'name', 'title', 'month', 'week', 'page'],
+  dated: ['date', 'weekday', 'day'],
+} as const;
+
+type TextVars = Record<(typeof PAGE_TEXT_VARIABLES.always)[number], string | number> & Partial<Record<(typeof PAGE_TEXT_VARIABLES.dated)[number], string | number>>;
+
 export function pageTextVars(ctx: LayoutContext, page: PagePlan): Record<string, string | number> {
   const d = ctx.doc.design;
   const iso = typeof page.params?.date === 'string' ? page.params.date : undefined;
-  const vars: Record<string, string | number> = {
+  const vars: TextVars = {
     year: d.calendar.year,
     name: d.persona.name,
     title: d.persona.title,

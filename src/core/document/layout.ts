@@ -3,6 +3,7 @@
  * del usuario + marcas de agua + numeración/pestañas + ajustes del editor
  * (mover, escalar, rotar, opacidad, ocultar) con verificación de límites.
  */
+import { enumProp, IMAGE_FITS, numProp, PROP_RANGES, TEXT_ALIGNS, TEXT_ROLES, TEXT_VALIGNS } from '../design/customBlocks';
 import type { BlockOverride, CustomBlock, Design, WatermarkPlacement } from '../design/schema';
 import { fmt as fmtStr } from '../i18n';
 import { inset } from '../layout/box';
@@ -139,12 +140,12 @@ function placeCustomBlock(ctx: LayoutContext, cb: CustomBlock, page: PagePlan): 
   switch (cb.kind) {
     case 'text': {
       const t = ctx.textIn(substitute(String(p.text ?? ''), ctx, page), box, {
-        role: (p.role as 'body') ?? 'body',
-        size: (p.size as number) ?? ctx.theme.sizes.body,
-        align: (p.align as 'left') ?? 'left',
-        valign: (p.valign as 'top') ?? 'top',
+        role: enumProp(p.role, TEXT_ROLES, 'body'),
+        size: numProp(p.size, PROP_RANGES.textSize, ctx.theme.sizes.body),
+        align: enumProp(p.align, TEXT_ALIGNS, 'left'),
+        valign: enumProp(p.valign, TEXT_VALIGNS, 'top'),
         upper: Boolean(p.upper),
-        tracking: typeof p.tracking === 'number' ? p.tracking : 0,
+        tracking: numProp(p.tracking, PROP_RANGES.tracking, 0),
         wrap: p.wrap !== false,
         fit: true,
         ...(normalizeColor(p.color) ? { color: normalizeColor(p.color)! } : {}),
@@ -156,23 +157,23 @@ function placeCustomBlock(ctx: LayoutContext, cb: CustomBlock, page: PagePlan): 
     }
     case 'image':
       prims = assetPrims(ctx.doc.assets.get(String(p.assetId ?? '')), box, {
-        fit: (p.fit as 'contain') ?? 'contain',
-        opacity: typeof p.opacity === 'number' ? p.opacity : 1,
+        fit: enumProp(p.fit, IMAGE_FITS, 'contain'),
+        opacity: numProp(p.opacity, PROP_RANGES.opacity, 1),
         minStrokePt: 0.25,
       });
       break;
     case 'lines':
       // Un elemento propio de renglones es siempre de renglones (no sigue el estilo de la página).
-      prims = ruledLines(box, typeof p.pitch === 'number' ? p.pitch : ctx.theme.writing.pitch, ctx.stroke('hair'));
+      prims = ruledLines(box, numProp(p.pitch, PROP_RANGES.pitch, ctx.theme.writing.pitch), ctx.stroke('hair'));
       break;
     case 'dots':
-      prims = [dotField(box, typeof p.pitch === 'number' ? p.pitch : ctx.theme.dots.pitch, (ctx.theme.dots.radius * 25.4) / 72, ctx.theme.dots.color)];
+      prims = [dotField(box, numProp(p.pitch, PROP_RANGES.pitch, ctx.theme.dots.pitch), (ctx.theme.dots.radius * 25.4) / 72, ctx.theme.dots.color)];
       break;
     case 'grid':
-      prims = squareGrid(box, typeof p.pitch === 'number' ? p.pitch : 5, ctx.stroke('grid'));
+      prims = squareGrid(box, numProp(p.pitch, PROP_RANGES.pitch, 5), ctx.stroke('grid'));
       break;
     case 'rect':
-      prims = [{ t: 'rect', ...box, r: typeof p.radius === 'number' ? p.radius : 0, stroke: ctx.stroke('rule', 'ink', { use: 'frame' }), ...(normalizeColor(p.fill) ? { fill: { color: normalizeColor(p.fill)! } } : {}) }];
+      prims = [{ t: 'rect', ...box, r: numProp(p.radius, PROP_RANGES.radius, 0), stroke: ctx.stroke('rule', 'ink', { use: 'frame' }), ...(normalizeColor(p.fill) ? { fill: { color: normalizeColor(p.fill)! } } : {}) }];
       break;
     case 'line':
       prims = [{ t: 'line', x1: box.x, y1: box.y + box.h / 2, x2: box.x + box.w, y2: box.y + box.h / 2, stroke: ctx.stroke('rule', 'ink', { use: 'separator' }) }];

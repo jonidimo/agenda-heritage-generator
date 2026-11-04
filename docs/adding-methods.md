@@ -98,6 +98,10 @@ Then:
 2. Add its printed strings to the four files in `src/core/i18n/`.
 3. Add its name to the interface dictionary (`sec.gratitude`) in `src/app/i18n/ui.ts`.
 4. Optionally add it to a template in `src/core/design/defaults.ts`.
+5. If an option is text with a fixed list of values (like `variant` or `style`), list
+   them in `src/core/sections/options.ts`. The Sections tab offers them in a menu and the
+   JSON Schema of the file accepts only those values. Numbers in `defaults` are counts:
+   the form and `opt()` keep them between 0 and 200.
 
 Pages are laid out on demand and cached, so a section only pays for the pages that are
 shown. Use the helpers in `src/core/layout/` (`takeTop`, `rows`, `cols`, `grid`,

@@ -37,9 +37,7 @@ export function download(bytes: Uint8Array | Blob, name: string, mime = 'applica
 }
 
 /** Nombre de archivo a partir del nombre de una agenda, plantilla o tema (sin tildes ni signos). */
-export function fileBase(item: Pick<Design, 'name'>): string {
-  return (item.name || 'agenda').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-+|-+$/g, '').toLowerCase();
-}
+export { fileBase } from '@core/util/filename';
 
 function jobFor(design: Design, kind: ExportKind, signature?: number): Omit<PdfJob, 'id'> {
   const fonts = resources.fonts.list().map((f) => ({ bytes: f.bytes, family: f.family, weight: f.weight, style: f.style, source: f.source }));
