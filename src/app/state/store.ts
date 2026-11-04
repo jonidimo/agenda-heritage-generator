@@ -3,7 +3,7 @@
  * deshacer/rehacer, vista, selección y preferencias de la interfaz. El diseño
  * se guarda solo en IndexedDB (con demora) en cada cambio.
  */
-import type { Design } from '@core/design/schema';
+import { parseDesign, type Design } from '@core/design/schema';
 import { produce, type Draft } from 'immer';
 import { create } from 'zustand';
 import { saveDesign } from './persist';
@@ -143,7 +143,10 @@ export const useStore = create<StoreState>((set, get) => ({
   goToKey: null,
   updateReady: false,
 
-  setDesign(d, opts) {
+  setDesign(input, opts) {
+    // Toda agenda que entra al editor pasa por el esquema: completa los campos que agregan las
+    // versiones nuevas y acomoda valores viejos (así ninguna página falla por un dato faltante).
+    const d = parseDesign(input);
     set((s) => ({
       design: d,
       past: opts?.keepHistory ? s.past : [],

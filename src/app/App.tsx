@@ -206,7 +206,16 @@ export function App() {
             <Sidebar />
           </div>
         )}
-        <main className="flex min-h-0 min-w-0 flex-1 flex-col">
+        <main className="relative flex min-h-0 min-w-0 flex-1 flex-col">
+          {doc && !large && !sheetOpen && (
+            <button
+              type="button"
+              className="absolute top-3 right-3 z-20 flex items-center gap-1.5 rounded-full bg-accent px-3 py-1.5 text-[12px] font-semibold text-white shadow-lg"
+              onClick={() => setSheetOpen(true)}
+            >
+              <SlidersHorizontal size={15} /> {t('insp.open')}
+            </button>
+          )}
           {updateReady && (
             <div role="status" className="flex items-center gap-2 border-b border-line bg-accent-soft px-3 py-1.5 text-[12px] text-ink">
               <span className="min-w-0 flex-1">{t('notice.updated')}</span>
@@ -256,15 +265,6 @@ export function App() {
               <Inspector doc={doc} />
             </div>
           </div>
-        )}
-        {doc && !large && !sheetOpen && (
-          <button
-            type="button"
-            className="fixed right-3 bottom-24 z-30 flex items-center gap-1.5 rounded-full bg-accent px-3 py-2 text-[12px] font-semibold text-white shadow-lg"
-            onClick={() => setSheetOpen(true)}
-          >
-            <SlidersHorizontal size={15} /> {t('insp.open')}
-          </button>
         )}
       </div>
       {showWelcome && <WelcomeDialog />}

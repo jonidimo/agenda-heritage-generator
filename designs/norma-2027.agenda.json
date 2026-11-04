@@ -391,6 +391,7 @@
         "custom",
         "yearOverview"
       ],
+      "excludePages": [],
       "hAnchor": "outer",
       "vAnchor": "bottom",
       "dx": 13,
