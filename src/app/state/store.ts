@@ -57,6 +57,10 @@ interface StoreState {
   snap: boolean;
   /** Muestra en la página las zonas tocables del PDF (y un clic las sigue). */
   showLinks: boolean;
+  /** Historial de saltos (claves de página): ver `state/navigation`. */
+  navBack: string[];
+  navForward: string[];
+  setNav(back: string[], forward: string[]): void;
   /** Aviso para el usuario (errores de carga, archivos inválidos…). */
   notice: string | null;
   /** Página a la que ir en cuanto exista (p. ej. una página propia recién creada). */
@@ -171,6 +175,8 @@ export const useStore = create<StoreState>((set, get) => ({
   guides: false,
   snap: true,
   showLinks: false,
+  navBack: [],
+  navForward: [],
   notice: null,
   goToKey: null,
   updateReady: false,
@@ -187,6 +193,9 @@ export const useStore = create<StoreState>((set, get) => ({
       selection: null,
       selectedIds: [],
       pageIndex: opts?.keepHistory ? s.pageIndex : 0,
+      // Otra agenda: su historial de navegación empieza de cero.
+      navBack: opts?.keepHistory ? s.navBack : [],
+      navForward: opts?.keepHistory ? s.navForward : [],
     }));
     scheduleSave(d);
   },
@@ -194,7 +203,7 @@ export const useStore = create<StoreState>((set, get) => ({
   closeDesign() {
     const d = get().design;
     if (d) cancelSave(d.id);
-    set({ design: null, past: [], future: [], coalesce: null, selection: null, selectedIds: [], pageIndex: 0 });
+    set({ design: null, past: [], future: [], coalesce: null, selection: null, selectedIds: [], pageIndex: 0, navBack: [], navForward: [] });
   },
 
   setNotice: (notice) => set({ notice }),
@@ -270,4 +279,5 @@ export const useStore = create<StoreState>((set, get) => ({
   toggleGuides: () => set((s) => ({ guides: !s.guides })),
   toggleSnap: () => set((s) => ({ snap: !s.snap })),
   setShowLinks: (showLinks) => set({ showLinks }),
+  setNav: (navBack, navForward) => set({ navBack, navForward }),
 }));

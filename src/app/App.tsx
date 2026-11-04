@@ -24,6 +24,7 @@ import { useDocument } from './state/doc';
 import { collectUnusedAssets, listDesigns, loadDesign } from './state/persist';
 import { resources } from './state/resources';
 import { flushSave, useStore, type Panel } from './state/store';
+import { jumpToPage } from './state/navigation';
 
 const TABS: Array<{ id: Panel; key: UiKey; icon: React.ReactNode }> = [
   { id: 'sections', key: 'tab.sections', icon: <LayoutList size={16} /> },
@@ -213,7 +214,8 @@ export function App() {
     if (st.goToKey) {
       const i = doc.indexOfKey(st.goToKey);
       if (i >= 0) {
-        st.goToPage(i);
+        // Una página recién creada: se salta a ella y «Atrás» vuelve adonde se estaba.
+        jumpToPage(i);
         st.setGoToKey(null);
         return;
       }

@@ -15,6 +15,7 @@ import { blockMenu, multiMenu, pageMenu } from './menus';
 import { assetHref, onAssetUrlsChange } from '../../state/assetUrls';
 import { useT } from '../../i18n/ui';
 import { useStore, type Selection } from '../../state/store';
+import { jumpToPage } from '../../state/navigation';
 
 interface Props {
   doc: AgendaDocument;
@@ -66,7 +67,6 @@ export function PageView({ doc, index, scale, interactive = true }: Props) {
   const showGuides = useStore((s) => s.guides);
   const snapOn = useStore((s) => s.snap);
   const showLinks = useStore((s) => s.showLinks);
-  const goToPage = useStore((s) => s.goToPage);
   const t = useT();
   // Zonas tocables del PDF de páginas: se ven en celeste y un clic lleva al destino, como en el lector.
   const links = useMemo(() => (showLinks && interactive ? doc.links(index) : []), [showLinks, interactive, doc, index]);
@@ -409,7 +409,7 @@ export function PageView({ doc, index, scale, interactive = true }: Props) {
               onPointerDown={(e) => e.stopPropagation()}
               onClick={(e) => {
                 e.stopPropagation();
-                if (l.page !== undefined) goToPage(l.page);
+                if (l.page !== undefined) jumpToPage(l.page);
                 else if (l.url) window.open(l.url, '_blank', 'noopener,noreferrer');
               }}
             />

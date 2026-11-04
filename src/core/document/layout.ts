@@ -17,6 +17,7 @@ import { normalizeColor } from '../util/color';
 import type { FontRegistry } from '../text/fonts';
 import { assetPrims } from './assets';
 import { pageGeometry } from './context';
+import { pageTextVars } from '../sections/common';
 
 export function findOverride(overrides: BlockOverride[], page: { key: string; type: string }, blockId: string): BlockOverride | undefined {
   return (
@@ -126,15 +127,7 @@ function findImages(prims: Prim[]): Array<{ asset: string; w: number }> {
 }
 
 function substitute(text: string, ctx: LayoutContext, page: PagePlan): string {
-  const d = ctx.doc.design;
-  return fmtStr(text, {
-    year: d.calendar.year,
-    name: d.persona.name,
-    title: d.persona.title,
-    month: String(page.params?.monthName ?? ''),
-    week: String(page.params?.weekNumber ?? ''),
-    page: page.index + 1,
-  });
+  return fmtStr(text, pageTextVars(ctx, page));
 }
 
 function placeCustomBlock(ctx: LayoutContext, cb: CustomBlock, page: PagePlan): void {

@@ -1,9 +1,11 @@
-import { Archive, BookOpen, Columns2, File, FileDown, FolderOpen, Grid3x3, LayoutTemplate, Link2, Magnet, Maximize, PanelLeft, Printer, Redo2, Ruler, Save, Undo2, Upload, ZoomIn, ZoomOut } from 'lucide-react';
+import { Archive, ArrowLeft, ArrowRight, BookOpen, Columns2, File, FileDown, FolderOpen, Grid3x3, LayoutTemplate, Link2, Magnet, Maximize, PanelLeft, Printer, Redo2, Ruler, Save, Undo2, Upload, ZoomIn, ZoomOut } from 'lucide-react';
+import { useEffect } from 'react';
 import { backupAll, openAnyFile, saveCurrent } from '../state/fileActions';
 import { openMenuAt } from './ContextMenu';
 import { useT, type UiLang } from '../i18n/ui';
 import { useStore, type View } from '../state/store';
 import { IconButton, Segmented } from './ui';
+import { goBack, goForward } from '../state/navigation';
 
 export function Topbar() {
   const t = useT();
@@ -30,6 +32,30 @@ export function Topbar() {
   const snap = useStore((s) => s.snap);
   const toggleSnap = useStore((s) => s.toggleSnap);
   const showLinks = useStore((s) => s.showLinks);
+  const canBack = useStore((s) => s.navBack.length > 0);
+  const canForward = useStore((s) => s.navForward.length > 0);
+  // Alt+← / Alt+→ y los botones laterales del mouse, como en un navegador.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      if (!e.altKey || e.ctrlKey || e.metaKey) return;
+      if (e.key === 'ArrowLeft') goBack();
+      else if (e.key === 'ArrowRight') goForward();
+      else return;
+      e.preventDefault();
+    };
+    const onMouse = (e: MouseEvent): void => {
+      if (e.button === 3) goBack();
+      else if (e.button === 4) goForward();
+      else return;
+      e.preventDefault();
+    };
+    window.addEventListener('keydown', onKey);
+    window.addEventListener('mouseup', onMouse);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      window.removeEventListener('mouseup', onMouse);
+    };
+  }, []);
   const setShowLinks = useStore((s) => s.setShowLinks);
 
   return (
@@ -73,6 +99,14 @@ export function Topbar() {
           onChange={(e) => update((d) => void (d.name = e.target.value), 'name')}
         />
       )}
+      <div className="flex items-center">
+        <IconButton label={t('top.back')} onClick={goBack} disabled={!canBack}>
+          <ArrowLeft size={17} />
+        </IconButton>
+        <IconButton label={t('top.forward')} onClick={goForward} disabled={!canForward}>
+          <ArrowRight size={17} />
+        </IconButton>
+      </div>
       <div className="flex items-center">
         <IconButton label={t('top.undo')} onClick={undo} disabled={!canUndo}>
           <Undo2 size={17} />

@@ -182,7 +182,7 @@ export const toc: SectionModule = {
       const key = p.type === 'weekLeft' || p.type === 'weekRight' ? 'week' : p.type === 'custom' ? p.key : p.type;
       if (seenTypes.has(key)) continue;
       seenTypes.add(key);
-      const t = TOC_TITLES[key]?.(ctx) ?? (p.type === 'custom' ? p.title : null);
+      const t = TOC_TITLES[key]?.(ctx) ?? (p.type === 'custom' || p.type.startsWith('tpl:') ? p.title : null);
       if (t) entries.push({ title: t, page: p.index + 1, key: p.key });
     }
     const parts = param(page, 'parts', 1);

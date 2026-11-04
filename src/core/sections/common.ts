@@ -1,5 +1,6 @@
 import type { MonthInfo } from '../calendar';
 import { weekOrder } from '../calendar';
+import { dateOrder, formatDayMonth, weekdayNames } from '../calendar/locale';
 import { monthNames } from '../calendar/locale';
 import { takeTop } from '../layout/box';
 import type { LayoutContext } from '../layout/context';
@@ -7,6 +8,7 @@ import type { Prim } from '../layout/prims';
 import { line } from '../layout/prims';
 import { checkCircle, pageHeader, ruledLines } from '../layout/widgets';
 import type { Rect } from '../util/geometry';
+import type { PagePlan } from './types';
 
 /** Encabezado estándar y caja restante debajo. */
 export function headed(ctx: LayoutContext, title: string, right: string, opts: Parameters<typeof pageHeader>[4] = {}): Rect {
@@ -61,4 +63,31 @@ export function fieldLine(ctx: LayoutContext, x: number, y: number, w: number, l
 export function abbreviated(ctx: LayoutContext, text: string, kind: 'holiday' | 'event'): void {
   const where = kind === 'holiday' ? 'podés darle un nombre más corto en Calendario → Feriados' : 'podés acortarlo en Persona → Cumpleaños y fechas importantes';
   ctx.warn('abbreviated', `«${text}» se abrevió para entrar en su lugar: ${where}.`, { text, kind });
+}
+
+/**
+ * Variables de los textos escritos por la persona (elementos propios, plantillas de página):
+ * {year} {name} {title} {month} {week} {page}, y en las copias por día {date} («31 de marzo»),
+ * {weekday} y {day}. Las fechas salen en el idioma y el orden de la agenda.
+ */
+export function pageTextVars(ctx: LayoutContext, page: PagePlan): Record<string, string | number> {
+  const d = ctx.doc.design;
+  const iso = typeof page.params?.date === 'string' ? page.params.date : undefined;
+  const vars: Record<string, string | number> = {
+    year: d.calendar.year,
+    name: d.persona.name,
+    title: d.persona.title,
+    month: String(page.params?.monthName ?? ''),
+    week: String(page.params?.weekNumber ?? ''),
+    page: page.index + 1,
+  };
+  if (iso) {
+    const [y, m, day] = iso.split('-').map(Number);
+    const dow = ((new Date(Date.UTC(y!, m! - 1, day!)).getUTCDay() + 6) % 7) + 1;
+    vars.date = formatDayMonth(ctx.doc.locale, iso, dateOrder(ctx.doc.locale, d.calendar.dateFormat));
+    vars.weekday = weekdayNames(ctx.doc.locale, 'long')[dow - 1] ?? '';
+    vars.day = day!;
+    vars.year = y!;
+  }
+  return vars;
 }

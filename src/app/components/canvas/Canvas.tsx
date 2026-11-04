@@ -10,6 +10,7 @@ import { IconButton } from '../ui';
 import { ErrorBoundary, ViewError } from '../ErrorBoundary';
 import { PageView } from './PageView';
 import { Thumb } from './Thumb';
+import { jumpToPage } from '../../state/navigation';
 
 function useSize(): [React.RefObject<HTMLDivElement | null>, { w: number; h: number }] {
   const ref = useRef<HTMLDivElement | null>(null);
@@ -58,7 +59,8 @@ export function Canvas({ doc }: { doc: AgendaDocument }) {
     const onKey = (e: KeyboardEvent): void => {
       const tag = (e.target as HTMLElement | null)?.tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
-      if (useStore.getState().selection) return;
+      // Alt+flechas es «Atrás / Adelante» (barra superior), no pasar página.
+      if (useStore.getState().selection || e.altKey) return;
       if (e.key === 'PageDown' || (e.key === 'ArrowRight' && !e.shiftKey)) {
         next();
         e.preventDefault();
@@ -146,7 +148,6 @@ function SheetView({ doc, index, scale }: { doc: AgendaDocument; index: number; 
   const t = useT();
   const sideWanted = useStore((s) => s.sheetSide);
   const setSide = useStore((s) => s.setSheetSide);
-  const goToPage = useStore((s) => s.goToPage);
   const sides = doc.sides();
   const containing = doc.sideOfPage(index);
   const sheetNo = containing?.sheet ?? 0;
@@ -177,7 +178,7 @@ function SheetView({ doc, index, scale }: { doc: AgendaDocument; index: number; 
           // Con el dorso girado 180°, la mitad izquierda que se ve es la derecha de la hoja.
           const xMm = side.rotate180 ? doc.format.sheetW - xView : xView;
           const slot = side.slots.find((s) => xMm >= s.x && xMm <= s.x + s.w);
-          if (slot && slot.page !== null) goToPage(slot.page);
+          if (slot && slot.page !== null) jumpToPage(slot.page);
         }}
       />
       <div className="grid text-center text-[11.5px] text-ink-soft" style={{ width: doc.format.sheetW * scale, gridTemplateColumns: `repeat(${side.slots.length}, 1fr)` }}>
@@ -191,7 +192,6 @@ function SheetView({ doc, index, scale }: { doc: AgendaDocument; index: number; 
 
 function BookView({ doc }: { doc: AgendaDocument }) {
   const t = useT();
-  const goToPage = useStore((s) => s.goToPage);
   const setView = useStore((s) => s.setView);
   const current = useStore((s) => s.pageIndex);
   const width = 92;
@@ -203,7 +203,7 @@ function BookView({ doc }: { doc: AgendaDocument }) {
           key={i}
           type="button"
           onClick={() => {
-            goToPage(i);
+            jumpToPage(i);
             setView('spread');
           }}
           className={`flex flex-col items-center gap-1 ${i % 2 === 1 ? 'ml-3' : ''}`}

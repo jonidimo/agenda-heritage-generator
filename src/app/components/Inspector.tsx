@@ -61,6 +61,7 @@ import {
 import { useDocument } from '../state/doc';
 import { useStore } from '../state/store';
 import { Button, Field, NumberInput, Segmented, Select, Slider, TextArea, TextInput, Toggle } from './ui';
+import { jumpToPage } from '../state/navigation';
 
 export function Inspector({ doc }: { doc: AgendaDocument }) {
   const t = useT();
@@ -496,7 +497,6 @@ function LinkFields(props: { doc: AgendaDocument; page: PageModel; block: Block;
   const design = useStore((s) => s.design)!;
   const showLinks = useStore((s) => s.showLinks);
   const setShowLinks = useStore((s) => s.setShowLinks);
-  const goToPage = useStore((s) => s.goToPage);
   // Un elemento propio de una sola página (o una página propia) se enlaza solo en esa página.
   const custom = block.role === 'custom' ? design.customBlocks.find((c) => `custom.${c.id}` === block.id) : undefined;
   const level: 'type' | 'page' = page.type === 'custom' || (custom && custom.pageKey !== null) ? 'page' : scope;
@@ -569,7 +569,7 @@ function LinkFields(props: { doc: AgendaDocument; page: PageModel; block: Block;
               <span className="flex shrink-0 items-center gap-2">
                 {n > 1 && <span className="text-ink-soft tabular-nums">×{n}</span>}
                 {l.page !== undefined && (
-                  <button type="button" className="text-accent underline" onClick={() => goToPage(l.page!)}>
+                  <button type="button" className="text-accent underline" onClick={() => jumpToPage(l.page!)}>
                     {t('pre.go')}
                   </button>
                 )}
@@ -587,7 +587,6 @@ function LinkFields(props: { doc: AgendaDocument; page: PageModel; block: Block;
 
 function Preflight({ doc }: { doc: AgendaDocument }) {
   const t = useT();
-  const goToPage = useStore((s) => s.goToPage);
   const [items, setItems] = useState<Array<PageWarning & { page: number }> | null>(null);
   useEffect(() => setItems(null), [doc]);
   const run = (): void => setItems([...doc.documentWarnings().map((w) => ({ ...w, page: -1 })), ...doc.warnings()]);
@@ -632,7 +631,7 @@ function Preflight({ doc }: { doc: AgendaDocument }) {
                     <b className="tabular-nums">{w.page >= 0 ? w.page + 1 : t('pre.general')}</b> · {warningText(t, w)}
                   </span>
                   {w.page >= 0 && (
-                    <button type="button" className="shrink-0 text-accent underline" onClick={() => goToPage(w.page)}>
+                    <button type="button" className="shrink-0 text-accent underline" onClick={() => jumpToPage(w.page)}>
                       {t('pre.go')}
                     </button>
                   )}

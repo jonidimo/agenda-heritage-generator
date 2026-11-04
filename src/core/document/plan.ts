@@ -6,7 +6,8 @@
  * todo solo; los ajustes del editor siguen aplicando porque se atan a claves,
  * nunca a números de página.
  */
-import type { Design } from '../design/schema';
+import type { MonthInfo, WeekInfo } from '../calendar';
+import type { Design, SectionItem } from '../design/schema';
 import { planSignatures, type SignaturePlan } from '../imposition/signatures';
 import type { DocContext } from '../layout/context';
 import type { PagePlan, PagePlanDraft, SectionModule } from '../sections/types';
@@ -34,14 +35,7 @@ export function draftPages(doc: DocContext, registry: ReadonlyMap<string, Sectio
     if (!section.enabled) continue;
     if (section.type === 'months') {
       if (!include('months', section.options)) continue;
-      for (const month of doc.cal.months) {
-        for (const item of section.items ?? []) {
-          if (!item.enabled) continue;
-          const mod = registry.get(item.type);
-          if (!mod) continue;
-          drafts.push(...mod.plan(doc, item, month).map((d) => ({ ...d, module: d.module ?? mod.type })));
-        }
-      }
+      for (const month of doc.cal.months) drafts.push(...planMonth(doc, registry, section.items ?? [], month));
       continue;
     }
     if (!include(section.type, section.options)) continue;
@@ -50,6 +44,87 @@ export function draftPages(doc: DocContext, registry: ReadonlyMap<string, Sectio
     drafts.push(...mod.plan(doc, section).map((d) => ({ ...d, module: d.module ?? mod.type })));
   }
   return drafts;
+}
+
+/** Copia de las páginas de una sección para un mes, una semana o un día. */
+interface Occurrence {
+  /** Sufijo de las claves (`2027-03`, `2027-W12`, `2027-03-15`): cada copia tiene claves propias y estables. */
+  scope: string;
+  month: MonthInfo;
+  week?: WeekInfo;
+  date?: string;
+}
+
+/**
+ * Atribuye las páginas de una sección a su mes (y semana o día): grupo del mes, claves únicas
+ * por copia y los datos que usan los textos ({month}, {week}, {date}). Sirve para cualquier
+ * sección, aunque no sepa de meses: así toda sección puede repetirse.
+ */
+function placeIn(drafts: PagePlanDraft[], o: Occurrence): PagePlanDraft[] {
+  return drafts.map((d) => ({
+    ...d,
+    key: d.key.includes(o.scope) ? d.key : `${d.key}@${o.scope}`,
+    group: `month:${o.month.key}`,
+    params: {
+      month: { y: o.month.y, m: o.month.m },
+      monthName: o.month.name,
+      ...(o.week ? { week: o.week.key, weekNumber: o.week.number } : {}),
+      ...(o.date ? { date: o.date } : {}),
+      ...(d.params ?? {}),
+    },
+  }));
+}
+
+/**
+ * Páginas de un mes. Lo que se repite por mes va en el orden de la lista; lo que se repite por
+ * semana va después de cada semana (de sus páginas, si las tiene) y lo que se repite por día,
+ * después de la página de ese día o, si el día comparte página con su semana, después de la semana.
+ */
+function planMonth(doc: DocContext, registry: ReadonlyMap<string, SectionModule>, items: readonly SectionItem[], month: MonthInfo): PagePlanDraft[] {
+  const out: PagePlanDraft[] = [];
+  const later: Array<{ item: SectionItem; mod: SectionModule; at: number }> = [];
+  for (const item of items) {
+    if (!item.enabled) continue;
+    const mod = registry.get(item.type);
+    if (!mod) continue;
+    const withModule = (ds: PagePlanDraft[]): PagePlanDraft[] => ds.map((d) => ({ ...d, module: d.module ?? mod.type }));
+    // Las secciones mensuales ya planifican su mes con claves propias; las demás se atribuyen al mes.
+    if (item.repeat === 'month') out.push(...withModule(mod.scope === 'month' ? mod.plan(doc, item, month) : placeIn(mod.plan(doc, item, month), { scope: month.key, month })));
+    else later.push({ item, mod, at: out.length });
+  }
+  // Las repeticiones por semana o día se ubican después de que existen las páginas de las semanas.
+  for (const { item, mod, at } of later.reverse()) {
+    const copies = (o: Occurrence): PagePlanDraft[] => placeIn(mod.plan(doc, item, month), o).map((d) => ({ ...d, module: d.module ?? mod.type }));
+    const pending: PagePlanDraft[] = [];
+    for (const week of month.weeks) {
+      const isos = item.repeat === 'day' ? week.days.map((d) => d.iso) : [];
+      const occ: Occurrence[] = item.repeat === 'week' ? [{ scope: week.key, month, week }] : isos.map((iso) => ({ scope: iso, month, week, date: iso }));
+      for (const o of occ) {
+        const add = copies(o);
+        const ownPage = o.date ? lastIndex(out, (d) => d.type === 'daily' && ((d.params?.days as string[] | undefined) ?? []).includes(o.date!)) : -1;
+        const weekEnd = lastIndex(out, (d) => d.params?.week === week.key && d.type !== 'monthGrid');
+        const anchor = ownPage >= 0 ? ownPage : weekEnd;
+        if (anchor >= 0) out.splice(anchor + 1 + countAfter(out, anchor, add), 0, ...add);
+        else pending.push(...add);
+      }
+    }
+    // Sin páginas de semana ni de día en el mes: las copias van juntas donde está la sección en la lista.
+    out.splice(Math.min(at, out.length), 0, ...pending);
+  }
+  return out;
+}
+
+function lastIndex<T>(arr: readonly T[], f: (x: T) => boolean): number {
+  for (let i = arr.length - 1; i >= 0; i--) if (f(arr[i]!)) return i;
+  return -1;
+}
+
+/** Copias ya puestas después del ancla (para que las del mismo ancla queden en orden de fecha). */
+function countAfter(arr: readonly PagePlanDraft[], anchor: number, next: readonly PagePlanDraft[]): number {
+  const section = next[0]?.section;
+  let n = 0;
+  while (anchor + 1 + n < arr.length && arr[anchor + 1 + n]!.section === section && arr[anchor + 1 + n]!.key.includes('@')) n++;
+  return n;
 }
 
 export function insertCustomPages(drafts: PagePlanDraft[], design: Design, placeholder: string): PagePlanDraft[] {

@@ -198,6 +198,11 @@ export const SectionItemZ = z.object({
   type: z.string(),
   enabled: z.boolean().default(true),
   options: z.record(z.string(), z.unknown()).default({}),
+  /**
+   * Solo dentro de «Meses»: cada cuánto se repite. `week` pone una copia después de cada semana
+   * y `day` una por día (después de la página de ese día o de su semana).
+   */
+  repeat: z.enum(['month', 'week', 'day']).default('month'),
 });
 export type SectionItem = z.infer<typeof SectionItemZ>;
 
@@ -230,6 +235,20 @@ export const CustomPageZ = z.object({
     .prefault({}),
 });
 export type CustomPage = z.infer<typeof CustomPageZ>;
+
+/**
+ * Plantilla de página: una página diseñada una vez (fondo, texto o imagen, y sus elementos
+ * propios) que se agrega como sección y puede repetirse cada mes, semana o día. Todas sus copias
+ * son del tipo de página `tpl:<id>`, así los elementos y ajustes «por tipo» valen para todas.
+ */
+export const PageTemplateZ = z.object({
+  id: z.string(),
+  title: z.string().default(''),
+  /** Mostrar el título arriba de la página (con fecha si la copia tiene una). */
+  showTitle: z.boolean().default(true),
+  content: CustomPageZ.shape.content,
+});
+export type PageTemplate = z.infer<typeof PageTemplateZ>;
 
 export const CustomBlockZ = z.object({
   id: z.string(),
@@ -384,6 +403,7 @@ export const DesignZ = z.object({
   methods: MethodsZ,
   sections: z.array(SectionZ).default([]),
   customPages: z.array(CustomPageZ).default([]),
+  pageTemplates: z.array(PageTemplateZ).default([]),
   customBlocks: z.array(CustomBlockZ).default([]),
   watermarks: z.array(WatermarkZ).default([]),
   overrides: z.array(BlockOverrideZ).default([]),

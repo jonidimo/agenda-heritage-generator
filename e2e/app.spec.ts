@@ -392,3 +392,22 @@ test.describe('enlaces para leer en tableta', () => {
     expect(pdf).toMatch(/\/Lang \(es-[A-Z]{2}\)/);
   });
 });
+
+test('tocar una sección lleva a sus páginas, se puede repetir cada semana y «Atrás» vuelve', async ({ page }) => {
+  await open(page);
+  const row = page.locator('li').filter({ has: page.getByRole('checkbox', { name: 'Estimé / tardé' }) });
+  await row.getByRole('checkbox').check();
+  await row.getByRole('button', { name: /Estimé \/ tardé/ }).click();
+  await expect(page.locator('[data-page-type="estimates"]').first()).toBeVisible();
+  const at = (await state(page)).pageIndex;
+  expect(at).toBeGreaterThan(100);
+  // Clic derecho: cada semana.
+  await row.click({ button: 'right' });
+  await page.getByRole('menuitem', { name: 'Cada semana' }).click();
+  await expect(page.locator('li').filter({ has: page.getByRole('checkbox', { name: 'Estimé / tardé' }) }).getByText('Cada semana')).toBeVisible();
+  // «Atrás» vuelve a la portada, desde donde se saltó.
+  await page.getByRole('button', { name: 'Atrás (Alt+←)' }).click();
+  await expect.poll(async () => (await state(page)).pageIndex).toBe(0);
+  await page.getByRole('button', { name: 'Adelante (Alt+→)' }).click();
+  await expect.poll(async () => (await state(page)).pageIndex).toBeGreaterThan(0);
+});

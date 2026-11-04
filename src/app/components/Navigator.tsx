@@ -7,11 +7,11 @@ import { useStore } from '../state/store';
 import { thumbMenu } from './canvas/menus';
 import { Thumb } from './canvas/Thumb';
 import { openMenuAt } from './ContextMenu';
+import { jumpToPage } from '../state/navigation';
 
 export function Navigator({ doc }: { doc: AgendaDocument }) {
   const t = useT();
   const current = useStore((s) => s.pageIndex);
-  const goToPage = useStore((s) => s.goToPage);
   const stripRef = useRef<HTMLDivElement | null>(null);
   const groups = useMemo(() => {
     const out: Array<{ key: string; label: string; first: number }> = [];
@@ -40,7 +40,7 @@ export function Navigator({ doc }: { doc: AgendaDocument }) {
     <div className="border-t border-line bg-paper-2/70">
       <div className="scroll-thin flex gap-1 overflow-x-auto px-2 pt-1.5 text-[11px]">
         {groups.map((g) => (
-          <button key={`${g.key}-${g.first}`} type="button" onClick={() => goToPage(g.first)} className="shrink-0 rounded px-1.5 py-0.5 font-semibold whitespace-nowrap text-ink-soft hover:bg-white hover:text-ink">
+          <button key={`${g.key}-${g.first}`} type="button" onClick={() => jumpToPage(g.first)} className="shrink-0 rounded px-1.5 py-0.5 font-semibold whitespace-nowrap text-ink-soft hover:bg-white hover:text-ink">
             {g.label}
           </button>
         ))}
@@ -51,7 +51,7 @@ export function Navigator({ doc }: { doc: AgendaDocument }) {
             key={p.key}
             type="button"
             data-thumb={i}
-            onClick={() => goToPage(i)}
+            onClick={() => jumpToPage(i)}
             onContextMenu={(e) => openMenuAt(e, thumbMenu(t, doc, i))}
             title={`${i + 1} · ${pageTitle(t, p)}`}
             className={`flex shrink-0 flex-col items-center gap-0.5 ${i % 2 === 1 ? 'ml-1.5' : ''}`}

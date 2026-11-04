@@ -15,8 +15,8 @@ export const TEMPLATES: Array<{ id: TemplateId; name: string; description: strin
   { id: 'minimal', name: 'Mínima', description: 'Una sola tipografía, puntos en vez de renglones, sin sombreado.' },
 ];
 
-const item = (type: string, options: Record<string, unknown> = {}, enabled = true): SectionItem => ({ id: type, type, enabled, options });
-const section = (type: string, options: Record<string, unknown> = {}, enabled = true): SectionSpec => ({ id: type, type, enabled, options });
+const item = (type: string, options: Record<string, unknown> = {}, enabled = true): SectionItem => ({ id: type, type, enabled, options, repeat: 'month' });
+const section = (type: string, options: Record<string, unknown> = {}, enabled = true): SectionSpec => ({ id: type, type, enabled, options, repeat: 'month' });
 
 /** Mes Heritage (orden de 2026): portada, notas, registro diario, semanas, balance, resumen, hábitos, notas. */
 export function heritageMonthItems(opts: { grid?: boolean; weekly?: string } = {}): SectionItem[] {
@@ -172,7 +172,7 @@ export function createDesign(template: TemplateId, opts: CreateOptions = {}): De
  * duplicar la agenda para otro año.
  */
 export function shiftKeyYears(key: string, delta: number): string {
-  return key.replace(/(^|[:+])(\d{4})(?=-|:|$)/g, (_m, pre: string, y: string) => `${pre}${Number(y) + delta}`);
+  return key.replace(/(^|[:+@])(\d{4})(?=-|:|$)/g, (_m, pre: string, y: string) => `${pre}${Number(y) + delta}`);
 }
 
 export function duplicateForYear(d: Design, year: number): Design {

@@ -54,6 +54,7 @@ import { exportPageSvg, fileBase } from '../../state/exporter';
 import { useStore } from '../../state/store';
 import { addAssetFiles, pickFiles } from '../../state/uploads';
 import type { MenuItem } from '../ContextMenu';
+import { jumpToPage } from '../../state/navigation';
 
 type T = (key: UiKey, vars?: Record<string, string | number>) => string;
 
@@ -230,7 +231,7 @@ export function thumbMenu(t: T, doc: AgendaDocument, index: number): MenuItem[] 
   const plan = doc.plan.pages[index];
   return [
     { heading: t('menu.page', { n: index + 1, title: plan ? pageTitle(t, plan) : '' }) },
-    { label: t('menu.goTo'), onSelect: () => useStore.getState().goToPage(index) },
+    { label: t('menu.goTo'), onSelect: () => jumpToPage(index) },
     { label: t('menu.insertPage'), icon: <FilePlus2 size={14} />, onSelect: () => insertPageAfter(doc, index) },
     { label: t('export.svg'), onSelect: () => exportPageSvg(doc, index, `${fileBase(useStore.getState().design!)}-p${index + 1}.svg`) },
   ];
