@@ -8,6 +8,8 @@ import { transformRect, type Matrix, type Rect } from '../util/geometry';
 
 export interface Stroke {
   color: string;
+  /** Para qué sirve la línea (renglón, separador, tabla, marco): el tema le da estilo según esto. */
+  use?: import('../design/themes').LineUse;
   /** Grosor en mm. */
   width: number;
   /** Patrón de guiones en mm. */
@@ -78,6 +80,8 @@ export interface TextPrim {
   y: number;
   color: string;
   opacity?: number;
+  /** Tipo de texto (título, rótulo…): el editor lo usa para llevar a su estilo. */
+  role?: string;
 }
 
 export interface ImagePrim {

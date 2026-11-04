@@ -145,7 +145,7 @@ test('la política de seguridad no bloquea nada de la aplicación', async ({ pag
   const bytes = Buffer.from(await pdf.save());
   await page.getByRole('tab', { name: 'Imágenes y fuentes' }).click();
   await page.locator('input[type="file"][accept*="pdf"]').setInputFiles({ name: 'prueba.pdf', mimeType: 'application/pdf', buffer: bytes });
-  await expect(page.getByText('prueba.pdf')).toBeVisible();
+  await expect(page.getByText('prueba.pdf').filter({ visible: true }).first()).toBeVisible();
   // pdf.js dibujó la vista previa (una imagen blob:), así que su Worker funciona con la política.
   await expect(page.locator('img[src^="blob:"]').first()).toBeVisible({ timeout: 20_000 });
   expect(violations).toEqual([]);
@@ -436,4 +436,53 @@ test('un texto propio se estira solo a lo ancho con el tirador del lado, y en pr
   await expect.poll(async () => (await custom()).w).toBeGreaterThan(mid.w + 3);
   const after = await custom();
   expect(after.w / after.h).toBeCloseTo(mid.w / mid.h, 1);
+});
+
+test.describe('estilo integral y buscador', () => {
+  type ThemeState = { design: { theme: { id: string; tokens: { lines?: Record<string, { pattern?: string; ornament?: string }>; colors?: { roles?: Record<string, string> } } } } };
+  const theme = (page: Page) => page.evaluate(() => (globalThis as unknown as { __agenda: { getState: () => ThemeState } }).__agenda.getState().design.theme);
+
+  test('el buscador perdona errores de tipeo y muestra dónde está el ajuste', async ({ page }) => {
+    await open(page);
+    await page.keyboard.press('Control+k');
+    await page.getByRole('combobox', { name: 'Buscar (Ctrl+K)' }).fill('pestanas de mezes');
+    await expect(page.getByRole('option').first()).toContainText('Pestañas');
+    await page.keyboard.press('Enter');
+    // Abre Impresión, despliega el grupo plegado y resalta el control.
+    await expect(page.locator('.reveal-flash')).toBeVisible();
+    await expect(page.locator('.reveal-flash')).toContainText('Pestañas');
+    await expect(page.getByRole('tab', { name: 'Impresión' })).toHaveAttribute('aria-selected', 'true');
+  });
+
+  test('desde un título de la página se llega a la letra y el color de los títulos', async ({ page }) => {
+    await open(page);
+    await page.evaluate(() => (globalThis as unknown as { __agenda: StoreHandle }).__agenda.getState().goToPage(7));
+    const p = await center(page, '[data-page-type="yearOverview"] [data-block="header.title"]');
+    await page.mouse.click(p.x, p.y);
+    await page.getByTestId('text-roles').getByRole('button', { name: /Títulos/ }).click();
+    await expect(page.locator('[data-reveal="role.title"].reveal-flash')).toBeVisible();
+    await expect(page.getByRole('tab', { name: 'Estilo' })).toHaveAttribute('aria-selected', 'true');
+  });
+
+  test('paleta derivada, separadores con firulete y guardar el estilo como tema propio', async ({ page }) => {
+    await open(page);
+    await page.getByRole('tab', { name: 'Estilo' }).click();
+    await page.getByRole('button', { name: 'Paleta de colores' }).click();
+    await page.getByLabel('Armonía').selectOption('complementary');
+    await page.getByRole('button', { name: 'Aplicar la paleta' }).click();
+    await expect.poll(async () => Object.keys((await theme(page)).tokens.colors?.roles ?? {}).length).toBe(8);
+    await page.getByRole('button', { name: 'Líneas y ornamentos' }).click();
+    const sep = page.locator('[data-reveal="line.separator"]');
+    await sep.getByLabel('Trazo').selectOption('center');
+    await sep.getByRole('button', { name: 'Florón' }).click();
+    await expect.poll(async () => (await theme(page)).tokens.lines?.separator).toEqual(expect.objectContaining({ pattern: 'center', ornament: 'builtin:fleuron' }));
+    // El separador del encabezado ahora lleva el ornamento (se dibuja como grupo con trazados).
+    await page.evaluate(() => (globalThis as unknown as { __agenda: StoreHandle }).__agenda.getState().goToPage(7));
+    await expect(page.locator('[data-page-type="yearOverview"] [data-block="header.rule"] path').first()).toBeAttached();
+    // Guardar como tema propio: aparece en «Mis temas».
+    await page.getByRole('button', { name: 'Guardar este estilo como tema' }).click();
+    await page.getByLabel('Nombre del tema').fill('Mi azul');
+    await page.getByRole('button', { name: 'Guardar', exact: true }).click();
+    await expect(page.locator('[data-reveal="themes.mine"]').getByText('Mi azul')).toBeVisible();
+  });
 });

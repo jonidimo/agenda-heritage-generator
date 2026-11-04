@@ -4,7 +4,7 @@
  * servidor. Exportar/importar `.agenda.json` permite llevar el trabajo a otra
  * computadora o teléfono.
  */
-import { parseDesign, type Design } from '@core/design/schema';
+import { parseDesign, UserThemeZ, type Design, type UserTheme } from '@core/design/schema';
 import { fromBase64, toBase64 } from '@core/resources';
 import type { FontSpec } from '@core/text/fonts';
 import { createStore, del, get, keys, set } from 'idb-keyval';
@@ -13,6 +13,27 @@ const designs = createStore('agenda-studio', 'designs');
 const assets = createStore('agenda-studio-assets', 'assets');
 const fonts = createStore('agenda-studio-fonts', 'fonts');
 const templates = createStore('agenda-studio-templates', 'templates');
+const themes = createStore('agenda-studio-themes', 'themes');
+
+/** Temas propios (estilos completos con nombre), validados al leerlos. */
+export async function listThemes(): Promise<UserTheme[]> {
+  return safe(async () => {
+    const out: UserTheme[] = [];
+    for (const k of await keys(themes)) {
+      const r = UserThemeZ.safeParse(await get(k, themes));
+      if (r.success) out.push(r.data);
+    }
+    return out.sort((a, b) => a.name.localeCompare(b.name));
+  }, []);
+}
+
+export async function saveTheme(t: UserTheme): Promise<void> {
+  await safe(() => set(t.id, t, themes), undefined);
+}
+
+export async function deleteTheme(id: string): Promise<void> {
+  await safe(() => del(id, themes), undefined);
+}
 
 /** Plantilla propia: una agenda guardada como punto de partida para otras (otro año, otra persona). */
 export interface TemplateRecord {
@@ -104,10 +125,14 @@ export async function collectUnusedAssets(): Promise<number> {
       const d = await get<{ assets?: Array<{ id?: string }> }>(k, designs);
       for (const a of d?.assets ?? []) if (a?.id) used.add(a.id);
     }
-    // Las imágenes de las plantillas propias también se conservan.
+    // Las imágenes de las plantillas y de los temas propios también se conservan.
     for (const k of await keys(templates)) {
       const t = await get<{ design?: { assets?: Array<{ id?: string }> } }>(k, templates);
       for (const a of t?.design?.assets ?? []) if (a?.id) used.add(a.id);
+    }
+    for (const k of await keys(themes)) {
+      const t = await get<{ assets?: Array<{ id?: string }> }>(k, themes);
+      for (const a of t?.assets ?? []) if (a?.id) used.add(a.id);
     }
     let removed = 0;
     for (const k of await keys(assets)) {

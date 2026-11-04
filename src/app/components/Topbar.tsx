@@ -1,11 +1,12 @@
-import { Archive, ArrowLeft, ArrowRight, BookOpen, Columns2, File, FileDown, FolderOpen, Grid3x3, LayoutTemplate, Link2, Magnet, Maximize, PanelLeft, Printer, Redo2, Ruler, Save, Undo2, Upload, ZoomIn, ZoomOut } from 'lucide-react';
-import { useEffect } from 'react';
+import { Archive, ArrowLeft, ArrowRight, BookOpen, Search, Columns2, File, FileDown, FolderOpen, Grid3x3, LayoutTemplate, Link2, Magnet, Maximize, PanelLeft, Printer, Redo2, Ruler, Save, Undo2, Upload, ZoomIn, ZoomOut } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import { backupAll, openAnyFile, saveCurrent } from '../state/fileActions';
 import { openMenuAt } from './ContextMenu';
 import { useT, type UiLang } from '../i18n/ui';
 import { useStore, type View } from '../state/store';
 import { IconButton, Segmented } from './ui';
 import { goBack, goForward } from '../state/navigation';
+import { SearchPalette } from './SearchPalette';
 
 export function Topbar() {
   const t = useT();
@@ -32,6 +33,20 @@ export function Topbar() {
   const snap = useStore((s) => s.snap);
   const toggleSnap = useStore((s) => s.toggleSnap);
   const showLinks = useStore((s) => s.showLinks);
+  const [searching, setSearching] = useState(false);
+  // Buscador: Ctrl+K (o ⌘K), o «/» si no se está escribiendo en un campo.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      const tag = (e.target as HTMLElement | null)?.tagName;
+      const typing = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (e.target as HTMLElement | null)?.isContentEditable;
+      if (((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') || (e.key === '/' && !typing)) {
+        setSearching(true);
+        e.preventDefault();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
   const canBack = useStore((s) => s.navBack.length > 0);
   const canForward = useStore((s) => s.navForward.length > 0);
   // Alt+← / Alt+→ y los botones laterales del mouse, como en un navegador.
@@ -65,11 +80,11 @@ export function Topbar() {
       </IconButton>
       <div className="flex items-baseline gap-2 pr-2">
         <span className="font-display text-[19px] leading-none italic">Heritage</span>
-        <span className="hidden text-[10.5px] font-extrabold tracking-[0.16em] text-ink-soft uppercase md:inline">Studio</span>
+        <span className="hidden text-[10.5px] font-extrabold tracking-[0.16em] text-ink-soft uppercase 2xl:inline">Studio</span>
       </div>
       <button type="button" onClick={() => setShowLibrary(true)} className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-[12.5px] font-semibold hover:bg-black/5" title={t('top.library')}>
         <FolderOpen size={16} />
-        <span className="hidden sm:inline">{t('top.library')}</span>
+        <span className="hidden xl:inline">{t('top.library')}</span>
       </button>
       <button
         type="button"
@@ -89,16 +104,20 @@ export function Topbar() {
         }}
       >
         <Save size={16} />
-        <span className="hidden sm:inline">{t('file.menu')}</span>
+        <span className="hidden xl:inline">{t('file.menu')}</span>
       </button>
       {design && (
         <input
           aria-label={t('top.name')}
-          className="min-w-[120px] flex-1 rounded-md border border-transparent bg-transparent px-2 py-1 text-[13px] font-semibold hover:border-line focus:border-accent focus:bg-white focus:outline-none sm:max-w-[260px]"
+          className="min-w-[120px] flex-1 rounded-md border border-transparent bg-transparent px-2 py-1 text-[13px] font-semibold hover:border-line focus:border-accent focus:bg-white focus:outline-none sm:max-w-[200px]"
           value={design.name}
           onChange={(e) => update((d) => void (d.name = e.target.value), 'name')}
         />
       )}
+      <IconButton label={t('search.open')} onClick={() => setSearching(true)}>
+        <Search size={17} />
+      </IconButton>
+      {searching && <SearchPalette onClose={() => setSearching(false)} />}
       <div className="flex items-center">
         <IconButton label={t('top.back')} onClick={goBack} disabled={!canBack}>
           <ArrowLeft size={17} />

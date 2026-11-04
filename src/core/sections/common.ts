@@ -39,7 +39,7 @@ export function checklist(ctx: LayoutContext, r: Rect, pitch: number, opts: { ci
   for (let i = 1; i <= n; i++) {
     const y = r.y + i * pitch;
     if (opts.circles !== false) out.push(checkCircle(ctx, r.x + 1.6, y - 1.9, 1.5));
-    out.push(line(r.x + (opts.circles !== false ? 4.5 : 0), y, r.x + r.w, y, ctx.stroke('hair')));
+    out.push(line(r.x + (opts.circles !== false ? 4.5 : 0), y, r.x + r.w, y, ctx.stroke('hair', undefined, { use: 'writing' })));
   }
   return out;
 }
@@ -56,7 +56,7 @@ export function labeledLines(ctx: LayoutContext, r: Rect, label: string, lines: 
 export function fieldLine(ctx: LayoutContext, x: number, y: number, w: number, label: string, size?: number): Prim[] {
   const t = ctx.textAt(label, x, y, { role: 'label', size: size ?? ctx.theme.sizes.small });
   const lx = x + t.width + 2;
-  return [t.prim, line(lx, y + 0.6, x + w, y + 0.6, ctx.stroke('hair'))];
+  return [t.prim, line(lx, y + 0.6, x + w, y + 0.6, ctx.stroke('hair', undefined, { use: 'writing' }))];
 }
 
 /** Aviso informativo: un feriado o una fecha propia se abrevió con «…» para entrar en su lugar. */

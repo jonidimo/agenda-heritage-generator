@@ -36,8 +36,9 @@ export function download(bytes: Uint8Array | Blob, name: string, mime = 'applica
   setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
 
-export function fileBase(design: Design): string {
-  return (design.name || 'agenda').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-+|-+$/g, '').toLowerCase();
+/** Nombre de archivo a partir del nombre de una agenda, plantilla o tema (sin tildes ni signos). */
+export function fileBase(item: Pick<Design, 'name'>): string {
+  return (item.name || 'agenda').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-+|-+$/g, '').toLowerCase();
 }
 
 function jobFor(design: Design, kind: ExportKind, signature?: number): Omit<PdfJob, 'id'> {

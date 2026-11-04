@@ -370,6 +370,23 @@ export const AssetRefZ = z.object({
 });
 export type AssetRef = z.infer<typeof AssetRefZ>;
 
+/**
+ * Tema propio: el estilo completo de una agenda (tema base, comodidad y todos los ajustes: letras,
+ * colores, líneas, ornamentos) guardado con un nombre para usarlo en otras agendas. Las imágenes
+ * que usa (ornamentos propios) van como referencias; en el archivo exportado, con sus datos.
+ */
+export const UserThemeZ = z.object({
+  id: z.string(),
+  name: z.string().min(1).max(80),
+  description: z.string().max(400).default(''),
+  createdAt: z.string().default(() => new Date().toISOString()),
+  base: z.string().default('heritage'),
+  comfort: z.enum(['compact', 'normal', 'wide']).default('normal'),
+  tokens: z.record(z.string(), z.unknown()).default({}).transform((t) => pruneTokens(t)),
+  assets: z.array(AssetRefZ).default([]),
+});
+export type UserTheme = z.infer<typeof UserThemeZ>;
+
 export const CoverZ = z
   .object({
     enabled: z.boolean().default(true),

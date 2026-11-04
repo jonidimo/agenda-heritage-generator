@@ -9,6 +9,36 @@ import { normalizeColor } from '../util/color';
 
 export type WritingStyle = 'lines' | 'dots' | 'grid' | 'blank';
 
+/** Para qué sirve una línea: el tema le da estilo según su uso, no según su grosor. */
+export const LINE_USES = ['writing', 'separator', 'table', 'frame'] as const;
+export type LineUse = (typeof LINE_USES)[number];
+
+/**
+ * Cómo se dibuja una línea: lisa, a guiones, de puntos, doble, con un ornamento repetido a lo
+ * largo (guarda) o con un ornamento al centro (separador con firulete).
+ */
+export const LINE_PATTERNS = ['solid', 'dashed', 'dotted', 'double', 'repeat', 'center'] as const;
+export type LinePattern = (typeof LINE_PATTERNS)[number];
+
+/** Armonías para derivar una paleta de un color (en el espacio de color perceptual OKLCH). */
+export const HARMONIES = ['mono', 'analogous', 'complementary', 'split', 'triadic'] as const;
+export type Harmony = (typeof HARMONIES)[number];
+
+export interface LineStyle {
+  pattern: LinePattern;
+  /** Ornamento para `repeat` y `center`: `builtin:<id>` o `asset:<id>` (vacío: ninguno). */
+  ornament: string;
+  /** Alto del ornamento en mm. */
+  size: number;
+  /** Solo marcos: ornamento en cada esquina (vacío: ninguno). */
+  corner: string;
+  /** Color propio (vacío: el de la línea). */
+  color: string;
+}
+
+const plain: LineStyle = { pattern: 'solid', ornament: '', size: 3, corner: '', color: '' };
+const PLAIN_LINES: Record<LineUse, LineStyle> = { writing: plain, separator: plain, table: plain, frame: plain };
+
 export interface ThemeTokens {
   name: string;
   description: string;
@@ -39,7 +69,13 @@ export interface ThemeTokens {
     ruleSoft: string;
     weekend: string;
     accent: string;
+    /** Color de cada tipo de texto (títulos, rótulos, cifras…). */
+    roles: Record<keyof ThemeTokens['fonts'], string>;
   };
+  /** De dónde salió la paleta (para volver a derivarla): color base y armonía. */
+  palette: { base: string; harmony: Harmony };
+  /** Estilo de las líneas según su uso. */
+  lines: Record<LineUse, LineStyle>;
   /** Grosores en puntos tipográficos. */
   strokes: { hair: number; grid: number; rule: number; strong: number; heavy: number };
   /** Cuerpos en puntos. */
@@ -70,6 +106,11 @@ export interface ThemeTokens {
   minTextPt: number;
 }
 
+/** Todos los tipos de texto en un mismo color. */
+function rolesIn(color: string): ThemeTokens['colors']['roles'] {
+  return { display: color, title: color, label: color, labelStrong: color, heading: color, body: color, number: color, quote: color };
+}
+
 const heritage: ThemeTokens = {
   name: 'Heritage',
   description: 'Clásico, durable y legible: Cormorant Garamond + Manrope, monocromo para láser.',
@@ -84,7 +125,9 @@ const heritage: ThemeTokens = {
     quote: { family: 'Cormorant Garamond', weight: 400, style: 'italic' },
   },
   fallbacks: ['Manrope', 'Cormorant Garamond'],
-  colors: { ink: '#000000', soft: '#000000', rule: '#999999', ruleSoft: '#cccccc', weekend: '#e0e0e0', accent: '#556b2f' },
+  colors: { ink: '#000000', soft: '#000000', rule: '#999999', ruleSoft: '#cccccc', weekend: '#e0e0e0', accent: '#556b2f', roles: rolesIn('#000000') },
+  palette: { base: '#000000', harmony: 'mono' },
+  lines: PLAIN_LINES,
   strokes: { hair: 0.3, grid: 0.25, rule: 0.5, strong: 1, heavy: 1.5 },
   sizes: {
     hero: 72,
@@ -124,7 +167,7 @@ const clara: ThemeTokens = {
     quote: { family: 'Atkinson Hyperlegible Next', weight: 400, style: 'italic' },
   },
   fallbacks: ['Atkinson Hyperlegible Next', 'Manrope'],
-  colors: { ink: '#000000', soft: '#000000', rule: '#555555', ruleSoft: '#8a8a8a', weekend: '#d6d6d6', accent: '#000000' },
+  colors: { ink: '#000000', soft: '#000000', rule: '#555555', ruleSoft: '#8a8a8a', weekend: '#d6d6d6', accent: '#000000', roles: rolesIn('#000000') },
   strokes: { hair: 0.4, grid: 0.35, rule: 0.6, strong: 1.1, heavy: 1.6 },
   sizes: {
     hero: 66,
@@ -201,7 +244,33 @@ const cuaderno: ThemeTokens = {
   writing: { style: 'grid', pitch: 5 },
 };
 
-export const THEMES: Record<string, ThemeTokens> = { heritage, clara, clasica, minimal, cuaderno };
+/**
+ * Filigrana: clásica con ornamentos. Separadores con un firulete al centro, marcos dobles con
+ * esquinas en espiral y tinta sepia (una paleta derivada de un solo color).
+ */
+const filigrana: ThemeTokens = {
+  ...clasica,
+  name: 'Filigrana',
+  description: 'EB Garamond con firuletes: separadores con ornamento al centro, marcos dobles con esquinas en espiral y tinta sepia.',
+  colors: {
+    ink: '#2b2118',
+    soft: '#4a3b2e',
+    rule: '#9c8b78',
+    ruleSoft: '#cbbfb0',
+    weekend: '#efe8df',
+    accent: '#7a4e2d',
+    roles: { ...rolesIn('#2b2118'), display: '#5a3a22', title: '#5a3a22', quote: '#6b4a32' },
+  },
+  palette: { base: '#7a4e2d', harmony: 'mono' },
+  lines: {
+    writing: plain,
+    separator: { ...plain, pattern: 'center', ornament: 'builtin:scroll', size: 3.2 },
+    table: plain,
+    frame: { ...plain, pattern: 'double', corner: 'builtin:curl', size: 5 },
+  },
+};
+
+export const THEMES: Record<string, ThemeTokens> = { heritage, clara, clasica, minimal, cuaderno, filigrana };
 
 export const COMFORT_FACTOR: Record<'compact' | 'normal' | 'wide', { pitch: number; text: number }> = {
   compact: { pitch: 0.9, text: 1 },
@@ -237,11 +306,33 @@ function numberRange(path: string): [number, number] {
   if (path === 'dots.pitchY') return [0, 40];
   if (path === 'dots.radius') return [0.02, 5];
   if (path === 'minTextPt') return [2, 30];
+  if (/^lines\.\w+\.size$/.test(path)) return [1, 30];
   if (/^fonts\.\w+\.weight$/.test(path)) return [100, 1000];
   return [-1000, 1000];
 }
 
 const BLOCKED_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
+
+/** Textos con valores cerrados: la ruta (expresión regular) y los valores aceptados. */
+const ENUMS: ReadonlyArray<[RegExp, readonly string[]]> = [
+  [/^fonts\.\w+\.style$/, ['normal', 'italic']],
+  [/^writing\.style$/, ['lines', 'dots', 'grid', 'blank']],
+  [/^lines\.\w+\.pattern$/, LINE_PATTERNS],
+  [/^palette\.harmony$/, HARMONIES],
+];
+
+/** Referencia a un ornamento: integrado o un recurso de la agenda (vacío: ninguno). */
+const ORNAMENT_REF = /^(|builtin:[a-z0-9-]{1,40}|asset:[\w.-]{1,80})$/;
+
+/** Valida un texto del tema según su ruta; `undefined` si no se acepta. */
+function validString(path: string, v: string): string | undefined {
+  if (path.startsWith('colors.') || path === 'dots.color' || path === 'palette.base') return normalizeColor(v) ?? undefined;
+  if (/^lines\.\w+\.color$/.test(path)) return v === '' ? '' : (normalizeColor(v) ?? undefined);
+  if (/^lines\.\w+\.(ornament|corner)$/.test(path)) return ORNAMENT_REF.test(v) ? v : undefined;
+  const e = ENUMS.find(([re]) => re.test(path));
+  if (e) return e[1].includes(v) ? v : undefined;
+  return v.length <= 120 ? v : undefined;
+}
 
 /**
  * Se queda solo con los ajustes válidos: claves que el tema tiene, con valores del mismo tipo
@@ -267,14 +358,8 @@ export function pruneTokens(patch: unknown, base: unknown = heritage, path = '')
       if (typeof v === 'boolean') out[k] = v;
     } else if (typeof b === 'string') {
       if (typeof v !== 'string') continue;
-      if (p.startsWith('colors.') || p === 'dots.color') {
-        const c = normalizeColor(v);
-        if (c) out[k] = c;
-      } else if (/^fonts\.\w+\.style$/.test(p)) {
-        if (v === 'normal' || v === 'italic') out[k] = v;
-      } else if (p === 'writing.style') {
-        if (v === 'lines' || v === 'dots' || v === 'grid' || v === 'blank') out[k] = v;
-      } else if (v.length <= 120) out[k] = v;
+      const ok = validString(p, v);
+      if (ok !== undefined) out[k] = ok;
     }
   }
   return out;

@@ -8,6 +8,15 @@ export interface FontSpec {
   style: FontStyle;
 }
 
+/** Una fuente que llega de un archivo (p. ej. la de un texto propio), validada; si no es válida, null. */
+export function parseFontSpec(v: unknown): FontSpec | null {
+  if (!v || typeof v !== 'object') return null;
+  const o = v as Record<string, unknown>;
+  if (typeof o.family !== 'string' || !o.family.trim() || o.family.length > 80) return null;
+  const weight = typeof o.weight === 'number' && Number.isFinite(o.weight) ? Math.min(1000, Math.max(100, Math.round(o.weight))) : 400;
+  return { family: o.family.trim(), weight, style: o.style === 'italic' ? 'italic' : 'normal' };
+}
+
 export interface FontFace extends FontSpec {
   /** Clave única y estable: `familia|peso|estilo`. */
   key: string;

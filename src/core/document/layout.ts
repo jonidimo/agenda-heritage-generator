@@ -14,10 +14,11 @@ import { compose, composeAll, IDENTITY, rectContains, rotateAround, scale, trans
 import { inkBounds } from '../text/shape';
 import { mergeTokens, type ThemeTokens, type WritingStyle } from '../design/themes';
 import { normalizeColor } from '../util/color';
-import type { FontRegistry } from '../text/fonts';
+import { parseFontSpec, type FontRegistry } from '../text/fonts';
 import { assetPrims } from './assets';
 import { pageGeometry } from './context';
 import { pageTextVars } from '../sections/common';
+import { applyLineStyles, hasLineStyles } from './linestyle';
 
 export function findOverride(overrides: BlockOverride[], page: { key: string; type: string }, blockId: string): BlockOverride | undefined {
   return (
@@ -147,6 +148,8 @@ function placeCustomBlock(ctx: LayoutContext, cb: CustomBlock, page: PagePlan): 
         wrap: p.wrap !== false,
         fit: true,
         ...(normalizeColor(p.color) ? { color: normalizeColor(p.color)! } : {}),
+        // Fuente propia del elemento (si no, la de su tipo de texto).
+        ...(parseFontSpec(p.font) ? { font: parseFontSpec(p.font)! } : {}),
       });
       prims = t.prims;
       break;
@@ -169,10 +172,10 @@ function placeCustomBlock(ctx: LayoutContext, cb: CustomBlock, page: PagePlan): 
       prims = squareGrid(box, typeof p.pitch === 'number' ? p.pitch : 5, ctx.stroke('grid'));
       break;
     case 'rect':
-      prims = [{ t: 'rect', ...box, r: typeof p.radius === 'number' ? p.radius : 0, stroke: ctx.stroke('rule', 'ink'), ...(normalizeColor(p.fill) ? { fill: { color: normalizeColor(p.fill)! } } : {}) }];
+      prims = [{ t: 'rect', ...box, r: typeof p.radius === 'number' ? p.radius : 0, stroke: ctx.stroke('rule', 'ink', { use: 'frame' }), ...(normalizeColor(p.fill) ? { fill: { color: normalizeColor(p.fill)! } } : {}) }];
       break;
     case 'line':
-      prims = [{ t: 'line', x1: box.x, y1: box.y + box.h / 2, x2: box.x + box.w, y2: box.y + box.h / 2, stroke: ctx.stroke('rule', 'ink') }];
+      prims = [{ t: 'line', x1: box.x, y1: box.y + box.h / 2, x2: box.x + box.w, y2: box.y + box.h / 2, stroke: ctx.stroke('rule', 'ink', { use: 'separator' }) }];
       break;
   }
   ctx.add(`custom.${cb.id}`, String(p.label ?? 'Elemento propio'), prims, { role: 'custom', layer: 15, bbox: box });
@@ -312,6 +315,8 @@ export function layoutPage(doc: DocContext, plan: PagePlan, registry: ReadonlyMa
   }
   for (const wm of design.watermarks) if (watermarkApplies(wm, plan.type, plan.key)) placeWatermark(ctx, wm);
   addChrome(ctx, plan, totalPages);
+  // Estilo de líneas y ornamentos del tema (renglones, separadores, tablas, marcos).
+  if (hasLineStyles(ctx.theme.lines)) for (const b of ctx.blocks) b.prims = applyLineStyles(b.prims, ctx.theme.lines, doc.assets);
 
   // Ajustes del editor.
   const pageBox = { x: 0, y: 0, w: geom.w, h: geom.h };

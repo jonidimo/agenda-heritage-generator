@@ -131,7 +131,7 @@ function weekHeader(ctx: LayoutContext, week: WeekInfo, page: PagePlan, withMini
     });
     ctx.add('week.minical', 'Minicalendario', prims, { links });
   }
-  ctx.add('week.headRule', 'Filete del encabezado', [line(head.x, head.y + headH, head.x + head.w, head.y + headH, ctx.stroke('rule', 'ink'))], { editable: false });
+  ctx.add('week.headRule', 'Filete del encabezado', [line(head.x, head.y + headH, head.x + head.w, head.y + headH, ctx.stroke('rule', 'ink', { use: 'separator' }))], { editable: false });
   return rest;
 }
 
@@ -184,12 +184,12 @@ function alastairLeft(ctx: LayoutContext, page: PagePlan, week: WeekInfo): void 
     const row = dayRows[i]!;
     const p: Prim[] = [];
     if (day.isWeekend && ctx.theme.weekendShading) p.push(rect(row, { fill: ctx.fill('weekend') }));
-    p.push(line(row.x, row.y, row.x + row.w, row.y, ctx.stroke('rule', 'ink')));
+    p.push(line(row.x, row.y, row.x + row.w, row.y, ctx.stroke('rule', 'ink', { use: 'table' })));
     p.push(...dayHeading(ctx, day, row.x + 1.5, row.y + 1.2 + ptToMm(ctx.theme.sizes.dayLabel) * 0.75, row.w - 3));
     ctx.add(`day.${i}`, `${weekdayLabel(ctx.doc.locale, day.dow)} ${day.d}`, p, { bbox: row });
   });
-  ctx.add('days.bottom', 'Cierre de los días', [line(daysArea.x, daysArea.y + daysArea.h, daysArea.x + daysArea.w, daysArea.y + daysArea.h, ctx.stroke('rule', 'ink'))], { editable: false });
-  const np: Prim[] = [line(notes.x, notes.y, notes.x + notes.w, notes.y, ctx.stroke('heavy', 'ink'))];
+  ctx.add('days.bottom', 'Cierre de los días', [line(daysArea.x, daysArea.y + daysArea.h, daysArea.x + daysArea.w, daysArea.y + daysArea.h, ctx.stroke('rule', 'ink', { use: 'table' }))], { editable: false });
+  const np: Prim[] = [line(notes.x, notes.y, notes.x + notes.w, notes.y, ctx.stroke('heavy', 'ink', { use: 'separator' }))];
   const s = ctx.s;
   const label = openLoops ? s.pages.weekly.openLoops : priorities ? s.week.priorities : s.week.notes;
   np.push(...ctx.textIn(label, { x: notes.x, y: notes.y + 2, w: notes.w, h: 3 }, { role: 'label', size: ctx.theme.sizes.label, upper: true, tracking: true }).prims);
@@ -199,7 +199,7 @@ function alastairLeft(ctx: LayoutContext, page: PagePlan, week: WeekInfo): void 
     for (let k = 1; k <= 3; k++) {
       const y = area.y + k * pitch;
       np.push(ctx.textAt(`${k}.`, area.x, y - 1.2, { role: 'labelStrong', size: 'label' }).prim);
-      np.push(line(area.x + 4, y, area.x + area.w, y, ctx.stroke('hair')));
+      np.push(line(area.x + 4, y, area.x + area.w, y, ctx.stroke('hair', undefined, { use: 'writing' })));
     }
   } else if (openLoops) {
     const [a, b, c] = hsplit(area, [flex(1.3), flex(1.3), flex(0.6)], 3);
@@ -247,19 +247,19 @@ function alastairRight(ctx: LayoutContext, page: PagePlan, week: WeekInfo): void
     if (day.isWeekend && ctx.theme.weekendShading) g.push(rect({ x, y: gridArea.y, w: dayW, h: bottomY - gridArea.y }, { fill: ctx.fill('weekend') }));
     g.push(...ctx.textIn(weekdayLetter(s, day.dow), { x, y: gridArea.y + 1.2, w: dayW, h: 3.6 }, { role: 'labelStrong', size: ctx.theme.sizes.label + 1, align: 'center', valign: 'middle' }).prims);
     g.push(...ctx.textIn(String(day.d), { x, y: gridArea.y + 4.8, w: dayW, h: 3 }, { role: 'number', size: ctx.theme.sizes.labelSmall, align: 'center', valign: 'middle', features: TABULAR_FEATURES }).prims);
-    g.push(line(x, gridArea.y, x, bottomY, ctx.stroke('hair', 'ruleSoft')));
+    g.push(line(x, gridArea.y, x, bottomY, ctx.stroke('hair', 'ruleSoft', { use: 'table' })));
   });
   if (undated) {
     const x = x0 + 7 * dayW;
-    g.push(line(x, gridArea.y, x, bottomY, ctx.stroke('hair', 'ruleSoft')));
+    g.push(line(x, gridArea.y, x, bottomY, ctx.stroke('hair', 'ruleSoft', { use: 'table' })));
     g.push(...ctx.textIn('?', { x, y: gridArea.y + 1.2, w: dayW, h: 3.6 }, { role: 'labelStrong', size: ctx.theme.sizes.label + 1, align: 'center', valign: 'middle' }).prims);
   }
   g.push(...ctx.textIn(s.week.tasks, { x: gridArea.x, y: gridArea.y + 2.5, w: taskW - 2, h: 3 }, { role: 'label', size: 'labelSmall', upper: true, tracking: true }).prims);
-  g.push(line(gridArea.x, gridArea.y, gridArea.x + gridArea.w, gridArea.y, ctx.stroke('rule', 'ink')));
-  g.push(line(gridArea.x, gridArea.y + headH, gridArea.x + gridArea.w, gridArea.y + headH, ctx.stroke('rule', 'ink')));
+  g.push(line(gridArea.x, gridArea.y, gridArea.x + gridArea.w, gridArea.y, ctx.stroke('rule', 'ink', { use: 'table' })));
+  g.push(line(gridArea.x, gridArea.y + headH, gridArea.x + gridArea.w, gridArea.y + headH, ctx.stroke('rule', 'ink', { use: 'table' })));
   for (let k = 1; k <= nRows; k++) {
     const y = gridArea.y + headH + k * pitch;
-    g.push(line(gridArea.x, y, gridArea.x + gridArea.w, y, ctx.stroke('hair')));
+    g.push(line(gridArea.x, y, gridArea.x + gridArea.w, y, ctx.stroke('hair', undefined, { use: 'table' })));
   }
   ctx.add('tasks.grid', 'Grilla de tareas', g);
   let y = bottom.y;
@@ -287,14 +287,14 @@ function alastairRight(ctx: LayoutContext, page: PagePlan, week: WeekInfo): void
   }
   if (footer === 'expenses') {
     const f = { x: bottom.x, y: y + 1, w: bottom.w, h: footerH - 1 };
-    const p: Prim[] = [line(f.x, f.y, f.x + f.w, f.y, ctx.stroke('rule', 'ink'))];
+    const p: Prim[] = [line(f.x, f.y, f.x + f.w, f.y, ctx.stroke('rule', 'ink', { use: 'separator' }))];
     p.push(...ctx.textIn(s.week.expenses, { x: f.x, y: f.y + 2, w: f.w, h: 3 }, { role: 'label', size: ctx.theme.sizes.label, upper: true, tracking: true }).prims);
     const t = ctx.textAt(s.week.expensesTotal, f.x, f.y + f.h - 1.5, { role: 'body', size: 'body', upper: true });
-    p.push(t.prim, line(f.x + t.width + 3, f.y + f.h - 1.1, f.x + f.w, f.y + f.h - 1.1, ctx.stroke('strong', 'ink')));
+    p.push(t.prim, line(f.x + t.width + 3, f.y + f.h - 1.1, f.x + f.w, f.y + f.h - 1.1, ctx.stroke('strong', 'ink', { use: 'writing' })));
     ctx.add('tasks.expenses', s.week.expenses, p);
   } else if (footer === 'review') {
     const f = { x: bottom.x, y: y + 1, w: bottom.w, h: footerH - 1 };
-    const p: Prim[] = [line(f.x, f.y, f.x + f.w, f.y, ctx.stroke('rule', 'ink'))];
+    const p: Prim[] = [line(f.x, f.y, f.x + f.w, f.y, ctx.stroke('rule', 'ink', { use: 'separator' }))];
     p.push(...ctx.textIn(s.week.review, { x: f.x, y: f.y + 2, w: f.w, h: 3 }, { role: 'label', size: ctx.theme.sizes.label, upper: true, tracking: true }).prims);
     const steps = s.pages.weekly.reviewSteps;
     const half = Math.ceil(steps.length / 2);
@@ -321,14 +321,14 @@ function horizontalWeek(ctx: LayoutContext, page: PagePlan, week: WeekInfo, left
     const row = parts[i]!;
     const p: Prim[] = [];
     if (day.isWeekend && ctx.theme.weekendShading) p.push(rect(row, { fill: ctx.fill('weekend') }));
-    p.push(line(row.x, row.y, row.x + row.w, row.y, ctx.stroke('rule', 'ink')));
+    p.push(line(row.x, row.y, row.x + row.w, row.y, ctx.stroke('rule', 'ink', { use: 'table' })));
     p.push(...dayHeading(ctx, day, row.x + 1.5, row.y + 4, row.w - 3));
     p.push(...writingArea(ctx, { x: row.x, y: row.y + 5, w: row.w, h: row.h - 5 }, 'auto'));
     ctx.add(`day.${left ? i : i + 3}`, `${day.d}`, p, { bbox: row });
   });
   if (left) {
     const nrow = parts[3]!;
-    const p: Prim[] = [line(nrow.x, nrow.y, nrow.x + nrow.w, nrow.y, ctx.stroke('heavy', 'ink'))];
+    const p: Prim[] = [line(nrow.x, nrow.y, nrow.x + nrow.w, nrow.y, ctx.stroke('heavy', 'ink', { use: 'separator' }))];
     const pr = ctx.has('top-priorities');
     p.push(...ctx.textIn(pr ? ctx.s.week.priorities : ctx.s.week.notes, { x: nrow.x, y: nrow.y + 2, w: nrow.w, h: 3 }, { role: 'label', size: 'label', upper: true, tracking: true }).prims);
     p.push(...(pr ? checklist(ctx, { x: nrow.x, y: nrow.y + 4, w: nrow.w, h: nrow.h - 4 }, ctx.theme.writing.pitch, { circles: true, max: 3 }) : writingArea(ctx, { x: nrow.x, y: nrow.y + 4, w: nrow.w, h: nrow.h - 4 }, 'auto')));
@@ -346,7 +346,7 @@ function verticalWeek(ctx: LayoutContext, page: PagePlan, week: WeekInfo, left: 
     const col = colRects[i]!;
     const p: Prim[] = [];
     if (day.isWeekend && ctx.theme.weekendShading) p.push(rect(col, { fill: ctx.fill('weekend') }));
-    p.push(line(col.x, col.y, col.x + col.w, col.y, ctx.stroke('rule', 'ink')));
+    p.push(line(col.x, col.y, col.x + col.w, col.y, ctx.stroke('rule', 'ink', { use: 'table' })));
     p.push(...ctx.textIn(weekdayLabel(ctx.doc.locale, day.dow), { x: col.x, y: col.y + 1.5, w: col.w, h: 3 }, { role: 'labelStrong', size: 'label', align: 'center' }).prims);
     p.push(...ctx.textIn(String(day.d), { x: col.x, y: col.y + 5, w: col.w, h: 6 }, { role: 'display', size: ctx.theme.sizes.subtitle + 4, align: 'center', features: TABULAR_FEATURES }).prims);
     const h = day.holidays[0];
@@ -361,7 +361,7 @@ function verticalWeek(ctx: LayoutContext, page: PagePlan, week: WeekInfo, left: 
   });
   if (!left) {
     const nc = colRects[days.length]!;
-    const p: Prim[] = [line(nc.x, nc.y, nc.x + nc.w, nc.y, ctx.stroke('heavy', 'ink'))];
+    const p: Prim[] = [line(nc.x, nc.y, nc.x + nc.w, nc.y, ctx.stroke('heavy', 'ink', { use: 'separator' }))];
     p.push(...ctx.textIn(ctx.s.common.notes, { x: nc.x, y: nc.y + 1.5, w: nc.w, h: 3 }, { role: 'label', size: 'label', upper: true, tracking: true, align: 'center' }).prims);
     p.push(...writingArea(ctx, { x: nc.x, y: nc.y + 6, w: nc.w, h: nc.h - 6 }, 'auto'));
     ctx.add('week.notes', ctx.s.week.notes, p);
@@ -402,7 +402,7 @@ function dailyPage(ctx: LayoutContext, page: PagePlan): void {
       hp.push(...ht.prims);
     }
     if (showMoon(ctx) && day.moon) hp.push(...moonIcon(ctx, head.x + head.w - 2, head.y + head.h - 3, 1.5, day.moon, south(ctx)));
-    hp.push(line(head.x, head.y + head.h, head.x + head.w, head.y + head.h, ctx.stroke('rule', 'ink')));
+    hp.push(line(head.x, head.y + head.h, head.x + head.w, head.y + head.h, ctx.stroke('rule', 'ink', { use: 'separator' })));
     ctx.add(`daily.${i}.head`, day.iso, hp);
     if (!single) {
       ctx.add(`daily.${i}.notes`, day.iso, writingArea(ctx, body, 'auto'), { role: 'writing' });

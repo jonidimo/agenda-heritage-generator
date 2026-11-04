@@ -66,7 +66,7 @@ export const monthCover: SectionModule = {
       const avail = c.y + c.h - bottomReserve - woopH - fieldsH - y - 4;
       const size = Math.max(30, Math.min(70 * scaleK, c.w * 0.62, avail));
       const box = centerIn({ x: c.x, y, w: c.w, h: size }, size, size);
-      const p: Prim[] = [rect(box, { stroke: ctx.stroke('hair', 'rule', { dash: [1.2, 1] }) })];
+      const p: Prim[] = [rect(box, { stroke: ctx.stroke('hair', 'rule', { use: 'frame', dash: [1.2, 1] }) })];
       p.push(...ctx.textIn(ctx.s.monthCover.sticker, inset(box, 2), { role: 'label', size: 'labelSmall', upper: true, tracking: true, align: 'center', valign: 'middle', color: '#e2e2e2', fit: true }).prims);
       ctx.add('cover.sticker', 'Espacio para sticker', p);
       y = box.y + box.h + 6;
@@ -78,7 +78,7 @@ export const monthCover: SectionModule = {
       labels.forEach((l, i) => {
         const by = y + (i + 1) * pitch;
         const t = ctx.textAt(l, c.x, by, { role: 'heading', size: 'labelSmall', upper: true, tracking: true });
-        p.push(t.prim, line(c.x + t.width + 2, by + 0.6, c.x + c.w, by + 0.6, ctx.stroke('hair')));
+        p.push(t.prim, line(c.x + t.width + 2, by + 0.6, c.x + c.w, by + 0.6, ctx.stroke('hair', undefined, { use: 'writing' })));
       });
       ctx.add('cover.fields', 'Intención y hábito foco', p);
       y += labels.length * pitch + 4;
@@ -92,7 +92,7 @@ export const monthCover: SectionModule = {
         const p: Prim[] = [];
         [s.wish, s.outcome, s.obstacle, s.plan].forEach((label, i) => {
           const cell = cells[i]!;
-          p.push(rect(cell, { stroke: ctx.stroke('hair', 'rule') }));
+          p.push(rect(cell, { stroke: ctx.stroke('hair', 'rule', { use: 'table' }) }));
           p.push(...ctx.textIn(`${i + 1}. ${label}`, inset(cell, 1.5, 2), { role: 'label', size: 'labelSmall', upper: true, tracking: 0.05, fit: true }).prims);
         });
         ctx.add('cover.woop', 'Nuevo comienzo (WOOP)', p);
@@ -143,7 +143,7 @@ export const monthLog: SectionModule = {
       const row = { x: r.x, y: r.y + i * rowH, w: r.w, h: rowH };
       const p: Prim[] = [];
       if (day.isWeekend && ctx.theme.weekendShading) p.push(rect(row, { fill: ctx.fill('weekend') }));
-      p.push(line(row.x, row.y + row.h, row.x + row.w, row.y + row.h, ctx.stroke('hair')));
+      p.push(line(row.x, row.y + row.h, row.x + row.w, row.y + row.h, ctx.stroke('hair', undefined, { use: 'table' })));
       const [numCol, dowCol, rest] = hsplit(row, [8, 10, flex()], 1.5);
       const holiday = day.holidays[0];
       p.push(...ctx.textIn(String(day.d), numCol!, { role: holiday ? 'title' : 'display', size: ctx.theme.sizes.calendarNumber + 0.5, align: 'right', valign: 'middle', features: TABULAR_FEATURES }).prims);
@@ -210,7 +210,7 @@ export const monthGrid: SectionModule = {
     weeks.forEach((week, wi) => {
       const row = rowRects[wi]!;
       const cells = hsplit(row, tracks);
-      const wp: Prim[] = [line(row.x, row.y, row.x + row.w, row.y, ctx.stroke('rule', 'ink'))];
+      const wp: Prim[] = [line(row.x, row.y, row.x + row.w, row.y, ctx.stroke('rule', 'ink', { use: 'table' }))];
       const links: LinkArea[] = [];
       colIdx.forEach((ci, k) => {
         const day = week[ci]!;
@@ -218,14 +218,14 @@ export const monthGrid: SectionModule = {
         wp.push(...gridCell(ctx, day, cell, month, wi === 0 && k === 0));
         // La esquina del número es tocable; el resto de la casilla queda para escribir.
         if (day.m === month.m && day.y === month.y) links.push({ x: cell.x, y: cell.y, w: Math.min(cell.w, 8), h: Math.min(cell.h, 6.5), to: { kind: 'date', iso: day.iso }, cat: 'days' });
-        if (k > 0) wp.push(line(cell.x, row.y, cell.x, row.y + row.h, ctx.stroke('hair')));
+        if (k > 0) wp.push(line(cell.x, row.y, cell.x, row.y + row.h, ctx.stroke('hair', undefined, { use: 'table' })));
       });
       if (notesCol) {
         const nc = cells[colIdx.length]!;
-        wp.push(line(nc.x, row.y, nc.x, row.y + row.h, ctx.stroke('hair')));
+        wp.push(line(nc.x, row.y, nc.x, row.y + row.h, ctx.stroke('hair', undefined, { use: 'table' })));
         wp.push(...ruledLines(inset(nc, 0, 1.5), Math.max(5, ctx.theme.writing.pitch), ctx.stroke('hair')));
       }
-      if (wi === weeks.length - 1) wp.push(line(row.x, row.y + row.h, row.x + row.w, row.y + row.h, ctx.stroke('rule', 'ink')));
+      if (wi === weeks.length - 1) wp.push(line(row.x, row.y + row.h, row.x + row.w, row.y + row.h, ctx.stroke('rule', 'ink', { use: 'table' })));
       ctx.add(`grid.week.${wi}`, `Semana ${wi + 1}`, wp, { links });
     });
   },
@@ -281,7 +281,7 @@ export const habits: SectionModule = {
     inner.push('habits.title', 'Título', [ctx.textAt(s.title, 0, base, { role: 'title', size: 'titleSmall' }).prim]);
     inner.push('habits.month', 'Mes', [ctx.textAt(monthTitle(ctx, month), W, base, { role: 'heading', size: 'label', upper: true, tracking: true, align: 'right', opacity: 0.6 }).prim]);
     const ruleY = base + 2;
-    inner.push('habits.rule', 'Filete', [line(0, ruleY, W, ruleY, ctx.stroke('strong', 'ink', { width: ptToMm(2) }))]);
+    inner.push('habits.rule', 'Filete', [line(0, ruleY, W, ruleY, ctx.stroke('strong', 'ink', { use: 'separator', width: ptToMm(2) }))]);
     // Pie.
     const showFootnote = ctx.has('habit-timeline') || ctx.has('streaks');
     const footH = showFootnote ? 9 : 6;
@@ -298,7 +298,7 @@ export const habits: SectionModule = {
     const headH = Math.max(8, autoLines * ptToMm(ctx.theme.sizes.tiny) * 1.3 + 2);
     const nRows = Math.max(3, Math.min(20, Number(param(page, 'rows', 10))));
     const rowH = (gridArea.h - headH) / nRows;
-    const g = ctx.stroke('grid', 'ink');
+    const g = ctx.stroke('grid', 'ink', { use: 'table' });
     const p: Prim[] = [];
     const x0 = gridArea.x + nameW;
     // Columnas de días.
@@ -325,7 +325,7 @@ export const habits: SectionModule = {
     p.push(line(gridArea.x, gridArea.y + headH / 2, gridArea.x, gridArea.y + headH / 2, g));
     const verticals = [gridArea.x, ...month.days.map((_, i) => x0 + i * dayW), x0 + nDays * dayW, ...(totalCol ? [x0 + nDays * dayW + totalCol] : []), ...(autoCol ? [right] : [])];
     for (const x of verticals) p.push(line(x, gridArea.y, x, gridArea.y + gridArea.h, g));
-    p.push(line(x0, gridArea.y + headH / 2, x0 + nDays * dayW, gridArea.y + headH / 2, ctx.stroke('hair', 'ruleSoft')));
+    p.push(line(x0, gridArea.y + headH / 2, x0 + nDays * dayW, gridArea.y + headH / 2, ctx.stroke('hair', 'ruleSoft', { use: 'table' })));
     if (totalCol) for (let k = 0; k < nRows; k++) p.push(...ctx.textIn(`/${nDays}`, { x: x0 + nDays * dayW, y: gridArea.y + headH + k * rowH, w: totalCol - 1, h: rowH - 0.6 }, { role: 'label', size: ctx.theme.sizes.tiny, align: 'right', valign: 'bottom', color: '#9a9a9a' }).prims);
     if (ctx.has('habit-anchoring')) {
       for (let k = 0; k < nRows; k++) p.push(...ctx.textIn(s.anchor, { x: gridArea.x + 1, y: gridArea.y + headH + k * rowH, w: nameW - 2, h: rowH - 0.6 }, { role: 'label', size: ctx.theme.sizes.tiny, valign: 'bottom', color: '#a8a8a8' }).prims);
@@ -369,18 +369,18 @@ export const balance: SectionModule = {
       const n = Math.floor(area.h / pitch);
       for (let k = 1; k <= n; k++) {
         const y = area.y + k * pitch;
-        p.push(line(area.x, y, area.x + area.w, y, ctx.stroke('hair')));
-        p.push(line(area.x + area.w * 0.7, y - pitch + 1, area.x + area.w * 0.7, y, ctx.stroke('hair', 'ruleSoft')));
+        p.push(line(area.x, y, area.x + area.w, y, ctx.stroke('hair', undefined, { use: 'table' })));
+        p.push(line(area.x + area.w * 0.7, y - pitch + 1, area.x + area.w * 0.7, y, ctx.stroke('hair', 'ruleSoft', { use: 'table' })));
         p.push(ctx.textAt(ctx.doc.currency, area.x + area.w * 0.7 + 1, y - 1.2, { role: 'label', size: 'labelSmall', color: '#9a9a9a' }).prim);
       }
       ctx.add(`balance.col${i}`, label, p);
     });
     const totalBox = { x: rest!.x, y: rest!.y, w: rest!.w, h: 11 };
-    const tp: Prim[] = [rect(totalBox, { stroke: ctx.stroke('rule', 'ink') })];
+    const tp: Prim[] = [rect(totalBox, { stroke: ctx.stroke('rule', 'ink', { use: 'frame' }) })];
     const tl = ctx.textIn(s.total, inset(totalBox, 0, 3), { role: 'heading', size: 'labelSmall', upper: true, tracking: true, valign: 'middle' });
     tp.push(...tl.prims);
     const cur = ctx.textAt(ctx.doc.currency, totalBox.x + totalBox.w * 0.55, totalBox.y + totalBox.h / 2 + 2, { role: 'number', size: ctx.theme.sizes.subtitle });
-    tp.push(cur.prim, line(cur.bbox.x + cur.width + 2, totalBox.y + totalBox.h / 2 + 2.4, totalBox.x + totalBox.w - 3, totalBox.y + totalBox.h / 2 + 2.4, ctx.stroke('hair', 'ink')));
+    tp.push(cur.prim, line(cur.bbox.x + cur.width + 2, totalBox.y + totalBox.h / 2 + 2.4, totalBox.x + totalBox.w - 3, totalBox.y + totalBox.h / 2 + 2.4, ctx.stroke('hair', 'ink', { use: 'writing' })));
     ctx.add('balance.total', 'Total', tp);
     if (shopping) {
       const sh = { x: rest!.x, y: totalBox.y + totalBox.h + 5, w: rest!.w, h: rest!.h - totalBox.h - 5 };
@@ -425,7 +425,7 @@ export const review: SectionModule = {
     const hm = sectionHeader(ctx, memory!, s.memory, 'review.memory.head', { rule: 'none' });
     const mbox = { x: memory!.x, y: memory!.y + hm, w: memory!.w, h: memory!.h - hm };
     ctx.add('review.memory', s.memory, [
-      rect(mbox, { stroke: ctx.stroke('hair', 'rule', { dash: [1.2, 1] }) }),
+      rect(mbox, { stroke: ctx.stroke('hair', 'rule', { use: 'frame', dash: [1.2, 1] }) }),
       ...ctx.textIn(s.memoryHint, mbox, { role: 'quote', size: ctx.theme.sizes.body, align: 'center', valign: 'middle', color: '#b5b5b5' }).prims,
     ]);
     // Pendientes y estado de ánimo.

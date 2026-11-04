@@ -16,6 +16,8 @@ import { circle, line, type DotsPrim, type Prim, type Stroke } from './prims';
 
 export function ruledLines(r: Rect, pitch: number, stroke: Stroke, opts: { includeTop?: boolean; includeBottom?: boolean } = {}): Prim[] {
   const out: Prim[] = [];
+  // Renglones para escribir, salvo que quien llama diga otra cosa (el tema les da estilo).
+  if (!stroke.use) stroke = { ...stroke, use: 'writing' };
   const start = opts.includeTop ? 0 : 1;
   const n = Math.floor((r.h + 1e-6) / pitch);
   for (let i = start; i <= n; i++) {
@@ -99,7 +101,7 @@ export function pageHeader(
     }
   }
   const ruleY = baseline - titleRun.descent + 1.2 + extra;
-  if (opts.rule !== 'none') ctx.add(`${prefix}.rule`, 'Filete del encabezado', [line(r.x, ruleY, r.x + r.w, ruleY, ctx.stroke(opts.rule ?? 'rule'))], { editable: false });
+  if (opts.rule !== 'none') ctx.add(`${prefix}.rule`, 'Filete del encabezado', [line(r.x, ruleY, r.x + r.w, ruleY, ctx.stroke(opts.rule ?? 'rule', undefined, { use: 'separator' }))], { editable: false });
   return ruleY - r.y + (opts.gap ?? 4);
 }
 
@@ -111,7 +113,7 @@ export function sectionHeader(ctx: LayoutContext, r: Rect, text: string, id: str
   const baseline = r.y + run.capHeight;
   const prims: Prim[] = [...t.prims];
   const ruleY = baseline + 1.2;
-  if (opts.rule !== 'none') prims.push(line(r.x, ruleY, r.x + r.w, ruleY, opts.rule === 'hair' ? ctx.stroke('hair') : ctx.stroke('rule')));
+  if (opts.rule !== 'none') prims.push(line(r.x, ruleY, r.x + r.w, ruleY, opts.rule === 'hair' ? ctx.stroke('hair', undefined, { use: 'separator' }) : ctx.stroke('rule', undefined, { use: 'separator' })));
   ctx.add(id, text, prims);
   return ruleY - r.y + (opts.gap ?? 2.5);
 }

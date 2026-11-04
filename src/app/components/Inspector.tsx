@@ -2,7 +2,7 @@
 import type { AgendaDocument } from '@core/document';
 import { blockBounds } from '@core/document/layout';
 import type { CustomBlock } from '@core/design/schema';
-import type { Block, PageModel, PageWarning } from '@core/layout/prims';
+import type { Block, PageModel, PageWarning, Prim } from '@core/layout/prims';
 import { unionRect, type AlignMode } from '@core/layout/align';
 import type { WritingStyle } from '@core/design/themes';
 import {
@@ -33,7 +33,7 @@ import {
 import { pageLinks, safeUrl } from '@core/document/links';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { blockLabel, warningText } from '../i18n/messages';
-import { sectionName, useT } from '../i18n/ui';
+import { sectionName, uiText, useT } from '../i18n/ui';
 import { IMAGE_ACCEPT, uploadOne } from '../state/uploads';
 import {
   addCustomBlock,
@@ -60,8 +60,14 @@ import {
 } from '../state/actions';
 import { useDocument } from '../state/doc';
 import { useStore } from '../state/store';
-import { Button, Field, NumberInput, Segmented, Select, Slider, TextArea, TextInput, Toggle } from './ui';
+import { Button, ColorInput, Field, NumberInput, Segmented, Select, Slider, TextArea, TextInput, Toggle } from './ui';
 import { jumpToPage } from '../state/navigation';
+import { parseFontSpec } from '@core/text/fonts';
+import { normalizeColor } from '@core/util/color';
+import type { TextRole } from '@core/layout/context';
+import { reveal } from '../state/reveal';
+import { resources } from '../state/resources';
+import { FontRow, useFamilies } from './FontPicker';
 
 export function Inspector({ doc }: { doc: AgendaDocument }) {
   const t = useT();
@@ -125,6 +131,7 @@ export function Inspector({ doc }: { doc: AgendaDocument }) {
             {block.editable && block.role !== 'watermark' && block.role !== 'custom' && (
               <BlockFields page={page} blockId={block.id} scope={scope} setScope={setScope} />
             )}
+            <TextRoleLinks block={block} />
             {block.editable && (
               <div className="mt-2 flex flex-wrap gap-1.5">
                 <Button
@@ -466,6 +473,7 @@ function CustomFields({ id }: { id: string }) {
             />
           </Field>
           <Toggle label={t('insp.upper')} checked={Boolean(p.upper)} onChange={(v) => setProp('upper', v)} />
+          <CustomTextStyle p={p} setProp={setProp} />
         </>
       )}
       {cb.kind === 'image' && (
@@ -599,6 +607,76 @@ function LinkFields(props: { doc: AgendaDocument; page: PageModel; block: Block;
       ) : (
         <p className="text-[11px] leading-snug text-ink-soft">{t('link.noneHere')}</p>
       )}
+    </div>
+  );
+}
+
+/**
+ * Qué tipos de texto usa el elemento (títulos, rótulos…) y un atajo a su letra y color en Estilo:
+ * cambiarlos ahí cambia todos los textos de ese tipo en la agenda.
+ */
+function TextRoleLinks({ block }: { block: Block }) {
+  const t = useT();
+  const roles = useMemo(() => {
+    const found = new Set<string>();
+    const walk = (ps: Prim[]): void => {
+      for (const p of ps) {
+        if (p.t === 'text' && p.role) found.add(p.role);
+        else if (p.t === 'group') walk(p.children);
+      }
+    };
+    walk(block.prims);
+    return [...found];
+  }, [block]);
+  if (roles.length === 0) return null;
+  return (
+    <div className="mt-2 rounded-md bg-paper/70 p-2 text-[11.5px]" data-testid="text-roles">
+      <div className="mb-1 font-semibold text-ink-soft">{t('insp.textRoles')}</div>
+      <div className="flex flex-wrap gap-1.5">
+        {roles.map((r) => (
+          <Button key={r} variant="outline" onClick={() => void reveal({ panel: 'style', selector: `[data-reveal="role.${r}"]` })}>
+            <Type size={13} /> {t('insp.editRole', { role: uiText(t, `role.${r}`, r) })}
+          </Button>
+        ))}
+      </div>
+      <p className="mt-1 leading-snug text-ink-soft">{t('insp.textRolesHelp')}</p>
+    </div>
+  );
+}
+
+/** Letra y color propios de un texto agregado (si no, los de su tipo de texto en el tema). */
+function CustomTextStyle({ p, setProp }: { p: Record<string, unknown>; setProp: (k: string, v: unknown) => void }) {
+  const t = useT();
+  const families = useFamilies();
+  const { doc } = useDocument();
+  const role = (typeof p.role === 'string' ? p.role : 'body') as TextRole;
+  const theme = doc?.ctx.theme;
+  const own = parseFontSpec(p.font);
+  const ownColor = normalizeColor(p.color);
+  return (
+    <div className="mt-1 rounded-md bg-paper/60 p-1.5">
+      <Toggle label={t('insp.ownFont')} checked={Boolean(own)} onChange={(v) => setProp('font', v ? (theme?.fonts[role] ?? { family: 'Manrope', weight: 400, style: 'normal' }) : undefined)} />
+      {own && (
+        <FontRow
+          label={t('insp.font')}
+          spec={own}
+          families={families}
+          onChange={(spec) => {
+            void resources.ensureFamily(spec.family);
+            setProp('font', spec);
+          }}
+        />
+      )}
+      <div className="flex items-center gap-1.5">
+        <div className="flex-1">
+          <ColorInput label={t('style.color')} value={ownColor ?? theme?.colors.roles[role] ?? '#000000'} onChange={(v) => setProp('color', v)} />
+        </div>
+        {ownColor && (
+          <button type="button" className="text-[11px] text-accent underline" onClick={() => setProp('color', undefined)}>
+            {t('insp.colorTheme')}
+          </button>
+        )}
+      </div>
     </div>
   );
 }

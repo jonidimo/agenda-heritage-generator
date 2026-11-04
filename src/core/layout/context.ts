@@ -32,6 +32,8 @@ export type SizeKey = keyof ThemeTokens['sizes'];
 
 export interface TextOpts {
   role?: TextRole;
+  /** Fuente propia (un elemento con otra letra que la de su tipo de texto). */
+  font?: import('../text/fonts').FontSpec;
   /** Cuerpo en pt o clave del tema. */
   size?: number | SizeKey;
   upper?: boolean;
@@ -146,9 +148,13 @@ export class LayoutContext {
     return this.theme.sizes[size ?? fallback];
   }
 
+  /** Cara de un texto: la propia del elemento si la tiene, o la de su tipo de texto. */
+  private faceFor(opts: TextOpts): FontFace {
+    return opts.font ? this.doc.fonts.resolveWithFallback(opts.font, this.theme.fallbacks) : this.face(opts.role ?? 'body');
+  }
+
   run(text: string, opts: TextOpts = {}): ShapedRun {
-    const role = opts.role ?? 'body';
-    const face = this.face(role);
+    const face = this.faceFor(opts);
     const str = opts.upper ? text.toLocaleUpperCase(this.doc.locale) : text;
     const tracking = opts.tracking === true ? this.theme.tracking.label : opts.tracking === false ? 0 : (opts.tracking ?? 0);
     return shapeText(face, str, this.sizeOf(opts.size), { tracking, ...(opts.features ? { features: opts.features } : {}) });
@@ -159,7 +165,10 @@ export class LayoutContext {
       const chars = [...new Set(run.missing)].map((c) => String.fromCodePoint(c)).join(' ');
       this.warn('missingGlyphs', `La fuente no tiene los caracteres: ${chars}`, { chars });
     }
-    return { t: 'text', run, x, y, color: opts.color ?? this.theme.colors.ink, ...(opts.opacity !== undefined ? { opacity: opts.opacity } : {}) };
+    const role = opts.role ?? 'body';
+    // Sin color propio, el texto toma el de su tipo en el tema (paleta).
+    const color = opts.color ?? this.theme.colors.roles?.[role] ?? this.theme.colors.ink;
+    return { t: 'text', run, x, y, color, role, ...(opts.opacity !== undefined ? { opacity: opts.opacity } : {}) };
   }
 
   /** Una línea con su origen en (x, línea de base). */
@@ -173,8 +182,7 @@ export class LayoutContext {
 
   /** Texto dentro de una caja con alineación, ajuste de cuerpo y partición en líneas. */
   textIn(text: string, box: Rect, opts: TextInOpts = {}): { prims: TextPrim[]; bbox: Rect; lines: number; sizePt: number; truncated: boolean } {
-    const role = opts.role ?? 'body';
-    const face = this.face(role);
+    const face = this.faceFor(opts);
     const str = opts.upper ? text.toLocaleUpperCase(this.doc.locale) : text;
     const tracking = opts.tracking === true ? this.theme.tracking.label : opts.tracking === false ? 0 : (opts.tracking ?? 0);
     let sizePt = this.sizeOf(opts.size);
@@ -243,7 +251,8 @@ export class LayoutContext {
   stroke(kind: 'hair' | 'grid' | 'rule' | 'strong' | 'heavy', color?: 'ink' | 'rule' | 'ruleSoft' | string, extra: Partial<Stroke> = {}): Stroke {
     const c = this.theme.colors;
     const defaultColor = kind === 'hair' ? c.rule : kind === 'grid' ? c.ruleSoft : c.ink;
-    const resolved = color === undefined ? defaultColor : color in c ? c[color as keyof typeof c] : color;
+    const named = color !== undefined && color !== 'roles' && color in c ? (c[color as Exclude<keyof typeof c, 'roles'>] as string) : undefined;
+    const resolved = color === undefined ? defaultColor : (named ?? color);
     return { color: resolved, width: ptToMm(this.theme.strokes[kind]), ...extra };
   }
 

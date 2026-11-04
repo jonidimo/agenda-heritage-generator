@@ -58,7 +58,7 @@ function Sidebar() {
           </button>
         ))}
       </nav>
-      <div className="scroll-thin min-h-0 flex-1 overflow-y-auto bg-white/40 px-3 pb-6">
+      <div className="scroll-thin min-h-0 flex-1 overflow-y-auto bg-white/40 px-3 pb-6" data-sidebar={panel}>
         {panel === 'sections' && <SectionsPanel />}
         {panel === 'style' && <StylePanel />}
         {panel === 'methods' && <MethodsPanel />}

@@ -63,10 +63,10 @@ function table(ctx: LayoutContext, r: Rect, headers: string[], weights: number[]
   });
   const p: Prim[] = [];
   headers.forEach((h, i) => p.push(...ctx.textIn(h, inset(colsR[i]!, 0, 1.5), { ...style, valign: 'middle', fit: true }).prims));
-  p.push(line(r.x, head.y + head.h, r.x + r.w, head.y + head.h, ctx.stroke('rule', 'ink')));
+  p.push(line(r.x, head.y + head.h, r.x + r.w, head.y + head.h, ctx.stroke('rule', 'ink', { use: 'table' })));
   const n = Math.floor(body.h / pitch);
-  for (let k = 1; k <= n; k++) p.push(line(r.x, body.y + k * pitch, r.x + r.w, body.y + k * pitch, ctx.stroke('hair')));
-  for (let i = 1; i < colsR.length; i++) p.push(line(colsR[i]!.x, head.y + 1, colsR[i]!.x, body.y + n * pitch, ctx.stroke('hair', 'ruleSoft')));
+  for (let k = 1; k <= n; k++) p.push(line(r.x, body.y + k * pitch, r.x + r.w, body.y + k * pitch, ctx.stroke('hair', undefined, { use: 'table' })));
+  for (let i = 1; i < colsR.length; i++) p.push(line(colsR[i]!.x, head.y + 1, colsR[i]!.x, body.y + n * pitch, ctx.stroke('hair', 'ruleSoft', { use: 'table' })));
   ctx.add(id, label, p);
 }
 
@@ -180,7 +180,7 @@ export const unstuck: SectionModule = {
     const r = headed(ctx, s.title, '', { titleSize: 'titleSmall' });
     const halves = rows(r, 2, 6);
     halves.forEach((box, k) => {
-      const p: Prim[] = [rect(box, { stroke: ctx.stroke('hair', 'rule') })];
+      const p: Prim[] = [rect(box, { stroke: ctx.stroke('hair', 'rule', { use: 'frame' }) })];
       const inner = inset(box, 3);
       const steps = [s.avoiding, s.feeling, s.firstStep];
       const parts = rows({ x: inner.x, y: inner.y, w: inner.w, h: inner.h - 8 }, steps.length, 2);

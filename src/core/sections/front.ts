@@ -256,7 +256,7 @@ export const yearOverview: SectionModule = {
       const body = { x: cell.x, y: cell.y + 7, w: cell.w, h: cell.h - 7 };
       const rowsData = weeks.map((w) => (w.length === 7 ? w : ([] as DayInfo[])));
       const filled = rowsData.filter((w) => w.length === 7);
-      const prims: Prim[] = [...head.prims, line(cell.x + 2, ruleY, cell.x + cell.w - 2, ruleY, ctx.stroke('hair', 'ink'))];
+      const prims: Prim[] = [...head.prims, line(cell.x + 2, ruleY, cell.x + cell.w - 2, ruleY, ctx.stroke('hair', 'ink', { use: 'separator' }))];
       const links: LinkArea[] = [{ x: cell.x, y: cell.y, w: cell.w, h: ruleY - cell.y + 0.6, to: { kind: 'month', y, m }, cat: 'months' }];
       prims.push(
         ...miniCalendar(ctx, body, filled, {
@@ -312,7 +312,7 @@ export const birthdays: SectionModule = {
       if (m > 12) return;
       const prims: Prim[] = [];
       const head = ctx.textIn((names[m - 1] ?? '').toLocaleUpperCase(ctx.doc.locale), { ...cell, h: 4 }, { role: 'heading', size: 'heading', tracking: ctx.theme.tracking.heading });
-      prims.push(...head.prims, line(cell.x, cell.y + 4.6, cell.x + cell.w, cell.y + 4.6, ctx.stroke('rule', 'ink')));
+      prims.push(...head.prims, line(cell.x, cell.y + 4.6, cell.x + cell.w, cell.y + 4.6, ctx.stroke('rule', 'ink', { use: 'separator' })));
       const area = { x: cell.x, y: cell.y + 4.6, w: cell.w, h: cell.h - 4.6 };
       prims.push(...ruledLines(area, pitch, ctx.stroke('hair')));
       const evs = ctx.doc.design.personalDates.filter((p) => p.month === m).sort((a, b) => a.day - b.day);
@@ -385,17 +385,17 @@ export const vision: SectionModule = {
     const rowRects = rows(body, Math.max(1, cats.length));
     rowRects.forEach((row, i) => {
       const c = hsplit(row, [24, flex(), flex(), flex()]);
-      const p: Prim[] = [line(row.x, row.y + row.h, row.x + row.w, row.y + row.h, ctx.stroke('rule', 'ink'))];
+      const p: Prim[] = [line(row.x, row.y + row.h, row.x + row.w, row.y + row.h, ctx.stroke('rule', 'ink', { use: 'table' }))];
       const label = ctx.textIn(cats[i] ?? '', inset(c[0]!, 2, 1.5), { role: 'heading', size: 'labelSmall', upper: true, tracking: 0.06, wrap: true, valign: 'middle', align: 'center' });
       p.push(...label.prims);
       for (let k = 1; k < 4; k++) {
         const cell = c[k]!;
-        p.push(line(cell.x, row.y, cell.x, row.y + row.h, ctx.stroke('rule', 'ink')));
+        p.push(line(cell.x, row.y, cell.x, row.y + row.h, ctx.stroke('rule', 'ink', { use: 'table' })));
         p.push(...ruledLines(inset(cell, 1, 2), ctx.theme.writing.pitch, ctx.stroke('hair')));
       }
       ctx.add(`vision.row.${i}`, cats[i] ?? '', p);
     });
-    ctx.add('vision.frame', 'Marco', [rect(r, { stroke: ctx.stroke('rule', 'ink') })], { editable: false });
+    ctx.add('vision.frame', 'Marco', [rect(r, { stroke: ctx.stroke('rule', 'ink', { use: 'frame' }) })], { editable: false });
   },
 };
 
@@ -430,13 +430,13 @@ export const actionPlan: SectionModule = {
 
 function goalBlock(ctx: LayoutContext, box: { x: number; y: number; w: number; h: number }, n: number): void {
   const s = ctx.s.actionPlan;
-  const p: Prim[] = [rect(box, { stroke: ctx.stroke('rule', 'ink') })];
+  const p: Prim[] = [rect(box, { stroke: ctx.stroke('rule', 'ink', { use: 'frame' }) })];
   const inner = inset(box, 4);
   const title = ctx.textAt(fmt(s.goal, { n }), inner.x, inner.y + 2.5, { role: 'heading', size: 'label', upper: true, tracking: true });
-  p.push(title.prim, line(inner.x + title.width + 2, inner.y + 3, inner.x + inner.w, inner.y + 3, ctx.stroke('hair')));
+  p.push(title.prim, line(inner.x + title.width + 2, inner.y + 3, inner.x + inner.w, inner.y + 3, ctx.stroke('hair', undefined, { use: 'writing' })));
   const [left, right] = hsplit({ x: inner.x, y: inner.y + 7, w: inner.w, h: inner.h - 7 }, [flex(0.7), flex(0.3)], 4);
   const why = ctx.textAt(s.why, left!.x, left!.y + 2.5, { role: 'quote', size: ctx.theme.sizes.body + 1 });
-  p.push(why.prim, line(left!.x, left!.y + 8.5, left!.x + left!.w, left!.y + 8.5, ctx.stroke('hair')));
+  p.push(why.prim, line(left!.x, left!.y + 8.5, left!.x + left!.w, left!.y + 8.5, ctx.stroke('hair', undefined, { use: 'writing' })));
   const stepsTop = left!.y + 12;
   const stepsLabel = ctx.textAt(s.steps, left!.x, stepsTop, { role: 'heading', size: 'labelSmall', upper: true, tracking: true });
   p.push(stepsLabel.prim);
@@ -460,7 +460,7 @@ function goalBlock(ctx: LayoutContext, box: { x: number; y: number; w: number; h
     const t = ctx.textIn(ctx.s.pages.ifThen.success, { x: right!.x, y: sy, w: right!.w, h: 8 }, { role: 'label', size: 'labelSmall', upper: true, wrap: true, fit: true, align: 'center' });
     p.push(...t.prims);
     const ly = sy + t.bbox.h + 5;
-    p.push(line(right!.x, ly, right!.x + right!.w, ly, ctx.stroke('hair')));
+    p.push(line(right!.x, ly, right!.x + right!.w, ly, ctx.stroke('hair', undefined, { use: 'writing' })));
     const dy = ly + 6;
     const dt = ctx.textAt(ctx.s.pages.ifThen.difficulty, right!.x + right!.w / 2, dy, { role: 'label', size: 'labelSmall', upper: true, tracking: true, align: 'center' });
     p.push(dt.prim);
@@ -478,7 +478,7 @@ function mantraBlock(ctx: LayoutContext, box: { x: number; y: number; w: number;
   const b = { x: box.x, y: box.y + box.h * 0.25, w: box.w, h: box.h * 0.75 };
   const head = sectionHeader(ctx, { ...box, h: 8 }, fmt(s.mantra, { year: ctx.doc.design.calendar.year }), 'mantra.title', { rule: 'none' });
   void head;
-  const p: Prim[] = [rect(b, { stroke: ctx.stroke('hair', 'ruleSoft', { dash: [1.2, 1] }) })];
+  const p: Prim[] = [rect(b, { stroke: ctx.stroke('hair', 'ruleSoft', { use: 'frame', dash: [1.2, 1] }) })];
   p.push(...ctx.textIn(s.mantraHint, inset(b, 4), { role: 'quote', size: ctx.theme.sizes.body, align: 'center', valign: 'middle', wrap: true, color: '#9a9a9a' }).prims);
   ctx.add('mantra.box', 'Espacio del mantra', p);
 }

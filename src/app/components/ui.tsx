@@ -1,7 +1,7 @@
 /** Controles base de la interfaz (accesibles, compactos y consistentes). */
 import clsx from 'clsx';
 import { ChevronDown, ChevronRight } from 'lucide-react';
-import { useId, useState, type ReactNode } from 'react';
+import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 
 export function Button(props: { children: ReactNode; onClick?: () => void; variant?: 'primary' | 'ghost' | 'outline' | 'danger'; disabled?: boolean; title?: string; className?: string; type?: 'button' | 'submit' }) {
   const v = props.variant ?? 'outline';
@@ -172,18 +172,32 @@ export function ColorInput(props: { label: string; value: string; onChange: (v: 
   );
 }
 
-export function Group(props: { title: string; children: ReactNode; defaultOpen?: boolean; right?: ReactNode }) {
+/**
+ * Grupo plegable. El contenido plegado sigue en la página (oculto): así el buscador encuentra sus
+ * controles, y el evento `reveal` (ver `state/reveal`) lo abre para mostrarlos.
+ */
+export function Group(props: { title: string; children: ReactNode; defaultOpen?: boolean; right?: ReactNode; id?: string }) {
   const [open, setOpen] = useState(props.defaultOpen ?? true);
+  const ref = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const onReveal = (): void => setOpen(true);
+    el.addEventListener('reveal', onReveal);
+    return () => el.removeEventListener('reveal', onReveal);
+  }, []);
   return (
-    <section className="border-b border-line/80 py-2">
+    <section ref={ref} className="border-b border-line/80 py-2" data-group={props.id ?? props.title}>
       <div className="flex items-center justify-between">
-        <button type="button" onClick={() => setOpen(!open)} className="flex items-center gap-1 py-1 text-left text-[11px] font-extrabold tracking-[0.08em] text-ink uppercase">
+        <button type="button" aria-expanded={open} onClick={() => setOpen(!open)} className="flex items-center gap-1 py-1 text-left text-[11px] font-extrabold tracking-[0.08em] text-ink uppercase">
           {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
           {props.title}
         </button>
         {props.right}
       </div>
-      {open && <div className="pt-1 pb-1">{props.children}</div>}
+      <div className="pt-1 pb-1" hidden={!open}>
+        {props.children}
+      </div>
     </section>
   );
 }

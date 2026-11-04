@@ -1,28 +1,19 @@
-import { mergeTokens, THEMES, type ThemeTokens, type WritingStyle } from '@core/design/themes';
-import type { FontStyle } from '@core/text/fonts';
-import { RotateCcw } from 'lucide-react';
+import { derivePalette, type DerivedPalette } from '@core/design/palette';
+import type { UserTheme } from '@core/design/schema';
+import { HARMONIES, LINE_PATTERNS, LINE_USES, mergeTokens, THEMES, type Harmony, type LineStyle, type LineUse, type ThemeTokens, type WritingStyle } from '@core/design/themes';
+import type { TextRole } from '@core/layout/context';
+import { Download, Palette, RotateCcw, Save, Trash2, Upload } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { uiText, useT, type UiKey } from '../../i18n/ui';
+import { deleteTheme, listThemes } from '../../state/persist';
 import { resources } from '../../state/resources';
 import { useStore } from '../../state/store';
-import { Button, ColorInput, Field, Group, Segmented, Select, Slider, Toggle } from '../ui';
+import { applyUserTheme, exportThemeFile, importThemeFile, saveCurrentAsTheme } from '../../state/themes';
+import { FontRow, useFamilies } from '../FontPicker';
+import { OrnamentPicker } from '../OrnamentPicker';
+import { Button, ColorInput, Field, Group, IconButton, Segmented, Select, Slider, TextInput, Toggle } from '../ui';
 
 type Path = Array<string>;
-
-function useFamilies(): Array<{ family: string; faces: Array<{ weight: number; style: FontStyle }> }> {
-  const v = useStore((s) => s.resVersion);
-  return useMemo(() => {
-    const out = new Map<string, Array<{ weight: number; style: FontStyle }>>();
-    for (const f of resources.manifest?.families ?? []) out.set(f.family, f.faces.map((x) => ({ weight: x.weight, style: x.style })));
-    for (const face of resources.fonts.list()) {
-      const list = out.get(face.family) ?? [];
-      if (!list.some((x) => x.weight === face.weight && x.style === face.style)) list.push({ weight: face.weight, style: face.style });
-      out.set(face.family, list);
-    }
-    return [...out.entries()].map(([family, faces]) => ({ family, faces: faces.sort((a, b) => a.weight - b.weight) })).sort((a, b) => a.family.localeCompare(b.family));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [v]);
-}
 
 export function StylePanel() {
   const t = useT();
@@ -43,27 +34,15 @@ export function StylePanel() {
       node[path[path.length - 1]!] = value;
     }, `tok:${path.join('.')}`);
 
-  const roles = Object.keys(base.fonts) as Array<keyof ThemeTokens['fonts']>;
+  const roles = Object.keys(base.fonts) as TextRole[];
   const sizeKeys = Object.keys(base.sizes) as Array<keyof ThemeTokens['sizes']>;
   const strokeKeys = Object.keys(base.strokes) as Array<keyof ThemeTokens['strokes']>;
-  const colorKeys = Object.keys(base.colors) as Array<keyof ThemeTokens['colors']>;
+  const colorKeys = (Object.keys(base.colors) as Array<keyof ThemeTokens['colors']>).filter((k): k is Exclude<keyof ThemeTokens['colors'], 'roles'> => k !== 'roles');
 
   return (
     <div>
       <p className="py-2 text-[12px] leading-snug text-ink-soft">{t('style.intro')}</p>
-      <Field label={t('style.theme')}>
-        <Select
-          value={design.theme.id}
-          onChange={(v) =>
-            update((d) => {
-              d.theme.id = v;
-              d.theme.tokens = {};
-            })
-          }
-          options={Object.entries(THEMES).map(([id, th]) => ({ value: id, label: uiText(t, `theme.${id}`, th.name) }))}
-        />
-      </Field>
-      <p className="pb-2 text-[11.5px] text-ink-soft">{uiText(t, `theme.${design.theme.id}.desc`, THEMES[design.theme.id]?.description ?? '')}</p>
+      <ThemeChooser />
       <Field label={t('style.comfort')} group>
         <Segmented
           value={design.theme.comfort}
@@ -81,18 +60,33 @@ export function StylePanel() {
         </Button>
       </div>
 
-      <Group title={t('style.fonts')}>
+      <Group title={t('style.typeRoles')} id="roles">
+        <p className="pb-1 text-[11.5px] leading-snug text-ink-soft">{t('style.typeRolesHelp')}</p>
         {roles.map((role) => (
-          <FontRow
-            key={role}
-            label={t(`role.${role}` as UiKey)}
-            spec={base.fonts[role]}
-            families={families}
-            onChange={(spec) => {
-              void resources.ensureFamily(spec.family);
-              setToken(['fonts', role], spec);
-            }}
-          />
+          <div key={role} data-reveal={`role.${role}`} className="rounded-md">
+            <FontRow
+              label={t(`role.${role}` as UiKey)}
+              spec={base.fonts[role]}
+              families={families}
+              onChange={(spec) => {
+                void resources.ensureFamily(spec.family);
+                setToken(['fonts', role], spec);
+              }}
+            />
+            <ColorInput label={t('style.color')} value={base.colors.roles[role]} onChange={(v) => setToken(['colors', 'roles', role], v)} />
+          </div>
+        ))}
+      </Group>
+
+      <Group title={t('style.palette')} id="palette" defaultOpen={false}>
+        {/* Se reinicia al cambiar de tema o de paleta (el contenido de los grupos plegados sigue montado). */}
+        <PaletteEditor key={`${design.theme.id}|${base.palette.base}|${base.palette.harmony}`} current={base.palette} onApply={(p, from) => update((d) => applyPalette(d.theme.tokens as Record<string, unknown>, p, from))} />
+      </Group>
+
+      <Group title={t('style.lines')} id="lines" defaultOpen={false}>
+        <p className="pb-1 text-[11.5px] leading-snug text-ink-soft">{t('lines.help')}</p>
+        {LINE_USES.map((use) => (
+          <LineStyleEditor key={use} use={use} value={base.lines[use]} set={(k, v) => setToken(['lines', use, k], v)} />
         ))}
       </Group>
 
@@ -106,6 +100,13 @@ export function StylePanel() {
         </Field>
         <Slider label={t('style.pitch')} value={base.writing.pitch} min={4} max={12} step={0.1} onChange={(v) => setToken(['writing', 'pitch'], v)} />
         <Toggle label={t('style.weekendShading')} checked={base.weekendShading} onChange={(v) => setToken(['weekendShading'], v)} />
+      </Group>
+
+      <Group title={t('style.colors')} defaultOpen={false}>
+        {colorKeys.map((k) => (
+          <ColorInput key={k} label={t(`color.${k}` as UiKey)} value={base.colors[k]} onChange={(v) => setToken(['colors', k], v)} />
+        ))}
+        <ColorInput label={t('style.dotColor')} value={base.dots.color} onChange={(v) => setToken(['dots', 'color'], v)} />
       </Group>
 
       <Group title={t('style.sizes')} defaultOpen={false}>
@@ -125,13 +126,6 @@ export function StylePanel() {
       <Group title={t('style.dots')} defaultOpen={false}>
         <Slider label={t('style.dotPitch')} value={base.dots.pitch} min={3} max={10} step={0.1} onChange={(v) => setToken(['dots', 'pitch'], v)} />
         <Slider label={t('style.dotRadius')} value={base.dots.radius} min={0.2} max={1.5} step={0.05} onChange={(v) => setToken(['dots', 'radius'], v)} />
-        <ColorInput label={t('color.ink')} value={base.dots.color} onChange={(v) => setToken(['dots', 'color'], v)} />
-      </Group>
-
-      <Group title={t('style.colors')} defaultOpen={false}>
-        {colorKeys.map((k) => (
-          <ColorInput key={k} label={t(`color.${k}` as UiKey)} value={base.colors[k]} onChange={(v) => setToken(['colors', k], v)} />
-        ))}
       </Group>
 
       <Group title={t('style.margins')} defaultOpen={false}>
@@ -144,34 +138,165 @@ export function StylePanel() {
   );
 }
 
-function FontRow(props: { label: string; spec: { family: string; weight: number; style: FontStyle }; families: Array<{ family: string; faces: Array<{ weight: number; style: FontStyle }> }>; onChange: (s: { family: string; weight: number; style: FontStyle }) => void }) {
+/** Escribe una paleta derivada en los ajustes del tema (colores, tipos de texto, puntos y su origen). */
+function applyPalette(tokens: Record<string, unknown>, p: DerivedPalette, from: ThemeTokens['palette']): void {
+  tokens.colors = { ...((tokens.colors as Record<string, unknown> | undefined) ?? {}), ...p.colors, roles: { ...p.roles } };
+  tokens.dots = { ...((tokens.dots as Record<string, unknown> | undefined) ?? {}), color: p.dots };
+  tokens.palette = { ...from };
+}
+
+/** Tema: los incluidos y los propios; guardar el estilo actual como tema, importar y exportar. */
+function ThemeChooser() {
   const t = useT();
-  const fam = props.families.find((f) => f.family === props.spec.family);
-  const weights = [...new Set((fam?.faces ?? []).filter((f) => f.style === props.spec.style || !(fam?.faces ?? []).some((x) => x.style === props.spec.style)).map((f) => f.weight))];
-  const hasItalic = (fam?.faces ?? []).some((f) => f.style === 'italic');
-  const [preview, setPreview] = useState(props.spec.family);
-  useEffect(() => setPreview(props.spec.family), [props.spec.family]);
+  const design = useStore((s) => s.design)!;
+  const update = useStore((s) => s.update);
+  const setNotice = useStore((s) => s.setNotice);
+  const [mine, setMine] = useState<UserTheme[]>([]);
+  const [naming, setNaming] = useState<string | null>(null);
+  const refresh = (): void => void listThemes().then(setMine);
+  useEffect(refresh, []);
   return (
-    <div className="border-b border-line/50 py-1.5 last:border-0">
-      <div className="mb-1 text-[11.5px] font-semibold text-ink-soft">{props.label}</div>
-      <div className="grid grid-cols-[1fr_92px] gap-1.5">
+    <>
+      <Field label={t('style.theme')}>
         <Select
-          ariaLabel={props.label}
-          value={preview}
-          onChange={(family) => {
-            setPreview(family);
-            const f = props.families.find((x) => x.family === family);
-            const avail = f?.faces ?? [];
-            const sameStyle = avail.filter((x) => x.style === props.spec.style);
-            const pool = sameStyle.length ? sameStyle : avail;
-            const best = [...pool].sort((a, b) => Math.abs(a.weight - props.spec.weight) - Math.abs(b.weight - props.spec.weight))[0];
-            props.onChange({ family, weight: best?.weight ?? 400, style: best?.style ?? 'normal' });
-          }}
-          options={props.families.map((f) => ({ value: f.family, label: f.family }))}
+          value={design.theme.id}
+          onChange={(v) =>
+            update((d) => {
+              d.theme.id = v;
+              d.theme.tokens = {};
+            })
+          }
+          options={Object.entries(THEMES).map(([id, th]) => ({ value: id, label: uiText(t, `theme.${id}`, th.name) }))}
         />
-        <Select ariaLabel={t('style.weight')} value={String(props.spec.weight)} onChange={(w) => props.onChange({ ...props.spec, weight: Number(w) })} options={(weights.length ? weights : [props.spec.weight]).map((w) => ({ value: String(w), label: String(w) }))} />
+      </Field>
+      <p className="pb-2 text-[11.5px] text-ink-soft">{uiText(t, `theme.${design.theme.id}.desc`, THEMES[design.theme.id]?.description ?? '')}</p>
+      <div className="mb-2 rounded-md border border-line bg-white/60 p-2" data-reveal="themes.mine">
+        <div className="mb-1 text-[11.5px] font-semibold text-ink-soft">{t('theme.mine')}</div>
+        {mine.length === 0 && <p className="text-[11.5px] text-ink-soft">{t('theme.mineEmpty')}</p>}
+        <ul className="space-y-1">
+          {mine.map((th) => (
+            <li key={th.id} className="flex items-center gap-1.5 text-[12px]">
+              <span className="min-w-0 flex-1 truncate">{th.name}</span>
+              <Button variant="ghost" onClick={() => applyUserTheme(th)}>
+                {t('theme.apply')}
+              </Button>
+              <IconButton label={t('theme.export')} onClick={() => exportThemeFile(th)}>
+                <Download size={14} />
+              </IconButton>
+              <IconButton label={t('theme.delete')} onClick={() => void deleteTheme(th.id).then(refresh)}>
+                <Trash2 size={14} />
+              </IconButton>
+            </li>
+          ))}
+        </ul>
+        {naming === null ? (
+          <div className="mt-1.5 flex flex-wrap gap-1.5">
+            <Button onClick={() => setNaming(design.name)}>
+              <Save size={14} /> {t('theme.save')}
+            </Button>
+            <Button
+              variant="ghost"
+              onClick={() =>
+                void importThemeFile()
+                  .then((th) => {
+                    if (th) {
+                      refresh();
+                      setNotice(t('theme.imported', { name: th.name }));
+                    }
+                  })
+                  .catch(() => setNotice(t('theme.importError')))
+              }
+            >
+              <Upload size={14} /> {t('theme.import')}
+            </Button>
+          </div>
+        ) : (
+          <div className="mt-1.5 flex items-end gap-1.5">
+            <div className="flex-1">
+              <Field label={t('theme.saveName')}>
+                <TextInput value={naming} onChange={setNaming} />
+              </Field>
+            </div>
+            <Button
+              variant="primary"
+              onClick={() =>
+                void saveCurrentAsTheme(design, naming).then((th) => {
+                  setNaming(null);
+                  refresh();
+                  setNotice(t('theme.saved', { name: th.name }));
+                })
+              }
+            >
+              {t('theme.saveConfirm')}
+            </Button>
+          </div>
+        )}
       </div>
-      {hasItalic && <Toggle label={t('style.italic')} checked={props.spec.style === 'italic'} onChange={(v) => props.onChange({ ...props.spec, style: v ? 'italic' : 'normal' })} />}
+    </>
+  );
+}
+
+/** Paleta: un color base y una armonía dan todos los colores (con vista previa antes de aplicarla). */
+function PaletteEditor({ current, onApply }: { current: ThemeTokens['palette']; onApply: (p: DerivedPalette, from: ThemeTokens['palette']) => void }) {
+  const t = useT();
+  const [baseColor, setBaseColor] = useState(current.base);
+  const [harmony, setHarmony] = useState<Harmony>(current.harmony);
+  const preview = useMemo(() => derivePalette(baseColor, harmony), [baseColor, harmony]);
+  const swatches: Array<[string, string]> = [
+    [t('role.title'), preview.roles.title],
+    [t('role.heading'), preview.roles.heading],
+    [t('role.quote'), preview.roles.quote],
+    [t('role.body'), preview.roles.body],
+    [t('role.label'), preview.roles.label],
+    [t('color.rule'), preview.colors.rule],
+    [t('color.weekend'), preview.colors.weekend],
+    [t('color.accent'), preview.colors.accent],
+  ];
+  return (
+    <div data-reveal="palette">
+      <p className="pb-1 text-[11.5px] leading-snug text-ink-soft">{t('palette.help')}</p>
+      <ColorInput label={t('palette.base')} value={baseColor} onChange={setBaseColor} />
+      <Field label={t('palette.harmony')}>
+        <Select value={harmony} onChange={setHarmony} options={HARMONIES.map((h) => ({ value: h, label: t(`harmony.${h}`) }))} />
+      </Field>
+      <div className="my-1.5 grid grid-cols-4 gap-1" aria-label={t('palette.preview')}>
+        {swatches.map(([label, c]) => (
+          <div key={label} className="flex flex-col items-center gap-0.5 text-[10px] text-ink-soft">
+            <span className="h-6 w-full rounded border border-line" style={{ background: c }} title={c} />
+            <span className="truncate">{label}</span>
+          </div>
+        ))}
+      </div>
+      <Button variant="primary" onClick={() => onApply(preview, { base: baseColor, harmony })}>
+        <Palette size={14} /> {t('palette.apply')}
+      </Button>
+    </div>
+  );
+}
+
+/** Estilo de las líneas de un uso: patrón, ornamento, esquinas (marcos), tamaño y color. */
+function LineStyleEditor({ use, value, set }: { use: LineUse; value: LineStyle; set: (k: keyof LineStyle, v: unknown) => void }) {
+  const t = useT();
+  const withOrnament = value.pattern === 'repeat' || value.pattern === 'center';
+  return (
+    <div className="border-b border-line/50 py-1.5 last:border-0" data-reveal={`line.${use}`}>
+      <div className="text-[12px] font-semibold">{t(`use.${use}`)}</div>
+      <Field label={t('lines.pattern')}>
+        <Select value={value.pattern} onChange={(v) => set('pattern', v)} options={LINE_PATTERNS.map((p) => ({ value: p, label: t(`pattern.${p}`) }))} />
+      </Field>
+      {withOrnament && <OrnamentPicker label={t('lines.ornament')} value={value.ornament} kinds={value.pattern === 'repeat' ? ['tile'] : ['center', 'tile']} allowNone={false} onChange={(v) => set('ornament', v)} />}
+      {use === 'frame' && <OrnamentPicker label={t('lines.corner')} value={value.corner} kinds={['corner']} onChange={(v) => set('corner', v)} />}
+      {(withOrnament || (use === 'frame' && value.corner)) && <Slider label={t('lines.size')} value={value.size} min={1} max={20} step={0.5} onChange={(v) => set('size', v)} />}
+      <div className="flex items-center gap-1.5">
+        <div className="flex-1">
+          <ColorInput label={t('lines.color')} value={value.color || '#000000'} onChange={(v) => set('color', v)} />
+        </div>
+        {value.color && (
+          <button type="button" className="text-[11px] text-accent underline" onClick={() => set('color', '')}>
+            {t('lines.colorAuto')}
+          </button>
+        )}
+      </div>
     </div>
   );
 }

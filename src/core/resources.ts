@@ -9,7 +9,7 @@ import type { AssetRef, Design } from './design/schema';
 import { themeFaces, resolveTheme } from './design/themes';
 import type { HolidayCountryData, HolidayIndex } from './holidays';
 import type { AssetInfo } from './layout/context';
-import { faceKey, FontRegistry, type FontSpec } from './text/fonts';
+import { faceKey, FontRegistry, parseFontSpec, type FontSpec } from './text/fonts';
 
 export interface ResourceIO {
   read(path: string): Promise<Uint8Array>;
@@ -62,6 +62,8 @@ export function facesForDesign(design: Design): FontSpec[] {
   const theme = resolveTheme(design.theme.id, design.theme.tokens, design.theme.comfort);
   const list = [
     ...themeFaces(theme),
+    // Textos propios con su propia fuente.
+    ...design.customBlocks.flatMap((cb) => parseFontSpec(cb.props.font) ?? []),
     { family: 'Manrope', weight: 400, style: 'normal' as const },
     { family: 'Manrope', weight: 700, style: 'normal' as const },
     { family: 'Manrope', weight: 800, style: 'normal' as const },
