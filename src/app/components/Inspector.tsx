@@ -54,7 +54,6 @@ import {
   pageStyleOf,
   pageStyleRecipe,
   patchOverride,
-  reflowable,
   resetBlock,
   resetBlocks,
   resetPageStyle,
@@ -70,6 +69,7 @@ import { scrub, type Scrubbing } from '../state/scrub';
 import { useStore, type Recipe } from '../state/store';
 import { Button, ColorInput, Field, NumberInput, Segmented, Select, Slider, TextArea, TextInput, Toggle } from './ui';
 import { jumpToPage } from '../state/navigation';
+import { reflowable } from '@core/layout/handles';
 import { BlockStyleFields } from './BlockStyleFields';
 import { MIN_BOX } from '@core/layout/box';
 import { parseFontSpec } from '@core/text/fonts';
@@ -150,7 +150,7 @@ export function Inspector({ doc }: { doc: AgendaDocument }) {
             {!block.editable && <p className="text-[12px] text-ink-soft">{t('insp.locked')}</p>}
             {block.editable && block.role === 'writing' && <WritingFields page={page} scope={scope} setScope={setScope} />}
             {block.editable && block.role === 'watermark' && <WatermarkFields id={block.id.slice(3)} />}
-            {block.editable && block.role === 'custom' && <CustomFields id={block.id.slice(7)} theme={doc.ctx.theme} />}
+            {block.editable && block.role === 'custom' && <CustomFields id={block.id.slice(7)} theme={doc.ctx.theme} block={block} />}
             {block.editable && block.role !== 'watermark' && block.role !== 'custom' && (
               <>
                 <BlockFields page={page} blockId={block.id} scope={scope} setScope={setScope} />
@@ -325,7 +325,7 @@ function BlockFields({ page, blockId, scope, setScope }: { page: PageModel; bloc
   const o = level === 'page' ? (pageO ?? typeO) : typeO;
   const showFlipped = mirrored && (level === 'type' || inherited);
   // En una página izquierda con ajuste «por tipo», el borde izquierdo es -(dx + dw) (ver `adjuster`).
-  const v = { dx: showFlipped ? -((o?.dx ?? 0) + (o?.dw ?? 0)) : (o?.dx ?? 0), dy: o?.dy ?? 0, scale: o?.scale ?? 1, rotation: o?.rotation ?? 0, opacity: o?.opacity ?? 1 };
+  const v = { dx: showFlipped ? -((o?.dx ?? 0) + (o?.dw ?? 0)) : (o?.dx ?? 0), dy: o?.dy ?? 0, scale: o?.scale ?? 1, scaleY: o?.scaleY ?? null, deform: o?.deform ?? false, rotation: o?.rotation ?? 0, opacity: o?.opacity ?? 1 };
   const flipOnWrite = mirrored && level === 'type';
   // Los bloques que su sección maqueta dentro de una caja también tienen ancho y alto.
   const block = page.blocks.find((b) => b.id === blockId);
@@ -376,7 +376,9 @@ function BlockFields({ page, blockId, scope, setScope }: { page: PageModel; bloc
         </p>
       )}
       {inherited && typeO && <p className="mb-1 text-[11px] leading-snug text-ink-soft">{t('insp.inherits')}</p>}
-      <Slider label={t('insp.scale')} value={v.scale} min={0.2} max={3} step={0.01} {...drag('scale')} defaultValue={OVERRIDE_DEFAULTS.scale} />
+      <Toggle label={t('insp.deform')} hint={t('insp.deformHint')} checked={v.deform} onChange={(on) => patchOverride(page, blockId, scope, on ? { deform: true } : { deform: false, scaleY: null }, `insp:${blockId}:deform`)} />
+      <Slider label={v.deform ? t('insp.scaleX') : t('insp.scale')} value={v.scale} min={0.2} max={3} step={0.01} {...drag('scale')} defaultValue={OVERRIDE_DEFAULTS.scale} />
+      {v.deform && <Slider label={t('insp.scaleY')} value={v.scaleY ?? v.scale} min={0.2} max={3} step={0.01} {...scrub<number>((x) => overrideRecipe(page, blockId, scope, { scaleY: x }), `insp:${blockId}:scaleY`)} onReset={() => patchOverride(page, blockId, scope, { scaleY: null }, `insp:${blockId}:scaleY`)} modified={v.scaleY !== null && Math.abs(v.scaleY - v.scale) > 1e-4} />}
       <Slider label={t('insp.rotation')} value={v.rotation} min={-180} max={180} step={1} {...drag('rotation')} defaultValue={OVERRIDE_DEFAULTS.rotation} />
       <Slider label={t('insp.opacity')} value={v.opacity} min={0} max={1} step={0.05} {...drag('opacity')} defaultValue={OVERRIDE_DEFAULTS.opacity} />
     </div>
@@ -473,7 +475,7 @@ function propRecipe(id: string, k: string, v: unknown): Recipe {
   };
 }
 
-function CustomFields({ id, theme }: { id: string; theme: AgendaDocument['ctx']['theme'] }) {
+function CustomFields({ id, theme, block }: { id: string; theme: AgendaDocument['ctx']['theme']; block: Block }) {
   const t = useT();
   const cb = useStore((s) => s.design?.customBlocks.find((c) => c.id === id));
   const assets = useStore((s) => s.design?.assets ?? []);
@@ -490,6 +492,10 @@ function CustomFields({ id, theme }: { id: string; theme: AgendaDocument['ctx'][
   const dragProp = <T,>(k: string): Scrubbing<T> => scrub<T>((v) => propRecipe(id, k, v), `cb:${id}:p:${k}`);
   const p = cb.props as Record<string, unknown>;
   // El paso de los renglones, los puntos y la cuadrícula, cuando el elemento no tiene uno propio.
+  // Con «ajustar», la letra puede dibujarse más chica que el cuerpo pedido: se dice a cuánto.
+  const asked = Number(p.size ?? theme.sizes.body);
+  const drawn = firstTextSize(block.prims);
+  const fitHint = cb.kind === 'text' && p.fit !== false && drawn !== null && drawn < asked - 0.05 ? String(Math.round(drawn * 10) / 10) : '';
   const pitchDefault = cb.kind === 'dots' ? theme.dots.pitch : cb.kind === 'grid' ? PROP_DEFAULTS.gridPitch : theme.writing.pitch;
   return (
     <div>
@@ -540,6 +546,12 @@ function CustomFields({ id, theme }: { id: string; theme: AgendaDocument['ctx'][
           </Field>
           <Toggle label={t('insp.upper')} checked={Boolean(p.upper)} onChange={(v) => setProp('upper', v)} />
           <Toggle label={t('insp.autoHeight')} checked={p.autoHeight === true} onChange={(v) => setProp('autoHeight', v ? true : undefined)} />
+          <Toggle
+            label={t('insp.fitBox')}
+            hint={fitHint ? t('insp.fitDrawn', { pt: fitHint }) : t('insp.fitHint')}
+            checked={p.fit !== false}
+            onChange={(v) => setProp('fit', v ? undefined : false)}
+          />
           <CustomTextStyle p={p} setProp={setProp} dragColor={dragProp<string>('color')} />
         </>
       )}
@@ -711,6 +723,18 @@ function LinkFields(props: { doc: AgendaDocument; page: PageModel; block: Block;
  * Qué tipos de texto usa el elemento (títulos, rótulos…) y un atajo a su letra y color en Estilo:
  * cambiarlos ahí cambia todos los textos de ese tipo en la agenda.
  */
+/** El cuerpo (pt) del primer texto de unas primitivas, o `null` si no hay. */
+function firstTextSize(prims: readonly Prim[]): number | null {
+  for (const p of prims) {
+    if (p.t === 'text') return p.run.sizePt;
+    if (p.t === 'group') {
+      const inner = firstTextSize(p.children);
+      if (inner !== null) return inner;
+    }
+  }
+  return null;
+}
+
 /** Lleva al estilo de cada clase de línea del elemento (filetes, ornamentos, marcos), que se cambia para toda la agenda. */
 function LineUseLinks({ block }: { block: Block }) {
   const t = useT();

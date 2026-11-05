@@ -4,13 +4,13 @@
  */
 import { blockBounds } from '@core/document/layout';
 import type { AgendaDocument } from '@core/document';
-import type { Block, PageModel } from '@core/layout/prims';
+import type { Block } from '@core/layout/prims';
 import { pageInnerSvg } from '@core/render/svg';
 import { fmt, type Rect } from '@core/util/geometry';
 import { useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { unionRect } from '@core/layout/align';
-import type { Scope } from '../../state/actions';
-import { clampMoveDelta, moveBlocks, reflowable, resizeBoxRecipe, resizeCustomRecipe, scaleBlock } from '../../state/actions';
+import { clampMoveDelta, moveBlocks, resizeRecipeFor, scaleBlock } from '../../state/actions';
+import { hasSideHandles } from '@core/layout/handles';
 import { frameThrottle, type FrameThrottle } from '../../state/frame';
 import { MIN_BOX } from '@core/layout/box';
 import { HANDLES, resizeRect, type Handle } from '@core/layout/resize';
@@ -19,7 +19,7 @@ import { blockMenu, multiMenu, pageMenu, zoneMenu } from './menus';
 import { editableInPlace, TextEditor } from './TextEditor';
 import { assetHref, onAssetUrlsChange } from '../../state/assetUrls';
 import { useT } from '../../i18n/ui';
-import { useStore, type Recipe, type Selection } from '../../state/store';
+import { useStore, type Selection } from '../../state/store';
 import { jumpToPage } from '../../state/navigation';
 import { currentUiZoom } from '../../state/uiScale';
 
@@ -63,8 +63,6 @@ const SIDE_ROOM_PX = 44;
 const SIDE_OUTSET_PX = 12;
 /** Clave que liga la vista previa de un redimensionado con su confirmación. */
 const reflowKey = (page: { key: string }, block: Block): string => `box:${page.key}:${block.id}`;
-/** Cambio de caja de un bloque: los elementos propios guardan su caja; los del programa, un ajuste sobre la suya. */
-const resizeRecipe = (page: PageModel, block: Block, box: Rect, scope: Scope): Recipe => (block.role === 'custom' ? resizeCustomRecipe(page, block, box) : resizeBoxRecipe(page, block, box, scope));
 const RESIZE_CURSOR: Record<Handle, string> = { n: 'ns-resize', s: 'ns-resize', e: 'ew-resize', w: 'ew-resize', ne: 'nesw-resize', sw: 'nesw-resize', nw: 'nwse-resize', se: 'nwse-resize' };
 /** Movimiento mínimo (px de pantalla) para que un clic se convierta en arrastre. */
 const DRAG_START_PX = 3;
@@ -217,7 +215,7 @@ export function PageView({ doc, index, scale, interactive = true }: Props) {
         const el = svgRef.current?.querySelector<SVGGElement>(`[data-block="${CSS.escape(b.id)}"]`) ?? null;
         return { block: b, el, base: el?.getAttribute('transform') ?? null, origin: blockBounds(b) };
       });
-    const reflow = mode === 'resize' && (block.role === 'custom' || reflowable(block));
+    const reflow = mode === 'resize' && hasSideHandles(block);
     drag.current = {
       block,
       mode,
@@ -236,7 +234,7 @@ export function PageView({ doc, index, scale, interactive = true }: Props) {
       moved: false,
       additive: false,
       reflow,
-      push: reflow ? frameThrottle((r: Rect) => useStore.getState().preview(resizeRecipe(page, block, r, scope), reflowKey(page, block))) : null,
+      push: reflow ? frameThrottle((r: Rect) => useStore.getState().preview(resizeRecipeFor(page, block, r, scope), reflowKey(page, block))) : null,
     };
     wrapRef.current?.setPointerCapture?.(e.pointerId);
     e.preventDefault();
@@ -348,7 +346,7 @@ export function PageView({ doc, index, scale, interactive = true }: Props) {
       if (commit && d.moved && d.box) {
         // Lo último que se movió llega a la vista previa antes de confirmarla (la confirmación la adopta).
         d.push?.flush();
-        useStore.getState().commit(resizeRecipe(page, d.block, d.box, scope), reflowKey(page, d.block));
+        useStore.getState().commit(resizeRecipeFor(page, d.block, d.box, scope), reflowKey(page, d.block));
       } else {
         d.push?.cancel();
         useStore.getState().clearPreview();
@@ -525,7 +523,7 @@ export function PageView({ doc, index, scale, interactive = true }: Props) {
         <>
           {/* Capa del elemento seleccionado: con el dedo se arrastra desde acá sin desplazar la página. */}
           <div data-sel-surface="" className="absolute cursor-move" style={{ left: selBounds.x * scale, top: selBounds.y * scale, width: selBounds.w * scale, height: selBounds.h * scale, touchAction: 'none' }} />
-          {(selected.role === 'custom' || reflowable(selected) ? HANDLES : (['se'] as const)).map((h) => {
+          {(hasSideHandles(selected) ? HANDLES : (['se'] as const)).map((h) => {
             // Esquinas: cuadrados; lados: barras sobre el borde. Grandes para el dedo.
             const corner = h.length === 2;
             // En una caja chica (un renglón de texto) las barras de los lados quedarían debajo de las esquinas:

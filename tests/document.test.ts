@@ -90,7 +90,7 @@ describe('ajustes del editor', () => {
     }
     expect(found).not.toBeNull();
     const { type, recto, verso, blockId } = found!;
-    const moved = await openDocument(norma((d) => void d.overrides.push({ pageType: type, pageKey: null, blockId, dx: 3, dy: 0, dw: 0, dh: 0, scale: 1, rotation: 0, opacity: 1, hidden: false })));
+    const moved = await openDocument(norma((d) => void d.overrides.push({ pageType: type, pageKey: null, blockId, dx: 3, dy: 0, dw: 0, dh: 0, scale: 1, scaleY: null, deform: false, rotation: 0, opacity: 1, hidden: false })));
     // La posición que se ve (no la de la matriz: un bloque con caja ya trae su lugar en el dibujo).
     const x = (doc: typeof plain.doc, i: number): number => blockBounds(doc.page(i).blocks.find((b) => b.id === blockId)!).x;
     expect(x(moved.doc, recto) - x(plain.doc, recto)).toBeCloseTo(3, 6);

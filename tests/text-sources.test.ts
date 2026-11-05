@@ -154,3 +154,34 @@ describe('correcciones de la revisión', () => {
     expect(d.persona.title).toBe('');
   });
 });
+
+describe('tamaño real del texto propio', () => {
+  const sizeOf = async (props: Record<string, unknown>): Promise<{ pt: number; overflow: boolean }> => {
+    const d = norma((x) => {
+      x.customBlocks.push({ id: 'abc', pageType: 'weekLeft', pageKey: null, kind: 'text', x: 20, y: 40, w: 40, h: 10, mirror: false, props: { text: 'Un texto que no entra en una caja tan chica a este tamaño', ...props } });
+    });
+    const { doc } = await openDocument(d);
+    const i = doc.plan.pages.findIndex((p) => p.type === 'weekLeft');
+    const model = doc.page(i);
+    const t = model.blocks.find((b) => b.id === 'custom.abc')!.prims.find((p) => p.t === 'text');
+    return { pt: t && t.t === 'text' ? t.run.sizePt : 0, overflow: model.warnings.some((w) => w.code === 'textOverflow') };
+  };
+
+  it('sin la propiedad ajusta como antes: la letra se achica hasta entrar', async () => {
+    const r = await sizeOf({ size: 60 });
+    expect(r.pt).toBeLessThan(60);
+    expect(r.overflow).toBe(false);
+  });
+
+  it('con fit apagado se dibuja al tamaño pedido y se avisa que no entra', async () => {
+    const r = await sizeOf({ size: 60, fit: false });
+    expect(r.pt).toBe(60);
+    expect(r.overflow).toBe(true);
+  });
+
+  it('con fit apagado y un tamaño que entra no hay aviso', async () => {
+    const r = await sizeOf({ size: 8, fit: false, text: 'Hola' });
+    expect(r.pt).toBe(8);
+    expect(r.overflow).toBe(false);
+  });
+});

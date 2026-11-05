@@ -59,6 +59,7 @@ export function customBlockPropsSchema(kind: string): Json {
       upper: { type: 'boolean', description: 'En mayúsculas' },
       tracking: range(PROP_RANGES.tracking, 'Espaciado entre letras, en em'),
       wrap: { type: 'boolean', description: 'Partir en renglones (por defecto, sí)' },
+      fit: { type: 'boolean', default: true, description: 'Achicar la letra hasta que entre en el recuadro (por defecto, sí). Con false se dibuja al tamaño pedido y, si no entra, la revisión avisa' },
       autoHeight: { type: 'boolean', description: 'El alto sigue al texto: crece y se achica con los renglones, arriba fijo (por defecto, no; «h» no se usa)' },
       color: color('Color propio (por defecto, el de su tipo de texto)'),
       font: {

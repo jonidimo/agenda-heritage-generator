@@ -31,13 +31,15 @@ export function findOverride(overrides: readonly BlockOverride[], page: { key: s
   );
 }
 
-export function overrideMatrix(bbox: Rect, o: Pick<BlockOverride, 'dx' | 'dy' | 'scale' | 'rotation'>, mirrorX = false): Matrix {
+export function overrideMatrix(bbox: Rect, o: Pick<BlockOverride, 'dx' | 'dy' | 'scale' | 'rotation'> & { scaleY?: number | null }, mirrorX = false): Matrix {
   const s = o.scale;
+  // Sin escala vertical propia, la misma que la horizontal (así un archivo anterior da lo mismo que antes).
+  const sy = o.scaleY ?? s;
   const dx = mirrorX ? -o.dx : o.dx;
   return composeAll(
     translate(bbox.x + dx, bbox.y + o.dy),
-    rotateAround(o.rotation, (bbox.w * s) / 2, (bbox.h * s) / 2),
-    scale(s),
+    rotateAround(o.rotation, (bbox.w * s) / 2, (bbox.h * sy) / 2),
+    scale(s, sy),
     translate(-bbox.x, -bbox.y),
   );
 }
@@ -202,7 +204,8 @@ function placeCustomBlock(ctx: LayoutContext, cb: CustomBlock, page: PagePlan): 
         upper: Boolean(p.upper),
         tracking: numProp(p.tracking, PROP_RANGES.tracking, PROP_DEFAULTS.tracking),
         wrap: p.wrap !== false,
-        fit: true,
+        // Sin la propiedad, ajusta (como los archivos de antes); con `fit: false` el cuerpo es el pedido y, si no entra, avisa.
+        fit: p.fit !== false,
         ...(normalizeColor(p.color) ? { color: normalizeColor(p.color)! } : {}),
         // Fuente propia del elemento (si no, la de su tipo de texto).
         ...(parseFontSpec(p.font) ? { font: parseFontSpec(p.font)! } : {}),
@@ -427,7 +430,7 @@ export function layoutPage(
       const a = adjuster(b.id)!;
       // Con caja, el lugar ya está en el dibujo (la sección lo dibujó adentro): la matriz solo escala y gira.
       const pivot = b.box ?? b.bbox;
-      let m = overrideMatrix(pivot, { dx: b.box ? 0 : a.dx, dy: b.box ? 0 : a.dy, scale: o.scale, rotation: o.rotation });
+      let m = overrideMatrix(pivot, { dx: b.box ? 0 : a.dx, dy: b.box ? 0 : a.dy, scale: o.scale, scaleY: o.scaleY, rotation: o.rotation });
       const bounds = transformRect(m, pivot);
       // Mantener dentro de la página.
       const dx = bounds.x < 0 ? -bounds.x : bounds.x + bounds.w > geom.w ? geom.w - bounds.x - bounds.w : 0;
@@ -437,6 +440,7 @@ export function layoutPage(
         ctx.warn('clamped', `«${b.label}» se acomodó para no salir de la página.`, { block: b.id, label: b.label });
       }
       b.m = m;
+      if (o.deform) b.deform = true;
       if (o.opacity < 1) b.opacity = o.opacity;
     }
     blocks.push(b);

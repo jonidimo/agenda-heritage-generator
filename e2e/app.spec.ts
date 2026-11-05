@@ -1229,3 +1229,68 @@ test.describe('tira inferior y filetes', () => {
     await expect(page.getByTestId('line-uses')).toBeVisible();
   });
 });
+
+test.describe('tiradores con escala y deformación', () => {
+  const override = (page: Page, id: string): Promise<{ dw: number; dh: number; scale: number; scaleY: number | null; deform: boolean } | null> =>
+    page.evaluate(`(() => { const o = globalThis.__agenda.getState().design.overrides.find((q) => q.blockId === '${id}'); return o ? { dw: o.dw, dh: o.dh, scale: o.scale, scaleY: o.scaleY, deform: o.deform } : null; })()`);
+
+  test('con escala distinta de 1 los tiradores laterales siguen y reacomodan sin tocar la escala', async ({ page }) => {
+    await openQuiet(page);
+    await toWeek(page);
+    await settled(page);
+    const where = await selectBlock(page, 'week.notes');
+    await page.evaluate(`globalThis.__agenda.getState().update((d) => { d.overrides.push({ pageType: '${where.pageType}', pageKey: null, blockId: 'week.notes', dx: 0, dy: 0, dw: 0, dh: 0, scale: 0.8, scaleY: null, deform: false, rotation: 0, opacity: 1, hidden: false }); }, 'e2e')`);
+    const handle = page.locator(`[data-page-key="${where.pageKey}"] [data-handle="e"]`).first();
+    await expect(handle).toBeVisible();
+    const box = (await handle.boundingBox())!;
+    const x = box.x + box.width / 2;
+    const y = box.y + box.height / 2;
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    await page.mouse.move(x - 40, y, { steps: 8 });
+    await page.mouse.up();
+    await expect.poll(async () => (await override(page, 'week.notes'))?.dw ?? 0).toBeLessThan(-1);
+    const after = await override(page, 'week.notes');
+    expect(after!.scale).toBe(0.8);
+    expect(after!.deform).toBe(false);
+  });
+
+  test('«Permitir deformar» deja aplastar en cualquier dirección: cada eje con su escala', async ({ page }) => {
+    await openQuiet(page);
+    await toWeek(page);
+    await settled(page);
+    const where = await selectBlock(page, 'week.notes');
+    await page.getByRole('checkbox', { name: 'Permitir deformar' }).check();
+    await expect.poll(async () => (await override(page, 'week.notes'))?.deform).toBe(true);
+    const handle = page.locator(`[data-page-key="${where.pageKey}"] [data-handle="s"]`).first();
+    await expect(handle).toBeVisible();
+    const box = (await handle.boundingBox())!;
+    const x = box.x + box.width / 2;
+    const y = box.y + box.height / 2;
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    await page.mouse.move(x, y - 40, { steps: 8 });
+    await page.mouse.up();
+    await expect.poll(async () => (await override(page, 'week.notes'))?.scaleY ?? 1).toBeLessThan(0.95);
+    const after = await override(page, 'week.notes');
+    // Se aplastó solo a lo alto y la caja de la sección no se reacomodó.
+    expect(after!.scale).toBe(1);
+    expect(after!.dh).toBe(0);
+    // Desactivarlo devuelve la proporción.
+    await page.getByRole('checkbox', { name: 'Permitir deformar' }).uncheck();
+    await expect.poll(async () => (await override(page, 'week.notes'))?.scaleY).toBeNull();
+  });
+
+  test('un texto nuevo se dibuja al tamaño que se elige; «Ajustar al recuadro» lo achica y lo dice', async ({ page }) => {
+    await open(page);
+    await page.getByRole('button', { name: 'Texto', exact: true }).first().click();
+    const prop = () => page.evaluate<Record<string, unknown>>('globalThis.__agenda.getState().design.customBlocks.at(-1).props');
+    expect((await prop()).fit).toBe(false);
+    // Un tamaño enorme en un recuadro chico: no se achica por su cuenta.
+    await page.evaluate(`globalThis.__agenda.getState().update((d) => { const c = d.customBlocks.at(-1); c.props = { ...c.props, size: 80, autoHeight: false, text: 'Hola mundo grande' }; c.h = 10; }, 'e2e-size')`);
+    await expect(page.getByText(/Se dibuja a/)).toHaveCount(0);
+    await page.getByRole('checkbox', { name: 'Ajustar la letra al recuadro' }).check();
+    await expect(page.getByText(/Se dibuja a .* pt para que entre en el recuadro/)).toBeVisible();
+    expect((await prop()).fit).toBeUndefined();
+  });
+});

@@ -223,7 +223,7 @@ describe('plataforma de la aplicación de escritorio', () => {
 
 describe('valores por defecto para restablecer', () => {
   it('salen del esquema', () => {
-    expect(OVERRIDE_DEFAULTS).toMatchObject({ dx: 0, dy: 0, scale: 1, rotation: 0, opacity: 1, hidden: false });
+    expect(OVERRIDE_DEFAULTS).toMatchObject({ dx: 0, dy: 0, scale: 1, scaleY: null, deform: false, rotation: 0, opacity: 1, hidden: false });
     expect(WATERMARK_DEFAULTS).toMatchObject({ width: 12, opacity: 1, rotation: 0, minStrokePt: 0.3 });
     const d = designDefaults();
     expect(d.binding.signature.sheets).toBeGreaterThan(0);

@@ -196,6 +196,8 @@ export interface Block {
    * Sin ella, el elemento se estira al cambiar de tamaño (ver `stretch.ts`).
    */
   box?: Rect;
+  /** El usuario permitió deformarlo: los tiradores estiran el dibujo en lugar de reacomodar su contenido. */
+  deform?: true;
   /** No admite cambiar su ancho y su alto por los lados (p. ej. dibujado girado): solo se escala. */
   rigid?: true;
   /**

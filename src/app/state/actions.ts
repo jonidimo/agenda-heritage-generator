@@ -11,7 +11,8 @@ import { withPageStyle } from '@core/design/pageStyles';
 import type { Block, PageModel, TextSource } from '@core/layout/prims';
 import type { Rect } from '@core/util/geometry';
 import { blockBounds, findOverride as appliedOverride } from '@core/document/layout';
-import { MIN_BOX, naturalBox, storeAdjust, type BoxAdjust } from '@core/layout/box';
+import { deformable } from '@core/layout/handles';
+import { axisScales, deformScales, MIN_BOX, naturalBox, storeAdjust, visualToBox, type BoxAdjust } from '@core/layout/box';
 import { alignDeltas, centerGroupDeltas, distributeDeltas, tidyGridDeltas, unionRect, type AlignMode, type Delta } from '@core/layout/align';
 import { current, type Draft } from 'immer';
 import { documentFor } from './doc';
@@ -54,6 +55,8 @@ function upsertOverride(d: Draft<Design>, page: PageModel, blockId: string, scop
       dw: base?.dw ?? 0,
       dh: base?.dh ?? 0,
       scale: base?.scale ?? 1,
+      scaleY: base?.scaleY ?? null,
+      deform: base?.deform ?? false,
       rotation: base?.rotation ?? 0,
       opacity: base?.opacity ?? 1,
       hidden: base?.hidden ?? false,
@@ -190,9 +193,12 @@ export function matchScale(page: PageModel, blocks: Block[], primary: Block, sco
   useStore.getState().update((d) => {
     for (const b of blocks) {
       if (b.id === primary.id || b.role === 'watermark' || b.role === 'custom') continue;
-      upsertOverride(d, page, b.id, sc, (o) => void (o.scale = target), mirrored);
+      upsertOverride(d, page, b.id, sc, (o) => void ((o.scale = target), (o.scaleY = null)), mirrored);
       const own = sc === 'type' ? findOverride(d, page, b.id, 'page') : undefined;
-      if (own) own.scale = target;
+      if (own) {
+        own.scale = target;
+        own.scaleY = null;
+      }
     }
   });
 }
@@ -313,24 +319,63 @@ export function scaleBlock(page: PageModel, block: Block, factor: number, scope:
       effectiveScope(page, scope),
       (o) => {
         o.scale = Number(Math.min(20, Math.max(0.05, o.scale * factor)).toFixed(4));
+        if (o.scaleY !== null) o.scaleY = Number(Math.min(20, Math.max(0.05, o.scaleY * factor)).toFixed(4));
       },
       typeMirrored(page),
     );
     const own = effectiveScope(page, scope) === 'type' ? findOverride(d, page, block.id, 'page') : undefined;
-    if (own) own.scale = Number(Math.min(20, Math.max(0.05, own.scale * factor)).toFixed(4));
+    if (own) {
+      own.scale = Number(Math.min(20, Math.max(0.05, own.scale * factor)).toFixed(4));
+      if (own.scaleY !== null) own.scaleY = Number(Math.min(20, Math.max(0.05, own.scaleY * factor)).toFixed(4));
+    }
   }, coalesce);
 }
 
 /**
- * ¿Los tiradores de los lados reacomodan este bloque? Sí cuando su sección lo dibuja dentro de una
- * caja (`LayoutContext.rect`), no va girado ni escalado (entonces lo que se ve no es su caja) y no es
- * un dibujo rígido. Los demás conservan el tirador de la esquina, que los escala.
+ * Receta de un tirador sobre un bloque, según qué es: un elemento propio guarda su caja; uno que se
+ * permitió deformar cambia sus escalas; uno con caja del programa la reacomoda. `box` es el
+ * rectángulo que se ve en la página (con la escala puesta).
  */
-export function reflowable(block: Block): boolean {
-  if (!block.editable || !block.box || block.rigid || block.role === 'custom' || block.role === 'watermark') return false;
-  const seen = blockBounds(block);
-  const box = block.box;
-  return Math.abs(seen.x - box.x) < 1e-6 && Math.abs(seen.y - box.y) < 1e-6 && Math.abs(seen.w - box.w) < 1e-6 && Math.abs(seen.h - box.h) < 1e-6;
+export function resizeRecipeFor(page: PageModel, block: Block, box: Rect, scope: Scope): Recipe {
+  if (block.role === 'custom') return resizeCustomRecipe(page, block, box);
+  if (deformable(block)) return deformRecipe(page, block, box, scope);
+  return resizeBoxRecipe(page, block, visualToBox(box, axisScales(block.m) ?? { sx: 1, sy: 1 }), scope);
+}
+
+/**
+ * Receta que estira el dibujo de un bloque hasta el rectángulo `visual` (lo que se ve): cada eje con
+ * su escala y la esquina superior izquierda en su lugar. La caja natural de la sección no cambia de
+ * tamaño; cambian la posición y las escalas. En una página izquierda con ajuste «por tipo» la
+ * posición se espeja como en `resizeBoxRecipe`.
+ */
+export function deformRecipe(page: PageModel, block: Block, visual: Rect, scope: Scope): Recipe {
+  return (d) => {
+    const pivot = block.box ?? block.bbox;
+    const sc = effectiveScope(page, scope);
+    const mirrored = typeMirrored(page);
+    const before = appliedOverride(d.overrides, page, block.id);
+    const was: BoxAdjust = before
+      ? { dx: before.pageKey === null && mirrored ? -(before.dx + before.dw) : before.dx, dy: before.dy, dw: before.dw, dh: before.dh }
+      : { dx: 0, dy: 0, dw: 0, dh: 0 };
+    // Con caja, el lugar ya está en el dibujo; sin ella, el ancho y el alto ajustados ya están en `bbox` pero el lugar no.
+    const natural = naturalBox(pivot, block.box ? was : { dx: 0, dy: 0, dw: was.dw, dh: was.dh });
+    const target = { x: visual.x, y: visual.y, w: pivot.w, h: pivot.h };
+    const shown = storeAdjust(natural, target, false);
+    const stored = storeAdjust(natural, target, sc === 'type' && mirrored);
+    const { sx, sy } = deformScales(visual, pivot);
+    const apply = (o: Draft<BlockOverride>, a: BoxAdjust): void => {
+      o.dx = r2(a.dx);
+      o.dy = r2(a.dy);
+      o.dw = r2(a.dw);
+      o.dh = r2(a.dh);
+      o.scale = Number(sx.toFixed(4));
+      o.scaleY = Math.abs(sy - sx) < 1e-4 ? null : Number(sy.toFixed(4));
+      o.deform = true;
+    };
+    upsertOverride(d, page, block.id, sc, (o) => apply(o, stored), mirrored);
+    const own = sc === 'type' ? findOverride(d, page, block.id, 'page') : undefined;
+    if (own) apply(own, shown);
+  };
 }
 
 /**
@@ -615,7 +660,7 @@ export function addCustomBlock(page: PageModel, kind: CustomBlock['kind'], label
   const x = page.side === 'verso' ? page.w - def.x - w : def.x;
   const props: Record<string, unknown> =
     kind === 'text'
-      ? { text: '{name}', role: 'quote', size: 11, align: 'right', autoHeight: true, label: labels.text }
+      ? { text: '{name}', role: 'quote', size: 11, align: 'right', fit: false, autoHeight: true, label: labels.text }
       : kind === 'image'
         ? { assetId: assetId ?? design?.assets.find((a) => a.kind !== 'pdf')?.id ?? '', fit: 'contain', opacity: 1, label: labels.image }
         : { label: labels[kind as 'rect' | 'lines' | 'dots'] ?? kind };

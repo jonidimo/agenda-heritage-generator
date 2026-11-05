@@ -323,6 +323,16 @@ export const BlockOverrideZ = z.object({
   dw: num(0, -1000, 1000),
   dh: num(0, -1000, 1000),
   scale: num(1, 0.05, 20),
+  /**
+   * Escala vertical cuando es distinta de la horizontal (`scale`): deforma el elemento. Sin valor, la
+   * misma que `scale` (se escala sin deformar).
+   */
+  scaleY: z.number().meta({ minimum: 0.05, maximum: 20 }).transform(clampTo(0.05, 20)).nullable().default(null),
+  /**
+   * Permitir deformar: los tiradores estiran el dibujo (escala distinta en cada eje) en lugar de
+   * reacomodar su contenido en la caja nueva.
+   */
+  deform: z.boolean().default(false),
   rotation: num(0, -360, 360),
   opacity: num(1, 0, 1),
   hidden: z.boolean().default(false),
