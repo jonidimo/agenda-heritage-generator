@@ -161,3 +161,40 @@ export function storeAdjust(natural: Rect, target: Rect, mirror: boolean): BoxAd
   const shown = target.x - natural.x;
   return { dx: mirror ? -shown - dw : shown, dy: target.y - natural.y, dw, dh: target.h - natural.h };
 }
+
+/**
+ * La escala uniforme y sin giro de una matriz (la de un elemento ajustado), o `null` si tiene giro,
+ * inclinación o escalas distintas por eje: ahí los ejes del dibujo ya no son los de la pantalla.
+ */
+export function uniformScale(m: readonly [number, number, number, number, number, number] | undefined): number | null {
+  if (!m) return 1;
+  const EPS = 1e-6;
+  if (Math.abs(m[1]) > EPS || Math.abs(m[2]) > EPS || Math.abs(m[0] - m[3]) > EPS || m[0] <= 0) return null;
+  return m[0];
+}
+
+/** Lo mismo, pero admite escalas distintas por eje (sigue sin admitir giro): `{ sx, sy }` o `null`. */
+export function axisScales(m: readonly [number, number, number, number, number, number] | undefined): { sx: number; sy: number } | null {
+  if (!m) return { sx: 1, sy: 1 };
+  const EPS = 1e-6;
+  if (Math.abs(m[1]) > EPS || Math.abs(m[2]) > EPS || m[0] <= 0 || m[3] <= 0) return null;
+  return { sx: m[0], sy: m[3] };
+}
+
+/**
+ * La caja en la que la sección vuelve a maquetar un elemento escalado, dado el rectángulo que se ve.
+ * La escala se ancla en la esquina superior izquierda de la caja, así que esa esquina no cambia y el
+ * ancho y el alto se dividen por la escala de cada eje.
+ */
+export function visualToBox(visual: Rect, scale: { sx: number; sy: number }): Rect {
+  return { x: visual.x, y: visual.y, w: visual.w / scale.sx, h: visual.h / scale.sy };
+}
+
+/** Límites de la escala de un elemento (los de `BlockOverrideZ`). */
+export const SCALE_LIMITS = { min: 0.05, max: 20 } as const;
+
+/** Las escalas que llevan una caja de `pivot` a `visual` (cada eje por separado), dentro de los límites. */
+export function deformScales(visual: Rect, pivot: Rect): { sx: number; sy: number } {
+  const clamp = (v: number): number => Math.min(SCALE_LIMITS.max, Math.max(SCALE_LIMITS.min, v));
+  return { sx: clamp(pivot.w > 1e-6 ? visual.w / pivot.w : 1), sy: clamp(pivot.h > 1e-6 ? visual.h / pivot.h : 1) };
+}

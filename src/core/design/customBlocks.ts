@@ -18,6 +18,16 @@ export const TEXT_ALIGNS = ['left', 'center', 'right'] as const;
 export const TEXT_VALIGNS = ['top', 'middle', 'bottom'] as const;
 export const IMAGE_FITS = ['contain', 'cover', 'fill'] as const;
 
+/** Elementos compuestos: se dibujan completos en su caja (tablas, listas, seguimientos, calendarios…). */
+export const ELEMENT_KINDS = ['table', 'checklist', 'habits', 'finance', 'minical', 'quadrants', 'notes', 'timeline', 'rating'] as const;
+export type ElementKind = (typeof ELEMENT_KINDS)[number];
+
+/** Estilos del área de escritura de unas notas. */
+export const NOTE_STYLES = ['lines', 'dots', 'grid', 'blank'] as const;
+export const RATING_FORMS = ['star', 'circle', 'heart', 'square'] as const;
+export const CHECK_SHAPES = ['circle', 'square', 'none'] as const;
+export const QUADRANT_STYLES = ['blank', 'lines', 'dots'] as const;
+
 /** Rangos de los valores numéricos (mm o pt según el caso). */
 export const PROP_RANGES = {
   textSize: { min: 4, max: 120 },
@@ -25,10 +35,47 @@ export const PROP_RANGES = {
   pitch: { min: 3, max: 12 },
   radius: { min: 0, max: 50 },
   tracking: { min: -0.1, max: 0.5 },
+  // Elementos compuestos.
+  tableRows: { min: 1, max: 40 },
+  tableCols: { min: 1, max: 12 },
+  checkItems: { min: 1, max: 60 },
+  checkColumns: { min: 1, max: 3 },
+  habitRows: { min: 1, max: 20 },
+  habitDays: { min: 7, max: 31 },
+  amountLines: { min: 1, max: 30 },
+  hourFrom: { min: 0, max: 23 },
+  hourTo: { min: 1, max: 24 },
+  hourStep: { min: 15, max: 120 },
+  ratingCount: { min: 3, max: 10 },
 } as const;
 
+/** Cuántos textos y de qué largo admiten las listas de los elementos compuestos (títulos, rótulos, nombres). */
+export const LIST_LIMITS = { items: 60, chars: 120 } as const;
+
+/** Una lista de textos de un archivo: solo los textos, recortados y sin pasarse de la cantidad. */
+export function stringList(v: unknown, maxItems: number = LIST_LIMITS.items, maxChars: number = LIST_LIMITS.chars): string[] {
+  if (!Array.isArray(v)) return [];
+  return v.slice(0, maxItems).map((x) => (typeof x === 'string' ? x.slice(0, maxChars) : ''));
+}
+
 /** Valores que toma un elemento propio mientras su propiedad no esté escrita (los pasos de renglones y puntos los da el tema). */
-export const PROP_DEFAULTS = { opacity: 1, gridPitch: 5, radius: 0, tracking: 0 } as const;
+export const PROP_DEFAULTS = {
+  opacity: 1,
+  gridPitch: 5,
+  radius: 0,
+  tracking: 0,
+  // Elementos compuestos.
+  tableRows: 5,
+  tableCols: 3,
+  checkItems: 8,
+  habitRows: 7,
+  habitDays: 31,
+  amountLines: 6,
+  hourFrom: 7,
+  hourTo: 21,
+  hourStep: 60,
+  ratingCount: 5,
+} as const;
 
 /** Un número de un archivo, dentro de su rango (si no es un número, el valor por defecto). */
 export function numProp(v: unknown, r: { min: number; max: number }, def: number): number {
@@ -59,6 +106,7 @@ export function customBlockPropsSchema(kind: string): Json {
       upper: { type: 'boolean', description: 'En mayúsculas' },
       tracking: range(PROP_RANGES.tracking, 'Espaciado entre letras, en em'),
       wrap: { type: 'boolean', description: 'Partir en renglones (por defecto, sí)' },
+      fit: { type: 'boolean', default: true, description: 'Achicar la letra hasta que entre en el recuadro (por defecto, sí). Con false se dibuja al tamaño pedido y, si no entra, la revisión avisa' },
       autoHeight: { type: 'boolean', description: 'El alto sigue al texto: crece y se achica con los renglones, arriba fijo (por defecto, no; «h» no se usa)' },
       color: color('Color propio (por defecto, el de su tipo de texto)'),
       font: {
@@ -79,6 +127,60 @@ export function customBlockPropsSchema(kind: string): Json {
     grid: pitch,
     rect: { radius: range(PROP_RANGES.radius, 'Radio de las esquinas, en mm'), fill: color('Relleno (por defecto, ninguno)') },
     line: {},
+    table: {
+      rows: { type: 'integer', minimum: PROP_RANGES.tableRows.min, maximum: PROP_RANGES.tableRows.max, default: PROP_DEFAULTS.tableRows, description: 'Filas (sin contar la de títulos)' },
+      cols: { type: 'integer', minimum: PROP_RANGES.tableCols.min, maximum: PROP_RANGES.tableCols.max, default: PROP_DEFAULTS.tableCols, description: 'Columnas' },
+      header: { type: 'boolean', default: true, description: 'Fila de títulos sombreada arriba' },
+      headers: { type: 'array', maxItems: PROP_RANGES.tableCols.max, items: { type: 'string', maxLength: LIST_LIMITS.chars }, description: 'Títulos de las columnas, de izquierda a derecha' },
+    },
+    checklist: {
+      items: { type: 'integer', minimum: PROP_RANGES.checkItems.min, maximum: PROP_RANGES.checkItems.max, default: PROP_DEFAULTS.checkItems, description: 'Cantidad de renglones' },
+      columns: { type: 'integer', minimum: PROP_RANGES.checkColumns.min, maximum: PROP_RANGES.checkColumns.max, default: 1, description: 'Columnas de la lista' },
+      shape: { enum: CHECK_SHAPES, default: 'circle', description: 'Casilla de cada renglón' },
+      labels: { type: 'array', maxItems: LIST_LIMITS.items, items: { type: 'string', maxLength: LIST_LIMITS.chars }, description: 'Texto ya escrito en los primeros renglones' },
+    },
+    habits: {
+      rows: { type: 'integer', minimum: PROP_RANGES.habitRows.min, maximum: PROP_RANGES.habitRows.max, default: PROP_DEFAULTS.habitRows, description: 'Hábitos (filas)' },
+      days: { type: 'integer', minimum: PROP_RANGES.habitDays.min, maximum: PROP_RANGES.habitDays.max, default: PROP_DEFAULTS.habitDays, description: 'Días (columnas)' },
+      names: { type: 'array', maxItems: PROP_RANGES.habitRows.max, items: { type: 'string', maxLength: LIST_LIMITS.chars }, description: 'Nombre de cada hábito' },
+    },
+    finance: {
+      lines: { type: 'integer', minimum: PROP_RANGES.amountLines.min, maximum: PROP_RANGES.amountLines.max, default: PROP_DEFAULTS.amountLines, description: 'Renglones de importes' },
+      total: { type: 'boolean', default: true, description: 'Renglón de total al pie' },
+      title: { type: 'string', maxLength: LIST_LIMITS.chars, description: 'Título sobre los renglones (por defecto, ninguno)' },
+    },
+    minical: {
+      month: { type: 'string', pattern: '^(auto|\\d{4}-(0[1-9]|1[0-2]))$', default: 'auto', description: '«auto»: el mes de la página (o el primero de la agenda); o «AAAA-MM»' },
+      title: { type: 'boolean', default: true, description: 'Nombre del mes sobre los días' },
+    },
+    quadrants: {
+      titles: { type: 'array', maxItems: 4, items: { type: 'string', maxLength: LIST_LIMITS.chars }, description: 'Título de cada cuadrante: arriba a la izquierda, arriba a la derecha, abajo a la izquierda, abajo a la derecha' },
+      style: { enum: QUADRANT_STYLES, default: 'blank', description: 'Qué lleva cada cuadrante para escribir' },
+    },
+    notes: {
+      title: { type: 'string', maxLength: LIST_LIMITS.chars, description: 'Título sobre el área de escritura' },
+      style: { enum: NOTE_STYLES, description: 'Área de escritura (por defecto, la del tema)' },
+      frame: { type: 'boolean', default: false, description: 'Marco alrededor' },
+    },
+    timeline: {
+      from: { type: 'integer', minimum: PROP_RANGES.hourFrom.min, maximum: PROP_RANGES.hourFrom.max, default: PROP_DEFAULTS.hourFrom, description: 'Primera hora' },
+      to: { type: 'integer', minimum: PROP_RANGES.hourTo.min, maximum: PROP_RANGES.hourTo.max, default: PROP_DEFAULTS.hourTo, description: 'Hora en que termina (mayor que la primera)' },
+      step: { type: 'integer', minimum: PROP_RANGES.hourStep.min, maximum: PROP_RANGES.hourStep.max, default: PROP_DEFAULTS.hourStep, description: 'Minutos entre renglones' },
+    },
+    rating: {
+      count: { type: 'integer', minimum: PROP_RANGES.ratingCount.min, maximum: PROP_RANGES.ratingCount.max, default: PROP_DEFAULTS.ratingCount, description: 'Cantidad de figuras' },
+      shape: { enum: RATING_FORMS, default: 'star' },
+      text: { type: 'string', maxLength: LIST_LIMITS.chars, description: 'Rótulo a la izquierda (por defecto, ninguno)' },
+    },
+    drawing: {
+      w0: { type: 'number', minimum: 0.1, maximum: 2000, description: 'Ancho del dibujo al copiarlo, en mm' },
+      h0: { type: 'number', minimum: 0.1, maximum: 2000, description: 'Alto del dibujo al copiarlo, en mm' },
+      mode: { enum: ['stretch', 'scale'], default: 'stretch', description: 'Al cambiar de tamaño: «stretch» estira líneas y recuadros sin cambiar su grosor; «scale» lo escala entero' },
+      prims: { type: 'array', maxItems: 2000, description: 'Primitivas ya dibujadas. Solo se crea copiando un elemento de la agenda: no se escribe a mano', items: { type: 'object', required: ['t'], properties: { t: { enum: ['line', 'rect', 'circle', 'path', 'dots', 'image', 'group'] } } } },
+      opacity: range(PROP_RANGES.opacity, 'Opacidad'),
+    },
   };
+  // Todos los elementos compuestos pueden llevar fondo blanco.
+  if ((ELEMENT_KINDS as readonly string[]).includes(kind)) common.paper = { type: 'boolean', default: false, description: 'Fondo blanco que tapa lo que la página tenga debajo (puntos, renglones, cuadrícula)' };
   return { type: 'object', additionalProperties: false, properties: { ...common, ...(byKind[kind] ?? {}) } };
 }

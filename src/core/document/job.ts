@@ -8,6 +8,8 @@ export interface PdfJob {
   id: number;
   kind: ExportKind;
   signature?: number;
+  /** Solo para el PDF de páginas: las páginas a exportar (índices desde 0). */
+  pages?: number[];
   design: Design;
   fonts: Array<{ bytes: Uint8Array; family: string; weight: number; style: FontStyle; source: 'builtin' | 'user' }>;
   holidays: HolidayCountryData | null;

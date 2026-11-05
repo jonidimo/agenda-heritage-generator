@@ -3,6 +3,7 @@
  * ya cargados (fuentes, datos de feriados, recursos gráficos).
  */
 import { buildCalendar, type CalendarOptions } from '../calendar';
+import { effectiveBinding } from './binding';
 import { currencySymbol, defaultTimeZone, regionWeekInfo } from '../calendar/locale';
 import { moonPhases, seasonDates } from '../calendar/moon';
 import { sheetSize, type Design } from '../design/schema';
@@ -35,7 +36,8 @@ export interface PageFormat {
 
 export function pageFormat(design: Design): PageFormat {
   const s = sheetSize(design.paper);
-  const t = design.binding.trim;
+  const t = effectiveBinding(design).trim;
+  // El método guardado decide el tamaño de la página; para leer en pantalla sigue valiendo (misma página, sin recortes).
   if (design.binding.method === 'single') {
     return { w: s.w - t.outer, h: s.h - t.top - t.bottom, sheetW: s.w, sheetH: s.h, nUp: 1, cellW: s.w, cellH: s.h };
   }
@@ -58,6 +60,7 @@ export function calendarOptions(design: Design): CalendarOptions {
     year: design.calendar.year,
     startMonth: design.calendar.startMonth,
     monthCount: design.calendar.monthCount,
+    hiddenMonths: design.calendar.hiddenMonths,
     weekStart: weekStartNumber(design),
     weekend,
     numbering: design.calendar.numbering,
@@ -123,6 +126,7 @@ export function createDocContext(design: Design, res: Resources, prev?: ContextS
   const fmt = pageFormat(design);
   return {
     design,
+    binding: effectiveBinding(design),
     theme,
     fonts: res.fonts,
     strings,
@@ -137,7 +141,7 @@ export function createDocContext(design: Design, res: Resources, prev?: ContextS
 
 export function pageGeometry(doc: DocContext, side: Side): PageGeometry {
   const m = doc.theme.margins;
-  const gutter = doc.design.binding.gutter;
+  const gutter = doc.binding.gutter;
   const inner = m.inner + gutter;
   const left = side === 'recto' ? inner : m.outer;
   const right = side === 'recto' ? m.outer : inner;

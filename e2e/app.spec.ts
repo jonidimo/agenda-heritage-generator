@@ -85,7 +85,8 @@ test('la interfaz cambia de idioma y traduce los nombres de los elementos', asyn
   const block = page.locator('[data-block="week.minical"]').first();
   const box = await block.boundingBox();
   await page.mouse.click(box!.x + box!.width / 2, box!.y + box!.height / 2);
-  await expect(page.getByText('Mini calendar', { exact: true })).toBeVisible();
+  // El nombre del elemento elegido figura en su panel (el botón de «agregar» se llama igual).
+  await expect(page.getByRole('paragraph').filter({ hasText: /^Mini calendar$/ })).toBeVisible();
 });
 
 test('un clic con un temblor de 1 px no mueve ni encaja el elemento', async ({ page }) => {
@@ -105,7 +106,7 @@ test('un clic con un temblor de 1 px no mueve ni encaja el elemento', async ({ p
 
 test('un número con decimales en un campo entero se redondea', async ({ page }) => {
   await open(page);
-  await page.getByRole('tab', { name: 'Impresión' }).click();
+  await page.getByRole('button', { name: 'Impresión', exact: true }).click();
   await page.getByRole('spinbutton', { name: 'Hojas por cuadernillo' }).fill('4.5');
   await expect.poll(async () => (await state(page)).design!.binding.signature.sheets).toBe(5);
 });
@@ -120,7 +121,7 @@ test('en un teléfono, tocar un elemento abre su panel', async ({ browser }) => 
   const box = (await block.boundingBox())!;
   await page.touchscreen.tap(box.x + box.width / 2, box.y + box.height / 2);
   await expect(page.getByRole('dialog', { name: 'Elemento' })).toBeVisible();
-  await expect(page.getByText('Minicalendario', { exact: true })).toBeVisible();
+  await expect(page.getByRole('paragraph').filter({ hasText: /^Minicalendario$/ })).toBeVisible();
   await ctx.close();
 });
 
@@ -149,7 +150,7 @@ test('la política de seguridad no bloquea nada de la aplicación', async ({ pag
   const pdf = await PDFDocument.create();
   pdf.addPage([300, 400]).drawText('Hola', { x: 40, y: 300, size: 30 });
   const bytes = Buffer.from(await pdf.save());
-  await page.getByRole('tab', { name: 'Imágenes y fuentes' }).click();
+  await page.getByRole('tab', { name: 'Imágenes', exact: true }).click();
   await page.locator('input[type="file"][accept*="pdf"]').setInputFiles({ name: 'prueba.pdf', mimeType: 'application/pdf', buffer: bytes });
   await expect(page.getByText('prueba.pdf').filter({ visible: true }).first()).toBeVisible();
   // pdf.js dibujó la vista previa (una imagen blob:), así que su Worker funciona con la política.
@@ -1179,5 +1180,500 @@ test.describe('enlaces por zona', () => {
     expect(await past()).toBe(p0 + 1);
     // Solo esa zona desaparece: las demás conservan su enlace.
     await expect(zones).toHaveCount(before - 1);
+  });
+});
+
+test.describe('tira inferior y filetes', () => {
+  test('la rueda del mouse desplaza la tira de miniaturas a los costados', async ({ page }) => {
+    await openQuiet(page);
+    const strip = page.locator('[data-thumb="0"]').first().locator('xpath=ancestor::div[contains(@class,"overflow-x-auto")][1]');
+    await expect(strip).toBeVisible();
+    const left = () => strip.evaluate((el) => (el as unknown as { scrollLeft: number }).scrollLeft);
+    expect(await left()).toBe(0);
+    await strip.hover();
+    await page.mouse.wheel(0, 600);
+    await expect.poll(left).toBeGreaterThan(100);
+    await page.mouse.wheel(0, -600);
+    await expect.poll(left).toBeLessThan(50);
+  });
+
+  test('«Año» lleva al calendario anual y el menú de un mes oculta y vuelve a mostrar ese mes', async ({ page }) => {
+    await openQuiet(page);
+    await page.getByRole('button', { name: 'Año', exact: true }).click();
+    await expect(page.locator('[data-page-type="yearOverview"]').first()).toBeVisible();
+
+    const feb = page.getByRole('button', { name: 'Feb 27', exact: true });
+    await expect(feb).toBeVisible();
+    await feb.click({ button: 'right' });
+    await expect(page.getByRole('menuitem', { name: 'Ir a la portada del mes' })).toBeVisible();
+    await page.getByRole('menuitem', { name: 'Ocultar este mes de la agenda' }).click();
+    await expect(feb).toHaveCount(0);
+    const hidden = () => page.evaluate<string[]>('globalThis.__agenda.getState().design.calendar.hiddenMonths');
+    expect(await hidden()).toEqual(['2027-02']);
+
+    // Se vuelve a mostrar desde el panel de calendario.
+    await page.getByRole('tab', { name: 'Calendario' }).click();
+    await page.getByRole('button', { name: /Mostrar febrero 2027/i }).click();
+    expect(await hidden()).toEqual([]);
+    await expect(page.getByRole('button', { name: 'Feb 27', exact: true })).toBeVisible();
+  });
+
+  test('elegir un filete lleva solo al estilo de sus líneas, sin quitarle el foco a la página', async ({ page }) => {
+    await openQuiet(page);
+    await page.getByRole('button', { name: 'Año', exact: true }).click();
+    await expect(page.locator('[data-page-type="yearOverview"]').first()).toBeVisible();
+    await selectBlock(page, 'header.rule');
+    const target = page.locator('[data-reveal="line.separator"]');
+    await expect(target).toBeVisible();
+    await expect(target).toHaveClass(/reveal-flash/);
+    // El Inspector ofrece el mismo atajo para quien no tiene el panel de Estilo abierto.
+    await expect(page.getByTestId('line-uses')).toBeVisible();
+  });
+});
+
+test.describe('tiradores con escala y deformación', () => {
+  const override = (page: Page, id: string): Promise<{ dw: number; dh: number; scale: number; scaleY: number | null; deform: boolean } | null> =>
+    page.evaluate(`(() => { const o = globalThis.__agenda.getState().design.overrides.find((q) => q.blockId === '${id}'); return o ? { dw: o.dw, dh: o.dh, scale: o.scale, scaleY: o.scaleY, deform: o.deform } : null; })()`);
+
+  test('con escala distinta de 1 los tiradores laterales siguen y reacomodan sin tocar la escala', async ({ page }) => {
+    await openQuiet(page);
+    await toWeek(page);
+    await settled(page);
+    const where = await selectBlock(page, 'week.notes');
+    await page.evaluate(`globalThis.__agenda.getState().update((d) => { d.overrides.push({ pageType: '${where.pageType}', pageKey: null, blockId: 'week.notes', dx: 0, dy: 0, dw: 0, dh: 0, scale: 0.8, scaleY: null, deform: false, rotation: 0, opacity: 1, hidden: false }); }, 'e2e')`);
+    const handle = page.locator(`[data-page-key="${where.pageKey}"] [data-handle="e"]`).first();
+    await expect(handle).toBeVisible();
+    const box = (await handle.boundingBox())!;
+    const x = box.x + box.width / 2;
+    const y = box.y + box.height / 2;
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    await page.mouse.move(x - 40, y, { steps: 8 });
+    await page.mouse.up();
+    await expect.poll(async () => (await override(page, 'week.notes'))?.dw ?? 0).toBeLessThan(-1);
+    const after = await override(page, 'week.notes');
+    expect(after!.scale).toBe(0.8);
+    expect(after!.deform).toBe(false);
+  });
+
+  test('«Permitir deformar» deja aplastar en cualquier dirección: cada eje con su escala', async ({ page }) => {
+    await openQuiet(page);
+    await toWeek(page);
+    await settled(page);
+    const where = await selectBlock(page, 'week.notes');
+    await page.getByRole('checkbox', { name: 'Permitir deformar' }).check();
+    await expect.poll(async () => (await override(page, 'week.notes'))?.deform).toBe(true);
+    const handle = page.locator(`[data-page-key="${where.pageKey}"] [data-handle="s"]`).first();
+    await expect(handle).toBeVisible();
+    const box = (await handle.boundingBox())!;
+    const x = box.x + box.width / 2;
+    const y = box.y + box.height / 2;
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    await page.mouse.move(x, y - 40, { steps: 8 });
+    await page.mouse.up();
+    await expect.poll(async () => (await override(page, 'week.notes'))?.scaleY ?? 1).toBeLessThan(0.95);
+    const after = await override(page, 'week.notes');
+    // Se aplastó solo a lo alto y la caja de la sección no se reacomodó.
+    expect(after!.scale).toBe(1);
+    expect(after!.dh).toBe(0);
+    // Desactivarlo devuelve la proporción.
+    await page.getByRole('checkbox', { name: 'Permitir deformar' }).uncheck();
+    await expect.poll(async () => (await override(page, 'week.notes'))?.scaleY).toBeNull();
+  });
+
+  test('un texto nuevo se dibuja al tamaño que se elige; «Ajustar al recuadro» lo achica y lo dice', async ({ page }) => {
+    await open(page);
+    await page.getByRole('button', { name: 'Texto', exact: true }).first().click();
+    const prop = () => page.evaluate<Record<string, unknown>>('globalThis.__agenda.getState().design.customBlocks.at(-1).props');
+    expect((await prop()).fit).toBe(false);
+    // Un tamaño enorme en un recuadro chico: no se achica por su cuenta.
+    await page.evaluate(`globalThis.__agenda.getState().update((d) => { const c = d.customBlocks.at(-1); c.props = { ...c.props, size: 80, autoHeight: false, text: 'Hola mundo grande' }; c.h = 10; }, 'e2e-size')`);
+    await expect(page.getByText(/Se dibuja a/)).toHaveCount(0);
+    await page.getByRole('checkbox', { name: 'Ajustar la letra al recuadro' }).check();
+    await expect(page.getByText(/Se dibuja a .* pt para que entre en el recuadro/)).toBeVisible();
+    expect((await prop()).fit).toBeUndefined();
+  });
+});
+
+test.describe('copiar elementos del programa', () => {
+  test('Ctrl+C / Ctrl+V sobre un texto del programa pega un texto propio editable; sobre un marco, un dibujo', async ({ page }) => {
+    await openQuiet(page);
+    await toWeek(page);
+    await settled(page);
+    const owned = () => page.evaluate<Array<{ kind: string; text?: string }>>(`globalThis.__agenda.getState().design.customBlocks.map((c) => ({ kind: c.kind, text: c.props.text }))`);
+
+    await selectBlock(page, 'week.title');
+    await page.keyboard.press('Control+c');
+    await page.keyboard.press('Control+v');
+    await expect.poll(async () => (await owned()).length).toBe(1);
+    const text = (await owned())[0]!;
+    expect(text.kind).toBe('text');
+    expect(String(text.text).toUpperCase()).toContain('SEMANA');
+
+    // La copia es un texto propio: se edita con doble clic como cualquier otro.
+    const copy = page.locator('[data-block^="custom."]').first();
+    await expect(copy).toBeVisible();
+    await copy.dblclick({ force: true });
+    await expect(page.locator('[data-text-editor]')).toBeFocused();
+    await page.keyboard.press('Escape');
+
+    await selectBlock(page, 'week.minical');
+    await page.keyboard.press('Control+c');
+    await page.keyboard.press('Control+v');
+    await expect.poll(async () => (await owned()).length).toBe(2);
+    expect((await owned())[1]!.kind).toBe('drawing');
+    // El original sigue donde estaba.
+    await expect(page.locator('[data-block="week.minical"]').first()).toBeVisible();
+  });
+});
+
+test.describe('atajos de teclado', () => {
+  test('Ctrl+F busca, Ctrl+3 cambia de pestaña, Inicio y Fin cambian de página', async ({ page }) => {
+    await openQuiet(page);
+    await page.keyboard.press('Control+f');
+    await expect(page.getByRole('dialog').or(page.getByRole('combobox')).first()).toBeVisible();
+    await page.keyboard.press('Escape');
+
+    await page.keyboard.press('Control+3');
+    await expect(page.locator('[data-sidebar="methods"]')).toBeVisible();
+    await page.keyboard.press('Control+7');
+    await expect(page.locator('[data-sidebar="fonts"]')).toBeVisible();
+    // La impresión es de su propio modo: pedirla desde el diseño lo cambia.
+    await page.keyboard.press('Control+8');
+    await expect(page.locator('[data-sidebar="print"]')).toBeVisible();
+    expect(await page.evaluate<string>('globalThis.__agenda.getState().mode')).toBe('print');
+
+    const index = () => page.evaluate<number>('globalThis.__agenda.getState().pageIndex');
+    await page.keyboard.press('End');
+    await expect.poll(index).toBeGreaterThan(100);
+    await page.keyboard.press('Home');
+    await expect.poll(index).toBe(0);
+    await page.keyboard.press('PageDown');
+    await expect.poll(index).toBe(1);
+  });
+
+  test('F1 abre la lista de atajos, que sale del registro, y Esc la cierra', async ({ page }) => {
+    await openQuiet(page);
+    await page.keyboard.press('F1');
+    const dialog = page.getByRole('dialog', { name: 'Atajos de teclado' });
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByText('Buscar en la interfaz')).toBeVisible();
+    await expect(dialog.getByText('Ctrl+F', { exact: false }).first()).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(dialog).toHaveCount(0);
+  });
+
+  test('Ctrl+A elige todos los elementos de la página, Esc los suelta y el menú Edición muestra las teclas', async ({ page }) => {
+    await openQuiet(page);
+    await toWeek(page);
+    await settled(page);
+    await page.keyboard.press('Control+a');
+    await expect.poll(() => page.evaluate<number>('globalThis.__agenda.getState().selectedIds.length')).toBeGreaterThan(3);
+    await page.keyboard.press('Escape');
+    await expect.poll(() => page.evaluate<number>('globalThis.__agenda.getState().selectedIds.length')).toBe(0);
+
+    await page.getByRole('button', { name: 'Edición', exact: true }).click();
+    await expect(page.getByRole('menuitem', { name: /Deshacer/ })).toContainText('Ctrl+Z');
+    await expect(page.getByRole('menuitem', { name: /Elegir todos los elementos/ })).toContainText('Ctrl+A');
+  });
+
+  test('con un elemento propio elegido, las flechas lo mueven y Enter edita su texto; sin nada elegido las flechas pasan de página', async ({ page }) => {
+    await openQuiet(page);
+    await page.evaluate(`globalThis.__agenda.getState().update((d) => { d.customBlocks.push({ id: 'kb', pageType: 'titlePage', pageKey: null, kind: 'text', x: 20, y: 20, w: 40, h: 10, mirror: false, props: { text: 'Hola' } }); }, 'e2e')`);
+    await expect(page.locator('[data-block="custom.kb"]').first()).toBeVisible();
+    await selectBlock(page, 'custom.kb');
+    const x = () => page.evaluate<number>(`globalThis.__agenda.getState().design.customBlocks.find((c) => c.id === 'kb').x`);
+    const x0 = await x();
+    await page.keyboard.press('ArrowRight');
+    await expect.poll(x).toBeCloseTo(x0 + 0.5, 3);
+    await page.keyboard.press('Shift+ArrowRight');
+    await expect.poll(x).toBeCloseTo(x0 + 5.5, 3);
+    await page.keyboard.press('Enter');
+    await expect(page.locator('[data-text-editor]')).toBeFocused();
+    await page.keyboard.press('Escape');
+    await expect(page.locator('[data-text-editor]')).toHaveCount(0);
+    await page.keyboard.press('Escape');
+    await page.keyboard.press('ArrowRight');
+    await expect.poll(() => page.evaluate<number>('globalThis.__agenda.getState().pageIndex')).toBe(1);
+  });
+});
+
+test.describe('avisos, ocultos y encuadre', () => {
+  test('el pie de la página cuenta sus avisos, lleva a la verificación y la miniatura lleva un punto', async ({ page }) => {
+    await openQuiet(page);
+    await expect(page.getByTestId('page-warnings')).toHaveCount(0);
+    // Un texto con letra enorme en un recuadro chico no entra: avisa.
+    await page.evaluate(`globalThis.__agenda.getState().update((d) => { d.customBlocks.push({ id: 'big', pageType: 'titlePage', pageKey: null, kind: 'text', x: 20, y: 20, w: 30, h: 8, mirror: false, props: { text: 'Un texto muy largo que no puede entrar en un recuadro tan chico', size: 60, fit: false, autoHeight: false } }); }, 'e2e-warn')`);
+    const counter = page.getByTestId('page-warnings');
+    await expect(counter).toBeVisible();
+    await expect(counter).toContainText(/\d+ avisos/);
+    await expect(page.getByTestId('thumb-warning').first()).toBeVisible();
+    await counter.click();
+    // Abre el panel del elemento en la verificación previa y la corre.
+    await expect(page.locator('[data-inspector] [data-reveal="preflight"]')).toBeVisible();
+    await expect(page.locator('[data-inspector] [data-reveal="preflight"]').getByText(/\d+ avisos/)).toBeVisible();
+  });
+
+  test('Edición › Mostrar elementos ocultos lista lo que se ocultó y lo devuelve', async ({ page }) => {
+    await openQuiet(page);
+    await toWeek(page);
+    await settled(page);
+    await page.getByRole('button', { name: 'Edición', exact: true }).click();
+    await expect(page.getByRole('menuitem', { name: /Mostrar elementos ocultos/ })).toBeDisabled();
+    await page.keyboard.press('Escape');
+    await selectBlock(page, 'week.notes');
+    await page.keyboard.press('Control+h');
+    await expect(page.locator('[data-block="week.notes"]')).toHaveCount(0);
+    await page.getByRole('button', { name: 'Edición', exact: true }).click();
+    await page.getByRole('menuitem', { name: /Mostrar elementos ocultos/ }).click();
+    const list = page.getByTestId('hidden-list');
+    await expect(list).toBeVisible();
+    await list.getByRole('button', { name: 'Mostrar', exact: true }).click();
+    // Sin nada más que mostrar, el diálogo se cierra y el elemento vuelve.
+    await expect(page.getByTestId('hidden-list')).toHaveCount(0);
+    await expect(page.locator('[data-block="week.notes"]').first()).toBeVisible();
+    expect(await page.evaluate<number>("globalThis.__agenda.getState().design.overrides.filter((o) => o.blockId === 'week.notes').length")).toBe(0);
+  });
+
+  test('Ctrl+Mayús+2 acerca la vista al elemento elegido y lo deja a la vista', async ({ page }) => {
+    await openQuiet(page);
+    await toWeek(page);
+    await settled(page);
+    await selectBlock(page, 'week.notes');
+    const zoom0 = await page.evaluate<number>('globalThis.__agenda.getState().zoom');
+    await page.keyboard.press('Control+Shift+Digit2');
+    await expect.poll(() => page.evaluate<number>('globalThis.__agenda.getState().zoom')).toBeGreaterThan(zoom0 * 1.2);
+    // El elemento queda dentro del área visible del lienzo.
+    await expect
+      .poll(async () => {
+        const b = await page.locator('[data-block="week.notes"]').first().boundingBox();
+        const area = await page.locator('.desk').boundingBox();
+        return Boolean(b && area && b.x >= area.x - 1 && b.y >= area.y - 1 && b.x + b.width <= area.x + area.width + 1 && b.y + b.height <= area.y + area.height + 1);
+      })
+      .toBe(true);
+  });
+});
+
+test.describe('modos y destino', () => {
+  const sheet = (page: Page) => page.getByRole('button', { name: 'Hoja impresa', exact: true });
+
+  test('Diseño y Impresión ofrecen cada uno sus vistas y pestañas; imprimir muestra las franjas de imprenta', async ({ page }) => {
+    await openQuiet(page);
+    // Diseño: libro sí, hoja impresa y pestaña de impresión no.
+    await expect(page.getByRole('button', { name: 'Libro', exact: true })).toBeVisible();
+    await expect(sheet(page)).toHaveCount(0);
+    await expect(page.getByRole('tab', { name: 'Impresión' })).toHaveCount(0);
+    await expect(page.getByTestId('press-guides')).toHaveCount(0);
+
+    await page.getByRole('button', { name: 'Impresión', exact: true }).click();
+    await expect(page.getByRole('tab', { name: 'Impresión' })).toHaveAttribute('aria-selected', 'true');
+    await expect(sheet(page)).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Libro', exact: true })).toHaveCount(0);
+    await expect(page.getByTestId('press-guides').first()).toBeVisible();
+    await expect(page.getByTestId('press-legend')).toContainText('No se imprime');
+
+    await page.getByRole('button', { name: 'Diseño', exact: true }).click();
+    await expect(page.getByRole('tab', { name: 'Impresión' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Libro', exact: true })).toBeVisible();
+    await expect(page.getByTestId('press-guides')).toHaveCount(0);
+  });
+
+  test('Ctrl+E abre Impresión desde el diseño; la hoja impresa vuelve a «página doble» en Diseño', async ({ page }) => {
+    await openQuiet(page);
+    await page.keyboard.press('Control+e');
+    await expect(page.getByRole('tab', { name: 'Impresión' })).toHaveAttribute('aria-selected', 'true');
+    await page.getByRole('button', { name: 'Hoja impresa', exact: true }).click();
+    await expect.poll(() => page.evaluate<string>('globalThis.__agenda.getState().view')).toBe('sheet');
+    await page.getByRole('button', { name: 'Diseño', exact: true }).click();
+    await expect.poll(() => page.evaluate<string>('globalThis.__agenda.getState().view')).toBe('spread');
+  });
+
+  test('«Leer en pantalla» quita la costura, las hojas y las opciones de imprenta, y se puede volver', async ({ page }) => {
+    await openQuiet(page);
+    await page.getByRole('button', { name: 'Impresión', exact: true }).click();
+    const nonPrintable = () => page.getByRole('spinbutton', { name: 'Zona no imprimible' });
+    const content = () => page.evaluate<number>('globalThis.__agenda.getState().design.binding.gutter');
+    expect(await content()).toBeGreaterThanOrEqual(0);
+
+    await page.getByRole('button', { name: 'Leer en pantalla', exact: true }).click();
+    await expect.poll(() => page.evaluate<string>('globalThis.__agenda.getState().design.binding.target')).toBe('screen');
+    await expect(page.getByRole('button', { name: 'PDF para leer en pantalla' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Hoja de calibración' })).toHaveCount(0);
+    await expect(nonPrintable()).toHaveCount(0);
+    await expect(sheet(page)).toHaveCount(0);
+    await expect(page.getByTestId('press-guides')).toHaveCount(0);
+    // Lo guardado no se perdió: al volver a imprimir está todo como estaba.
+    await page.getByRole('button', { name: 'Imprimir y encuadernar', exact: true }).click();
+    await expect(page.getByRole('button', { name: 'Hoja de calibración' })).toBeVisible();
+    await expect(sheet(page)).toBeVisible();
+  });
+
+  test('con la hoja impresa a la vista, pasar a «Leer en pantalla» vuelve a la página doble', async ({ page }) => {
+    await openQuiet(page);
+    await page.getByRole('button', { name: 'Impresión', exact: true }).click();
+    await sheet(page).click();
+    await expect(page.getByRole('button', { name: /Dar vuelta la hoja/ })).toBeVisible();
+    await page.getByRole('button', { name: 'Leer en pantalla', exact: true }).click();
+    await expect(sheet(page)).toHaveCount(0);
+    await expect(page.locator('[data-page-index]').first()).toBeVisible();
+  });
+});
+
+test.describe('elementos compuestos', () => {
+  const last = (page: Page) => page.evaluate<{ kind: string; props: Record<string, unknown> }>('(() => { const c = globalThis.__agenda.getState().design.customBlocks.at(-1); return { kind: c.kind, props: c.props }; })()');
+
+  test('se agregan desde el panel, se editan sus campos y se dibujan en la página', async ({ page }) => {
+    await openQuiet(page);
+    const add = page.getByTestId('add-elements');
+    await add.getByRole('button', { name: 'Tabla' }).click();
+    expect((await last(page)).kind).toBe('table');
+    await expect(page.locator('[data-block^="custom."]').first()).toBeVisible();
+
+    await page.getByRole('spinbutton', { name: 'Filas' }).fill('8');
+    await expect.poll(async () => (await last(page)).props.rows).toBe(8);
+    await page.getByRole('textbox').filter({ hasText: /Columna 1/ }).fill('Día\nTarea\nHecho');
+    await expect.poll(async () => (await last(page)).props.headers).toEqual(['Día', 'Tarea', 'Hecho']);
+
+    await add.getByRole('button', { name: 'Valoración' }).click();
+    expect((await last(page)).kind).toBe('rating');
+    await page.getByRole('spinbutton', { name: 'Cantidad' }).fill('7');
+    await expect.poll(async () => (await last(page)).props.count).toBe(7);
+    await page.getByRole('button', { name: 'Corazones' }).click();
+    await expect.poll(async () => (await last(page)).props.shape).toBe('heart');
+  });
+
+  test('cada tipo se puede agregar desde el menú de la página y queda elegido', async ({ page }) => {
+    await openQuiet(page);
+    const kinds = ['table', 'checklist', 'habits', 'finance', 'minical', 'quadrants', 'notes', 'timeline', 'rating'];
+    const names = ['Tabla', 'Lista de pendientes', 'Seguimiento de hábitos', 'Finanzas', 'Minicalendario', 'Cuadrantes', 'Notas', 'Horario del día', 'Valoración'];
+    for (const [i, name] of names.entries()) {
+      await page.locator('[data-page-index]').first().click({ button: 'right', position: { x: 30, y: 30 } });
+      await page.getByRole('menuitem', { name, exact: true }).click();
+      expect((await last(page)).kind).toBe(kinds[i]);
+      // Se agrega en el lugar del clic: se quita para que el próximo clic derecho caiga en la página y no sobre él.
+      await page.evaluate("globalThis.__agenda.getState().update((d) => { d.customBlocks.pop(); }, 'e2e-pop')");
+      await expect(page.locator('[data-block^="custom."]')).toHaveCount(0);
+    }
+  });
+});
+
+test.describe('capas y fusión', () => {
+  const overrideOf = (page: Page, id: string) =>
+    page.evaluate<Record<string, unknown> | null>(`(globalThis.__agenda.getState().design.overrides.find((o) => o.blockId === ${JSON.stringify(id)}) ?? null)`);
+
+  test('el panel de capas lista los elementos de arriba hacia abajo y los sube y baja', async ({ page }) => {
+    await openQuiet(page);
+    await toWeek(page);
+    await settled(page);
+    await page.getByRole('button', { name: 'Capas', exact: true }).click();
+    const rows = page.getByTestId('layer-row');
+    await expect(rows.first()).toBeVisible();
+    const order = async () => rows.evaluateAll((els) => els.map((e) => e.getAttribute('data-block-id')));
+    const before = await order();
+    expect(before.length).toBeGreaterThan(4);
+    // Elige el segundo de la lista y lo sube: pasa a ser el primero.
+    const second = before[1]!;
+    await rows.nth(1).getByRole('button', { name: 'Subir una capa' }).click();
+    await expect.poll(order).toEqual([second, before[0], ...before.slice(2)]);
+    expect(await overrideOf(page, second)).toMatchObject({ layer: expect.any(Number) });
+    // «Restablecer el orden» deja todo como lo da la sección.
+    await page.getByRole('button', { name: 'Restablecer el orden' }).click();
+    await expect.poll(order).toEqual(before);
+    expect(await overrideOf(page, second)).toBeNull();
+  });
+
+  test('un renglón del panel elige el elemento, y Ctrl+↑ / Ctrl+↓ lo mueven en el apilado', async ({ page }) => {
+    await openQuiet(page);
+    await toWeek(page);
+    await settled(page);
+    await page.getByRole('button', { name: 'Capas', exact: true }).click();
+    const rows = page.getByTestId('layer-row');
+    const order = async () => rows.evaluateAll((els) => els.map((e) => e.getAttribute('data-block-id')));
+    const before = await order();
+    const target = before[3]!;
+    await page.locator(`[data-testid="layer-row"][data-block-id="${target}"]`).getByRole('button').nth(1).click();
+    await expect.poll(() => page.evaluate<string | undefined>('globalThis.__agenda.getState().selection?.blockId')).toBe(target);
+    await page.keyboard.press('Control+ArrowUp');
+    await expect.poll(async () => (await order()).indexOf(target)).toBe(2);
+    await page.keyboard.press('Control+Shift+ArrowDown');
+    await expect.poll(async () => (await order()).indexOf(target)).toBe(before.length - 1);
+    await page.keyboard.press('Control+Shift+ArrowUp');
+    await expect.poll(async () => (await order()).indexOf(target)).toBe(0);
+  });
+
+  test('un elemento se renombra con doble clic y el nombre se ve en el panel y en su campo', async ({ page }) => {
+    await openQuiet(page);
+    await toWeek(page);
+    await settled(page);
+    await page.getByRole('button', { name: 'Capas', exact: true }).click();
+    // Uno editable (los fijos no se renombran): los que tienen el ojo para ocultarlos lo son.
+    const row = page.getByTestId('layer-row').filter({ has: page.getByRole('button', { name: 'Ocultar en la página' }) }).first();
+    const id = (await row.getAttribute('data-block-id'))!;
+    await row.locator('button[title^="Renombrar"]').dblclick();
+    const field = page.getByTestId('layers-panel').getByRole('textbox', { name: 'Nombre' });
+    await field.fill('Mi nombre');
+    await field.blur();
+    await expect(page.locator(`[data-testid="layer-row"][data-block-id="${id}"]`)).toContainText('Mi nombre');
+    expect(await overrideOf(page, id)).toMatchObject({ label: 'Mi nombre' });
+  });
+
+  test('el modo de fusión se aplica a la página de verdad (el navegador lo dibuja con mix-blend-mode)', async ({ page }) => {
+    await openQuiet(page);
+    await toWeek(page);
+    await settled(page);
+    await selectBlock(page, 'week.notes');
+    await page.getByRole('combobox', { name: 'Fusión con lo de abajo' }).selectOption('multiply');
+    await expect.poll(async () => (await overrideOf(page, 'week.notes'))?.blend).toBe('multiply');
+    // Si la política de seguridad bloqueara el estilo, el modo calculado seguiría siendo «normal».
+    const blendOf = () => page.evaluate<string>(`getComputedStyle(document.querySelector('[data-block="week.notes"]')).mixBlendMode`);
+    await expect.poll(blendOf).toBe('multiply');
+    await page.getByRole('combobox', { name: 'Fusión con lo de abajo' }).selectOption('normal');
+    await expect.poll(blendOf).toBe('normal');
+  });
+});
+
+test.describe('imágenes y fuentes', () => {
+  test('cada imagen dice dónde se usa y al quitarla se va de todo lo que la usaba', async ({ page }) => {
+    await openQuiet(page);
+    await page.evaluate(`globalThis.__agenda.getState().update((d) => {
+      d.assets.push({ id: 'img-e2e', name: 'Imagen de prueba', kind: 'vector', mime: 'image/svg+xml', width: 10, height: 10, builtin: null });
+      d.assets.push({ id: 'img-sola', name: 'Imagen sola', kind: 'vector', mime: 'image/svg+xml', width: 10, height: 10, builtin: null });
+      d.cover.imageAssetId = 'img-e2e';
+      d.customBlocks.push({ id: 'pic', pageType: 'titlePage', pageKey: null, kind: 'image', x: 20, y: 20, w: 30, h: 30, mirror: true, props: { assetId: 'img-e2e', label: 'Mi foto' } });
+    }, 'e2e-asset')`);
+    await page.getByRole('tab', { name: 'Imágenes', exact: true }).click();
+    const uses = page.locator('[data-testid="asset-uses"][data-asset="img-e2e"]');
+    await expect(uses).toContainText('Tapa');
+    await expect(uses).toContainText('Elemento «Mi foto»');
+    await expect(page.locator('[data-testid="asset-uses"][data-asset="img-sola"]')).toContainText('No se usa en ningún lugar');
+    // «Ir» lleva a la página del elemento.
+    await page.evaluate("globalThis.__agenda.getState().goToPage(5)");
+    await uses.getByRole('button', { name: 'Ir' }).click();
+    await expect.poll(() => page.evaluate<number>('globalThis.__agenda.getState().pageIndex')).toBe(0);
+    // Quitarla es un solo paso, y se deshace de una vez.
+    await page.locator('li', { has: page.locator('[data-asset="img-e2e"]') }).getByRole('button', { name: 'Quitar la imagen y todo lo que la usa' }).click();
+    const gone = () => page.evaluate<{ assets: number; cover: string | null; blocks: number }>(`(() => { const d = globalThis.__agenda.getState().design; return { assets: d.assets.filter((a) => a.id === 'img-e2e').length, cover: d.cover.imageAssetId, blocks: d.customBlocks.filter((c) => c.id === 'pic').length }; })()`);
+    expect(await gone()).toEqual({ assets: 0, cover: null, blocks: 0 });
+    await page.keyboard.press('Control+z');
+    await expect.poll(gone).toEqual({ assets: 1, cover: 'img-e2e', blocks: 1 });
+  });
+
+  test('la pestaña de fuentes lista las familias, y el buscador encuentra una fuente', async ({ page }) => {
+    await openQuiet(page);
+    await page.keyboard.press('Control+7');
+    await expect(page.getByRole('tab', { name: 'Fuentes', exact: true })).toHaveAttribute('aria-selected', 'true');
+    const list = page.getByTestId('font-list');
+    await expect(list.locator('[data-font="Manrope"]')).toBeVisible();
+    await expect(list.locator('[data-font="Manrope"]')).toContainText('integrada');
+    // Cada familia dice dónde se usa o si le faltan caracteres.
+    await expect(list.locator('[data-font="Manrope"]')).toContainText(/Se usa en|Tiene todos los caracteres|Le faltan/);
+    // Desde otra pestaña, el buscador lleva a la fuente.
+    await page.getByRole('tab', { name: 'Estilo', exact: true }).click();
+    await page.keyboard.press('Control+f');
+    await page.getByRole('combobox').or(page.getByRole('textbox', { name: /Buscar/ })).first().fill('Manrope');
+    await expect(page.getByText('Fuente', { exact: true }).first()).toBeVisible();
+    await page.keyboard.press('Enter');
+    await expect(page.getByRole('tab', { name: 'Fuentes', exact: true })).toHaveAttribute('aria-selected', 'true');
   });
 });

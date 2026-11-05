@@ -74,6 +74,8 @@ export interface CalendarOptions {
   weekend: number[];
   numbering: 'iso' | 'simple' | 'none';
   locale: string;
+  /** Meses (`YYYY-MM`) que se calculan pero no figuran en `months` ni en `weeks`. */
+  hiddenMonths?: readonly string[];
 }
 
 export interface CalendarModel {
@@ -156,6 +158,7 @@ export function buildCalendar(opts: CalendarOptions, sources: CalendarSources): 
     return first.m === last.m ? a : `${a} / ${b}`;
   };
 
+  const hidden = new Set(opts.hiddenMonths ?? []);
   const months: MonthInfo[] = [];
   const allWeeks: WeekInfo[] = [];
   const seenWeeks = new Set<number>();
@@ -192,9 +195,10 @@ export function buildCalendar(opts: CalendarOptions, sources: CalendarSources): 
       const key = opts.numbering === 'simple' ? `${opts.year}-S${String(simpleCounter).padStart(2, '0')}` : `${iw.year}-W${String(iw.week).padStart(2, '0')}`;
       const week: WeekInfo = { key, number, days: row, owner: { y, m }, label: monthLabel(row) };
       weeks.push(week);
-      allWeeks.push(week);
+      // Un mes oculto sigue ocupando sus semanas en la cuenta (para que la numeración no cambie), pero no figura.
+      if (!hidden.has(monthKey(y, m))) allWeeks.push(week);
     }
-    months.push({ key: monthKey(y, m), y, m, name: names[m - 1] ?? '', days, weeks, grid });
+    if (!hidden.has(monthKey(y, m))) months.push({ key: monthKey(y, m), y, m, name: names[m - 1] ?? '', days, weeks, grid });
   }
 
   return {

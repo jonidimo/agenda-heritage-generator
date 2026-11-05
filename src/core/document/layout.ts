@@ -10,7 +10,8 @@ import { inset } from '../layout/box';
 import { adjustedSize, type BoxAdjust } from '../layout/box';
 import { LayoutContext, type BoxAdjuster, type DocContext } from '../layout/context';
 import { stretchPrims, stretchRect } from '../layout/stretch';
-import { primsBounds, type Block, type LinkArea, type LinkTarget, type PageModel, type PageWarning, type Prim } from '../layout/prims';
+import { parseDrawing, type DrawingProps } from '../design/drawing';
+import { primsBounds, strokeUses, type Block, type LinkArea, type LinkTarget, type PageModel, type PageWarning, type Prim } from '../layout/prims';
 import { dotField, ruledLines, squareGrid } from '../layout/widgets';
 import type { PagePlan, SectionModule } from '../sections/types';
 import { compose, composeAll, IDENTITY, ptToMm, rectContains, rotateAround, scale, transformRect, translate, type Matrix, type Rect } from '../util/geometry';
@@ -19,6 +20,8 @@ import { mergeTokens, type ThemeTokens, type WritingStyle } from '../design/them
 import { normalizeColor } from '../util/color';
 import { parseFontSpec, type FontRegistry } from '../text/fonts';
 import { assetPrims } from './assets';
+import { drawElement } from './elements';
+import { safeArea } from './binding';
 import { pageGeometry } from './context';
 import { pageTextVars } from '../sections/common';
 import { applyBlockStyle, blockStyleMap, mergeLineTable } from './blockstyle';
@@ -31,13 +34,15 @@ export function findOverride(overrides: readonly BlockOverride[], page: { key: s
   );
 }
 
-export function overrideMatrix(bbox: Rect, o: Pick<BlockOverride, 'dx' | 'dy' | 'scale' | 'rotation'>, mirrorX = false): Matrix {
+export function overrideMatrix(bbox: Rect, o: Pick<BlockOverride, 'dx' | 'dy' | 'scale' | 'rotation'> & { scaleY?: number | null }, mirrorX = false): Matrix {
   const s = o.scale;
+  // Sin escala vertical propia, la misma que la horizontal (así un archivo anterior da lo mismo que antes).
+  const sy = o.scaleY ?? s;
   const dx = mirrorX ? -o.dx : o.dx;
   return composeAll(
     translate(bbox.x + dx, bbox.y + o.dy),
-    rotateAround(o.rotation, (bbox.w * s) / 2, (bbox.h * s) / 2),
-    scale(s),
+    rotateAround(o.rotation, (bbox.w * s) / 2, (bbox.h * sy) / 2),
+    scale(s, sy),
     translate(-bbox.x, -bbox.y),
   );
 }
@@ -189,6 +194,7 @@ function placeCustomBlock(ctx: LayoutContext, cb: CustomBlock, page: PagePlan): 
   let box = { x, y: cb.y, w: cb.w, h: cb.h };
   const p = cb.props as Record<string, unknown>;
   let prims: Prim[] = [];
+  let links: LinkArea[] = [];
   switch (cb.kind) {
     case 'text': {
       // Con alto automático el texto se maqueta sin límite de alto y la caja se ajusta a sus renglones.
@@ -202,7 +208,8 @@ function placeCustomBlock(ctx: LayoutContext, cb: CustomBlock, page: PagePlan): 
         upper: Boolean(p.upper),
         tracking: numProp(p.tracking, PROP_RANGES.tracking, PROP_DEFAULTS.tracking),
         wrap: p.wrap !== false,
-        fit: true,
+        // Sin la propiedad, ajusta (como los archivos de antes); con `fit: false` el cuerpo es el pedido y, si no entra, avisa.
+        fit: p.fit !== false,
         ...(normalizeColor(p.color) ? { color: normalizeColor(p.color)! } : {}),
         // Fuente propia del elemento (si no, la de su tipo de texto).
         ...(parseFontSpec(p.font) ? { font: parseFontSpec(p.font)! } : {}),
@@ -231,11 +238,57 @@ function placeCustomBlock(ctx: LayoutContext, cb: CustomBlock, page: PagePlan): 
     case 'rect':
       prims = [{ t: 'rect', ...box, r: numProp(p.radius, PROP_RANGES.radius, PROP_DEFAULTS.radius), stroke: ctx.stroke('rule', 'ink', { use: 'frame' }), ...(normalizeColor(p.fill) ? { fill: { color: normalizeColor(p.fill)! } } : {}) }];
       break;
+    case 'drawing': {
+      const drawing = parseDrawing(p);
+      if (!drawing) {
+        ctx.warn('layoutError', `El dibujo «${String(p.label ?? cb.id)}» no es válido y no se dibuja.`, { id: cb.id });
+        break;
+      }
+      prims = drawingPrims(drawing, box);
+      for (const asset of new Set(imageAssets(drawing.prims))) {
+        if (!ctx.doc.assets.has(asset)) ctx.warn('missingAsset', `El dibujo «${String(p.label ?? cb.id)}» usa una imagen que no está en esta agenda: se deja un recuadro vacío.`, { name: asset });
+      }
+      break;
+    }
     case 'line':
       prims = [{ t: 'line', x1: box.x, y1: box.y + box.h / 2, x2: box.x + box.w, y2: box.y + box.h / 2, stroke: ctx.stroke('rule', 'ink', { use: 'separator' }) }];
       break;
+    default: {
+      // Los elementos compuestos (tabla, lista, hábitos…) se dibujan completos en su caja.
+      const el = drawElement(ctx, cb.kind, p, box, page);
+      prims = el.prims;
+      links = el.links;
+    }
   }
-  ctx.add(`custom.${cb.id}`, String(p.label ?? 'Elemento propio'), prims, { role: 'custom', layer: 15, bbox: box, ...(cb.kind === 'text' ? { text: { kind: 'custom' as const, id: cb.id } } : {}) });
+  ctx.add(`custom.${cb.id}`, String(p.label ?? 'Elemento propio'), prims, {
+    role: 'custom',
+    layer: 15,
+    bbox: box,
+    ...(cb.kind === 'text' ? { text: { kind: 'custom' as const, id: cb.id } } : {}),
+    ...(links.length > 0 ? { links } : {}),
+  });
+}
+
+/**
+ * Las primitivas de un dibujo en la caja del elemento. Está guardado con su esquina en el origen y su
+ * tamaño de cuando se copió (`w0` × `h0`): `stretch` lo estira a la caja como a un bloque del programa
+ * (las líneas y los recuadros se estiran sin cambiar de grosor; lo que tiene tamaño propio se mueve) y
+ * `scale` lo escala entero. Una imagen que ya no está en la agenda se avisa.
+ */
+function drawingPrims(drawing: DrawingProps, box: Rect): Prim[] {
+  const from = { x: 0, y: 0, w: drawing.w0, h: drawing.h0 };
+  const prims = drawing.prims as Prim[];
+  const out: Prim[] =
+    drawing.mode === 'scale'
+      ? [{ t: 'group', m: composeAll(translate(box.x, box.y), scale(box.w / drawing.w0, box.h / drawing.h0)), children: prims }]
+      : stretchPrims(prims, from, box);
+  if (drawing.opacity === undefined || drawing.opacity >= 1) return out;
+  return [{ t: 'group', opacity: drawing.opacity, children: out }];
+}
+
+/** Los recursos (imágenes) que usan unas primitivas, entrando en los grupos. */
+function imageAssets(prims: readonly Prim[]): string[] {
+  return prims.flatMap((p) => (p.t === 'image' ? [p.asset] : p.t === 'group' ? imageAssets(p.children) : []));
 }
 
 /** Alto con el que se maqueta un texto de alto automático (en la práctica, sin límite). */
@@ -301,7 +354,7 @@ function pageNumberTarget(design: Design, plan: PagePlan, link: Design['links'][
 
 function addChrome(ctx: LayoutContext, page: PagePlan, totalPages: number, pageNumberLink: Design['links']['pageNumber']): void {
   const d = ctx.doc.design;
-  const pn = d.binding.pageNumbers;
+  const pn = ctx.doc.binding.pageNumbers;
   const noChrome = new Set(['titlePage', 'monthCover', 'custom', 'cover']);
   if (pn.enabled && page.index >= pn.skipFirst && !noChrome.has(page.type) && page.index < totalPages) {
     const y = ctx.page.h - ctx.theme.margins.bottom / 2;
@@ -325,7 +378,7 @@ function addChrome(ctx: LayoutContext, page: PagePlan, totalPages: number, pageN
     const back = pageNumberTarget(d, page, pageNumberLink);
     ctx.add('chrome.pageNumber', 'Número de página', [t.prim], { role: 'chrome', layer: 18, ...(back ? { links: [{ ...pad(t.bbox, 1.5), to: back, cat: 'pageNumber' }] } : {}) });
   }
-  const ti = d.binding.thumbIndex;
+  const ti = ctx.doc.binding.thumbIndex;
   const month = page.params?.month as { y: number; m: number } | undefined;
   const months = ctx.doc.cal.months;
   const idx = month ? months.findIndex((mm) => mm.y === month.y && mm.m === month.m) : -1;
@@ -335,7 +388,7 @@ function addChrome(ctx: LayoutContext, page: PagePlan, totalPages: number, pageN
   if (ti.enabled && (idx >= 0 || (all && page.type !== 'titlePage' && page.type !== 'custom'))) {
     const area = inset({ x: 0, y: 0, w: ctx.page.w, h: ctx.page.h }, ctx.theme.margins.top, 0, ctx.theme.margins.bottom, 0);
     const tabH = area.h / months.length;
-    const np = d.binding.nonPrintable;
+    const np = ctx.doc.binding.nonPrintable;
     const x = ctx.page.side === 'recto' ? ctx.page.w - np - ti.width : np;
     const prims: Prim[] = [];
     const links: LinkArea[] = [];
@@ -410,6 +463,8 @@ export function layoutPage(
   // separadores, tablas, marcos): el del elemento primero, así las guardas usan su grosor y su color.
   const styleOf = blockStyleMap(inputs.blockStyles, plan);
   for (const b of ctx.blocks) {
+    const uses = strokeUses(b.prims);
+    if (uses.length > 0) b.uses = uses;
     const st = styleOf.get(b.id);
     if (st) b.prims = applyBlockStyle(b.prims, st);
     const lines = st ? mergeLineTable(ctx.theme.lines, st.lines) : ctx.theme.lines;
@@ -425,7 +480,7 @@ export function layoutPage(
       const a = adjuster(b.id)!;
       // Con caja, el lugar ya está en el dibujo (la sección lo dibujó adentro): la matriz solo escala y gira.
       const pivot = b.box ?? b.bbox;
-      let m = overrideMatrix(pivot, { dx: b.box ? 0 : a.dx, dy: b.box ? 0 : a.dy, scale: o.scale, rotation: o.rotation });
+      let m = overrideMatrix(pivot, { dx: b.box ? 0 : a.dx, dy: b.box ? 0 : a.dy, scale: o.scale, scaleY: o.scaleY, rotation: o.rotation });
       const bounds = transformRect(m, pivot);
       // Mantener dentro de la página.
       const dx = bounds.x < 0 ? -bounds.x : bounds.x + bounds.w > geom.w ? geom.w - bounds.x - bounds.w : 0;
@@ -435,7 +490,17 @@ export function layoutPage(
         ctx.warn('clamped', `«${b.label}» se acomodó para no salir de la página.`, { block: b.id, label: b.label });
       }
       b.m = m;
+      if (o.deform) b.deform = true;
       if (o.opacity < 1) b.opacity = o.opacity;
+    }
+    // Capa, nombre y fusión propios (valen también para los elementos que no se mueven ni se escalan).
+    if (o) {
+      if (o.layer !== null) b.layer = o.layer;
+      if (o.label) {
+        b.label = o.label;
+        b.renamed = true;
+      }
+      if (o.blend !== 'normal') b.blend = o.blend;
     }
     blocks.push(b);
   }
@@ -462,13 +527,12 @@ export function layoutPage(
  * cada glifo y compara los textos de a pares, por eso no corre en cada maquetación sino cuando
  * alguien la pide (verificación previa, exportación, servidor MCP, línea de comandos).
  */
-export function verifyPage(doc: Pick<DocContext, 'design' | 'fonts' | 'assets'>, page: PageModel): PageWarning[] {
+export function verifyPage(doc: Pick<DocContext, 'design' | 'binding' | 'fonts' | 'assets'>, page: PageModel): PageWarning[] {
   const out: PageWarning[] = [];
   const warn = (code: PageWarning['code'], message: string, params: PageWarning['params'] = {}): void => void out.push({ code, params, message });
   const pageBox = { x: 0, y: 0, w: page.w, h: page.h };
-  const np = doc.design.binding.nonPrintable;
-  const allEdges = doc.design.binding.method === 'single' || doc.design.binding.method === 'cut-stack';
-  const safe = allEdges ? inset(pageBox, np) : inset(pageBox, np, page.side === 'recto' ? np : 0, np, page.side === 'recto' ? 0 : np);
+  const np = doc.binding.nonPrintable;
+  const safe = safeArea(doc.binding, page);
   const texts: Array<{ r: Rect; label: string; block: string }> = [];
   for (const b of page.blocks) {
     if (b.role === 'watermark' || b.role === 'chrome' || b.role === 'artwork') continue;
@@ -504,8 +568,8 @@ export function verifyPage(doc: Pick<DocContext, 'design' | 'fonts' | 'assets'>,
 /** Aplana una página en primitivas (bloques ordenados con sus transformaciones). */
 export function pagePrims(page: PageModel): Prim[] {
   return page.blocks.map((b) => {
-    if (!b.m && b.opacity === undefined) return { t: 'group', children: b.prims } satisfies Prim;
-    return { t: 'group', children: b.prims, ...(b.m ? { m: b.m } : {}), ...(b.opacity !== undefined ? { opacity: b.opacity } : {}) } satisfies Prim;
+    if (!b.m && b.opacity === undefined && b.blend === undefined) return { t: 'group', children: b.prims } satisfies Prim;
+    return { t: 'group', children: b.prims, ...(b.m ? { m: b.m } : {}), ...(b.opacity !== undefined ? { opacity: b.opacity } : {}), ...(b.blend ? { blend: b.blend } : {}) } satisfies Prim;
   });
 }
 

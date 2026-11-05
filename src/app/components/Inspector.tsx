@@ -1,11 +1,10 @@
 /** Panel derecho: elemento seleccionado (valores exactos), elementos propios y verificación previa. */
 import { PROP_DEFAULTS, PROP_RANGES, TEXT_ROLES } from '@core/design/customBlocks';
 import type { AgendaDocument } from '@core/document';
-import { blockBounds } from '@core/document/layout';
 import { OVERRIDE_DEFAULTS, WATERMARK_DEFAULTS, type CustomBlock, type WatermarkPlacement } from '@core/design/schema';
 import { getAtPath } from '@core/util/path';
-import type { Block, PageModel, PageWarning, Prim } from '@core/layout/prims';
-import { unionRect, type AlignMode } from '@core/layout/align';
+import { isProblem, type Block, type PageModel, type PageWarning, type Prim } from '@core/layout/prims';
+import type { AlignMode } from '@core/layout/align';
 import type { WritingStyle } from '@core/design/themes';
 import {
   AlertTriangle,
@@ -33,7 +32,10 @@ import {
   Type,
 } from 'lucide-react';
 import { pageLinks, safeUrl } from '@core/document/links';
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { ElementFields, ELEMENT_ICONS, type MonthChoice } from './ElementFields';
+import { LayersPanel, StackFields } from './LayersPanel';
+import { ELEMENT_KINDS, ELEMENT_LABELS, elementProps, elementSize, isElementKind, type ElementKind } from '../state/elements';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { blockLabel, warningText } from '../i18n/messages';
 import { sectionName, uiText, useT } from '../i18n/ui';
 import { IMAGE_ACCEPT, uploadOne } from '../state/uploads';
@@ -41,7 +43,6 @@ import {
   addCustomBlock,
   alignBlocks,
   centerBlocks,
-  clampMoveDelta,
   currentBlockLink,
   linkScope,
   currentOverride,
@@ -49,12 +50,10 @@ import {
   hideBlock,
   hideBlocks,
   matchScale,
-  moveBlocks,
   overrideRecipe,
   pageStyleOf,
   pageStyleRecipe,
   patchOverride,
-  reflowable,
   resetBlock,
   resetBlocks,
   resetPageStyle,
@@ -70,6 +69,7 @@ import { scrub, type Scrubbing } from '../state/scrub';
 import { useStore, type Recipe } from '../state/store';
 import { Button, ColorInput, Field, NumberInput, Segmented, Select, Slider, TextArea, TextInput, Toggle } from './ui';
 import { jumpToPage } from '../state/navigation';
+import { reflowable } from '@core/layout/handles';
 import { BlockStyleFields } from './BlockStyleFields';
 import { MIN_BOX } from '@core/layout/box';
 import { parseFontSpec } from '@core/text/fonts';
@@ -92,59 +92,79 @@ export function Inspector({ doc }: { doc: AgendaDocument }) {
   const page: PageModel = doc.page(selPageIndex >= 0 ? selPageIndex : pageIndex);
   const block = selection ? page.blocks.find((b) => b.id === selection.blockId) : undefined;
   const group = selection ? page.blocks.filter((b) => selectedIds.includes(b.id)) : [];
-  const movable = group.filter((b) => b.editable);
+  const [tab, setTab] = useState<'element' | 'layers'>('element');
 
-  // Teclado: flechas mueven (a todo lo seleccionado), Supr oculta, Esc deselecciona.
+  // Un elemento que solo tiene una clase de línea (un filete, un ornamento): si el panel de Estilo está
+  // abierto, se desplaza solo al estilo de esa línea, para no buscarlo (sin quitarle el foco al lienzo).
+  const autoReveal = useStore((s) => s.autoReveal);
+  const sidebarPanel = useStore((s) => (s.sidebarOpen ? s.panel : null));
+  const lineUse = block && group.length <= 1 && block.uses?.length === 1 && !block.prims.some((p) => p.t === 'text') ? block.uses[0] : undefined;
+  const revealKey = lineUse ? `${page.key}:${block!.id}` : '';
   useEffect(() => {
-    const onKey = (e: KeyboardEvent): void => {
-      const tag = (e.target as HTMLElement | null)?.tagName;
-      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
-      if (movable.length === 0) {
-        if (e.key === 'Escape') select(null);
-        return;
-      }
-      const stepMm = e.shiftKey ? 5 : e.altKey ? 0.1 : 0.5;
-      const map: Record<string, [number, number]> = { ArrowLeft: [-stepMm, 0], ArrowRight: [stepMm, 0], ArrowUp: [0, -stepMm], ArrowDown: [0, stepMm] };
-      const mv = map[e.key];
-      if (mv) {
-        const c = clampMoveDelta(page, unionRect(movable.map(blockBounds)), mv[0], mv[1]);
-        moveBlocks(page, movable.map((b) => ({ block: b, dx: c.dx, dy: c.dy })), scope, `nudge:${movable.map((b) => b.id).join(',')}`);
-        e.preventDefault();
-      } else if (e.key === 'Delete' || e.key === 'Backspace') {
-        hideBlocks(page, movable, scope);
-        select(null);
-        e.preventDefault();
-      } else if (e.key === 'Escape') select(null);
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [movable, page, scope, select]);
+    if (!autoReveal || !lineUse || sidebarPanel !== 'style') return;
+    void reveal({ selector: `[data-reveal="line.${lineUse}"]`, focus: false });
+    // Solo cuando se elige otro elemento (o se abre el panel de Estilo), no con cada cambio del diseño.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [revealKey, sidebarPanel]);
 
   const addCustom = (kind: CustomBlock['kind']): void =>
     void addCustomBlock(page, kind, { text: t('insp.addText'), image: t('insp.addImage'), rect: t('insp.addRect'), lines: t('insp.addLines'), dots: t('insp.addDots') }, selection?.pageKey === page.key ? scope : 'type');
 
+  const addElement = (kind: ElementKind): void =>
+    void addCustomBlock(page, kind, { text: '', image: '', rect: '', lines: '', dots: '' }, selection?.pageKey === page.key ? scope : 'type', undefined, undefined, {
+      size: elementSize(kind, page.content.w),
+      props: elementProps(kind, t),
+    });
+
   const sideLabel = page.side === 'recto' ? t('insp.recto') : t('insp.verso');
+  const header = (
+    <>
+      <div className="border-b border-line px-3 py-2 text-[11.5px] text-ink-soft">{t('insp.page', { n: page.index + 1, type: sectionName(t, page.type), side: sideLabel })}</div>
+      <div className="border-b border-line px-3 py-1.5">
+        <Segmented
+          value={tab}
+          onChange={setTab}
+          options={[
+            { value: 'element', label: t('insp.tab.element') },
+            { value: 'layers', label: t('insp.tab.layers') },
+          ]}
+        />
+      </div>
+    </>
+  );
+  if (tab === 'layers') {
+    return (
+      <div className="flex h-full flex-col" data-inspector="">
+        {header}
+        <div className="scroll-thin min-h-0 flex-1 overflow-y-auto px-3 py-2">
+          <LayersPanel doc={doc} page={page} />
+        </div>
+      </div>
+    );
+  }
   return (
     <div className="flex h-full flex-col" data-inspector="">
-      <div className="border-b border-line px-3 py-2 text-[11.5px] text-ink-soft">{t('insp.page', { n: page.index + 1, type: sectionName(t, page.type), side: sideLabel })}</div>
+      {header}
       <div className="scroll-thin min-h-0 flex-1 overflow-y-auto px-3 py-2">
         <h3 className="mb-1 text-[11px] font-extrabold tracking-[0.08em] uppercase">{t('insp.title')}</h3>
         {!block && <p className="text-[12px] leading-snug text-ink-soft">{t('insp.none')}</p>}
         {block && group.length > 1 && <MultiFields page={page} blocks={group} primary={block} scope={scope} setScope={setScope} />}
         {block && group.length <= 1 && (
           <div>
-            <p className="mb-2 text-[13px] font-semibold">{blockLabel(t, block.id, block.label)}</p>
+            <p className="mb-2 text-[13px] font-semibold">{blockLabel(t, block.id, block.label, block.renamed)}</p>
             {!block.editable && <p className="text-[12px] text-ink-soft">{t('insp.locked')}</p>}
             {block.editable && block.role === 'writing' && <WritingFields page={page} scope={scope} setScope={setScope} />}
             {block.editable && block.role === 'watermark' && <WatermarkFields id={block.id.slice(3)} />}
-            {block.editable && block.role === 'custom' && <CustomFields id={block.id.slice(7)} theme={doc.ctx.theme} />}
+            {block.editable && block.role === 'custom' && <CustomFields id={block.id.slice(7)} theme={doc.ctx.theme} block={block} months={doc.ctx.cal.months.map((m) => ({ value: m.key, label: `${m.name} ${m.y}` }))} />}
             {block.editable && block.role !== 'watermark' && block.role !== 'custom' && (
               <>
                 <BlockFields page={page} blockId={block.id} scope={scope} setScope={setScope} />
                 <BlockStyleFields page={page} block={block} scope={scope} />
               </>
             )}
+            {block.editable && block.role !== 'watermark' && <StackFields page={page} block={block} scope={scope} />}
             <TextRoleLinks block={block} />
+            <LineUseLinks block={block} />
             {block.editable && (
               <div className="mt-2 flex flex-wrap gap-1.5">
                 <Button
@@ -186,6 +206,13 @@ export function Inspector({ doc }: { doc: AgendaDocument }) {
             <Button onClick={() => addCustom('rect')}>
               <Square size={14} /> {t('insp.addRect')}
             </Button>
+          </div>
+          <div className="mt-1.5 flex flex-wrap gap-1.5" data-testid="add-elements">
+            {ELEMENT_KINDS.map((kind) => (
+              <Button key={kind} onClick={() => addElement(kind)}>
+                {ELEMENT_ICONS[kind]} {t(ELEMENT_LABELS[kind])}
+              </Button>
+            ))}
           </div>
         </div>
         <Preflight doc={doc} />
@@ -311,7 +338,7 @@ function BlockFields({ page, blockId, scope, setScope }: { page: PageModel; bloc
   const o = level === 'page' ? (pageO ?? typeO) : typeO;
   const showFlipped = mirrored && (level === 'type' || inherited);
   // En una página izquierda con ajuste «por tipo», el borde izquierdo es -(dx + dw) (ver `adjuster`).
-  const v = { dx: showFlipped ? -((o?.dx ?? 0) + (o?.dw ?? 0)) : (o?.dx ?? 0), dy: o?.dy ?? 0, scale: o?.scale ?? 1, rotation: o?.rotation ?? 0, opacity: o?.opacity ?? 1 };
+  const v = { dx: showFlipped ? -((o?.dx ?? 0) + (o?.dw ?? 0)) : (o?.dx ?? 0), dy: o?.dy ?? 0, scale: o?.scale ?? 1, scaleY: o?.scaleY ?? null, deform: o?.deform ?? false, rotation: o?.rotation ?? 0, opacity: o?.opacity ?? 1 };
   const flipOnWrite = mirrored && level === 'type';
   // Los bloques que su sección maqueta dentro de una caja también tienen ancho y alto.
   const block = page.blocks.find((b) => b.id === blockId);
@@ -362,7 +389,9 @@ function BlockFields({ page, blockId, scope, setScope }: { page: PageModel; bloc
         </p>
       )}
       {inherited && typeO && <p className="mb-1 text-[11px] leading-snug text-ink-soft">{t('insp.inherits')}</p>}
-      <Slider label={t('insp.scale')} value={v.scale} min={0.2} max={3} step={0.01} {...drag('scale')} defaultValue={OVERRIDE_DEFAULTS.scale} />
+      <Toggle label={t('insp.deform')} hint={t('insp.deformHint')} checked={v.deform} onChange={(on) => patchOverride(page, blockId, scope, on ? { deform: true } : { deform: false, scaleY: null }, `insp:${blockId}:deform`)} />
+      <Slider label={v.deform ? t('insp.scaleX') : t('insp.scale')} value={v.scale} min={0.2} max={3} step={0.01} {...drag('scale')} defaultValue={OVERRIDE_DEFAULTS.scale} />
+      {v.deform && <Slider label={t('insp.scaleY')} value={v.scaleY ?? v.scale} min={0.2} max={3} step={0.01} {...scrub<number>((x) => overrideRecipe(page, blockId, scope, { scaleY: x }), `insp:${blockId}:scaleY`)} onReset={() => patchOverride(page, blockId, scope, { scaleY: null }, `insp:${blockId}:scaleY`)} modified={v.scaleY !== null && Math.abs(v.scaleY - v.scale) > 1e-4} />}
       <Slider label={t('insp.rotation')} value={v.rotation} min={-180} max={180} step={1} {...drag('rotation')} defaultValue={OVERRIDE_DEFAULTS.rotation} />
       <Slider label={t('insp.opacity')} value={v.opacity} min={0} max={1} step={0.05} {...drag('opacity')} defaultValue={OVERRIDE_DEFAULTS.opacity} />
     </div>
@@ -459,7 +488,7 @@ function propRecipe(id: string, k: string, v: unknown): Recipe {
   };
 }
 
-function CustomFields({ id, theme }: { id: string; theme: AgendaDocument['ctx']['theme'] }) {
+function CustomFields({ id, theme, block, months }: { id: string; theme: AgendaDocument['ctx']['theme']; block: Block; months: readonly MonthChoice[] }) {
   const t = useT();
   const cb = useStore((s) => s.design?.customBlocks.find((c) => c.id === id));
   const assets = useStore((s) => s.design?.assets ?? []);
@@ -476,6 +505,10 @@ function CustomFields({ id, theme }: { id: string; theme: AgendaDocument['ctx'][
   const dragProp = <T,>(k: string): Scrubbing<T> => scrub<T>((v) => propRecipe(id, k, v), `cb:${id}:p:${k}`);
   const p = cb.props as Record<string, unknown>;
   // El paso de los renglones, los puntos y la cuadrícula, cuando el elemento no tiene uno propio.
+  // Con «ajustar», la letra puede dibujarse más chica que el cuerpo pedido: se dice a cuánto.
+  const asked = Number(p.size ?? theme.sizes.body);
+  const drawn = firstTextSize(block.prims);
+  const fitHint = cb.kind === 'text' && p.fit !== false && drawn !== null && drawn < asked - 0.05 ? String(Math.round(drawn * 10) / 10) : '';
   const pitchDefault = cb.kind === 'dots' ? theme.dots.pitch : cb.kind === 'grid' ? PROP_DEFAULTS.gridPitch : theme.writing.pitch;
   return (
     <div>
@@ -526,7 +559,38 @@ function CustomFields({ id, theme }: { id: string; theme: AgendaDocument['ctx'][
           </Field>
           <Toggle label={t('insp.upper')} checked={Boolean(p.upper)} onChange={(v) => setProp('upper', v)} />
           <Toggle label={t('insp.autoHeight')} checked={p.autoHeight === true} onChange={(v) => setProp('autoHeight', v ? true : undefined)} />
+          <Toggle
+            label={t('insp.fitBox')}
+            hint={fitHint ? t('insp.fitDrawn', { pt: fitHint }) : t('insp.fitHint')}
+            checked={p.fit !== false}
+            onChange={(v) => setProp('fit', v ? undefined : false)}
+          />
           <CustomTextStyle p={p} setProp={setProp} dragColor={dragProp<string>('color')} />
+        </>
+      )}
+      {cb.kind === 'drawing' && (
+        <>
+          <p className="mb-1 text-[11.5px] leading-snug text-ink-soft">
+            {(() => {
+              const from = p.source as { block?: string; label?: string } | undefined;
+              return from?.block ? `${t('insp.drawingFrom', { name: blockLabel(t, from.block, from.label ?? from.block) })} · ` : '';
+            })()}
+            {t('insp.drawingHint')}
+          </p>
+          <Slider label={t('insp.opacity')} value={Number(p.opacity ?? 1)} min={0.05} max={1} step={0.05} {...dragProp<number>('opacity')} defaultValue={1} />
+          <Toggle label={t('insp.drawingScale')} checked={p.mode === 'scale'} onChange={(v) => setProp('mode', v ? 'scale' : 'stretch')} />
+          <div className="mb-1">
+            <Button
+              variant="outline"
+              onClick={() => {
+                const w0 = Number(p.w0);
+                const h0 = Number(p.h0);
+                if (w0 > 0 && h0 > 0) set({ h: Math.round((cb.w * h0) / w0 * 100) / 100 }, 'aspect');
+              }}
+            >
+              {t('insp.keepAspect')}
+            </Button>
+          </div>
         </>
       )}
       {cb.kind === 'image' && (
@@ -559,6 +623,7 @@ function CustomFields({ id, theme }: { id: string; theme: AgendaDocument['ctx'][
           <Slider label={t('insp.opacity')} value={Number(p.opacity ?? PROP_DEFAULTS.opacity)} min={PROP_RANGES.opacity.min} max={PROP_RANGES.opacity.max} step={0.05} {...dragProp('opacity')} defaultValue={PROP_DEFAULTS.opacity} />
         </>
       )}
+      {isElementKind(cb.kind) && <ElementFields kind={cb.kind} props={p} setProp={setProp} months={months} />}
       {(cb.kind === 'lines' || cb.kind === 'dots' || cb.kind === 'grid') && (
         <Slider label={t('style.pitch')} value={Number(p.pitch ?? pitchDefault)} min={PROP_RANGES.pitch.min} max={PROP_RANGES.pitch.max} step={0.1} {...dragProp('pitch')} modified={p.pitch !== undefined} onReset={() => setProp('pitch', undefined)} />
       )}
@@ -697,6 +762,38 @@ function LinkFields(props: { doc: AgendaDocument; page: PageModel; block: Block;
  * Qué tipos de texto usa el elemento (títulos, rótulos…) y un atajo a su letra y color en Estilo:
  * cambiarlos ahí cambia todos los textos de ese tipo en la agenda.
  */
+/** El cuerpo (pt) del primer texto de unas primitivas, o `null` si no hay. */
+function firstTextSize(prims: readonly Prim[]): number | null {
+  for (const p of prims) {
+    if (p.t === 'text') return p.run.sizePt;
+    if (p.t === 'group') {
+      const inner = firstTextSize(p.children);
+      if (inner !== null) return inner;
+    }
+  }
+  return null;
+}
+
+/** Lleva al estilo de cada clase de línea del elemento (filetes, ornamentos, marcos), que se cambia para toda la agenda. */
+function LineUseLinks({ block }: { block: Block }) {
+  const t = useT();
+  const uses = block.uses ?? [];
+  if (uses.length === 0) return null;
+  return (
+    <div className="mt-2 rounded-md bg-paper/70 p-2 text-[11.5px]" data-testid="line-uses">
+      <div className="mb-1 font-semibold text-ink-soft">{t('insp.lineUses')}</div>
+      <div className="flex flex-wrap gap-1.5">
+        {uses.map((u) => (
+          <Button key={u} variant="outline" onClick={() => void reveal({ panel: 'style', selector: `[data-reveal="line.${u}"]` })}>
+            <Minus size={13} /> {t('insp.editLineUse', { use: t(`bstyle.use.${u}`) })}
+          </Button>
+        ))}
+      </div>
+      <p className="mt-1 leading-snug text-ink-soft">{t('insp.lineUsesHelp')}</p>
+    </div>
+  );
+}
+
 function TextRoleLinks({ block }: { block: Block }) {
   const t = useT();
   const roles = useMemo(() => {
@@ -767,12 +864,20 @@ function Preflight({ doc }: { doc: AgendaDocument }) {
   const t = useT();
   const [items, setItems] = useState<Array<PageWarning & { page: number }> | null>(null);
   useEffect(() => setItems(null), [doc]);
-  const run = (): void => setItems([...doc.documentWarnings().map((w) => ({ ...w, page: -1 })), ...doc.warnings()]);
+  const run = useCallback((): void => setItems([...doc.documentWarnings().map((w) => ({ ...w, page: -1 })), ...doc.warnings()]), [doc]);
+  // El contador del pie de la página pide la revisión (un número nuevo cada vez).
+  const request = useStore((s) => s.preflightRequest);
+  const handled = useRef(request);
+  useEffect(() => {
+    if (request === handled.current) return;
+    handled.current = request;
+    run();
+  }, [request, run]);
   // Las abreviaturas son informativas (un feriado largo que se puede renombrar), no errores.
-  const warnings = items?.filter((w) => w.code !== 'abbreviated') ?? [];
-  const notes = items?.filter((w) => w.code === 'abbreviated') ?? [];
+  const warnings = items?.filter(isProblem) ?? [];
+  const notes = items?.filter((w) => !isProblem(w)) ?? [];
   return (
-    <div className="mt-4 border-t border-line pt-3">
+    <div className="mt-4 border-t border-line pt-3" data-reveal="preflight">
       <div className="flex items-center justify-between gap-2">
         <h3 className="text-[11px] font-extrabold tracking-[0.08em] uppercase">{t('pre.title')}</h3>
         <Button variant="ghost" onClick={run}>
@@ -804,7 +909,7 @@ function Preflight({ doc }: { doc: AgendaDocument }) {
             </p>
             <ul className="space-y-1">
               {[...warnings, ...notes].slice(0, 80).map((w, i) => (
-                <li key={i} className={`flex items-start justify-between gap-2 text-[11.5px] leading-snug ${w.code === 'abbreviated' ? 'text-ink-soft' : ''}`}>
+                <li key={i} className={`flex items-start justify-between gap-2 text-[11.5px] leading-snug ${isProblem(w) ? '' : 'text-ink-soft'}`}>
                   <span>
                     <b className="tabular-nums">{w.page >= 0 ? w.page + 1 : t('pre.general')}</b> · {warningText(t, w)}
                   </span>

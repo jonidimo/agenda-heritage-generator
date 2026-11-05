@@ -96,6 +96,12 @@ export const prefs = {
   /** Idioma elegido a mano; sin valor, la interfaz sigue al idioma de la agenda abierta. */
   uiLang: definePref<Lang | null>('agenda-studio.uiLang', null, choiceCodec<Lang>(LANGUAGES)),
   welcomeOnStart: definePref<boolean>('agenda-studio.welcomeOnStart', WELCOME_ON_START_DEFAULT, boolCodec),
+  /** Al elegir un filete u ornamento, el panel de Estilo se desplaza solo a su editor. */
+  autoReveal: definePref<boolean>('agenda-studio.autoReveal', true, boolCodec),
+  /** Permitir que un modelo de IA (servidor MCP) lea y edite la agenda abierta en la aplicación de escritorio. */
+  liveLink: definePref<boolean>('agenda-studio.liveLink', true, boolCodec),
+  /** Qué se está haciendo con la agenda: diseñarla o prepararla para imprimir. */
+  mode: definePref<'design' | 'print'>('agenda-studio.mode', 'design', choiceCodec(['design', 'print'] as const)),
   uiScale: definePref<number>('agenda-studio.uiScale', UI_SCALE.default, rangeCodec(UI_SCALE.min, UI_SCALE.max)),
   panel: {
     left: definePref<number>('agenda-studio.panel.left', PANEL_LIMITS.left.default, rangeCodec(PANEL_LIMITS.left.min, PANEL_LIMITS.left.max)),

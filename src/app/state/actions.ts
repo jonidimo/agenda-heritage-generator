@@ -10,8 +10,12 @@ import { resolveStrings } from '@core/i18n';
 import { withPageStyle } from '@core/design/pageStyles';
 import type { Block, PageModel, TextSource } from '@core/layout/prims';
 import type { Rect } from '@core/util/geometry';
+import type { BlendMode } from '@core/design/blend';
+import type { HiddenElement } from '@core/document/hidden';
+import { moveInOrder, restackOne, type StackMove } from '@core/layout/stack';
 import { blockBounds, findOverride as appliedOverride } from '@core/document/layout';
-import { MIN_BOX, naturalBox, storeAdjust, type BoxAdjust } from '@core/layout/box';
+import { deformable } from '@core/layout/handles';
+import { axisScales, deformScales, MIN_BOX, naturalBox, storeAdjust, visualToBox, type BoxAdjust } from '@core/layout/box';
 import { alignDeltas, centerGroupDeltas, distributeDeltas, tidyGridDeltas, unionRect, type AlignMode, type Delta } from '@core/layout/align';
 import { current, type Draft } from 'immer';
 import { documentFor } from './doc';
@@ -54,9 +58,14 @@ function upsertOverride(d: Draft<Design>, page: PageModel, blockId: string, scop
       dw: base?.dw ?? 0,
       dh: base?.dh ?? 0,
       scale: base?.scale ?? 1,
+      scaleY: base?.scaleY ?? null,
+      deform: base?.deform ?? false,
       rotation: base?.rotation ?? 0,
       opacity: base?.opacity ?? 1,
       hidden: base?.hidden ?? false,
+      layer: base?.layer ?? null,
+      label: base?.label ?? null,
+      blend: base?.blend ?? 'normal',
     });
     o = d.overrides[d.overrides.length - 1]!;
   }
@@ -190,9 +199,12 @@ export function matchScale(page: PageModel, blocks: Block[], primary: Block, sco
   useStore.getState().update((d) => {
     for (const b of blocks) {
       if (b.id === primary.id || b.role === 'watermark' || b.role === 'custom') continue;
-      upsertOverride(d, page, b.id, sc, (o) => void (o.scale = target), mirrored);
+      upsertOverride(d, page, b.id, sc, (o) => void ((o.scale = target), (o.scaleY = null)), mirrored);
       const own = sc === 'type' ? findOverride(d, page, b.id, 'page') : undefined;
-      if (own) own.scale = target;
+      if (own) {
+        own.scale = target;
+        own.scaleY = null;
+      }
     }
   });
 }
@@ -313,24 +325,63 @@ export function scaleBlock(page: PageModel, block: Block, factor: number, scope:
       effectiveScope(page, scope),
       (o) => {
         o.scale = Number(Math.min(20, Math.max(0.05, o.scale * factor)).toFixed(4));
+        if (o.scaleY !== null) o.scaleY = Number(Math.min(20, Math.max(0.05, o.scaleY * factor)).toFixed(4));
       },
       typeMirrored(page),
     );
     const own = effectiveScope(page, scope) === 'type' ? findOverride(d, page, block.id, 'page') : undefined;
-    if (own) own.scale = Number(Math.min(20, Math.max(0.05, own.scale * factor)).toFixed(4));
+    if (own) {
+      own.scale = Number(Math.min(20, Math.max(0.05, own.scale * factor)).toFixed(4));
+      if (own.scaleY !== null) own.scaleY = Number(Math.min(20, Math.max(0.05, own.scaleY * factor)).toFixed(4));
+    }
   }, coalesce);
 }
 
 /**
- * ¿Los tiradores de los lados reacomodan este bloque? Sí cuando su sección lo dibuja dentro de una
- * caja (`LayoutContext.rect`), no va girado ni escalado (entonces lo que se ve no es su caja) y no es
- * un dibujo rígido. Los demás conservan el tirador de la esquina, que los escala.
+ * Receta de un tirador sobre un bloque, según qué es: un elemento propio guarda su caja; uno que se
+ * permitió deformar cambia sus escalas; uno con caja del programa la reacomoda. `box` es el
+ * rectángulo que se ve en la página (con la escala puesta).
  */
-export function reflowable(block: Block): boolean {
-  if (!block.editable || !block.box || block.rigid || block.role === 'custom' || block.role === 'watermark') return false;
-  const seen = blockBounds(block);
-  const box = block.box;
-  return Math.abs(seen.x - box.x) < 1e-6 && Math.abs(seen.y - box.y) < 1e-6 && Math.abs(seen.w - box.w) < 1e-6 && Math.abs(seen.h - box.h) < 1e-6;
+export function resizeRecipeFor(page: PageModel, block: Block, box: Rect, scope: Scope): Recipe {
+  if (block.role === 'custom') return resizeCustomRecipe(page, block, box);
+  if (deformable(block)) return deformRecipe(page, block, box, scope);
+  return resizeBoxRecipe(page, block, visualToBox(box, axisScales(block.m) ?? { sx: 1, sy: 1 }), scope);
+}
+
+/**
+ * Receta que estira el dibujo de un bloque hasta el rectángulo `visual` (lo que se ve): cada eje con
+ * su escala y la esquina superior izquierda en su lugar. La caja natural de la sección no cambia de
+ * tamaño; cambian la posición y las escalas. En una página izquierda con ajuste «por tipo» la
+ * posición se espeja como en `resizeBoxRecipe`.
+ */
+export function deformRecipe(page: PageModel, block: Block, visual: Rect, scope: Scope): Recipe {
+  return (d) => {
+    const pivot = block.box ?? block.bbox;
+    const sc = effectiveScope(page, scope);
+    const mirrored = typeMirrored(page);
+    const before = appliedOverride(d.overrides, page, block.id);
+    const was: BoxAdjust = before
+      ? { dx: before.pageKey === null && mirrored ? -(before.dx + before.dw) : before.dx, dy: before.dy, dw: before.dw, dh: before.dh }
+      : { dx: 0, dy: 0, dw: 0, dh: 0 };
+    // Con caja, el lugar ya está en el dibujo; sin ella, el ancho y el alto ajustados ya están en `bbox` pero el lugar no.
+    const natural = naturalBox(pivot, block.box ? was : { dx: 0, dy: 0, dw: was.dw, dh: was.dh });
+    const target = { x: visual.x, y: visual.y, w: pivot.w, h: pivot.h };
+    const shown = storeAdjust(natural, target, false);
+    const stored = storeAdjust(natural, target, sc === 'type' && mirrored);
+    const { sx, sy } = deformScales(visual, pivot);
+    const apply = (o: Draft<BlockOverride>, a: BoxAdjust): void => {
+      o.dx = r2(a.dx);
+      o.dy = r2(a.dy);
+      o.dw = r2(a.dw);
+      o.dh = r2(a.dh);
+      o.scale = Number(sx.toFixed(4));
+      o.scaleY = Math.abs(sy - sx) < 1e-4 ? null : Number(sy.toFixed(4));
+      o.deform = true;
+    };
+    upsertOverride(d, page, block.id, sc, (o) => apply(o, stored), mirrored);
+    const own = sc === 'type' ? findOverride(d, page, block.id, 'page') : undefined;
+    if (own) apply(own, shown);
+  };
 }
 
 /**
@@ -499,6 +550,89 @@ export function hideBlocks(page: PageModel, blocks: Block[], scope: Scope): void
   });
 }
 
+/* ---------- Capas ---------- */
+
+/** Receta que mueve un elemento en el apilado de la página (o `null` si ya está en el extremo). */
+export function stackRecipe(page: PageModel, id: string, move: StackMove, scope: Scope): Recipe | null {
+  const order = page.blocks.map((b) => ({ id: b.id, layer: b.layer, seq: b.seq ?? 0 }));
+  const changes = restackOne(moveInOrder(order, id, move), id);
+  if (changes.size === 0) return null;
+  const sc = effectiveScope(page, scope);
+  const mirrored = typeMirrored(page);
+  return (d) => {
+    for (const [blockId, layer] of changes) {
+      upsertOverride(d, page, blockId, sc, (o) => void (o.layer = layer), mirrored);
+      // Un ajuste de esta página con capa propia manda sobre el del tipo: se acompaña, o el cambio no se vería.
+      if (sc === 'type') {
+        const own = d.overrides.find((o) => o.blockId === blockId && o.pageKey === page.key && o.layer !== null);
+        if (own) own.layer = layer;
+      }
+    }
+  };
+}
+
+export function moveInStack(page: PageModel, id: string, move: StackMove, scope: Scope): void {
+  const recipe = stackRecipe(page, id, move, scope);
+  if (recipe) useStore.getState().update(recipe);
+}
+
+/** Vuelve al orden de apilado que da la sección: quita las capas propias de esta página (o de su tipo). */
+export function resetStack(page: PageModel, scope: Scope): void {
+  const key = effectiveScope(page, scope) === 'page' ? page.key : null;
+  useStore.getState().update((d) => {
+    const mine = d.overrides.filter((o) => o.pageType === page.type && o.pageKey === key);
+    for (const o of mine) o.layer = null;
+    // Solo los de esta página (o tipo) que quedaron sin nada: los demás ajustes, ocultos incluidos, no se tocan.
+    d.overrides = d.overrides.filter((o) => !(mine.includes(o) && isNeutralOverride(o) && !o.hidden));
+  });
+}
+
+/** Nombre propio de un elemento (vacío: vuelve el de la sección). */
+export function renameBlock(page: PageModel, id: string, scope: Scope, name: string): void {
+  patchOverride(page, id, scope, { label: name.trim() === '' ? null : name.trim().slice(0, 120) }, `label:${id}`);
+}
+
+export function setBlend(page: PageModel, id: string, scope: Scope, blend: BlendMode): void {
+  patchOverride(page, id, scope, { blend }, `blend:${id}`);
+}
+
+/** ¿Un ajuste sin ningún cambio (solo estaba para ocultar)? */
+function isNeutralOverride(o: BlockOverride): boolean {
+  return o.dx === 0 && o.dy === 0 && o.dw === 0 && o.dh === 0 && o.scale === 1 && o.scaleY === null && !o.deform && o.rotation === 0 && o.opacity === 1 && o.layer === null && o.label === null && o.blend === 'normal';
+}
+
+/**
+ * Receta que devuelve a la página elementos ocultos (los que lista `AgendaDocument.hidden`): el ajuste
+ * «oculto» se quita (y el ajuste entero si no tenía nada más) y las marcas de agua dejan de saltarse la página.
+ */
+export function showHiddenRecipe(page: Pick<PageModel, 'key' | 'type'>, items: readonly HiddenElement[]): Recipe {
+  return (d) => {
+    for (const item of items) {
+      if (item.kind === 'watermark') {
+        const wm = d.watermarks.find((w) => w.id === item.id.slice(3));
+        if (!wm) continue;
+        wm.excludePages = wm.excludePages.filter((k) => k !== page.key);
+        wm.exclude = wm.exclude.filter((t) => t !== page.type);
+        continue;
+      }
+      const byPage = d.overrides.find((o) => o.blockId === item.id && o.pageKey === page.key);
+      const byType = d.overrides.find((o) => o.blockId === item.id && o.pageKey === null && o.pageType === page.type);
+      if (item.scope === 'page' && byPage) {
+        byPage.hidden = false;
+        // Sin nada más que decir se quita, salvo que el del tipo oculte: ese volvería a mandar.
+        if (isNeutralOverride(byPage) && !byType?.hidden) d.overrides = d.overrides.filter((o) => o !== byPage);
+      } else if (byType) {
+        byType.hidden = false;
+        if (isNeutralOverride(byType)) d.overrides = d.overrides.filter((o) => o !== byType);
+      }
+    }
+  };
+}
+
+export function showHiddenElements(page: Pick<PageModel, 'key' | 'type'>, items: readonly HiddenElement[]): void {
+  if (items.length > 0) useStore.getState().update(showHiddenRecipe(page, items));
+}
+
 /* ---------- Copiar y pegar elementos propios ---------- */
 
 /** Los elementos propios que corresponden a estos bloques (los del programa no se copian). */
@@ -600,12 +734,21 @@ export function currentOverride(design: Design, page: PageModel, blockId: string
  * Agrega un elemento propio al tipo de página (o solo a esta página). Si se indica un punto
  * (clic derecho), el elemento se ubica ahí; si no, abajo del área de contenido.
  */
-export function addCustomBlock(page: PageModel, kind: CustomBlock['kind'], labels: { text: string; image: string; rect: string; lines: string; dots: string }, scope: Scope, at?: { x: number; y: number }, assetId?: string): string {
+export function addCustomBlock(
+  page: PageModel,
+  kind: CustomBlock['kind'],
+  labels: { text: string; image: string; rect: string; lines: string; dots: string },
+  scope: Scope,
+  at?: { x: number; y: number },
+  assetId?: string,
+  /** Para los elementos compuestos: tamaño y propiedades iniciales (ver `state/elements.ts`). */
+  element?: { size: { w: number; h: number }; props: Record<string, unknown> },
+): string {
   const design = useStore.getState().design;
   const c = page.content;
   const id = newId('el');
   const size: Record<string, { w: number; h: number }> = { text: { w: c.w, h: 10 }, image: { w: 30, h: 30 }, rect: { w: c.w, h: 30 }, lines: { w: c.w, h: 30 }, dots: { w: c.w, h: 30 } };
-  const { w, h } = size[kind] ?? { w: 30, h: 30 };
+  const { w, h } = element?.size ?? size[kind] ?? { w: 30, h: 30 };
   const def = at
     ? { x: Math.min(Math.max(0, at.x), page.w - w), y: Math.min(Math.max(0, at.y), page.h - h) }
     : kind === 'image'
@@ -613,9 +756,10 @@ export function addCustomBlock(page: PageModel, kind: CustomBlock['kind'], label
       : { x: c.x, y: c.y + c.h - (kind === 'text' ? 14 : h) };
   // Lo que se ve en una página izquierda se guarda como en una derecha (el elemento se espeja).
   const x = page.side === 'verso' ? page.w - def.x - w : def.x;
-  const props: Record<string, unknown> =
-    kind === 'text'
-      ? { text: '{name}', role: 'quote', size: 11, align: 'right', autoHeight: true, label: labels.text }
+  const props: Record<string, unknown> = element
+    ? element.props
+    : kind === 'text'
+      ? { text: '{name}', role: 'quote', size: 11, align: 'right', fit: false, autoHeight: true, label: labels.text }
       : kind === 'image'
         ? { assetId: assetId ?? design?.assets.find((a) => a.kind !== 'pdf')?.id ?? '', fit: 'contain', opacity: 1, label: labels.image }
         : { label: labels[kind as 'rect' | 'lines' | 'dots'] ?? kind };

@@ -6,17 +6,20 @@ import { describe, expect, it } from 'vitest';
 import { createDesign } from '../src/core/design/defaults';
 import { parseDesign, type Design } from '../src/core/design/schema';
 import type { AgendaDocument } from '../src/core/document';
-import { blockBounds } from '../src/core/document/layout';
+import { blockBounds, overrideMatrix } from '../src/core/document/layout';
+import { transformRect } from '../src/core/util/geometry';
 import { primsBounds, type Block, type Prim } from '../src/core/layout/prims';
-import { adjustBox, naturalBox, storeAdjust } from '../src/core/layout/box';
+import { adjustBox, axisScales, deformScales, naturalBox, SCALE_LIMITS, storeAdjust, uniformScale, visualToBox } from '../src/core/layout/box';
+import { deformable, reflowable } from '../src/core/layout/handles';
 import { boxMap, stretchPrims, stretchRect } from '../src/core/layout/stretch';
 import { openDocument } from './helpers/node-env';
+import { ov } from './helpers/overrides';
 
 const base = (): Design => parseDesign(createDesign('heritage-norma', { year: 2027, locale: 'es-AR', country: 'AR' }));
 
 function withOverride(d: Design, pageType: string, blockId: string, patch: Partial<Design['overrides'][number]>): Design {
   const next = structuredClone(d);
-  next.overrides.push({ pageType, pageKey: null, blockId, dx: 0, dy: 0, dw: 0, dh: 0, scale: 1, rotation: 0, opacity: 1, hidden: false, ...patch });
+  next.overrides.push(ov({ pageType, blockId, ...patch }));
   return parseDesign(next);
 }
 
@@ -154,5 +157,64 @@ describe('elementos dentro de la caja de otro', () => {
     expect(page.blocks.find((b) => b.id === 'vision.head')!.parent).toBe('vision.frame');
     expect(page.blocks.find((b) => b.id === 'vision.row.0')!.parent).toBe('vision.frame');
     expect(page.blocks.find((b) => b.id === 'vision.frame')!.parent).toBeUndefined();
+  });
+});
+
+describe('escala y deformación', () => {
+  const rect = { x: 20, y: 30, w: 80, h: 40 };
+
+  it('la escala de una matriz: uniforme, por eje, o ninguna si hay giro', () => {
+    expect(uniformScale(undefined)).toBe(1);
+    expect(uniformScale([1.5, 0, 0, 1.5, 7, 9])).toBe(1.5);
+    expect(uniformScale([1.5, 0, 0, 2, 0, 0])).toBeNull();
+    expect(axisScales([1.5, 0, 0, 2, 0, 0])).toEqual({ sx: 1.5, sy: 2 });
+    expect(axisScales([0.9, 0.3, -0.3, 0.9, 0, 0])).toBeNull();
+  });
+
+  it('el rectángulo que se ve vuelve a la caja de la sección dividiéndolo por la escala', () => {
+    expect(visualToBox({ x: 20, y: 30, w: 120, h: 60 }, { sx: 1.5, sy: 1.5 })).toEqual({ x: 20, y: 30, w: 80, h: 40 });
+    expect(visualToBox({ x: 20, y: 30, w: 160, h: 20 }, { sx: 2, sy: 0.5 })).toEqual({ x: 20, y: 30, w: 80, h: 40 });
+  });
+
+  it('las escalas de un estiramiento salen de cada eje y respetan los límites', () => {
+    expect(deformScales({ x: 0, y: 0, w: 160, h: 20 }, rect)).toEqual({ sx: 2, sy: 0.5 });
+    expect(deformScales({ x: 0, y: 0, w: 1e6, h: 0.0001 }, rect)).toEqual({ sx: SCALE_LIMITS.max, sy: SCALE_LIMITS.min });
+    expect(deformScales({ x: 0, y: 0, w: 5, h: 5 }, { x: 0, y: 0, w: 0, h: 0 })).toEqual({ sx: 1, sy: 1 });
+  });
+
+  it('sin escala vertical propia, la matriz es la de siempre; con ella, cada eje tiene la suya', () => {
+    const o = { dx: 3, dy: -2, scale: 1.5, rotation: 0 };
+    const old = overrideMatrix(rect, o);
+    expect(overrideMatrix(rect, { ...o, scaleY: null })).toEqual(old);
+    const m = overrideMatrix(rect, { ...o, scaleY: 2 });
+    expect([m[0], m[3]]).toEqual([1.5, 2]);
+    // La esquina superior izquierda no se mueve con la escala.
+    expect(transformRect(m, rect)).toMatchObject({ x: rect.x + 3, y: rect.y - 2, w: rect.w * 1.5, h: rect.h * 2 });
+  });
+
+  it('un bloque con caja y escala conserva los tiradores de los lados; con giro o dibujo rígido, no', async () => {
+    const visionType = find((await openDocument(base())).doc, 'vision.frame').type;
+    const { doc } = await openDocument(withOverride(base(), visionType, 'vision.frame', { scale: 1.5 }));
+    const at = find(doc, 'vision.frame');
+    expect(at.block.m).toBeDefined();
+    expect(reflowable(at.block)).toBe(true);
+    expect(deformable(at.block)).toBe(false);
+    // La caja visible es la de la sección × la escala, anclada en su esquina.
+    const v = blockBounds(at.block);
+    expect(v.w).toBeCloseTo(at.block.box!.w * 1.5, 6);
+    const turned = await openDocument(withOverride(base(), visionType, 'vision.frame', { rotation: 10 }));
+    expect(reflowable(find(turned.doc, 'vision.frame').block)).toBe(false);
+  });
+
+  it('deformar: la escala por eje llega al dibujo y los tiradores pasan a estirar', async () => {
+    const visionType = find((await openDocument(base())).doc, 'vision.frame').type;
+    const { doc } = await openDocument(withOverride(base(), visionType, 'vision.frame', { deform: true, scale: 2, scaleY: 0.5 }));
+    const b = find(doc, 'vision.frame').block;
+    expect(b.deform).toBe(true);
+    expect(deformable(b)).toBe(true);
+    expect(reflowable(b)).toBe(false);
+    const v = blockBounds(b);
+    expect(v.w).toBeCloseTo(b.box!.w * 2, 6);
+    expect(v.h).toBeCloseTo(b.box!.h * 0.5, 6);
   });
 });

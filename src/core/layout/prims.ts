@@ -3,6 +3,7 @@
  * secciones y los dibujantes (SVG para la pantalla, Canvas para miniaturas,
  * pdfkit para el PDF): lo que se ve es exactamente lo que se imprime.
  */
+import type { BlendMode } from '../design/blend';
 import type { ShapedRun } from '../text/shape';
 import { transformRect, type Matrix, type Rect } from '../util/geometry';
 
@@ -117,6 +118,21 @@ export interface GroupPrim {
   m?: Matrix;
   opacity?: number;
   clip?: Rect;
+  /** Modo de fusión con lo que hay debajo (sin valor, normal). */
+  blend?: BlendMode;
+}
+
+/** Los usos de línea (en orden de aparición, sin repetir) de unas primitivas, entrando en los grupos. */
+export function strokeUses(prims: readonly Prim[]): Array<NonNullable<Stroke['use']>> {
+  const found = new Set<NonNullable<Stroke['use']>>();
+  const walk = (ps: readonly Prim[]): void => {
+    for (const p of ps) {
+      if (p.t === 'group') walk(p.children);
+      else if ((p.t === 'line' || p.t === 'rect') && p.stroke?.use) found.add(p.stroke.use);
+    }
+  };
+  walk(prims);
+  return [...found];
 }
 
 export type Prim = LinePrim | RectPrim | CirclePrim | PathPrim | DotsPrim | TextPrim | ImagePrim | PdfPrim | GroupPrim;
@@ -183,6 +199,8 @@ export interface Block {
    * Sin ella, el elemento se estira al cambiar de tamaño (ver `stretch.ts`).
    */
   box?: Rect;
+  /** El usuario permitió deformarlo: los tiradores estiran el dibujo en lugar de reacomodar su contenido. */
+  deform?: true;
   /** No admite cambiar su ancho y su alto por los lados (p. ej. dibujado girado): solo se escala. */
   rigid?: true;
   /**
@@ -190,6 +208,12 @@ export interface Block {
    * otro). Cuando los dos se mueven juntos, el de adentro ya sigue al de afuera: no se mueve de nuevo.
    */
   parent?: string;
+  /**
+   * Para qué sirven las líneas que dibuja (renglón, separador, tabla, marco), tomadas antes del estilo
+   * de líneas del tema: con una guarda u ornamento las líneas dejan de ser líneas y el uso se pierde.
+   * Es lo que el editor usa para llevar al estilo de esa clase de línea.
+   */
+  uses?: readonly import('../design/themes').LineUse[];
   /** De dónde sale su texto principal, si se puede editar en su lugar. */
   text?: TextSource;
   prims: Prim[];
@@ -197,9 +221,14 @@ export interface Block {
   editable: boolean;
   /** Orden de apilado: 0 fondo, 10 contenido, 20 por encima (marcas de agua). */
   layer: number;
+  /** Lugar en que la sección lo agregó a la página: con la misma capa, el de menor lugar se dibuja debajo. */
+  seq?: number;
+  /** El nombre lo puso la persona (un ajuste de nombre propio): no se traduce. */
+  renamed?: boolean;
   /** Transformación final (ajustes del editor). */
   m?: Matrix;
   opacity?: number;
+  blend?: BlendMode;
   /** Enlaces automáticos dentro del bloque (días, meses, títulos…); se mueven con él. */
   links?: LinkArea[];
 }
@@ -247,6 +276,9 @@ export interface PageWarning {
   params: Record<string, string | number>;
   message: string;
 }
+
+/** Los avisos informativos (un texto que se abrevió) no son errores: no cuentan como problemas. */
+export const isProblem = (w: Pick<PageWarning, 'code'>): boolean => w.code !== 'abbreviated';
 
 /* ---------- Constructores breves ---------- */
 

@@ -56,8 +56,8 @@ evita que npm escriba en el canal que usan el cliente y el servidor.
 
 | Herramienta | Qué hace |
 | --- | --- |
-| `create_design` | Agenda nueva desde una plantilla (`heritage`, `heritage-norma` (con dedicatoria), `clara` (letra grande), `minimal`) para un año, idioma, país y nombre. Con `out` escribe el archivo. |
-| `update_design` | Cambia un archivo con operaciones [JSON Patch](https://datatracker.ietf.org/doc/html/rfc6902) (`add`, `remove`, `replace`, `move`, `copy`, `test`). Todo o nada; si el resultado no abriría, el archivo queda como estaba. |
+| `create_design` | Agenda nueva desde una plantilla (`heritage`, `heritage-norma` (con dedicatoria), `clara` (letra grande), `minimal`) para un año, idioma, país y nombre. Con `out` escribe el archivo; con `app: true` la abre en la aplicación de escritorio. |
+| `update_design` | Cambia un archivo (`path`) o la agenda abierta en la aplicación de escritorio (`app: true`) con operaciones [JSON Patch](https://datatracker.ietf.org/doc/html/rfc6902) (`add`, `remove`, `replace`, `move`, `copy`, `test`). Todo o nada; si el resultado no abriría, no se cambia nada. |
 | `check_design` | Lista lo que el programa ignoraría o corregiría en el archivo (claves desconocidas, colores no válidos, valores fuera de la lista o del rango) y resume la agenda armada: páginas, hojas, cuadernillos, enlaces y avisos (textos que no entran, imágenes que faltan, enlaces rotos) con sus páginas. |
 | `list_pages` | Las páginas, con su número, clave, tipo y título (se puede filtrar por tipo). |
 | `render_page` | Dibuja una página tal como se imprime y la devuelve como imagen PNG, con su lado (derecha o izquierda), su zona de contenido, sus bloques (id, nombre y caja en mm) y sus avisos. |
@@ -65,6 +65,9 @@ evita que npm escriba en el canal que usan el cliente y el servidor.
 | `export_theme` | Guarda el estilo de la agenda como archivo de tema `.tema.json` (letras, colores, líneas, ornamentos y sus imágenes) para importarlo en la aplicación. |
 | `list_catalogue` | Tipos de sección con sus opciones y valores posibles, temas, plantillas, fuentes integradas, ornamentos, usos y dibujos de línea, armonías de color, tipos de elemento, tipos de página y variables de texto. |
 | `get_schema` | El esquema JSON, entero o por partes (`"theme.tokens.lines"`, `"sections"`, `"customBlocks"`…). |
+| `app_status` | Si la aplicación de escritorio está abierta y qué agenda tiene: nombre, año, páginas y revisión. Nunca da error si está cerrada. |
+| `app_reveal` | Lleva la aplicación a una página (y, con `blockId`, elige ese elemento), para que la persona vea de qué hablás. |
+| `app_library` / `app_open` | Las agendas guardadas en la aplicación, y abrir una de ellas. |
 
 Los recursos `agenda://guide/es` (esta guía), `agenda://guide` (en inglés), `agenda://schema` y
 `agenda://catalogue` dan la misma referencia a los clientes que leen recursos.
@@ -77,6 +80,15 @@ Los recursos `agenda://guide/es` (esta guía), `agenda://guide` (en inglés), `a
 4. `render_page` de las páginas que tocaste (la primera semana, una página del mes, la portada),
    y mirarlas.
 5. `export_pdf` con `pages` para leerla en una tableta, o `imposed` para imprimirla.
+
+### Trabajar sobre la agenda abierta en la aplicación de escritorio
+
+Con la aplicación de escritorio abierta (ver [Usarla con un modelo de IA](desktop.md#5-use-it-with-an-ai-model-mcp)), cada herramienta que recibe `path` o `design` recibe también **`app: true`**: la agenda abierta ahora. `app_status` dice qué hay abierto.
+
+- `update_design` con `app: true` lee la agenda con su **revisión**, aplica y revisa tu parche, y le manda a la aplicación solo el parche con esa revisión. La persona ve el cambio al instante y lo puede deshacer (es un solo paso). Si ella editó la agenda mientras tanto, la aplicación lo rechaza con un conflicto: volvé a leerla (`check_design` con `app: true`) y reintentá.
+- `render_page` y `check_design` con `app: true` usan la agenda abierta, con sus imágenes.
+- La persona puede apagar el enlace en **Archivo → Permitir que un modelo de IA edite la agenda abierta**; entonces cada llamada falla con ese motivo. No se escribe nada en el disco: la aplicación guarda sus agendas como siempre.
+- Los ids de los elementos salen de `render_page`; `app_reveal` con `page` y `blockId` elige uno en la aplicación.
 
 ## 2. Sin MCP: esquema, catálogo y revisión
 
@@ -103,17 +115,17 @@ Todo campo tiene valor por defecto: alcanza con escribir lo que cambia. Las medi
 | Clave | Qué guarda |
 | --- | --- |
 | `name`, `locale` | Nombre de la agenda; idioma y país (`es-AR`, `en-US`, `pt-BR`, `it-IT`…), que también fijan el orden de las fechas y el primer día de la semana. |
-| `calendar` | `year`, `startMonth`, `monthCount`, `weekStart` (`auto` sigue al país), `numbering`, `dateFormat` (`auto`, `dmy`, `mdy`, `ymd`). |
+| `calendar` | `year`, `startMonth`, `monthCount`, `weekStart` (`auto` sigue al país), `numbering`, `dateFormat` (`auto`, `dmy`, `mdy`, `ymd`), `hiddenMonths` (lista `AAAA-MM` de meses que quedan fuera del libro: sin páginas ni enlaces; el calendario anual los sigue mostrando). |
 | `holidays` | `country` (código ISO o `null`) y los tipos de feriado que se muestran; `personalDates` guarda cumpleaños y aniversarios. |
-| `paper`, `binding` | Tamaño de hoja y cómo se dobla y encuaderna (cuadernillos, doble faz, corrimiento, marcas). |
+| `paper`, `binding` | Tamaño de hoja y cómo se dobla y encuaderna (cuadernillos, doble faz, corrimiento, marcas). `binding.target` es `print` (por defecto) o `screen`: una agenda para **leer en pantalla** no lleva margen de costura, recortes, marcas ni páginas de relleno de cuadernillos, conserva el tamaño de página y solo vale el PDF `pages` (los PDF de imprenta se rechazan). |
 | `theme` | `id` del tema base, `comfort` (`compact`, `normal`, `wide`) y `tokens` (ver la sección 6). |
 | `persona` | Nombre, título, dedicatoria y una frase por mes. |
 | `sections` | Las páginas de la agenda, en orden (ver la sección 4). |
 | `pageTemplates` | Páginas que se diseñan una vez y se repiten (ver la sección 5). |
 | `customPages` | Páginas sueltas: una imagen, una página de un PDF, un texto o un fondo para escribir. |
-| `customBlocks` | Elementos propios en un tipo de página o en una página: texto, imagen, renglones, puntos, cuadrícula, recuadro, línea. Un texto con `props.autoHeight: true` toma su alto de sus renglones (`h` no se usa). Dejá cada caja dentro de la página: `check_design` avisa las que no lo están. |
+| `customBlocks` | Elementos propios en un tipo de página o en una página: `text`, `image`, `lines`, `dots`, `grid`, `rect`, `line` y los compuestos `table` (`rows`, `cols`, `header`, `headers`), `checklist` (`items`, `columns`, `shape`, `labels`), `habits` (`rows`, `days`, `names`), `finance` (`lines`, `total`, `title`), `minical` (`month`: `auto` o `AAAA-MM`; sus días llevan a su página), `quadrants` (`titles`, `style`), `notes` (`title`, `style`, `frame`), `timeline` (`from`, `to`, `step` en minutos) y `rating` (`count`, `shape`, `text`); los compuestos también aceptan `paper: true` (fondo blanco). Un texto se dibuja a su `props.size` (puntos) salvo que `props.fit` no sea `false`: entonces se achica hasta entrar en la caja; `props.autoHeight: true` toma su alto de sus renglones (`h` no se usa). El tipo `drawing` se crea copiando un elemento del programa en la aplicación: no se escribe a mano. Dejá cada caja dentro de la página: `check_design` avisa las que no lo están. |
 | `watermarks` | Imágenes en muchas páginas (dónde, tamaño, opacidad, espejadas en las páginas izquierdas). |
-| `overrides` | Mueve, escala, gira u oculta un bloque del programa en un tipo de página o en una página. `dw` y `dh` (mm) cambian el ancho y el alto de su caja y el contenido se vuelve a acomodar adentro (el texto reparte sus renglones, las áreas de escritura suman o quitan renglones). |
+| `overrides` | Mueve, escala, gira u oculta un bloque del programa en un tipo de página o en una página. `dw` y `dh` (mm) cambian el ancho y el alto de su caja y el contenido se vuelve a acomodar adentro (el texto reparte sus renglones, las áreas de escritura suman o quitan renglones). `scale` y `scaleY` lo escalan (un `scaleY` distinto lo deforma); con `deform: true` la caja no se reacomoda: el dibujo se estira. `layer` fija su orden de apilado (mayor, más arriba), `label` lo renombra y `blend` es `normal`, `multiply`, `screen`, `darken` o `lighten`. |
 | `blockStyles` | Estilo propio de un bloque del programa: `lines` (por uso: `writing`, `separator`, `table`, `frame`, `other`) con `pattern`, `color`, `widthPt`; `fill.color` (`null`: sin relleno); `text.color` y `text.roles`. La entrada de la página gana a la del tipo, campo por campo. |
 | `pageStyles` | Ajustes del tema solo para un tipo de página o una página. |
 | `links` | Enlaces y marcadores del PDF para tabletas y lectores de tinta electrónica. En `links.blocks`, `area` elige una zona tocable de un bloque (`date:2027-01-05`, `month:2027-03`, `toc`…); vacía, vale para todo el bloque. |

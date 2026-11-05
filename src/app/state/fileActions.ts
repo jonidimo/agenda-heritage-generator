@@ -1,6 +1,6 @@
 /** Acciones de archivo con sus avisos (las usan el menú Archivo, los atajos y la biblioteca). */
 import { translate, type UiKey } from '../i18n/ui';
-import { exportBackup, openFile, saveDesignToFile } from './files';
+import { exportBackup, importText, openFile, saveDesignToFile, type Imported } from './files';
 import { useStore } from './store';
 
 /** Texto en el idioma actual de la interfaz (estas acciones también se llaman desde atajos de teclado). */
@@ -20,21 +20,61 @@ export async function saveCurrent(saveAs: boolean): Promise<void> {
   }
 }
 
+/** Lo que se abrió: una agenda pasa a ser la agenda actual; una plantilla o una copia de seguridad se suman a la biblioteca. */
+function applyImported(r: Imported): void {
+  const st = useStore.getState();
+  if (r.kind === 'design') {
+    st.setDesign(r.design);
+    st.setShowWelcome(false);
+    st.setShowLibrary(false);
+    st.setNotice(null);
+  } else if (r.kind === 'template') st.setNotice(t('file.templateAdded', { name: r.template.name }));
+  else st.setNotice(t('file.restored', { designs: r.designs, templates: r.templates }));
+}
+
 export async function openAnyFile(): Promise<void> {
   try {
     const r = await openFile();
-    if (!r) return;
-    const st = useStore.getState();
-    if (r.kind === 'design') {
-      st.setDesign(r.design);
-      st.setShowWelcome(false);
-      st.setShowLibrary(false);
-      st.setNotice(null);
-    } else if (r.kind === 'template') st.setNotice(t('file.templateAdded', { name: r.template.name }));
-    else st.setNotice(t('file.restored', { designs: r.designs, templates: r.templates }));
+    if (r) applyImported(r);
   } catch (e) {
     fail(e);
   }
+}
+
+/** Abre un archivo cuyo texto ya se tiene (uno soltado sobre la ventana, o el que pide el sistema al escritorio). */
+export async function openFromText(text: string): Promise<void> {
+  try {
+    applyImported(await importText(text));
+  } catch (e) {
+    fail(e);
+  }
+}
+
+/** ¿El archivo soltado puede ser una agenda, una plantilla o una copia de seguridad? */
+export const isPlannerFile = (f: Pick<File, 'name' | 'type'>): boolean => /\.json$/i.test(f.name) || f.type === 'application/json';
+
+/**
+ * Engancha el soltar archivos sobre la ventana: un archivo de agenda se abre. Devuelve la función que lo desengancha.
+ * Los `dragover` de otra cosa (texto, imágenes de la página) no se tocan.
+ */
+export function installFileDrop(): () => void {
+  const hasFiles = (e: DragEvent): boolean => Array.from(e.dataTransfer?.types ?? []).includes('Files');
+  const onOver = (e: DragEvent): void => {
+    if (hasFiles(e)) e.preventDefault();
+  };
+  const onDrop = (e: DragEvent): void => {
+    if (!hasFiles(e)) return;
+    e.preventDefault();
+    const file = Array.from(e.dataTransfer?.files ?? []).find(isPlannerFile);
+    if (file) void file.text().then(openFromText, fail);
+    else useStore.getState().setNotice(t('file.dropWhat'));
+  };
+  window.addEventListener('dragover', onOver);
+  window.addEventListener('drop', onDrop);
+  return () => {
+    window.removeEventListener('dragover', onOver);
+    window.removeEventListener('drop', onDrop);
+  };
 }
 
 export async function backupAll(): Promise<void> {

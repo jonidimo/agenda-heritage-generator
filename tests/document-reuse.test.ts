@@ -12,6 +12,7 @@ import { resolveThemeFor } from '../src/core/design/themes';
 import { AgendaDocument } from '../src/core/document';
 import { pageToSvg } from '../src/core/render/svg';
 import { openDocument } from './helpers/node-env';
+import { ov } from './helpers/overrides';
 
 /** Un documento chico (tres meses) para que la batería sea rápida. */
 function baseDesign(): Design {
@@ -118,14 +119,14 @@ describe('lo reutilizado es idéntico a lo calculado de nuevo', () => {
       'un ajuste de elemento por clase',
       (d, base) => {
         const p = pageOf(base, 'weekRight');
-        d.overrides.push({ pageType: p.type, pageKey: null, blockId: 'header.title', dx: 4, dy: 2, dw: 0, dh: 0, scale: 1, rotation: 0, opacity: 1, hidden: false });
+        d.overrides.push(ov({ pageType: p.type, pageKey: null, blockId: 'header.title', dx: 4, dy: 2, dw: 0, dh: 0, scale: 1, scaleY: null, deform: false, rotation: 0, opacity: 1, hidden: false }));
       },
     ],
     [
       'un ajuste de elemento en una página',
       (d, base) => {
         const p = pageOf(base, 'weekRight');
-        d.overrides.push({ pageType: p.type, pageKey: p.key, blockId: 'header.title', dx: 0, dy: 0, dw: 0, dh: 0, scale: 1, rotation: 0, opacity: 1, hidden: true });
+        d.overrides.push(ov({ pageType: p.type, pageKey: p.key, blockId: 'header.title', dx: 0, dy: 0, dw: 0, dh: 0, scale: 1, scaleY: null, deform: false, rotation: 0, opacity: 1, hidden: true }));
       },
     ],
     [
@@ -174,7 +175,7 @@ describe('qué se reutiliza', () => {
     const { base, build } = await setup();
     const type = pageOf(base, 'weekRight').type;
     const count = base.plan.pages.filter((x) => x.type === type).length;
-    const { reused } = build((d) => void d.overrides.push({ pageType: type, pageKey: null, blockId: 'header.title', dx: 3, dy: 0, dw: 0, dh: 0, scale: 1, rotation: 0, opacity: 1, hidden: false }));
+    const { reused } = build((d) => void d.overrides.push(ov({ pageType: type, pageKey: null, blockId: 'header.title', dx: 3, dy: 0, dw: 0, dh: 0, scale: 1, scaleY: null, deform: false, rotation: 0, opacity: 1, hidden: false })));
     for (let i = 0; i < reused.pageCount; i++) reused.page(i);
     expect(reused.stats.layouts).toBe(count);
     expect(reused.stats.reusedPages).toBe(reused.pageCount - count);

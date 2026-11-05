@@ -4,9 +4,13 @@ import type { Design } from '@core/design/schema';
 import { countryName } from '@core/holidays';
 import { monthNames, regionOf, regionWeekInfo } from '@core/calendar/locale';
 import { countryLang, homeCountry, LANGUAGES, langOf, localeFor, type Lang } from '@core/i18n';
-import { Archive, Copy, Download, FileUp, Plus, Trash2, X } from 'lucide-react';
+import { Archive, Copy, Download, Eye, FileUp, Plus, Trash2, X } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { UI_LANG_NAMES, uiText, useT } from '../i18n/ui';
+import { UI_LANG_NAMES, uiText, useT, type UiKey } from '../i18n/ui';
+import { showHiddenElements } from '../state/actions';
+import { currentDocument } from '../state/selectionContext';
+import { chordLabels } from '../state/shortcutHints';
+import { SHORTCUT_GROUPS, SHORTCUTS } from '../state/shortcuts';
 import { deleteDesign, deleteTemplate, exportDesignFile, listDesigns, listTemplates, loadDesign, saveDesign, type DesignMeta, type TemplateRecord } from '../state/persist';
 import { backupAll, openAnyFile } from '../state/fileActions';
 import { designFromTemplate, exportTemplateFile, importText, saveAsTemplate } from '../state/files';
@@ -493,6 +497,87 @@ export function LibraryDialog() {
         </Button>
       </div>
       <p className="mt-3 text-[11px] text-ink-soft">{t('lib.storageNote')}</p>
+    </Modal>
+  );
+}
+
+/** Los atajos de teclado, por grupo, generados del registro: lo que se lista es lo que existe. */
+export function ShortcutsDialog() {
+  const t = useT();
+  const setShow = useStore((s) => s.setShowShortcuts);
+  const groups = SHORTCUT_GROUPS.map((g) => ({ g, items: SHORTCUTS.filter((s) => s.group === g) })).filter((x) => x.items.length > 0);
+  return (
+    <Modal title={t('sc.title')} onClose={() => setShow(false)}>
+      <p className="mb-2 text-[12px] leading-snug text-ink-soft">{t('sc.intro')}</p>
+      <div className="grid gap-x-6 gap-y-3 sm:grid-cols-2">
+        {groups.map(({ g, items }) => (
+          <section key={g} aria-label={t(`sc.group.${g}`)}>
+            <h3 className="mb-1 text-[11px] font-extrabold tracking-[0.08em] uppercase">{t(`sc.group.${g}`)}</h3>
+            <dl className="space-y-1 text-[12.5px]">
+              {items.map((s) => (
+                <div key={s.id} className="flex items-start justify-between gap-3">
+                  <dt className="min-w-0">{t(`sc.${s.id}` as UiKey)}</dt>
+                  <dd className="shrink-0 text-right text-ink-soft tabular-nums">{chordLabels(s.id, t).join('  ·  ')}</dd>
+                </div>
+              ))}
+            </dl>
+          </section>
+        ))}
+      </div>
+      <p className="mt-3 text-[11.5px] leading-snug text-ink-soft">{t('sc.browserNote')}</p>
+    </Modal>
+  );
+}
+
+/** Los elementos que se ocultaron en la página actual, para devolverlos de a uno o todos juntos. */
+export function HiddenDialog() {
+  const t = useT();
+  const setShow = useStore((s) => s.setShowHidden);
+  const design = useStore((s) => s.design);
+  const pageIndex = useStore((s) => s.pageIndex);
+  const found = useMemo(() => {
+    const doc = design ? currentDocument() : null;
+    if (!doc) return null;
+    const index = Math.min(pageIndex, doc.pageCount - 1);
+    try {
+      return { page: doc.page(index), items: doc.hidden(index) };
+    } catch {
+      return null;
+    }
+  }, [design, pageIndex]);
+  const items = found?.items ?? [];
+  // Al devolver el último, el diálogo ya no tiene nada que mostrar.
+  useEffect(() => {
+    if (found && items.length === 0) setShow(false);
+  }, [found, items.length, setShow]);
+  if (!found) return null;
+  const where = (scope: 'page' | 'type'): string => (scope === 'page' ? t('hid.page') : t('hid.type'));
+  return (
+    <Modal title={t('hid.title')} onClose={() => setShow(false)}>
+      <ul className="space-y-1.5" data-testid="hidden-list">
+        {items.map((h) => (
+          <li key={`${h.kind}:${h.id}`} className="flex items-center justify-between gap-3 text-[12.5px]">
+            <span className="min-w-0">
+              <b className="break-words">{h.label}</b>
+              <span className="block text-[11.5px] text-ink-soft">
+                {h.kind === 'watermark' ? `${t('hid.watermark')} · ` : ''}
+                {where(h.scope)}
+              </span>
+            </span>
+            <Button onClick={() => showHiddenElements(found.page, [h])}>
+              <Eye size={13} /> {t('hid.show')}
+            </Button>
+          </li>
+        ))}
+      </ul>
+      <div className="mt-3 flex justify-end gap-2">
+        <Button variant="outline" onClick={() => showHiddenElements(found.page, items)}>
+          {t('hid.showAll')}
+        </Button>
+        <Button variant="primary" onClick={() => setShow(false)}>
+          {t('common.close')}
+        </Button>
+      </div>
     </Modal>
   );
 }

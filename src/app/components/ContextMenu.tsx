@@ -15,6 +15,8 @@ export interface MenuItem {
   disabled?: boolean;
   danger?: boolean;
   checked?: boolean;
+  /** Las teclas del atajo, a la derecha. */
+  hint?: string;
   /** Título de un grupo de opciones. */
   heading?: string;
   separator?: boolean;
@@ -123,6 +125,7 @@ export function ContextMenuHost() {
           >
             <span className="flex w-4 shrink-0 justify-center">{it.checked ? <Check size={14} /> : it.icon}</span>
             <span className="min-w-0 flex-1 truncate">{it.label}</span>
+            {it.hint && <span className="shrink-0 pl-3 text-[11px] text-ink-soft tabular-nums">{it.hint}</span>}
           </button>
         ),
       )}

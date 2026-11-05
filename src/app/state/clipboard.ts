@@ -1,15 +1,20 @@
 /**
- * Copiar, cortar, pegar y duplicar elementos propios. Usa los eventos `copy`, `cut` y `paste` del
- * documento (el sistema entrega el portapapeles sin pedir permisos) y guarda además una copia en
- * memoria, así los menús funcionan también cuando el navegador no deja leer el portapapeles. Los
- * elementos del programa no se copian: se ajustan en su lugar. Mientras se escribe en un campo, las
- * teclas son del campo.
+ * Copiar, cortar, pegar y duplicar elementos. Usa los eventos `copy`, `cut` y `paste` del documento
+ * (el sistema entrega el portapapeles sin pedir permisos) y guarda además una copia en memoria, así
+ * los menús funcionan también cuando el navegador no deja leer el portapapeles. Un elemento del
+ * programa (un nombre de mes, un marco, un filete) se copia como elemento propio: un texto editable o
+ * un dibujo (ver `snapshot.ts`); el original no cambia. Mientras se escribe en un campo, las teclas
+ * son del campo.
  */
 import { CustomBlockZ, type CustomBlock } from '@core/design/schema';
 import type { Block, PageModel } from '@core/layout/prims';
 import { z } from 'zod';
-import { customBlocksOf, duplicateCustomBlock, hideBlocks, pasteCustomBlocks } from './actions';
-import { documentFor } from './doc';
+import { newId } from '@core/util/hash';
+import { resolveStrings } from '@core/i18n';
+import { customBlockFromBlock } from '@core/document/snapshot';
+import { customBlocksOf, hideBlocks, pasteCustomBlocks } from './actions';
+import { isTyping } from './typing';
+import { selectionContext } from './selectionContext';
 import { useStore } from './store';
 
 /** Formato propio del portapapeles: lleva los elementos completos, no solo su texto. */
@@ -21,30 +26,25 @@ const PayloadZ = z.object({ app: z.literal('heritage-studio'), blocks: z.array(C
 /** Lo último que se copió en esta ventana (sirve a los menús y cuando el sistema no deja leer). */
 let internal: CustomBlock[] = [];
 
-const typing = (t: EventTarget | null): boolean => {
-  const el = t as HTMLElement | null;
-  return Boolean(el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable));
-};
-
-/** La página de la selección y sus bloques seleccionados; si no hay selección, la página actual. */
-function selectionContext(): { page: PageModel; selected: Block[] } | null {
-  const s = useStore.getState();
-  if (!s.design) return null;
-  const doc = documentFor(s.design, s.resVersion).doc;
-  if (!doc) return null;
-  const index = s.selection ? doc.plan.pages.findIndex((p) => p.key === s.selection!.pageKey) : s.pageIndex;
-  if (index < 0 || index >= doc.pageCount) return null;
-  const page = doc.page(index);
-  return { page, selected: page.blocks.filter((b) => s.selectedIds.includes(b.id)) };
-}
-
-/** Los elementos propios seleccionados (con la página donde están). */
+/**
+ * Lo seleccionado como elementos propios, con la página donde está: los propios tal cual y los del
+ * programa convertidos (un texto, o un dibujo). Las marcas de agua y lo que no se puede editar no se copian.
+ */
 function selectedCopies(): { page: PageModel; blocks: Block[]; copies: CustomBlock[] } | null {
   const ctx = selectionContext();
   const design = useStore.getState().design;
   if (!ctx || !design) return null;
-  const blocks = ctx.selected.filter((b) => b.role === 'custom');
-  const copies = customBlocksOf(design, blocks).map((c) => JSON.parse(JSON.stringify(c)) as CustomBlock);
+  const blocks = ctx.selected.filter((b) => b.editable && b.role !== 'watermark');
+  const snap = { fonts: ctx.doc.ctx.fonts, design, strings: resolveStrings(design.locale) };
+  const copies: CustomBlock[] = [];
+  for (const b of blocks) {
+    if (b.role === 'custom') {
+      for (const c of customBlocksOf(design, [b])) copies.push(JSON.parse(JSON.stringify(c)) as CustomBlock);
+    } else {
+      const c = customBlockFromBlock(snap, ctx.page, b, newId('el'));
+      if (c) copies.push(c);
+    }
+  }
   return copies.length > 0 ? { page: ctx.page, blocks, copies } : null;
 }
 
@@ -91,40 +91,34 @@ export function pasteSelection(data?: DataTransfer | null): boolean {
   return true;
 }
 
-/** Duplica los elementos propios seleccionados (cada copia, corrida 5 mm). */
+/** Duplica lo seleccionado en la misma página (cada copia, corrida 5 mm). Un elemento de una sola página sigue siéndolo. */
 export function duplicateSelection(): boolean {
   const got = selectedCopies();
   if (!got) return false;
-  for (const b of got.blocks) duplicateCustomBlock(got.page, b);
+  pasteCustomBlocks(got.page, got.copies, got.copies.every((c) => c.pageKey !== null) ? 'page' : useStore.getState().scope);
   return true;
 }
 
-/** Engancha el portapapeles y Ctrl/⌘+D al documento. Devuelve la función que lo desengancha. */
+/** Engancha el portapapeles del sistema (copiar, cortar y pegar) al documento; Ctrl/⌘+D es un atajo del registro (`shortcuts.ts`). Devuelve la función que lo desengancha. */
 export function installClipboard(): () => void {
   const onCopy = (e: ClipboardEvent): void => {
-    if (typing(e.target)) return;
+    if (isTyping(e.target)) return;
     if (copySelection(e.clipboardData)) e.preventDefault();
   };
   const onCut = (e: ClipboardEvent): void => {
-    if (typing(e.target)) return;
+    if (isTyping(e.target)) return;
     if (cutSelection(e.clipboardData)) e.preventDefault();
   };
   const onPaste = (e: ClipboardEvent): void => {
-    if (typing(e.target)) return;
+    if (isTyping(e.target)) return;
     if (pasteSelection(e.clipboardData)) e.preventDefault();
-  };
-  const onKey = (e: KeyboardEvent): void => {
-    if (typing(e.target) || !(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey || e.key.toLowerCase() !== 'd') return;
-    if (duplicateSelection()) e.preventDefault();
   };
   document.addEventListener('copy', onCopy);
   document.addEventListener('cut', onCut);
   document.addEventListener('paste', onPaste);
-  window.addEventListener('keydown', onKey);
   return () => {
     document.removeEventListener('copy', onCopy);
     document.removeEventListener('cut', onCut);
     document.removeEventListener('paste', onPaste);
-    window.removeEventListener('keydown', onKey);
   };
 }

@@ -6,6 +6,8 @@
 import { z } from 'zod';
 import { normalizeColor } from '../util/color';
 import { LINE_PATTERNS, LINE_USES, pruneTokens } from './themes';
+import { BLEND_MODES } from './blend';
+import { ELEMENT_KINDS } from './customBlocks';
 
 // Sin compilación a medida: zod decide si compilar sus validadores probando `new Function`, y la
 // política de seguridad de la aplicación prohíbe evaluar texto como código, así que el navegador
@@ -39,11 +41,24 @@ const clampTo = (min: number, max: number) => (v: number): number => Math.min(ma
 const num = (def: number, min = -10_000, max = 10_000) => z.number().meta({ minimum: min, maximum: max }).transform(clampTo(min, max)).default(def);
 const intIn = (min: number, max: number) => z.number().meta({ minimum: min, maximum: max, multipleOf: 1 }).transform((v) => clampTo(min, max)(Math.round(v)));
 
+const MONTH_KEY = /^\d{4}-(0[1-9]|1[0-2])$/;
+
 export const CalendarZ = z
   .object({
     year: intIn(1900, 2200).default(new Date().getFullYear() + 1),
     startMonth: intIn(1, 12).default(1),
     monthCount: intIn(1, 24).default(12),
+    /**
+     * Meses que no entran en la agenda (`2027-03`): no tienen páginas, ni pestañas, ni enlaces. El
+     * calendario anual los sigue mostrando, porque es del año y no de la agenda. Para sacar el primero
+     * o el último mes de la agenda conviene cambiar `startMonth` o `monthCount`.
+     */
+    hiddenMonths: z
+      .array(z.string().meta({ pattern: '^\\d{4}-(0[1-9]|1[0-2])$', description: 'Mes, como 2027-03' }))
+      .max(48)
+      .default([])
+      // Un valor que no es un mes se descarta (un archivo ajeno no impide abrir la agenda).
+      .transform((l) => [...new Set(l.filter((k) => MONTH_KEY.test(k)))].sort()),
     weekStart: z.enum(['auto', 'monday', 'sunday', 'saturday']).default('monday'),
     weekend: z.union([z.literal('auto'), z.array(intIn(1, 7))]).default('auto'),
     numbering: z.enum(['iso', 'simple', 'none']).default('iso'),
@@ -92,6 +107,11 @@ export const PaperZ = z
 
 export const BindingZ = z
   .object({
+    /**
+     * Para qué se hace la agenda. `print`: se imprime y se encuaderna (costura, recortes, marcas, relleno
+     * de cuadernillos). `screen`: se lee en pantalla (tableta, lector): las mismas páginas sin nada de eso.
+     */
+    target: z.enum(['print', 'screen']).default('print'),
     method: z.enum(['sewn', 'saddle', 'cut-stack', 'single']).default('sewn'),
     signature: z
       .object({
@@ -262,7 +282,7 @@ export const CustomBlockZ = z.object({
   id: z.string(),
   pageType: z.string(),
   pageKey: z.string().nullable().default(null),
-  kind: z.enum(['text', 'image', 'lines', 'dots', 'grid', 'rect', 'line']),
+  kind: z.enum(['text', 'image', 'lines', 'dots', 'grid', 'rect', 'line', 'drawing', ...ELEMENT_KINDS]),
   x: z.number().transform(clampTo(BLOCK_BOUNDS.pos.min, BLOCK_BOUNDS.pos.max)),
   y: z.number().transform(clampTo(BLOCK_BOUNDS.pos.min, BLOCK_BOUNDS.pos.max)),
   w: z.number().transform(clampTo(BLOCK_BOUNDS.size.min, BLOCK_BOUNDS.size.max)),
@@ -310,9 +330,25 @@ export const BlockOverrideZ = z.object({
   dw: num(0, -1000, 1000),
   dh: num(0, -1000, 1000),
   scale: num(1, 0.05, 20),
+  /**
+   * Escala vertical cuando es distinta de la horizontal (`scale`): deforma el elemento. Sin valor, la
+   * misma que `scale` (se escala sin deformar).
+   */
+  scaleY: z.number().meta({ minimum: 0.05, maximum: 20 }).transform(clampTo(0.05, 20)).nullable().default(null),
+  /**
+   * Permitir deformar: los tiradores estiran el dibujo (escala distinta en cada eje) en lugar de
+   * reacomodar su contenido en la caja nueva.
+   */
+  deform: z.boolean().default(false),
   rotation: num(0, -360, 360),
   opacity: num(1, 0, 1),
   hidden: z.boolean().default(false),
+  /** Orden de apilado propio (mayor, más arriba), en lugar del que le da la sección; sin valor, el de siempre. */
+  layer: z.number().meta({ minimum: -1000, maximum: 1000 }).transform(clampTo(-1000, 1000)).nullable().default(null),
+  /** Nombre propio del elemento (en el panel de capas y en las avisos); sin valor, el de la sección. */
+  label: z.string().transform((v) => v.slice(0, 120)).nullable().default(null),
+  /** Cómo se fusiona con lo que tiene debajo. */
+  blend: z.enum(BLEND_MODES).catch('normal').default('normal'),
 });
 export type BlockOverride = z.infer<typeof BlockOverrideZ>;
 

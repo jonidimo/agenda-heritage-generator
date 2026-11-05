@@ -1,15 +1,16 @@
 import clsx from 'clsx';
-import { BookMarked, CalendarDays, Image as ImageIcon, LayoutList, Palette, Printer, SlidersHorizontal, UserRound, X } from 'lucide-react';
+import { BookMarked, CalendarDays, Image as ImageIcon, LayoutList, Palette, Printer, SlidersHorizontal, Type, UserRound, X } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import type { AgendaDocument } from '@core/document';
 import { Canvas } from './components/canvas/Canvas';
 import { ContextMenuHost } from './components/ContextMenu';
-import { AboutDialog, LibraryDialog, SaveTemplateDialog, WelcomeDialog } from './components/Dialogs';
+import { AboutDialog, HiddenDialog, LibraryDialog, SaveTemplateDialog, ShortcutsDialog, WelcomeDialog } from './components/Dialogs';
 import { ErrorBoundary, ViewError } from './components/ErrorBoundary';
-import { openAnyFile, saveCurrent } from './state/fileActions';
+import { installFileDrop, openAnyFile } from './state/fileActions';
 import { Inspector } from './components/Inspector';
 import { Navigator } from './components/Navigator';
 import { AssetsPanel } from './components/panels/AssetsPanel';
+import { FontsPanel } from './components/panels/FontsPanel';
 import { CalendarPanel } from './components/panels/CalendarPanel';
 import { MethodsPanel } from './components/panels/MethodsPanel';
 import { PersonaPanel } from './components/panels/PersonaPanel';
@@ -25,8 +26,9 @@ import { useDocument } from './state/doc';
 import { collectUnusedAssets, listDesigns, loadDesign } from './state/persist';
 import { resources } from './state/resources';
 import { installClipboard } from './state/clipboard';
+import { installShortcuts } from './state/shortcuts';
 import { PANEL_LIMITS } from './state/prefs';
-import { flushSave, useStore, ZOOM, type Panel } from './state/store';
+import { activeView, flushSave, useStore, type Panel } from './state/store';
 import { DESKTOP_BREAKPOINT, useUiLayout } from './state/uiScale';
 import { jumpToPage } from './state/navigation';
 
@@ -37,6 +39,7 @@ const TABS: Array<{ id: Panel; key: UiKey; icon: React.ReactNode }> = [
   { id: 'persona', key: 'tab.persona', icon: <UserRound size={16} /> },
   { id: 'calendar', key: 'tab.calendar', icon: <CalendarDays size={16} /> },
   { id: 'assets', key: 'tab.assets', icon: <ImageIcon size={16} /> },
+  { id: 'fonts', key: 'tab.fonts', icon: <Type size={16} /> },
   { id: 'print', key: 'tab.print', icon: <Printer size={16} /> },
 ];
 
@@ -44,10 +47,11 @@ function Sidebar() {
   const t = useT();
   const panel = useStore((s) => s.panel);
   const setPanel = useStore((s) => s.setPanel);
+  const mode = useStore((s) => s.mode);
   return (
     <aside className="flex h-full min-h-0 w-full flex-col border-r border-line bg-paper">
       <nav className="scroll-thin flex shrink-0 gap-0.5 overflow-x-auto border-b border-line px-1.5 pt-1.5" role="tablist">
-        {TABS.map((tab) => (
+        {TABS.filter((tab) => tab.id !== 'print' || mode === 'print').map((tab) => (
           <button
             key={tab.id}
             type="button"
@@ -69,6 +73,7 @@ function Sidebar() {
         {panel === 'persona' && <PersonaPanel />}
         {panel === 'calendar' && <CalendarPanel />}
         {panel === 'assets' && <AssetsPanel />}
+        {panel === 'fonts' && <FontsPanel />}
         {panel === 'print' && <PrintPanel />}
       </div>
     </aside>
@@ -78,7 +83,7 @@ function Sidebar() {
 /** Vista central: si una página o la hoja no se pueden dibujar, el resto del editor sigue andando. */
 function CanvasArea({ doc, live }: { doc: AgendaDocument; live: AgendaDocument }) {
   const pageIndex = useStore((s) => s.pageIndex);
-  const view = useStore((s) => s.view);
+  const view = useStore(activeView);
   return (
     <ErrorBoundary resetKeys={[live, pageIndex, view]} fallback={(e) => <ViewError error={e} />}>
       <Canvas committed={doc} live={live} />
@@ -107,11 +112,17 @@ export function App() {
   const showLibrary = useStore((s) => s.showLibrary);
   const showSaveTemplate = useStore((s) => s.showSaveTemplate);
   const showAbout = useStore((s) => s.showAbout);
+  const showShortcuts = useStore((s) => s.showShortcuts);
+  const showHidden = useStore((s) => s.showHidden);
   const setShowWelcome = useStore((s) => s.setShowWelcome);
   const sidebarOpen = useStore((s) => s.sidebarOpen);
   const setSidebarOpen = useStore((s) => s.setSidebarOpen);
   const selection = useStore((s) => s.selection);
   const notice = useStore((s) => s.notice);
+  const aiNotice = useStore((s) => s.aiNotice);
+  const setAiNotice = useStore((s) => s.setAiNotice);
+  const revision = useStore((s) => s.revision);
+  const canUndo = useStore((s) => s.past.length > 0);
   const updateReady = useStore((s) => s.updateReady);
   const setNotice = useStore((s) => s.setNotice);
   const bump = useStore((s) => s.bumpResources);
@@ -235,48 +246,11 @@ export function App() {
   // Sin fuentes no hay páginas: en lugar de «Cargando…» para siempre, el motivo y un botón para reintentar.
   const noFonts = ready && !doc && resources.fonts.list().length === 0 && resources.errors.length > 0;
 
-  // Atajos globales: deshacer / rehacer.
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent): void => {
-      const tag = (e.target as HTMLElement | null)?.tagName;
-      if (tag === 'INPUT' || tag === 'TEXTAREA') return;
-      const mod = e.ctrlKey || e.metaKey;
-      if (mod && e.key.toLowerCase() === 'z') {
-        if (e.shiftKey) useStore.getState().redo();
-        else useStore.getState().undo();
-        e.preventDefault();
-      } else if (mod && e.key.toLowerCase() === 'y') {
-        useStore.getState().redo();
-        e.preventDefault();
-      } else if (mod && e.key.toLowerCase() === 's') {
-        // Ctrl+S guarda en el archivo elegido (Ctrl+Mayús+S: «Guardar como»).
-        void saveCurrent(e.shiftKey);
-        e.preventDefault();
-      } else if (mod && e.key.toLowerCase() === 'o') {
-        void openAnyFile();
-        e.preventDefault();
-      }
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, []);
+  // Todos los atajos de teclado, en un solo oyente (ver `state/shortcuts.ts`).
+  useEffect(() => installShortcuts(), []);
 
-  // Zoom del lienzo con Ctrl/⌘ y +, − o 0 (también dentro de un campo de texto: ahí no significan nada).
-  // El navegador y el menú de la aplicación de escritorio no los usan para otra cosa.
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent): void => {
-      // Alt con Ctrl es AltGr en varias distribuciones de teclado: se usa para escribir caracteres.
-      if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
-      const { zoomBy, zoomFit } = useStore.getState();
-      if (e.key === '+' || e.key === '=') zoomBy(ZOOM.step);
-      else if (e.key === '-' || e.key === '_') zoomBy(1 / ZOOM.step);
-      else if (e.key === '0') zoomFit();
-      else return;
-      e.preventDefault();
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, []);
+  // Soltar un archivo de agenda sobre la ventana lo abre.
+  useEffect(() => installFileDrop(), []);
 
   return (
     <div className="flex h-full flex-col">
@@ -314,6 +288,20 @@ export function App() {
               <span className="min-w-0 flex-1">{t('notice.updated')}</span>
               <button type="button" className="rounded-md bg-accent px-2 py-0.5 font-semibold text-white" onClick={() => void flushSave().then(() => location.reload())}>
                 {t('notice.reload')}
+              </button>
+            </div>
+          )}
+          {aiNotice && (
+            <div role="status" data-testid="ai-notice" className="flex items-center gap-2 border-b border-line bg-accent-soft px-3 py-1.5 text-[12px] text-ink">
+              <span className="min-w-0 flex-1 break-words">{aiNotice.text}</span>
+              {/* «Deshacer» solo mientras lo último que cambió sea lo del modelo: si no, desharía otra cosa. */}
+              {aiNotice.revision === revision && canUndo && (
+                <button type="button" className="rounded-md bg-accent px-2 py-0.5 font-semibold text-white" onClick={() => useStore.getState().undo()}>
+                  {t('live.undo')}
+                </button>
+              )}
+              <button type="button" className="shrink-0 rounded p-0.5 hover:bg-black/5" aria-label={t('common.close')} onClick={() => setAiNotice(null)}>
+                <X size={14} />
               </button>
             </div>
           )}
@@ -393,6 +381,8 @@ export function App() {
       {showLibrary && <LibraryDialog />}
       {showSaveTemplate && <SaveTemplateDialog />}
       {showAbout && <AboutDialog />}
+      {showShortcuts && <ShortcutsDialog />}
+      {showHidden && <HiddenDialog />}
     </div>
   );
 }

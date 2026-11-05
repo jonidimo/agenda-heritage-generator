@@ -1,35 +1,28 @@
-import { holidayName } from '@core/holidays';
-import { langOf, listStringKeys, resolveStrings } from '@core/i18n';
-import { facesForDesign } from '@core/resources';
-import { PAGE_TYPES } from '@core/sections/registry';
-import { detectFaceMeta } from '@core/text/fonts';
-import { openFont } from '@core/text/fontkit';
+import { assetUses, removeAssetFrom, type AssetUse } from '@core/design/assetUse';
 import { newId } from '@core/util/hash';
-import { FilePlus2, Image as ImageIcon, Stamp, Trash2, Type, Upload } from 'lucide-react';
-import { useEffect, useMemo, useReducer, useRef, useState } from 'react';
-import { sectionName, useT } from '../../i18n/ui';
+import { FilePlus2, Image as ImageIcon, Stamp, Trash2, Upload } from 'lucide-react';
+import { useEffect, useReducer, useRef, useState } from 'react';
+import { sectionName, useT, type UiKey } from '../../i18n/ui';
 import { assetHref, onAssetUrlsChange } from '../../state/assetUrls';
 import { customPageHere } from '../../state/customPages';
 import { useDocument } from '../../state/doc';
-import { saveUserFont } from '../../state/persist';
+import { jumpToPage } from '../../state/navigation';
 import { addAssetFiles } from '../../state/uploads';
 import { resources } from '../../state/resources';
 import { useStore } from '../../state/store';
 import { WatermarkFields } from '../Inspector';
 import { Badge, Button, Field, Group, Select, Toggle } from '../ui';
+import { PAGE_TYPES } from '@core/sections/registry';
 
 export function AssetsPanel() {
   const t = useT();
   const design = useStore((s) => s.design)!;
   const update = useStore((s) => s.update);
-  const bump = useStore((s) => s.bumpResources);
   const pageIndex = useStore((s) => s.pageIndex);
   const setGoToKey = useStore((s) => s.setGoToKey);
   const { doc } = useDocument();
   const fileRef = useRef<HTMLInputElement | null>(null);
-  const fontRef = useRef<HTMLInputElement | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const resVersion = useStore((s) => s.resVersion);
   // Las vistas previas de PDF llegan después: al estar listas, la lista se vuelve a dibujar.
   const [, repaint] = useReducer((x: number) => x + 1, 0);
   useEffect(() => onAssetUrlsChange(repaint), []);
@@ -41,44 +34,42 @@ export function AssetsPanel() {
     if (r.messages.length > 0) setError(r.messages.join(' '));
   };
 
-  const onFonts = async (files: FileList | null): Promise<void> => {
-    if (!files) return;
-    setError(null);
-    for (const file of Array.from(files)) {
-      try {
-        const bytes = new Uint8Array(await file.arrayBuffer());
-        const meta = detectFaceMeta(openFont(bytes));
-        const id = newId('font');
-        resources.fonts.register(bytes, { ...meta, source: 'user', file: id });
-        resources.userFontBytes.set(id, { bytes, spec: meta });
-        await saveUserFont(id, bytes, meta);
-        resources.bump();
-        bump(resources.version);
-      } catch (err) {
-        setError(`${file.name}: ${(err as Error).message}`);
-      }
-    }
-  };
-
   /**
    * Quita la imagen de esta agenda junto con lo que la usaba (en un solo paso que se puede
    * deshacer). Los bytes quedan guardados: otra agenda (p. ej. la del año anterior) puede
    * usarlos, y los que ya nadie usa se limpian al abrir la aplicación.
    */
-  const removeAsset = (id: string): void => {
-    update((d) => {
-      d.assets = d.assets.filter((a) => a.id !== id);
-      d.watermarks = d.watermarks.filter((w) => w.assetId !== id);
-      if (d.cover.imageAssetId === id) d.cover.imageAssetId = null;
-      d.customBlocks = d.customBlocks.filter((c) => !(c.kind === 'image' && c.props.assetId === id));
-      for (const cp of d.customPages) if (cp.content.assetId === id) cp.content.assetId = null;
-    });
-  };
+  const removeAsset = (id: string): void => update((d) => removeAssetFrom(d, id));
 
   const addWatermark = (assetId: string): void =>
     update((d) =>
       void d.watermarks.push({ id: newId('wm'), enabled: true, assetId, scope: ['all'], exclude: ['monthCover', 'titlePage', 'custom'], excludePages: [], hAnchor: 'outer', vAnchor: 'bottom', dx: 13, dy: 5, width: 14, opacity: 1, rotation: 0, mirrorOnVerso: true, layer: 'above', minStrokePt: 0.3 }),
     );
+
+  /** A qué página lleva un uso de la imagen (la primera donde aparece), o `undefined` si no está en una página. */
+  const pageOf = (u: AssetUse): number | undefined => {
+    const pages = doc?.plan.pages ?? [];
+    const idx = (match: (p: (typeof pages)[number]) => boolean): number | undefined => pages.find(match)?.index;
+    if (u.kind === 'block') return u.pageKey ? idx((p) => p.key === u.pageKey) : idx((p) => p.type === u.pageType);
+    if (u.kind === 'page') return idx((p) => p.key === `custom:${u.id}`);
+    return undefined;
+  };
+  const describeUse = (u: AssetUse): string => {
+    switch (u.kind) {
+      case 'watermark':
+        return t('assets.use.watermark');
+      case 'cover':
+        return t('assets.use.cover');
+      case 'block':
+        return t('assets.use.block', { name: u.label || t('assets.use.element') });
+      case 'page':
+        return t('assets.use.page', { name: u.title || t('assets.use.untitled') });
+      case 'template':
+        return t('assets.use.template', { name: u.title || t('assets.use.untitled') });
+      case 'ornament':
+        return t(`assets.use.ornament.${u.where}` as UiKey);
+    }
+  };
 
   /** Página propia con esta imagen, después de la página actual (y se va a ella). */
   const addAsPage = (assetId: string): void => {
@@ -86,36 +77,6 @@ export function AssetsPanel() {
     update((d) => void d.customPages.push(cp));
     setGoToKey(`custom:${cp.id}`);
   };
-
-  // Cobertura de caracteres: todos los textos de la agenda (incluidos feriados, textos propios y
-  // métodos propios) frente a cada cara que la agenda usa. Falta un carácter si le falta a alguna cara.
-  const coverage = useMemo(() => {
-    const strings = resolveStrings(design.locale, design.persona.labels);
-    const data = resources.holidaysFor(design.holidays.country);
-    // Los nombres de feriados en el idioma en que se van a imprimir.
-    const hlang = design.holidays.language === 'auto' ? langOf(design.locale) : design.holidays.language;
-    const holidayNames = data ? data.dict.map((_, i) => holidayName(data, i, hlang)) : [];
-    const own = [
-      ...design.customBlocks.map((c) => String(c.props.text ?? '')),
-      ...design.customPages.flatMap((c) => [c.title, c.content.text]),
-      ...design.methods.custom.flatMap((m) => [m.name, m.text, m.evidenceText]),
-      ...design.holidays.added.map((h) => h.name),
-      ...Object.values(design.holidays.renamed),
-    ];
-    const text = [...listStringKeys(strings).map((r) => r.value), design.persona.name, design.persona.title, design.persona.dedication, ...design.persona.phrases, ...design.personalDates.map((p) => p.label), ...holidayNames, ...own].join(' ');
-    const cps = [...new Set(Array.from(text).map((c) => c.codePointAt(0)!))].filter((cp) => cp > 32);
-    const used = new Map(facesForDesign(design).map((spec) => {
-      const face = resources.fonts.resolveWithFallback(spec);
-      return [face.key, face] as const;
-    }));
-    const out = new Map<string, string[]>();
-    for (const f of used.values()) {
-      const missing = cps.filter((cp) => !f.font.hasGlyphForCodePoint(cp)).map((cp) => String.fromCodePoint(cp));
-      out.set(f.family, [...new Set([...(out.get(f.family) ?? []), ...missing])]);
-    }
-    return out;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [design, resVersion]);
 
   return (
     <div>
@@ -154,6 +115,27 @@ export function AssetsPanel() {
                     {a.kind === 'raster' && info && `${info.pxWidth}×${info.pxHeight}px`}
                     {dpi !== null && <span className={dpi < 300 ? 'text-warn' : ''}> · {t('assets.dpiAt', { dpi, mm: 100 })}</span>}
                   </div>
+                  {(() => {
+                    const uses = a.builtin ? [] : assetUses(design, a.id);
+                    return (
+                      <ul className="mt-1 space-y-0.5" data-testid="asset-uses" data-asset={a.id}>
+                        {uses.length === 0 && !a.builtin && <li className="text-ink-soft">{t('assets.unused')}</li>}
+                        {uses.map((u, i) => {
+                          const at = pageOf(u);
+                          return (
+                            <li key={i} className="flex items-center justify-between gap-2 text-ink-soft">
+                              <span className="min-w-0 truncate">{describeUse(u)}</span>
+                              {at !== undefined && (
+                                <button type="button" className="shrink-0 text-accent underline" onClick={() => jumpToPage(at)}>
+                                  {t('assets.go')}
+                                </button>
+                              )}
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    );
+                  })()}
                   <div className="mt-1 flex flex-wrap gap-1">
                     <Button variant="ghost" onClick={() => addWatermark(a.id)}>
                       <Stamp size={13} /> {t('assets.useAsWatermark')}
@@ -167,6 +149,7 @@ export function AssetsPanel() {
                     {!a.builtin && (
                       <Button variant="ghost" onClick={() => removeAsset(a.id)}>
                         <Trash2 size={13} />
+                        <span className="sr-only">{t('assets.remove')}</span>
                       </Button>
                     )}
                   </div>
@@ -211,36 +194,6 @@ export function AssetsPanel() {
             <WatermarkFields id={wm.id} />
           </div>
         ))}
-      </Group>
-
-      <Group title={t('assets.fonts')}>
-        <p className="pb-2 text-[11.5px] leading-snug text-ink-soft">{t('assets.fontsHelp')}</p>
-        <input
-          ref={fontRef}
-          type="file"
-          multiple
-          accept=".ttf,.otf,.woff,.woff2,font/*"
-          className="hidden"
-          onChange={(e) => {
-            const input = e.target;
-            void onFonts(input.files).finally(() => (input.value = ''));
-          }}
-        />
-        <Button onClick={() => fontRef.current?.click()}>
-          <Type size={14} /> {t('assets.uploadFont')}
-        </Button>
-        <ul className="mt-2 space-y-1">
-          {[...new Set([...(resources.manifest?.families.map((f) => f.family) ?? []), ...resources.fonts.families()])].map((fam) => {
-            const missing = coverage.get(fam);
-            const user = resources.fonts.facesOf(fam).some((f) => f.source === 'user');
-            return (
-              <li key={fam} className="text-[12px]">
-                <span className="font-semibold">{fam}</span> <Badge>{user ? t('assets.user') : t('assets.builtin')}</Badge>
-                {missing && (missing.length === 0 ? <span className="ml-1 text-[11px] text-accent">✓ {t('assets.coverageOk')}</span> : <span className="ml-1 text-[11px] text-warn">{t('assets.missing', { chars: missing.slice(0, 20).join(' ') })}</span>)}
-              </li>
-            );
-          })}
-        </ul>
       </Group>
 
       <Group title={t('cover.title')} defaultOpen={false}>

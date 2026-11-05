@@ -195,7 +195,7 @@ export function duplicateForYear(d: Design, year: number): Design {
     ...d,
     id: newId('agenda'),
     name: d.name.replace(String(d.calendar.year), String(year)),
-    calendar: { ...d.calendar, year },
+    calendar: { ...d.calendar, year, hiddenMonths: d.calendar.hiddenMonths.map((k) => shiftKeyYears(k, delta)) },
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
     // Los feriados agregados o quitados a mano son del año anterior (puentes por decreto).

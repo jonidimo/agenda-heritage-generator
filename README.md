@@ -51,6 +51,8 @@ instead, see [Run it](#run-it).
 - **Preflight** finds text that does not fit, texts that overlap, anything outside the
   page or in the printer's unprintable margin, missing characters in a font and images
   with too little resolution.
+- **Design and Print modes**: *Design* is for the page, spread and whole book; *Print* adds the printed-sheet view and the print panel, and draws on every page the area the printer does not print and the binding margin.
+- **Destination**: a planner made to be **read on screen** drops the binding margin, trims, marks and signature filler pages; its pages keep their size and it exports page by page, with links. You can switch back to *Print and bind* at any time.
 
 ### Edit with the mouse
 
@@ -91,6 +93,12 @@ instead, see [Run it](#run-it).
   into a grid that finds their rows and columns.
 - **Lines, dots or grid per page type or per page**: line spacing, horizontal and
   vertical dot spacing, dot size and line weight.
+- **Scale and deform**: every element has eight handles that reflow its content in the new box; the scale is a separate slider, and **Allow deforming** stretches the drawing in any direction instead.
+- **Copy the planner's own elements** (Ctrl+C on a month name, a frame, a table…) and paste an editable element of your own: text stays editable text; the rest becomes a drawing that keeps its line weights.
+- **Nine more kinds of element**: table, checklist, habit tracker, finance lines, mini calendar (its days link to their pages), quadrants, notes, day schedule and rating, each with its own fields.
+- **Layers**: a panel lists the page's elements from top to bottom; raise, lower, send to the back, rename, hide, and blend with what is underneath (multiply, screen, darken, lighten). Ctrl+↑ and Ctrl+↓ move the chosen element.
+- **Hidden elements are never lost**: Edit → *Show hidden elements* lists them and brings each one back. **Zoom to the selection** with Ctrl+Shift+2; the page footer counts the warnings of the current page, and thumbnails show a dot.
+- **Keyboard shortcuts** for everything, listed in the app (F1) and beside each menu item, with File, Edit and View menus.
 
 ### Sections and page templates
 
@@ -100,6 +108,7 @@ instead, see [Run it](#run-it).
 - **Page templates**: design a page once (a background of lines, dots or grid, texts,
   images, frames) and repeat it wherever you want. Texts such as `{date}`, `{weekday}` or
   `{month}` change on each copy.
+- **Right-click a month** in the page strip to go to its cover, log or first week, repeat a page for each month, hide the month, export only that month to PDF, or show only that month in the strip. Hidden months leave the book; the year calendar keeps them, without links. A **Year** marker jumps to the yearly overview, and the strip scrolls with the mouse wheel.
 
 ### Find anything
 
@@ -193,6 +202,8 @@ instead, see [Run it](#run-it).
   restores them.
 - Planners are also kept in the browser, but only in that browser and at that app
   address, so files are the safe copy.
+- The **Images** and **Fonts** panels say where each image is used (watermark, cover, elements, pages, ornaments) and remove it together with everything that used it; fonts show which characters are missing and where each family is used, and your own can be removed.
+- Desktop app: after exporting a PDF it shows **where it was saved**, with *Open folder*; planners open by double-clicking a `.agenda.json` or by dropping it on the window, and closing never loses the last change.
 
 ### Design with an AI model
 
@@ -205,6 +216,7 @@ instead, see [Run it](#run-it).
   [guide](docs/llm-templates.md) ([en español](docs/plantillas-llm.md)).
 - Every change the model makes comes back with the layout warnings it caused (text that does
   not fit, elements off the page or overlapping), so it can fix them without anyone looking.
+- **Live link (desktop app)**: with the app open, the same server works on **the planner you have open**. The model reads it, changes it as one step you can undo (refused if you edited it meanwhile), shows you a page, or opens another planner. Turn it off in *File → Let an AI model edit the open planner*. Nothing listens on the network: it is a local socket protected by a token made at every start.
 
 ### Made to last
 

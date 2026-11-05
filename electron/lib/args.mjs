@@ -48,3 +48,20 @@ export function windowsMcpMessage(execPath, bundle) {
     '  "env": { "ELECTRON_RUN_AS_NODE": "1", "AGENDA_MCP_ROOT": "<folder for your planners>" }'
   );
 }
+
+/** Biggest planner file the app opens from the command line or a drop (a planner with images is a few MB). */
+export const MAX_OPEN_BYTES = 128 * 1024 * 1024;
+
+/**
+ * The planner file the app was asked to open ("Open with…", `heritage-studio file.agenda.json`).
+ * `argv` is `process.argv`; flags (`--no-sandbox`…) and the app folder of `electron .` are skipped.
+ * @param {readonly string[]} argv
+ * @returns {string | null}
+ */
+export function agendaFileFromArgv(argv) {
+  for (const arg of argv.slice(1)) {
+    if (arg.startsWith('-')) continue;
+    if (/\.json$/i.test(arg)) return arg;
+  }
+  return null;
+}

@@ -364,3 +364,11 @@ export function buildOutline(doc: DocContext, pages: readonly PagePlan[]): Outli
   }
   return out;
 }
+
+/** El índice lateral con los números de página del archivo nuevo (las páginas que no están se descartan). */
+export function remapOutline(items: readonly OutlineItem[], position: ReadonlyMap<number, number>): OutlineItem[] {
+  return items.flatMap((item) => {
+    const page = position.get(item.page);
+    return page === undefined ? [] : [{ ...item, page, children: remapOutline(item.children, position) }];
+  });
+}

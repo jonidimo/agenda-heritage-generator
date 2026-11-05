@@ -11,7 +11,37 @@ import { PANEL_LIMITS, prefs, UI_SCALE, type PanelId } from './prefs';
 import type { UiLang } from '../i18n/ui';
 
 export type View = 'page' | 'spread' | 'sheet' | 'book';
-export type Panel = 'sections' | 'style' | 'methods' | 'persona' | 'calendar' | 'assets' | 'print';
+/** Diseñar la agenda o prepararla para imprimir: cada modo muestra solo lo que le sirve. */
+export type Mode = 'design' | 'print';
+
+/** Las vistas de cada modo, en el orden en que se ofrecen: el libro es para diseñar; la hoja impresa, para imprimir. */
+export const MODE_VIEWS: Readonly<Record<Mode, readonly View[]>> = {
+  design: ['page', 'spread', 'book'],
+  print: ['page', 'spread', 'sheet'],
+};
+
+/**
+ * La vista que corresponde mostrar: la elegida si el modo la ofrece y, de no ser así (o si la agenda
+ * es para leer en pantalla y no tiene hojas impresas), la página doble.
+ */
+export function viewFor(mode: Mode, view: View, screen: boolean): View {
+  const ok = MODE_VIEWS[mode].includes(view) && !(view === 'sheet' && screen);
+  return ok ? view : 'spread';
+}
+
+/** La vista que se está mostrando ahora (la elegida, acomodada al modo y al destino de la agenda). */
+export function activeView(s: { mode: Mode; view: View; design: { binding: { target: string } } | null }): View {
+  return viewFor(s.mode, s.view, s.design?.binding.target === 'screen');
+}
+
+/** Las vistas que se ofrecen en un modo (sin la hoja impresa si la agenda es para pantalla). */
+export function viewsOf(mode: Mode, screen: boolean): readonly View[] {
+  return MODE_VIEWS[mode].filter((v) => !(v === 'sheet' && screen));
+}
+export type Panel = 'sections' | 'style' | 'methods' | 'persona' | 'calendar' | 'assets' | 'fonts' | 'print';
+
+/** Las pestañas del panel lateral, en el orden en que se muestran (y en el que las eligen Ctrl+1, Ctrl+2…). */
+export const PANEL_ORDER: readonly Panel[] = ['style', 'sections', 'methods', 'persona', 'calendar', 'assets', 'fonts', 'print'];
 
 /** Límites y paso del zoom del lienzo (el de la página, no el de la interfaz). */
 export const ZOOM = { min: 0.2, max: 6, step: 1.2 } as const;
@@ -77,6 +107,29 @@ interface StoreState {
   /** Diálogo «Acerca de Heritage Studio». */
   showAbout: boolean;
   setShowAbout(b: boolean): void;
+  /** Buscador (Ctrl+F / Ctrl+K) y diálogo de atajos de teclado (F1). */
+  searchOpen: boolean;
+  setSearchOpen(b: boolean): void;
+  showShortcuts: boolean;
+  setShowShortcuts(b: boolean): void;
+  /** Diálogo con los elementos ocultos de la página actual. */
+  showHidden: boolean;
+  setShowHidden(b: boolean): void;
+  /** ¿Se permite que un modelo de IA lea y edite la agenda abierta (puente en vivo de la aplicación de escritorio)? */
+  liveLink: boolean;
+  setLiveLink(on: boolean): void;
+  /** Aviso del último cambio hecho por un modelo de IA: con «Deshacer» mientras nada más haya cambiado (`revision`). */
+  aiNotice: { text: string; revision: number } | null;
+  setAiNotice(n: { text: string; revision: number } | null): void;
+  /** Cada pedido nuevo (número creciente) hace correr la verificación previa del panel del elemento. */
+  preflightRequest: number;
+  requestPreflight(): void;
+  /** Pedido de editar el texto de un elemento en su lugar (F2): la página que lo tiene lo atiende y lo limpia. */
+  /** Lo último que se guardó como PDF en esta computadora (solo la aplicación de escritorio sabe la ruta). */
+  lastExport: { name: string; path: string } | null;
+  setLastExport(e: { name: string; path: string } | null): void;
+  textEditRequest: { pageKey: string; blockId: string } | null;
+  requestTextEdit(r: { pageKey: string; blockId: string } | null): void;
   sidebarOpen: boolean;
   guides: boolean;
   snap: boolean;
@@ -112,6 +165,9 @@ interface StoreState {
   undo(): void;
   redo(): void;
   setView(v: View): void;
+  mode: Mode;
+  /** Cambia de modo: la vista y la pestaña se acomodan a lo que ofrece (al imprimir se abre «Impresión»). */
+  setMode(mode: Mode): void;
   setPanel(p: Panel): void;
   goToPage(i: number): void;
   setSheetSide(s: 'front' | 'back'): void;
@@ -126,6 +182,9 @@ interface StoreState {
   /** Mostrar el asistente de «Nueva agenda» al abrir el programa. */
   welcomeOnStart: boolean;
   setWelcomeOnStart(show: boolean): void;
+  /** Al elegir un elemento que solo tiene filetes, el panel de Estilo muestra el estilo de esa línea. */
+  autoReveal: boolean;
+  setAutoReveal(on: boolean): void;
   /** Tamaños de los paneles: se ven al instante y se guardan al soltar el divisor. */
   panelSizes: PanelSizes;
   setPanelSize(panel: PanelId, size: number): void;
@@ -224,7 +283,8 @@ export const useStore = create<StoreState>((set, get) => ({
   future: [],
   coalesce: null,
   view: 'spread',
-  panel: 'style',
+  mode: prefs.mode.read(),
+  panel: prefs.mode.read() === 'print' ? 'print' : 'style',
   pageIndex: 0,
   sheetSide: 'front',
   zoom: 1,
@@ -238,12 +298,21 @@ export const useStore = create<StoreState>((set, get) => ({
   uiLangChosen: prefs.uiLang.isSet(),
   uiScale: prefs.uiScale.read(),
   welcomeOnStart: prefs.welcomeOnStart.read(),
+  autoReveal: prefs.autoReveal.read(),
   panelSizes: { left: prefs.panel.left.read(), right: prefs.panel.right.read(), thumbs: prefs.panel.thumbs.read() },
   resVersion: 0,
   showWelcome: false,
   showLibrary: false,
   showSaveTemplate: false,
   showAbout: false,
+  searchOpen: false,
+  showShortcuts: false,
+  showHidden: false,
+  preflightRequest: 0,
+  liveLink: prefs.liveLink.read(),
+  aiNotice: null,
+  textEditRequest: null,
+  lastExport: null,
   sidebarOpen: true,
   guides: false,
   snap: true,
@@ -332,7 +401,29 @@ export const useStore = create<StoreState>((set, get) => ({
   },
 
   setView: (view) => set({ view, selection: null, selectedIds: [] }),
-  setPanel: (panel) => set({ panel }),
+  setMode(mode) {
+    prefs.mode.write(mode);
+    const { view, panel } = get();
+    set({
+      mode,
+      // La vista que el modo nuevo no ofrece se cambia (lo elegido se limpia solo si la vista cambia).
+      ...(MODE_VIEWS[mode].includes(view) ? {} : { view: 'spread' as const, selection: null, selectedIds: [] }),
+      panel: mode === 'print' ? 'print' : panel === 'print' ? 'style' : panel,
+    });
+  },
+  // Las opciones de impresión viven en el modo «Impresión»: pedirlas desde el diseño lo cambia.
+  setPanel: (panel) => (panel === 'print' && get().mode !== 'print' ? get().setMode('print') : set({ panel })),
+  setSearchOpen: (searchOpen) => set({ searchOpen }),
+  setLastExport: (lastExport) => set({ lastExport }),
+  setShowShortcuts: (showShortcuts) => set({ showShortcuts }),
+  setShowHidden: (showHidden) => set({ showHidden }),
+  setLiveLink(liveLink) {
+    prefs.liveLink.write(liveLink);
+    set({ liveLink });
+  },
+  setAiNotice: (aiNotice) => set({ aiNotice }),
+  requestPreflight: () => set((s) => ({ preflightRequest: s.preflightRequest + 1 })),
+  requestTextEdit: (textEditRequest) => set({ textEditRequest }),
   goToPage: (i) => set({ pageIndex: Math.max(0, i), selection: null, selectedIds: [] }),
   setSheetSide: (sheetSide) => set({ sheetSide }),
   setZoom: (zoom, fit = false) => set({ zoom: clampTo(zoom, ZOOM.min, ZOOM.max), fit }),
@@ -342,6 +433,10 @@ export const useStore = create<StoreState>((set, get) => ({
     const v = clampTo(uiScale, UI_SCALE.min, UI_SCALE.max);
     prefs.uiScale.write(v);
     set({ uiScale: v });
+  },
+  setAutoReveal(autoReveal) {
+    prefs.autoReveal.write(autoReveal);
+    set({ autoReveal });
   },
   setWelcomeOnStart(welcomeOnStart) {
     prefs.welcomeOnStart.write(welcomeOnStart);

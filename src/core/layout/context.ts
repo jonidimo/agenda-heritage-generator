@@ -99,6 +99,8 @@ export interface PageGeometry {
 
 export interface DocContext {
   design: Design;
+  /** Encuadernación efectiva (ver `effectiveBinding`): la que mandan el formato, los márgenes y las hojas. */
+  binding: Design['binding'];
   theme: ThemeTokens;
   fonts: FontRegistry;
   strings: AgendaStrings;
@@ -332,6 +334,7 @@ export class LayoutContext {
       role: opts.role ?? 'content',
       editable: opts.editable ?? true,
       layer: opts.layer ?? 10,
+      seq: this.blocks.length,
       ...(opts.links && opts.links.length > 0 ? { links: opts.links } : {}),
     };
     this.blocks.push(block);

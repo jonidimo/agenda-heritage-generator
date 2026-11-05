@@ -10,10 +10,11 @@ import { blockLabel } from '../i18n/messages';
 import { sectionName, uiEntries, type UiKey, type UiLang } from '../i18n/ui';
 import { jumpToPage } from './navigation';
 import { reveal } from './reveal';
+import { resources } from './resources';
 import { nextPageOf } from './sections';
 import { useStore, type Panel } from './store';
 
-export type SearchKind = 'setting' | 'panel' | 'section' | 'page' | 'element';
+export type SearchKind = 'setting' | 'panel' | 'section' | 'page' | 'element' | 'asset' | 'font';
 
 export interface SearchItem {
   kind: SearchKind;
@@ -34,7 +35,8 @@ const PANEL_NAMESPACES: Readonly<Record<Panel, readonly string[]>> = {
   methods: ['methods'],
   persona: ['persona'],
   calendar: ['cal', 'type'],
-  assets: ['assets', 'wm'],
+  assets: ['assets', 'wm', 'cover'],
+  fonts: ['fonts'],
   print: ['print', 'export', 'links', 'mark', 'creep', 'duplex', 'bind', 'sig', 'last', 'thumb', 'paper'],
 };
 
@@ -73,6 +75,26 @@ export function buildSearchIndex(lang: UiLang, t: (k: UiKey, v?: Record<string, 
   for (const p of doc.plan.pages) {
     if (p.type === 'filler') continue;
     add({ kind: 'page', label: doc.pageLabel(p.index), where: t('nav.page', { n: p.index + 1 }), go: () => jumpToPage(p.index) });
+  }
+  // Las imágenes y las fuentes de la agenda: llevan a su panel y a ella.
+  for (const a of design.assets) if (!a.builtin) add({ kind: 'asset', label: a.name, where: panelName('assets'), go: () => void reveal({ panel: 'assets', text: a.name }) });
+  for (const family of resources.fonts.families()) add({ kind: 'font', label: family, where: panelName('fonts'), go: () => void reveal({ panel: 'fonts', selector: `[data-font="${family.replace(/"/g, '\\"')}"]` }) });
+  // Los elementos propios de toda la agenda (no solo los de la página actual): llevan a su página y quedan elegidos.
+  for (const cb of design.customBlocks) {
+    const target = cb.pageKey ? doc.indexOfKey(cb.pageKey) : doc.plan.pages.findIndex((p) => p.type === cb.pageType);
+    const plan = doc.plan.pages[target];
+    if (!plan) continue;
+    add({
+      kind: 'element',
+      label: String(cb.props.label ?? cb.kind),
+      where: t('nav.page', { n: plan.index + 1 }),
+      go: () => {
+        jumpToPage(plan.index);
+        const st = useStore.getState();
+        st.select({ pageKey: plan.key, pageType: plan.type, blockId: `custom.${cb.id}`, role: 'custom' });
+        st.setInspectorOpen(true);
+      },
+    });
   }
   const page = doc.pageCount > 0 ? doc.page(Math.min(pageIndex, doc.pageCount - 1)) : null;
   for (const b of page?.blocks ?? []) {

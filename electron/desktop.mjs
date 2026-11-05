@@ -6,10 +6,15 @@
  * behave as on the website and saved planners persist across launches. The page runs in a fully
  * sandboxed renderer, without a preload script or Node.js.
  */
-import { stat } from 'node:fs/promises';
+import { rmSync } from 'node:fs';
+import { readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { app, BrowserWindow, dialog, Menu, net, protocol, screen, shell } from 'electron';
+import { app, BrowserWindow, dialog, Menu, net, protocol, screen, session, shell } from 'electron';
+import { agendaFileFromArgv, MAX_OPEN_BYTES } from './lib/args.mjs';
+import { createCloseGuard } from './lib/closing.mjs';
+import { DownloadLog, sysRequestAllowed, sysRoute } from './lib/downloads.mjs';
+import { createLiveBroker, LIVE_ERRORS, LIVE_INFO_FILE, LIVE_PROTOCOL, liveEndpoint, newToken, writeLiveInfo } from './lib/live.mjs';
 import { createRevealer, gpuCrashAction, gpuFallbackRelaunch } from './lib/reveal.mjs';
 
 const APP_NAME = 'Heritage Studio';
@@ -34,6 +39,50 @@ protocol.registerSchemesAsPrivileged([
 
 const notFound = () => new Response('Not found', { status: 404, headers: { 'content-type': 'text/plain' } });
 
+/** @param {unknown} data @param {number} [status] */
+const json = (data, status = 200) => new Response(JSON.stringify(data), { status, headers: { 'content-type': 'application/json' } });
+
+/** What was saved to disk from the page (PDFs), so it can say where and open them. */
+const downloads = new DownloadLog();
+
+/**
+ * app://heritage/_sys/*: what the sandboxed page cannot do by itself. It learns where a download ended
+ * up, and can open that file or show its folder; only paths the app itself saved, never an arbitrary one.
+ * @param {Request} request
+ */
+async function sys(request) {
+  const url = new URL(request.url);
+  const route = sysRoute(url.pathname);
+  if (!route) return notFound();
+  if (!sysRequestAllowed(request.headers.get('origin'), request.headers.get('sec-fetch-site'))) return json({ error: 'forbidden' }, 403);
+  if (route === 'downloads') {
+    if (request.method !== 'GET') return json({ error: 'method' }, 405);
+    const after = Number.parseInt(url.searchParams.get('after') ?? '0', 10) || 0;
+    const wait = Number.parseInt(url.searchParams.get('wait') ?? '0', 10) || 0;
+    const items = await downloads.wait(after, wait);
+    return json({ seq: downloads.lastId, items });
+  }
+  if (request.method !== 'POST') return json({ error: 'method' }, 405);
+  /** @type {unknown} */
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ error: 'body' }, 400);
+  }
+  const file = body && typeof body === 'object' ? /** @type {{ path?: unknown }} */ (body).path : undefined;
+  if (typeof file !== 'string' || !downloads.hasSaved(file)) return json({ error: 'unknown file' }, 403);
+  if (!(await stat(file).catch(() => null))) return json({ error: 'missing' }, 404);
+  if (route === 'reveal') {
+    shell.showItemInFolder(file);
+    return json({ ok: true });
+  }
+  // Only documents are opened: a file renamed to .exe or .bat in "Save as" is shown in its folder, never run.
+  if (!/\.(pdf|json)$/i.test(file)) return json({ ok: false, error: 'not a document' }, 403);
+  const error = await shell.openPath(file);
+  return json({ ok: error === '', error });
+}
+
 /**
  * Serves app://heritage/<path> from dist/, never from outside it.
  * @param {Request} request
@@ -41,6 +90,7 @@ const notFound = () => new Response('Not found', { status: 404, headers: { 'cont
 async function serve(request) {
   const { host, pathname } = new URL(request.url);
   if (host !== HOST) return notFound();
+  if (pathname.startsWith('/_sys/')) return sys(request);
   // The PWA service worker is for the website (offline cache); here every file is already local.
   // An empty registerSW.js registers nothing, and sw.js is not served, so nothing can register it.
   if (pathname === '/registerSW.js') return new Response('', { headers: { 'content-type': 'text/javascript' } });
@@ -98,6 +148,96 @@ function buildMenu() {
 /** @type {BrowserWindow | null} */
 let mainWindow = null;
 
+/** A planner file asked for before the page was ready (double click, "Open with…", macOS open-file). */
+let pendingOpen = agendaFileFromArgv(process.argv);
+
+/**
+ * Opens a planner file in the page. The page exposes `__heritageOpen(text, name)`; the text travels as a
+ * JSON string literal, so nothing in the file can run as code.
+ * @param {string} file
+ */
+async function openPlannerFile(file) {
+  const win = mainWindow;
+  if (!win || win.isDestroyed() || !loaded) {
+    pendingOpen = file;
+    return;
+  }
+  const info = await stat(file).catch(() => null);
+  if (!info?.isFile() || info.size > MAX_OPEN_BYTES) {
+    dialog.showErrorBox(APP_NAME, `Could not open ${file}.`);
+    return;
+  }
+  const text = await readFile(file, 'utf8');
+  app.addRecentDocument(file);
+  await win.webContents.executeJavaScript(`window.__heritageOpen && window.__heritageOpen(${JSON.stringify(text)}, ${JSON.stringify(path.basename(file))})`);
+  if (win.isMinimized()) win.restore();
+  win.focus();
+}
+
+/** Opens a file; a failure (unreadable file, page reloading) is told to the user, never left unhandled. @param {string} file */
+function safeOpen(file) {
+  openPlannerFile(file).catch(() => dialog.showErrorBox(APP_NAME, `Could not open ${file}.`));
+}
+
+// macOS delivers the file through this event (also before the app is ready).
+app.on('open-file', (event, file) => {
+  event.preventDefault();
+  safeOpen(file);
+});
+
+/**
+ * The live link with an AI client (see lib/live.mjs): the MCP server connects to a local socket and its
+ * requests are answered by the page, which owns the open planner and the user's permission.
+ * @param {string} method
+ * @param {unknown} params
+ */
+async function liveHandler(method, params) {
+  const win = mainWindow;
+  const unavailable = () => Object.assign(new Error('The app window is not ready.'), { code: LIVE_ERRORS.unavailable });
+  if (!win || win.isDestroyed() || win.webContents.isDestroyed() || !loaded) throw unavailable();
+  // The request travels as a JSON string literal: nothing in it can run as code.
+  const answer = await win.webContents.executeJavaScript(`window.__heritageLive ? window.__heritageLive(${JSON.stringify({ method, params })}) : null`);
+  if (!answer || typeof answer !== 'object') throw unavailable();
+  if (answer.ok) return answer.result;
+  throw Object.assign(new Error(String(answer.message)), { code: typeof answer.code === 'number' ? answer.code : LIVE_ERRORS.app });
+}
+
+/** @type {{ close: () => Promise<void> } | null} */
+let liveBroker = null;
+const liveEndpointPath = () => liveEndpoint(app.getPath('userData'), process.platform);
+
+async function startLive() {
+  const dataDir = app.getPath('userData');
+  const endpoint = liveEndpointPath();
+  const token = newToken();
+  try {
+    liveBroker = await createLiveBroker({ endpoint, token, handler: liveHandler });
+    await writeLiveInfo(dataDir, { protocol: LIVE_PROTOCOL, endpoint, token, pid: process.pid, version: app.getVersion() });
+  } catch (err) {
+    // The link is an extra: the app works without it.
+    console.error(`Live link unavailable: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
+app.on('will-quit', () => {
+  // A second launch (it quits at once) must not remove the files of the instance that is running.
+  if (!liveBroker) return;
+  void liveBroker.close();
+  // Synchronous too, since the process may exit before the asynchronous close finishes.
+  try {
+    rmSync(path.join(app.getPath('userData'), LIVE_INFO_FILE), { force: true });
+    if (!liveEndpointPath().startsWith('\\\\')) rmSync(liveEndpointPath(), { force: true });
+  } catch {
+    /* already gone */
+  }
+});
+
+/** The app is quitting (not just one window closing). */
+let quitting = false;
+app.on('before-quit', () => {
+  quitting = true;
+});
+
 /** Whether the page has finished loading once: from then on the startup is over. */
 let loaded = false;
 
@@ -106,6 +246,8 @@ const GPU_FAILED_MESSAGE =
   'Update your graphics drivers or, on Linux with Wayland, start the app with --ozone-platform=x11.';
 
 function createWindow() {
+  // A new window has not loaded its page yet (macOS reopens windows without quitting).
+  loaded = false;
   const area = screen.getPrimaryDisplay().workAreaSize;
   const win = new BrowserWindow({
     width: Math.min(1400, area.width),
@@ -140,10 +282,25 @@ function createWindow() {
   win.webContents.once('did-finish-load', () => {
     loaded = true;
     revealer.reveal();
+    if (pendingOpen) {
+      const file = pendingOpen;
+      pendingOpen = null;
+      safeOpen(file);
+    }
   });
   win.webContents.on('did-fail-load', (_event, _code, _description, _url, isMainFrame) => {
     if (isMainFrame) revealer.reveal();
   });
+  // Closing waits (briefly) for the page to finish saving its last change.
+  const closing = createCloseGuard({
+    flush: () => (win.webContents.isDestroyed() ? Promise.resolve() : win.webContents.executeJavaScript('window.__heritageFlush ? window.__heritageFlush() : null')),
+    destroy: () => {
+      if (!win.isDestroyed()) win.destroy();
+      // Holding the close back also held back a quit (Cmd+Q): pick it up again.
+      if (quitting) app.quit();
+    },
+  });
+  win.on('close', (event) => closing.onClose(event));
   win.on('closed', () => {
     revealer.dispose();
     mainWindow = null;
@@ -188,7 +345,11 @@ app.on('web-contents-created', (_event, contents) => {
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
-  app.on('second-instance', () => {
+  app.on('second-instance', (_event, argv, workingDirectory) => {
+    const given = agendaFileFromArgv(argv);
+    // A relative path means relative to where the second instance was started.
+    const file = given ? path.resolve(workingDirectory || process.cwd(), given) : null;
+    if (file) safeOpen(file);
     if (!mainWindow) {
       // macOS keeps running without windows; before startup finishes, the first window is on its way.
       if (protocol.isProtocolHandled(SCHEME)) createWindow();
@@ -212,8 +373,18 @@ if (!app.requestSingleInstanceLock()) {
       return;
     }
     protocol.handle(SCHEME, serve);
+    // Each PDF the page saves: where it ended up is what "Open folder" needs.
+    session.defaultSession.on('will-download', (_event, item) => {
+      if (!item.getURL().startsWith(`blob:${APP_URL}`)) return;
+      const id = downloads.start(item.getFilename());
+      item.once('done', (_done, state) => {
+        const ended = state === 'completed' ? 'completed' : state === 'cancelled' ? 'cancelled' : 'interrupted';
+        downloads.finish(id, ended, ended === 'completed' ? item.getSavePath() : null);
+      });
+    });
     buildMenu();
     createWindow();
+    void startLive();
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow();
     });

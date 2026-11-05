@@ -54,10 +54,23 @@ function mirror(cmds: Array<[string, ...number[]]>): Array<[string, ...number[]]
   return cmds.map(([c, ...uv]) => [c, ...uv.map((v, i) => (i % 2 === 0 ? 1 - v : v))] as [string, ...number[]]);
 }
 
-const fleuronCurl: Array<[string, ...number[]]> = [
+/**
+ * Corazón: su curva (en un cuadrado unitario) ocupa de 0,14 a 0,86 a lo ancho y de 0,12 a 0,86 a lo
+ * alto. Se reescala para que la caja del ornamento sea la del dibujo y no sobre aire.
+ */
+const HEART = { x: 0.1399, y: 0.1214, w: 0.7202, h: 0.7386 } as const;
+const HEART_CURVE: Array<[string, ...number[]]> = [
   ['M', 0.5, 0.86],
-  ['C', 0.5, 0.98, 0.6, 1, 0.68, 0.93],
+  ['C', 0.22, 0.7, 0.04, 0.44, 0.2, 0.2],
+  ['C', 0.32, 0.03, 0.5, 0.16, 0.5, 0.36],
+  ['C', 0.5, 0.16, 0.68, 0.03, 0.8, 0.2],
+  ['C', 0.96, 0.44, 0.78, 0.7, 0.5, 0.86],
+  ['Z'],
 ];
+
+function heartCommands(): Array<[string, ...number[]]> {
+  return HEART_CURVE.map(([c, ...uv]) => [c, ...uv.map((v, i) => (i % 2 === 0 ? (v - HEART.x) / HEART.w : (v - HEART.y) / HEART.h))] as [string, ...number[]]);
+}
 
 const scrollHalf: Array<[string, ...number[]]> = [
   ['M', 0.56, 0.5],
@@ -87,18 +100,9 @@ export const BUILTIN_ORNAMENTS: readonly BuiltinOrnament[] = [
   {
     id: 'fleuron',
     kind: 'center',
-    aspect: 1.3,
-    draw: (x, y, w, h) => {
-      const f = frame(x, y, w, h);
-      return [
-        {
-          mode: 'fill',
-          d: f.path([['M', 0.5, 0.86], ['C', 0.22, 0.7, 0.04, 0.44, 0.2, 0.2], ['C', 0.32, 0.03, 0.5, 0.16, 0.5, 0.36], ['C', 0.5, 0.16, 0.68, 0.03, 0.8, 0.2], ['C', 0.96, 0.44, 0.78, 0.7, 0.5, 0.86], ['Z']]),
-        },
-        // Tallo con un rulo a cada lado: el ornamento es simétrico respecto de su centro.
-        { mode: 'stroke', d: [fleuronCurl, mirror(fleuronCurl)].map((c) => f.path(c)).join(' ') },
-      ];
-    },
+    // Un corazón solo, sin tallo ni rulos: la caja es la del dibujo (ver `HEART`).
+    aspect: HEART.w / HEART.h,
+    draw: (x, y, w, h) => [{ mode: 'fill', d: frame(x, y, w, h).path(heartCommands()) }],
   },
   {
     id: 'diamond',

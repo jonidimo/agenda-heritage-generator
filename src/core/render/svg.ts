@@ -4,6 +4,7 @@
  * la impresión en cualquier navegador y sistema (sin depender de fuentes
  * instaladas ni del motor de texto del navegador).
  */
+import { BLEND_NAMES } from '../design/blend';
 import { glyphPath } from '../text/shape';
 import type { FontRegistry } from '../text/fonts';
 import { fmt, isIdentity, matrixScale, matrixToString, type Matrix } from '../util/geometry';
@@ -147,7 +148,8 @@ export function primsToSvg(prims: Prim[], opts: SvgRenderOptions, sink: GlyphSin
           clipId = `${prefix}c${++clipCounter}`;
           clip = `<clipPath id="${clipId}"><rect x="${fmt(p.clip.x)}" y="${fmt(p.clip.y)}" width="${fmt(p.clip.w)}" height="${fmt(p.clip.h)}"/></clipPath>`;
         }
-        out += `${clip}<g${transformAttr(p.m)}${clipId ? ` clip-path="url(#${clipId})"` : ''}>${primsToSvg(p.children, opts, sink, prefix, alpha * (p.opacity ?? 1))}</g>`;
+        const blend = p.blend && p.blend !== 'normal' ? ` style="mix-blend-mode:${BLEND_NAMES[p.blend].css}"` : '';
+        out += `${clip}<g${transformAttr(p.m)}${clipId ? ` clip-path="url(#${clipId})"` : ''}${blend}>${primsToSvg(p.children, opts, sink, prefix, alpha * (p.opacity ?? 1))}</g>`;
         break;
       }
     }
@@ -157,7 +159,8 @@ export function primsToSvg(prims: Prim[], opts: SvgRenderOptions, sink: GlyphSin
 
 function blockToSvg(b: Block, opts: SvgRenderOptions, sink: GlyphSink, prefix: string): string {
   const attrs = opts.blockAttrs ? ` data-block="${esc(b.id)}" data-role="${esc(b.role)}"${b.editable ? '' : ' data-locked="1"'}` : '';
-  return `<g${attrs}${transformAttr(b.m)}>${primsToSvg(b.prims, opts, sink, prefix, b.opacity ?? 1)}</g>`;
+  const blend = b.blend && b.blend !== 'normal' ? ` style="mix-blend-mode:${BLEND_NAMES[b.blend].css}"` : '';
+  return `<g${attrs}${transformAttr(b.m)}${blend}>${primsToSvg(b.prims, opts, sink, prefix, b.opacity ?? 1)}</g>`;
 }
 
 /** Contenido interno (sin `<svg>`) de una página. */

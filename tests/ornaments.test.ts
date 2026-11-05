@@ -26,11 +26,13 @@ describe('ornamentos de tipo centro', () => {
     });
   }
 
-  it('el fleurón tiene un rulo a cada lado: los puntos se reparten en ambos', () => {
+  it('el fleurón es solo el corazón: un único relleno que ocupa toda su caja', () => {
     const o = BUILTIN_ORNAMENTS.find((x) => x.id === 'fleuron')!;
-    const stem = o.draw(0, 0, 100, 100 / o.aspect).find((s) => s.mode === 'stroke')!;
-    const all = xs(stem.d);
-    expect(Math.min(...all)).toBeLessThan(45);
-    expect(Math.max(...all)).toBeGreaterThan(55);
+    const shapes = o.draw(0, 0, 100, 100 / o.aspect);
+    expect(shapes).toHaveLength(1);
+    expect(shapes[0]!.mode).toBe('fill');
+    const all = xs(shapes[0]!.d);
+    expect(Math.min(...all)).toBeLessThan(5);
+    expect(Math.max(...all)).toBeGreaterThan(95);
   });
 });

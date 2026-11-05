@@ -1,16 +1,20 @@
 /** Área central: página, pliego, hoja impresa (frente/dorso) o libro completo. */
 import type { AgendaDocument } from '@core/document';
 import { primsToSvg, GlyphSink } from '@core/render/svg';
-import { ChevronLeft, ChevronRight, RefreshCw } from 'lucide-react';
+import { isProblem } from '@core/layout/prims';
+import { AlertTriangle, ChevronLeft, ChevronRight, RefreshCw } from 'lucide-react';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { pageTitle, useT } from '../../i18n/ui';
 import { assetHref } from '../../state/assetUrls';
-import { useStore } from '../../state/store';
+import { pageStep, spreadOf } from '../../state/paging';
+import { activeView, useStore } from '../../state/store';
 import { IconButton } from '../ui';
 import { ErrorBoundary, ViewError } from '../ErrorBoundary';
 import { PageView } from './PageView';
 import { Thumb } from './Thumb';
 import { jumpToPage } from '../../state/navigation';
+import { reveal } from '../../state/reveal';
+import { registerViewport } from '../../state/viewport';
 
 function useSize(): [React.RefObject<HTMLDivElement | null>, { w: number; h: number }] {
   const ref = useRef<HTMLDivElement | null>(null);
@@ -26,20 +30,14 @@ function useSize(): [React.RefObject<HTMLDivElement | null>, { w: number; h: num
   return [ref, size];
 }
 
-export function spreadOf(index: number, count: number): [number | null, number | null] {
-  if (index <= 0) return [null, 0];
-  const left = index % 2 === 1 ? index : index - 1;
-  const right = left + 1 < count ? left + 1 : null;
-  return [left, right];
-}
-
 /**
  * `live` es el documento que se ve (con la vista previa de lo que se está arrastrando); `committed`,
  * el confirmado, para el libro de miniaturas, que no se redibuja en cada cuadro del arrastre.
  */
 export function Canvas({ committed, live }: { committed: AgendaDocument; live: AgendaDocument }) {
   const t = useT();
-  const view = useStore((s) => s.view);
+  const view = useStore(activeView);
+  const printing = useStore((s) => s.mode === 'print') && !live.screen;
   const pageIndex = useStore((s) => Math.min(s.pageIndex, live.pageCount - 1));
   const goToPage = useStore((s) => s.goToPage);
   const zoom = useStore((s) => s.zoom);
@@ -55,27 +53,17 @@ export function Canvas({ committed, live }: { committed: AgendaDocument; live: A
   const fitScale = Math.max(0.5, Math.min((size.w - pad) / contentMm.w, (size.h - pad - 40) / contentMm.h));
   const scale = fit ? fitScale : fitScale * zoom;
 
-  const step = view === 'spread' ? 2 : 1;
-  const prev = (): void => goToPage(Math.max(0, view === 'spread' ? (spreadOf(pageIndex, live.pageCount)[0] ?? 0) - 1 : pageIndex - 1));
-  const next = (): void => goToPage(Math.min(live.pageCount - 1, view === 'spread' ? (spreadOf(pageIndex, live.pageCount)[1] ?? pageIndex) + 1 : pageIndex + step));
-
+  // El lienzo le dice a los atajos de encuadre dónde está y a qué escala se dibuja.
   useEffect(() => {
-    const onKey = (e: KeyboardEvent): void => {
-      const tag = (e.target as HTMLElement | null)?.tagName;
-      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
-      // Alt+flechas es «Atrás / Adelante» (barra superior), no pasar página.
-      if (useStore.getState().selection || e.altKey) return;
-      if (e.key === 'PageDown' || (e.key === 'ArrowRight' && !e.shiftKey)) {
-        next();
-        e.preventDefault();
-      } else if (e.key === 'PageUp' || (e.key === 'ArrowLeft' && !e.shiftKey)) {
-        prev();
-        e.preventDefault();
-      }
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  });
+    const scroller = ref.current;
+    if (!scroller) return;
+    registerViewport({ scroller, fitScale, pageWidthMm: live.format.w });
+    return () => registerViewport(null);
+  }, [ref, fitScale, live.format.w]);
+
+  const problems = usePageProblems(committed, pageIndex);
+  const prev = (): void => goToPage(pageStep(view, pageIndex, live.pageCount, -1));
+  const next = (): void => goToPage(pageStep(view, pageIndex, live.pageCount, 1));
 
   const plan = live.plan.pages[pageIndex];
   return (
@@ -109,10 +97,50 @@ export function Canvas({ committed, live }: { committed: AgendaDocument; live: A
           <IconButton label="→" onClick={next} disabled={pageIndex >= live.pageCount - 1}>
             <ChevronRight size={18} />
           </IconButton>
+          {printing && view !== 'sheet' && (
+            <span className="ml-2 inline-flex items-center gap-2 text-[11.5px] text-ink-soft" data-testid="press-legend">
+              <span className="inline-block h-2.5 w-2.5 rounded-sm bg-[#dc2626]/30 ring-1 ring-[#dc2626]/60" aria-hidden="true" /> {t('press.unprintable')}
+              {live.binding.gutter > 0 && (
+                <>
+                  <span className="inline-block h-2.5 w-2.5 rounded-sm bg-[#2563eb]/30 ring-1 ring-[#2563eb]/60" aria-hidden="true" /> {t('press.gutter')}
+                </>
+              )}
+            </span>
+          )}
+          {problems > 0 && (
+            <button
+              type="button"
+              data-testid="page-warnings"
+              title={t('foot.warningsHint')}
+              onClick={() => void reveal({ inspector: true, selector: '[data-reveal="preflight"]', focus: false }).then((found) => found && useStore.getState().requestPreflight())}
+              className="ml-2 inline-flex items-center gap-1 rounded-md px-2 py-0.5 font-semibold text-warn hover:bg-warn/10"
+            >
+              <AlertTriangle size={13} /> {t('foot.warnings', { n: problems })}
+            </button>
+          )}
         </div>
       )}
     </div>
   );
+}
+
+/**
+ * Cuántos avisos tiene la página actual (maquetación y verificación). Se mide en reposo y sobre el
+ * documento confirmado: durante un arrastre no se vuelve a verificar en cada cuadro.
+ */
+function usePageProblems(doc: AgendaDocument, index: number): number {
+  const [n, setN] = useState(0);
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      try {
+        setN(doc.pageWarnings(index).filter(isProblem).length);
+      } catch {
+        setN(0);
+      }
+    }, 150);
+    return () => window.clearTimeout(timer);
+  }, [doc, index]);
+  return n;
 }
 
 /** Una página que no se puede dibujar ocupa su lugar con el motivo; la otra del pliego se sigue viendo. */

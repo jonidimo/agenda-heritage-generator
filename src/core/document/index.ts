@@ -10,12 +10,14 @@ import { impose, type SheetSide } from '../imposition/impose';
 import type { DocContext } from '../layout/context';
 import type { PageModel, PageWarning } from '../layout/prims';
 import { addMonths } from '../util/dates';
-import { renderPdf, type PdfPageInput } from '../render/pdf';
+import { renderPdf, type PdfLink, type PdfPageInput } from '../render/pdf';
 import { SECTION_REGISTRY } from '../sections/registry';
 import { shapeText } from '../text/shape';
+import { isScreen, type Binding } from './binding';
 import { createDocContext, pageFormat, type PageFormat, type Resources } from './context';
 import { dedupeWarnings, layoutPage, pageInputs, pagePrims, samePageInputs, verifyPage, type PageInputs } from './layout';
-import { buildOutline, LinkResolver, pageFullTitle, pageLinks, type ResolvedLink } from './links';
+import { buildOutline, LinkResolver, pageFullTitle, pageLinks, remapOutline, type ResolvedLink } from './links';
+import { hiddenElements, type HiddenElement } from './hidden';
 import { planDocument, type DocumentPlan, type PlanOptions } from './plan';
 import { samePageDesign, samePlanInputs } from './reuse';
 
@@ -28,6 +30,8 @@ export interface ExportOptions {
   onProgress?: (done: number, total: number) => void;
   /** Para `signature`: índice del cuadernillo. */
   signature?: number;
+  /** Para `pages`: solo estas páginas (índices desde 0); los enlaces y marcadores a las demás se omiten. */
+  pages?: readonly number[];
 }
 
 export interface DocumentOptions {
@@ -82,6 +86,16 @@ export class AgendaDocument {
     // Páginas heredadas: mismo plan, mismos recursos y contexto (tema, textos, calendario…), y el
     // resto del diseño igual salvo lo propio de cada página (se compara al pedirla).
     this.inherited = prev && reusePlan && sameLayoutContext(prev.ctx, this.ctx) && samePageDesign(prev.design, design) ? prev.cache : null;
+  }
+
+  /** Encuadernación efectiva: la guardada para imprimir; para leer en pantalla, sin costura ni recortes. */
+  get binding(): Binding {
+    return this.ctx.binding;
+  }
+
+  /** ¿Se hace para leer en pantalla? Entonces no hay hojas impuestas ni material de encuadernación. */
+  get screen(): boolean {
+    return isScreen(this.binding);
   }
 
   get pageCount(): number {
@@ -145,7 +159,8 @@ export class AgendaDocument {
   }
 
   sides(): SheetSide[] {
-    if (!this.sidesCache) this.sidesCache = impose(this.plan.signatures, this.format, this.design.binding);
+    // Para leer en pantalla no hay hojas: las páginas se ven y se exportan de a una.
+    if (!this.sidesCache) this.sidesCache = this.screen ? [] : impose(this.plan.signatures, this.format, this.binding);
     return this.sidesCache;
   }
 
@@ -154,7 +169,7 @@ export class AgendaDocument {
     const labelFace = this.ctx.fonts.resolveWithFallback({ family: 'Manrope', weight: 700, style: 'normal' }, this.ctx.theme.fallbacks);
     return composeSide(side, (i) => (i < this.pageCount ? this.page(i) : null), {
       fmt: this.format,
-      binding: this.design.binding,
+      binding: this.binding,
       label: (t) => shapeText(labelFace, t, 5),
       ...(opts.guides ? { guides: true } : {}),
     });
@@ -168,6 +183,12 @@ export class AgendaDocument {
   /** Todos los avisos de una página: los de la maquetación y los de la verificación. */
   pageWarnings(index: number): PageWarning[] {
     return dedupeWarnings([...this.page(index).warnings, ...this.verify(index)]);
+  }
+
+  /** Elementos ocultos en una página (para devolverlos a la vista). */
+  hidden(index: number): HiddenElement[] {
+    const plan = this.plan.pages[index];
+    return plan ? hiddenElements(this.ctx, this.design, plan, this.pageCount) : [];
   }
 
   /** Avisos de verificación previa de todas las páginas (maqueta todo). */
@@ -229,21 +250,31 @@ export class AgendaDocument {
     const title = `${d.name}`;
     const base = { fonts: this.ctx.fonts, assetBytes: opts.assetBytes, info: { title, author: d.persona.name, subject: 'Agenda', keywords: 'agenda, planner' }, ...(opts.onProgress ? { onProgress: opts.onProgress } : {}) };
     const toInput = (r: SheetRender): PdfPageInput => ({ w: r.w, h: r.h, prims: r.prims });
+    if (kind !== 'pages' && this.screen) throw new Error(`El PDF «${kind}» es para imprimir y encuadernar: la agenda está hecha para leer en pantalla. Cambiá el destino a «Encuadernación» o exportá las páginas.`);
     switch (kind) {
       case 'pages': {
         // Para leer en pantalla (tableta, lector de tinta electrónica): con enlaces y marcadores.
         const pages: PdfPageInput[] = [];
         const label = (n: number): string => `${this.pageLabel(n)} · ${this.ctx.strings.common.page} ${n + 1}`;
-        for (let i = 0; i < this.pageCount; i++) {
+        // Una parte de la agenda: las páginas pedidas, en orden y sin repetir; la numeración de los enlaces es la del archivo nuevo.
+        const wanted = opts.pages ? [...new Set(opts.pages)].filter((i) => i >= 0 && i < this.pageCount).sort((a, b) => a - b) : Array.from({ length: this.pageCount }, (_, i) => i);
+        if (wanted.length === 0) throw new Error('No hay páginas para exportar.');
+        const position = new Map(wanted.map((index, at) => [index, at]));
+        for (const i of wanted) {
           const p = this.page(i);
-          const links = this.links(i).map((l) => ({ rect: l.rect, ...(l.page !== undefined ? { page: l.page, label: label(l.page) } : { url: l.url!, label: l.url! }) }));
+          const links = this.links(i).flatMap((l): PdfLink[] => {
+            if (l.page === undefined) return [{ rect: l.rect, url: l.url!, label: l.url! }];
+            const to = position.get(l.page);
+            return to === undefined ? [] : [{ rect: l.rect, page: to, label: label(l.page) }];
+          });
           pages.push({ w: p.w, h: p.h, prims: pagePrims(p), ...(links.length > 0 ? { links } : {}) });
         }
+        const outline = d.links.bookmarks ? remapOutline(buildOutline(this.ctx, wanted.map((i) => this.plan.pages[i]!)), position) : null;
         return renderPdf(pages, {
           ...base,
           duplex: 'DuplexFlipLongEdge',
           lang: d.locale,
-          ...(d.links.bookmarks ? { outline: buildOutline(this.ctx, this.plan.pages) } : {}),
+          ...(outline ? { outline } : {}),
         });
       }
       case 'imposed':
@@ -254,13 +285,13 @@ export class AgendaDocument {
         if (kind === 'fronts') sides = sides.filter((s) => s.side === 'front');
         if (kind === 'backs') {
           sides = sides.filter((s) => s.side === 'back');
-          if (d.binding.manualReverseBacks) sides = [...sides].reverse();
+          if (this.binding.manualReverseBacks) sides = [...sides].reverse();
         }
         if (kind === 'signature') {
           sides = sides.filter((s) => s.signature === (opts.signature ?? 0));
           if (sides.length === 0) throw new Error(`No existe el cuadernillo ${(opts.signature ?? 0) + 1} (hay ${this.plan.signatures.signatures.length}).`);
         }
-        const duplex = this.format.nUp === 1 || d.binding.duplex === 'long-edge' ? 'DuplexFlipLongEdge' : 'DuplexFlipShortEdge';
+        const duplex = this.format.nUp === 1 || this.binding.duplex === 'long-edge' ? 'DuplexFlipLongEdge' : 'DuplexFlipShortEdge';
         return renderPdf(
           sides.map((s) => toInput(this.sheet(s))),
           { ...base, duplex: kind === 'fronts' || kind === 'backs' ? 'Simplex' : duplex, pickTrayByPdfSize: true },
@@ -270,7 +301,7 @@ export class AgendaDocument {
         return renderPdf(calibrationSheet(this.ctx, this.format, this.ctx.strings).map(toInput), {
           ...base,
           info: { ...base.info, title: `${title} · calibración` },
-          duplex: this.format.nUp === 1 || d.binding.duplex === 'long-edge' ? 'DuplexFlipLongEdge' : 'DuplexFlipShortEdge',
+          duplex: this.format.nUp === 1 || this.binding.duplex === 'long-edge' ? 'DuplexFlipLongEdge' : 'DuplexFlipShortEdge',
           pickTrayByPdfSize: true,
         });
       case 'sewing':
