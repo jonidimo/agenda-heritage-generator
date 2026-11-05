@@ -24,6 +24,7 @@ import { clearCrashed, crashedId } from './state/crash';
 import { useDocument } from './state/doc';
 import { collectUnusedAssets, listDesigns, loadDesign } from './state/persist';
 import { resources } from './state/resources';
+import { installClipboard } from './state/clipboard';
 import { PANEL_LIMITS } from './state/prefs';
 import { flushSave, useStore, ZOOM, type Panel } from './state/store';
 import { DESKTOP_BREAKPOINT, useUiLayout } from './state/uiScale';
@@ -180,6 +181,9 @@ export function App() {
     return unsub;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Copiar, cortar, pegar y duplicar elementos propios.
+  useEffect(() => installClipboard(), []);
 
   // Cada cambio de diseño asegura sus fuentes, feriados y recursos.
   useEffect(() => {

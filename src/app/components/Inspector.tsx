@@ -43,6 +43,7 @@ import {
   centerBlocks,
   clampMoveDelta,
   currentBlockLink,
+  linkScope,
   currentOverride,
   distributeBlocks,
   hideBlock,
@@ -575,20 +576,25 @@ function LinkFields(props: { doc: AgendaDocument; page: PageModel; block: Block;
   const showLinks = useStore((s) => s.showLinks);
   const setShowLinks = useStore((s) => s.setShowLinks);
   // Un elemento propio de una sola página (o una página propia) se enlaza solo en esa página.
-  const custom = block.role === 'custom' ? design.customBlocks.find((c) => `custom.${c.id}` === block.id) : undefined;
-  const level: 'type' | 'page' = page.type === 'custom' || (custom && custom.pageKey !== null) ? 'page' : scope;
-  const own = currentBlockLink(design, page, block.id, level);
-  const byType = level === 'page' ? currentBlockLink(design, page, block.id, 'type') : undefined;
+  const level: 'type' | 'page' = linkScope(design, page, block.id, scope);
+  // Zona elegida en la página (un día, un mes…): se edita su destino; vacía, el elemento entero.
+  const pickedArea = useStore((s) => s.linkArea);
+  const links = doc.links(page.index).filter((l) => l.blockId === block.id);
+  const area = links.some((l) => l.area === pickedArea) || design.links.blocks.some((l) => l.blockId === block.id && l.area === pickedArea) ? pickedArea : '';
+  const setLinkArea = useStore((s) => s.setLinkArea);
+  const own = currentBlockLink(design, page, block.id, level, area);
+  const byType = level === 'page' ? currentBlockLink(design, page, block.id, 'type', area) : undefined;
   const shown = own ?? byType;
   const mode = shown?.mode ?? 'auto';
-  const links = doc.links(page.index).filter((l) => l.blockId === block.id);
   // Un renglón por destino (los siete días de una semana llevan a la misma página).
   const groups = [...links.reduce((m, l) => m.set(l.page ?? l.url ?? '', { l, n: (m.get(l.page ?? l.url ?? '')?.n ?? 0) + 1 }), new Map<number | string, { l: (typeof links)[number]; n: number }>()).values()];
   // Cuántos enlaces automáticos funcionan de verdad en esta página (sin los que no llevan a ningún lado).
   const autoCount = useMemo(() => pageLinks(page, doc.linkResolver, { ...design.links, enabled: true, blocks: [] }).links.filter((l) => l.blockId === block.id).length, [page, doc, design.links, block.id]);
   const pages = useMemo(() => doc.plan.pages.filter((p) => p.type !== 'filler').map((p) => ({ value: p.key, label: `${p.index + 1} · ${doc.pageLabel(p.index)}` })), [doc]);
   const home = doc.plan.pages.find((p) => p.type === 'toc' && p.key !== page.key) ?? doc.plan.pages.find((p) => p.type === 'yearOverview' && p.key !== page.key) ?? doc.plan.pages.find((p) => p.key !== page.key);
-  const set = (link: Parameters<typeof setBlockLink>[3]): void => setBlockLink(page, block.id, level, link, `link:${block.id}:${link.mode}`);
+  const set = (link: Parameters<typeof setBlockLink>[3]): void => setBlockLink(page, block.id, level, link, `link:${block.id}:${area}:${link.mode}`, area);
+  // Zonas del elemento que tienen un destino elegido a mano.
+  const edited = design.links.blocks.filter((l) => l.blockId === block.id && l.area !== '' && l.pageType === page.type && (l.pageKey === null || l.pageKey === page.key));
   const urlOk = mode !== 'url' || safeUrl(shown?.url ?? '') !== null;
   const label = (l: (typeof links)[number]): string => (l.page !== undefined ? `${doc.pageLabel(l.page)} · ${t('nav.page', { n: l.page + 1 })}` : (l.url ?? ''));
   return (
@@ -600,6 +606,16 @@ function LinkFields(props: { doc: AgendaDocument; page: PageModel; block: Block;
         </button>
       </div>
       {!design.links.enabled && <p className="mb-1 text-[11px] leading-snug text-warn">{t('link.allOff')}</p>}
+      {area !== '' && (
+        <div className="mb-1 flex items-center justify-between gap-2 rounded-md bg-accent/10 px-2 py-1 text-[11.5px]">
+          <span className="min-w-0 truncate font-semibold" title={area}>
+            {t('link.zoneOf', { name: area })}
+          </span>
+          <button type="button" className="shrink-0 text-accent underline" onClick={() => setLinkArea('')}>
+            {t('link.zoneAll')}
+          </button>
+        </div>
+      )}
       {props.showScope && level === scope && page.type !== 'custom' && (
         <Field label={t('insp.scope')} group>
           <Segmented
@@ -635,6 +651,20 @@ function LinkFields(props: { doc: AgendaDocument; page: PageModel; block: Block;
         <Field label={t('link.address')} hint={urlOk ? t('link.urlHint') : t('link.urlBad')}>
           <TextInput value={shown?.url ?? ''} placeholder="https://" ariaLabel={t('link.address')} onChange={(v) => set({ mode: 'url', url: v })} />
         </Field>
+      )}
+      {edited.length > 0 && area === '' && (
+        <div className="mt-1">
+          <p className="text-[11px] font-semibold text-ink-soft">{t('link.zoneEdited')}</p>
+          <ul className="space-y-0.5 text-[11.5px]">
+            {edited.map((l) => (
+              <li key={`${l.pageKey}:${l.area}`}>
+                <button type="button" className="max-w-full truncate text-accent underline" onClick={() => setLinkArea(l.area)}>
+                  {l.area}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
       {groups.length > 0 ? (
         <ul className="mt-1 space-y-0.5 text-[11.5px]">

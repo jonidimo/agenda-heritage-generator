@@ -379,6 +379,11 @@ export const BlockLinkZ = z.object({
   pageKey: z.string().nullable().default(null),
   blockId: z.string(),
   mode: z.enum(['auto', 'none', 'page', 'url']),
+  /**
+   * Zona del elemento a la que vale (ver `areaKey`): un día, un mes… Vacía, vale para el elemento
+   * entero, salvo las zonas que tengan su propia entrada.
+   */
+  area: z.string().default('').transform((v) => v.slice(0, 200)),
   page: z.string().default(''),
   // Recortada (no rechazada): una dirección larguísima no puede dejar la agenda sin abrir.
   url: z.string().default('').transform((v) => v.slice(0, 2000)),

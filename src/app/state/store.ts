@@ -51,6 +51,8 @@ interface StoreState {
   zoom: number;
   fit: boolean;
   selection: Selection | null;
+  /** Zona de enlace elegida dentro del elemento seleccionado (clave de zona, ver `areaKey`); vacía si es el elemento entero. */
+  linkArea: string;
   /** Bloques seleccionados en la página de `selection` (incluye el principal, que es el último elegido). */
   selectedIds: string[];
   /** En pantallas angostas: hoja inferior del panel del elemento abierta. */
@@ -129,6 +131,7 @@ interface StoreState {
   setPanelSize(panel: PanelId, size: number): void;
   commitPanelSizes(): void;
   select(s: Selection | null): void;
+  setLinkArea(area: string): void;
   setScope(s: 'type' | 'page'): void;
   setUiLang(l: UiLang): void;
   bumpResources(v: number): void;
@@ -227,6 +230,7 @@ export const useStore = create<StoreState>((set, get) => ({
   zoom: 1,
   fit: true,
   selection: null,
+  linkArea: '',
   selectedIds: [],
   inspectorOpen: false,
   scope: 'type',
@@ -350,8 +354,9 @@ export const useStore = create<StoreState>((set, get) => ({
     prefs.panel.right.write(right);
     prefs.panel.thumbs.write(thumbs);
   },
-  select: (selection) => set({ selection, selectedIds: selection ? [selection.blockId] : [] }),
-  setSelection: (selection, ids) => set({ selection, selectedIds: selection ? [...new Set([...(ids ?? []), selection.blockId])] : [] }),
+  select: (selection) => set({ selection, selectedIds: selection ? [selection.blockId] : [], linkArea: '' }),
+  setSelection: (selection, ids) => set({ selection, selectedIds: selection ? [...new Set([...(ids ?? []), selection.blockId])] : [], linkArea: '' }),
+  setLinkArea: (linkArea) => set({ linkArea }),
   setInspectorOpen: (inspectorOpen) => set({ inspectorOpen }),
   setScope: (scope) => set({ scope }),
   setUiLang(uiLang) {

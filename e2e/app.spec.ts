@@ -1124,3 +1124,60 @@ test.describe('estilo propio de un elemento', () => {
     await expect.poll(async () => (await state()).styles.length).toBe(0);
   });
 });
+
+test.describe('copiar, pegar y duplicar elementos propios', () => {
+  test('Ctrl+C / Ctrl+V pega una copia corrida, Ctrl+D duplica y Ctrl+X corta; cada uno es un paso', async ({ page }) => {
+    await openQuiet(page);
+    await page.evaluate(`globalThis.__agenda.getState().update((d) => {
+      d.customBlocks.push({ id: 'clip', pageType: 'titlePage', pageKey: null, kind: 'text', x: 20, y: 20, w: 40, h: 10, mirror: false, props: { text: 'Copiame', size: 10 } });
+    }, 'e2e')`);
+    await expect(page.locator('[data-block="custom.clip"]').first()).toBeVisible();
+    await selectBlock(page, 'custom.clip');
+    const blocks = () => page.evaluate<Array<{ id: string; x: number; y: number }>>(`globalThis.__agenda.getState().design.customBlocks.map((c) => ({ id: c.id, x: c.x, y: c.y }))`);
+    const past = () => page.evaluate<number>('globalThis.__agenda.getState().past.length');
+    const p0 = await past();
+
+    await page.keyboard.press('Control+c');
+    await page.keyboard.press('Control+v');
+    await expect.poll(async () => (await blocks()).length).toBe(2);
+    const pasted = (await blocks())[1]!;
+    expect(pasted.id).not.toBe('clip');
+    expect([pasted.x, pasted.y]).toEqual([25, 25]);
+    expect(await past()).toBe(p0 + 1);
+    // La copia queda seleccionada: Ctrl+D la duplica.
+    await page.keyboard.press('Control+d');
+    await expect.poll(async () => (await blocks()).length).toBe(3);
+    // Ctrl+X corta la selección.
+    await page.keyboard.press('Control+x');
+    await expect.poll(async () => (await blocks()).length).toBe(2);
+    await page.keyboard.press('Control+z');
+    await expect.poll(async () => (await blocks()).length).toBe(3);
+  });
+});
+
+test.describe('enlaces por zona', () => {
+  test('tocar el número de un día elige esa zona y su destino se cambia sin tocar los demás días', async ({ page }) => {
+    await openQuiet(page);
+    await page.evaluate(`globalThis.__agenda.getState().setShowLinks(true)`);
+    for (let i = 0; i < 12 && (await page.locator('[data-page-type="yearOverview"]').count()) === 0; i++) await page.keyboard.press('PageDown');
+    const zones = page.locator('[data-page-type="yearOverview"] [aria-label^="→"]');
+    await expect(zones.first()).toBeVisible();
+    const before = await zones.count();
+    const past = () => page.evaluate<number>('globalThis.__agenda.getState().past.length');
+    const p0 = await past();
+
+    await zones.nth(8).click();
+    const area = await page.evaluate<string>('globalThis.__agenda.getState().linkArea');
+    expect(area).toMatch(/^(date|month):/);
+    const fields = page.getByTestId('link-fields');
+    await expect(fields).toContainText(area);
+    await fields.getByRole('combobox', { name: 'Al tocarlo en el PDF' }).first().selectOption('none');
+
+    await expect.poll(async () => page.evaluate<number>('globalThis.__agenda.getState().design.links.blocks.length')).toBe(1);
+    const saved = await page.evaluate<{ area: string; mode: string }>('(() => { const l = globalThis.__agenda.getState().design.links.blocks[0]; return { area: l.area, mode: l.mode }; })()');
+    expect(saved).toEqual({ area, mode: 'none' });
+    expect(await past()).toBe(p0 + 1);
+    // Solo esa zona desaparece: las demás conservan su enlace.
+    await expect(zones).toHaveCount(before - 1);
+  });
+});

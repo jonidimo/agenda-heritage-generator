@@ -5,6 +5,7 @@
 import type { AgendaDocument } from '@core/document';
 import type { WritingStyle } from '@core/design/themes';
 import type { BlockLineKey } from '@core/design/schema';
+import type { ResolvedLink } from '@core/document/links';
 import type { Block, PageModel, Prim } from '@core/layout/prims';
 import {
   AlignCenterHorizontal,
@@ -15,6 +16,7 @@ import {
   AlignStartHorizontal,
   AlignStartVertical,
   AlignVerticalDistributeCenter,
+  ClipboardPaste,
   Copy,
   Crosshair,
   EyeOff,
@@ -27,6 +29,7 @@ import {
   MousePointerClick,
   RotateCcw,
   Scaling,
+  Scissors,
   SlidersHorizontal,
   Square,
   SquareDashedMousePointer,
@@ -40,6 +43,9 @@ import {
   addCustomBlock,
   alignBlocks,
   allLinesRecipe,
+  clearBlockLinks,
+  linkScope,
+  setBlockLink,
   centerBlocks,
   distributeBlocks,
   duplicateCustomBlock,
@@ -52,6 +58,7 @@ import {
   tidyBlocks,
   type Scope,
 } from '../../state/actions';
+import { copySelection, cutSelection, pasteSelection } from '../../state/clipboard';
 import { customPageHere } from '../../state/customPages';
 import { reveal } from '../../state/reveal';
 import { exportPageSvg, fileBase } from '../../state/exporter';
@@ -189,6 +196,8 @@ export function blockMenu(c: MenuContext, block: Block): MenuItem[] {
     items.push({ label: t('writing.more'), icon: <SlidersHorizontal size={14} />, onSelect: openProperties }, { separator: true }, hideHere, hideType);
   } else if (block.role === 'custom') {
     items.push(
+      { label: t('menu.copy'), icon: <Copy size={14} />, onSelect: () => void copySelection() },
+      { label: t('menu.cut'), icon: <Scissors size={14} />, onSelect: () => void cutSelection() },
       { label: t('menu.duplicate'), icon: <Copy size={14} />, onSelect: () => duplicateCustomBlock(page, block) },
       {
         label: t('insp.delete'),
@@ -225,6 +234,23 @@ export function blockMenu(c: MenuContext, block: Block): MenuItem[] {
   return items;
 }
 
+/** Opciones sobre una zona tocable del PDF (un día, un mes…) de un elemento. */
+export function zoneMenu(c: MenuContext, link: ResolvedLink, follow: () => void): MenuItem[] {
+  const { t, page, scope } = c;
+  const design = useStore.getState().design!;
+  const level = linkScope(design, page, link.blockId, scope);
+  const set = (mode: 'none' | 'auto', area: string): void => setBlockLink(page, link.blockId, level, { mode }, `link:${link.blockId}:${area}:${mode}`, area);
+  return [
+    { heading: t('link.zone') },
+    { label: t('link.zoneGo'), icon: <MousePointerClick size={14} />, onSelect: follow },
+    { label: t('link.zoneChange'), icon: <Link2 size={14} />, onSelect: () => void reveal({ inspector: true, selector: '[data-reveal="links"] select' }) },
+    { separator: true },
+    { label: t('link.zoneRemove'), icon: <Trash2 size={14} />, onSelect: () => set('none', link.area) },
+    { label: t('link.zoneAuto'), icon: <RotateCcw size={14} />, disabled: link.cat !== 'manual', onSelect: () => set('auto', link.area) },
+    { label: t('link.zoneRemoveAll'), icon: <Trash2 size={14} />, danger: true, onSelect: () => (clearBlockLinks(page, link.blockId, level), set('none', '')) },
+  ];
+}
+
 /** Opciones sobre un lugar vacío de la página. */
 export function pageMenu(c: MenuContext): MenuItem[] {
   const { t, doc, page, scope, at } = c;
@@ -241,6 +267,7 @@ export function pageMenu(c: MenuContext): MenuItem[] {
     { label: t('menu.addLinesHere'), icon: <StretchHorizontal size={14} />, onSelect: add('lines') },
     { label: t('menu.addDotsHere'), icon: <Grip size={14} />, onSelect: add('dots') },
     { label: t('menu.addFrameHere'), icon: <Square size={14} />, onSelect: add('rect') },
+    { label: t('menu.paste'), icon: <ClipboardPaste size={14} />, onSelect: () => void pasteSelection() },
     { separator: true },
     { label: t('menu.insertPage'), icon: <FilePlus2 size={14} />, onSelect: () => insertPageAfter(doc, page.index) },
     {

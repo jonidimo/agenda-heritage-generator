@@ -15,7 +15,7 @@ import { frameThrottle, type FrameThrottle } from '../../state/frame';
 import { MIN_BOX } from '@core/layout/box';
 import { HANDLES, resizeRect, type Handle } from '@core/layout/resize';
 import { openMenuAt } from '../ContextMenu';
-import { blockMenu, multiMenu, pageMenu } from './menus';
+import { blockMenu, multiMenu, pageMenu, zoneMenu } from './menus';
 import { editableInPlace, TextEditor } from './TextEditor';
 import { assetHref, onAssetUrlsChange } from '../../state/assetUrls';
 import { useT } from '../../i18n/ui';
@@ -86,6 +86,7 @@ export function PageView({ doc, index, scale, interactive = true }: Props) {
   const selectedIds = useStore((s) => s.selectedIds);
   const select = useStore((s) => s.select);
   const setSelection = useStore((s) => s.setSelection);
+  const setLinkArea = useStore((s) => s.setLinkArea);
   const scope = useStore((s) => s.scope);
   const showGuides = useStore((s) => s.guides);
   const snapOn = useStore((s) => s.snap);
@@ -496,7 +497,20 @@ export function PageView({ doc, index, scale, interactive = true }: Props) {
                 const owner = page.blocks.find((b) => b.id === l.blockId);
                 if (!owner) return;
                 if (e.ctrlKey || e.metaKey || e.shiftKey) toggle(owner);
-                else select(selOf(owner));
+                else {
+                  // Elige el elemento y esa zona: el panel de enlaces muestra y cambia solo su destino.
+                  select(selOf(owner));
+                  setLinkArea(l.area);
+                }
+              }}
+              onContextMenu={(e) => {
+                const owner = page.blocks.find((b) => b.id === l.blockId);
+                if (!owner) return;
+                e.preventDefault();
+                e.stopPropagation();
+                select(selOf(owner));
+                setLinkArea(l.area);
+                openMenuAt(e, zoneMenu({ t, doc, page, scope, at: toMm(e) }, l, () => followLink(l)));
               }}
 
             />

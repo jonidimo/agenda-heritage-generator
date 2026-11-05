@@ -495,33 +495,78 @@ export function hideBlocks(page: PageModel, blocks: Block[], scope: Scope): void
   });
 }
 
+/* ---------- Copiar y pegar elementos propios ---------- */
+
+/** Los elementos propios que corresponden a estos bloques (los del programa no se copian). */
+export function customBlocksOf(design: Design, blocks: readonly Pick<Block, 'id' | 'role'>[]): CustomBlock[] {
+  return blocks.flatMap((b) => (b.role === 'custom' && b.id.startsWith('custom.') ? design.customBlocks.filter((c) => c.id === b.id.slice(7)) : []));
+}
+
+/**
+ * Pega copias de elementos propios en una página. Cada uno recibe un id nuevo y es de esta página
+ * (o de todas las de su tipo, según el alcance); si se pega donde estaba, se corre 5 mm para que no
+ * quede encima. Las copias quedan dentro de la página. Devuelve los ids de los bloques nuevos.
+ */
+export function pasteCustomBlocks(page: PageModel, copies: readonly CustomBlock[], scope: Scope): string[] {
+  if (copies.length === 0) return [];
+  const pageKey = effectiveScope(page, scope) === 'page' || page.type === 'custom' ? page.key : null;
+  const made: CustomBlock[] = copies.map((src) => {
+    const same = src.pageType === page.type && src.pageKey === pageKey;
+    const w = Math.min(src.w, page.w);
+    const h = Math.min(src.h, page.h);
+    const x = Math.min(Math.max(0, src.x + (same ? 5 : 0)), page.w - w);
+    const y = Math.min(Math.max(0, src.y + (same ? 5 : 0)), page.h - h);
+    return { ...JSON.parse(JSON.stringify(src)), id: newId('el'), pageType: page.type, pageKey, x: r2(x), y: r2(y), w, h };
+  });
+  useStore.getState().update((d) => void d.customBlocks.push(...made));
+  const ids = made.map((c) => `custom.${c.id}`);
+  useStore.getState().setSelection({ pageKey: page.key, pageType: page.type, blockId: ids[ids.length - 1]!, role: 'custom' }, ids);
+  return ids;
+}
+
 /* ---------- Enlaces ---------- */
 
-/** Enlace a mano de un elemento en el alcance elegido (por tipo o en esta página), si lo hay. */
-export function currentBlockLink(design: Design, page: PageModel, blockId: string, scope: Scope): BlockLink | undefined {
+/** Enlace a mano de un elemento (o de una de sus zonas: `area`) en el alcance elegido, si lo hay. */
+export function currentBlockLink(design: Design, page: PageModel, blockId: string, scope: Scope, area = ''): BlockLink | undefined {
   const key = effectiveScope(page, scope) === 'page' ? page.key : null;
-  return design.links.blocks.find((l) => l.blockId === blockId && l.pageType === page.type && l.pageKey === key);
+  return design.links.blocks.find((l) => l.blockId === blockId && l.pageType === page.type && l.pageKey === key && l.area === area);
 }
 
 /**
  * Elige el enlace de un elemento: `auto` vuelve a los automáticos (en una página solo se guarda si
  * su tipo dice otra cosa), `none` se los quita, `page` y `url` ponen uno a mano que cubre el elemento.
  */
-export function setBlockLink(page: PageModel, blockId: string, scope: Scope, link: Pick<BlockLink, 'mode'> & Partial<Pick<BlockLink, 'page' | 'url'>>, coalesce?: string): void {
+export function setBlockLink(page: PageModel, blockId: string, scope: Scope, link: Pick<BlockLink, 'mode'> & Partial<Pick<BlockLink, 'page' | 'url'>>, coalesce?: string, area = ''): void {
   const key = effectiveScope(page, scope) === 'page' ? page.key : null;
   useStore.getState().update((d) => {
     const list = d.links.blocks;
-    const at = list.findIndex((l) => l.blockId === blockId && l.pageType === page.type && l.pageKey === key);
-    const byType = key === null ? undefined : list.find((l) => l.blockId === blockId && l.pageType === page.type && l.pageKey === null);
+    const at = list.findIndex((l) => l.blockId === blockId && l.pageType === page.type && l.pageKey === key && l.area === area);
+    const byType = key === null ? undefined : list.find((l) => l.blockId === blockId && l.pageType === page.type && l.pageKey === null && l.area === area);
     if (link.mode === 'auto' && (key === null || !byType || byType.mode === 'auto')) {
       if (at >= 0) list.splice(at, 1);
       return;
     }
     const prev = at >= 0 ? list[at] : undefined;
-    const entry: BlockLink = { pageType: page.type, pageKey: key, blockId, mode: link.mode, page: link.page ?? prev?.page ?? '', url: link.url ?? prev?.url ?? '' };
+    const entry: BlockLink = { pageType: page.type, pageKey: key, blockId, area, mode: link.mode, page: link.page ?? prev?.page ?? '', url: link.url ?? prev?.url ?? '' };
     if (at >= 0) list[at] = entry;
     else list.push(entry);
   }, coalesce);
+}
+
+/**
+ * Alcance al que vale el enlace de un elemento: una página propia o un elemento propio de una sola
+ * página se enlazan solo en esa página; el resto, según el alcance que elija el usuario.
+ */
+export function linkScope(design: Design, page: PageModel, blockId: string, scope: Scope): Scope {
+  if (page.type === 'custom') return 'page';
+  const custom = design.customBlocks.find((c) => `custom.${c.id}` === blockId);
+  return custom && custom.pageKey !== null ? 'page' : scope;
+}
+
+/** Quita todas las elecciones a mano de un elemento en el alcance (la del elemento entero y las de sus zonas). */
+export function clearBlockLinks(page: PageModel, blockId: string, scope: Scope): void {
+  const key = effectiveScope(page, scope) === 'page' ? page.key : null;
+  useStore.getState().update((d) => void (d.links.blocks = d.links.blocks.filter((l) => !(l.blockId === blockId && l.pageType === page.type && l.pageKey === key))));
 }
 
 export function currentOverride(design: Design, page: PageModel, blockId: string, scope: Scope): BlockOverride | undefined {
