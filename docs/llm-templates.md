@@ -73,7 +73,7 @@ same reference for clients that read resources.
 
 1. `create_design` from the closest template, with `out`.
 2. Small `update_design` patches, one idea at a time.
-3. `check_design` after each change, until `issues` is empty and there are no warnings.
+3. Read `warnings` in every `update_design` answer: they are the layout problems that change just produced (text that does not fit, elements off the page or overlapping, with their page). Fix them before going on. `check_design` then, until `issues` is empty and there are no warnings.
 4. `render_page` on the pages you touched (the first week, a month page, the cover) and look.
 5. `export_pdf` with `pages` to read it on a tablet, or `imposed` to print it.
 

@@ -6,6 +6,7 @@
 import { Ajv2020, type ErrorObject, type ValidateFunction } from 'ajv/dist/2020.js';
 import { designJsonSchema } from '../core/design/jsonSchema';
 import { DesignZ, type Design } from '../core/design/schema';
+import { pageFormat } from '../core/document/context';
 
 export interface CheckIssue {
   /** Puntero JSON al valor (`/sections/3/options/variant`; `/` es la raíz). */
@@ -107,7 +108,8 @@ export function checkDesignData(raw: unknown): CheckResult {
         return { path, message: describe(e, adjusted), severity: adjusted ? 'adjusted' : 'error' };
       });
   const explained = new Set(fromSchema.filter((i) => i.severity === 'error').map((i) => i.path));
-  const issues: CheckIssue[] = [...blocking.filter((i) => !explained.has(i.path)).map((i) => ({ ...i, severity: 'error' as const })), ...fromSchema];
+  const placement = parsed.success ? offPageElements(parsed.data) : [];
+  const issues: CheckIssue[] = [...blocking.filter((i) => !explained.has(i.path)).map((i) => ({ ...i, severity: 'error' as const })), ...fromSchema, ...placement];
   const seen = new Set<string>();
   const unique = issues
     .filter((i) => {
@@ -116,6 +118,24 @@ export function checkDesignData(raw: unknown): CheckResult {
     })
     .sort((a, b) => (a.severity === b.severity ? 0 : a.severity === 'error' ? -1 : 1));
   return { design: parsed.success ? parsed.data : null, issues: unique.slice(0, MAX_ISSUES) };
+}
+
+/**
+ * Elementos propios cuya caja no entra en el papel. El editor no deja armarlos así, pero un archivo
+ * escrito a mano o por un modelo sí puede (y el elemento queda cortado o corrido al imprimir).
+ */
+function offPageElements(design: Design): CheckIssue[] {
+  const { w, h } = pageFormat(design);
+  const out: CheckIssue[] = [];
+  design.customBlocks.forEach((cb, i) => {
+    const over: string[] = [];
+    if (cb.x < -0.01) over.push('x es negativo');
+    if (cb.y < -0.01) over.push('y es negativo');
+    if (cb.x + cb.w > w + 0.01) over.push(`x + w (${Math.round((cb.x + cb.w) * 10) / 10}) pasa del ancho de la página (${Math.round(w * 10) / 10} mm)`);
+    if (cb.y + cb.h > h + 0.01) over.push(`y + h (${Math.round((cb.y + cb.h) * 10) / 10}) pasa del alto de la página (${Math.round(h * 10) / 10} mm)`);
+    if (over.length > 0) out.push({ path: `/customBlocks/${i}`, message: `el elemento «${cb.id}» sale de la página: ${over.join('; ')}`, severity: 'adjusted' });
+  });
+  return out;
 }
 
 const escapeKey = (k: string): string => k.replace(/~/g, '~0').replace(/\//g, '~1');

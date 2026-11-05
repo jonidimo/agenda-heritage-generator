@@ -73,7 +73,7 @@ Los recursos `agenda://guide/es` (esta guía), `agenda://guide` (en inglés), `a
 
 1. `create_design` desde la plantilla más parecida, con `out`.
 2. Cambios chicos con `update_design`, una idea por vez.
-3. `check_design` después de cada cambio, hasta que `issues` quede vacío y no haya avisos.
+3. Leé `warnings` en cada respuesta de `update_design`: son los problemas de maquetación que produjo ese cambio (textos que no entran, elementos fuera de la página o superpuestos, con su página). Corregilos antes de seguir. Después, `check_design` hasta que `issues` quede vacío y no haya avisos.
 4. `render_page` de las páginas que tocaste (la primera semana, una página del mes, la portada),
    y mirarlas.
 5. `export_pdf` con `pages` para leerla en una tableta, o `imposed` para imprimirla.

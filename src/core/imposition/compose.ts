@@ -27,6 +27,8 @@ export interface SheetRender {
 }
 
 const MARK = { color: '#000000', width: ptToMm(0.25) };
+/** Distancia del doblez al borde izquierdo del número de cuadernillo (mm): libre de la marca de doblez y del cotejo. */
+export const SIGNATURE_LABEL_GAP = 3;
 
 export function composeSide(side: SheetSide, getPage: (index: number) => PageModel | null, opts: ComposeOptions): SheetRender {
   const { fmt, binding } = opts;
@@ -73,7 +75,9 @@ export function composeSide(side: SheetSide, getPage: (index: number) => PageMod
       }
       if (binding.marks.signatureLabel && opts.label) {
         const run = opts.label(`${side.signature + 1}`);
-        marks.push({ t: 'text', run, x: cx - run.width / 2, y: H - np - 1, color: '#000000' });
+        // A la derecha del doblez (no centrado en él): la marca de doblez de abajo no cruza el número.
+        // Cae en el pie de la primera página del cuadernillo.
+        marks.push({ t: 'text', run, x: cx + SIGNATURE_LABEL_GAP, y: H - np - 1, color: '#000000' });
       }
     }
   }
