@@ -4,7 +4,7 @@
  * (en CI, `xvfb-run`).
  */
 import { _electron as electron, expect, test, type ElectronApplication } from '@playwright/test';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createRequire } from 'node:module';
@@ -131,4 +131,62 @@ test('el editor de texto en su lugar abre sin violar la política de seguridad (
   await win.keyboard.press('Escape');
   await expect(editor).toHaveCount(0);
   expect(await win.evaluate<string[]>('globalThis.__csp')).toEqual([]);
+});
+
+test('al exportar un PDF se ve dónde quedó, y «Abrir carpeta» solo abre lo que la aplicación guardó', async () => {
+  const { electronApp, win } = await launchWithPlanner();
+  const out = join(profile, 'salida');
+  await mkdir(out, { recursive: true });
+  // El «Guardar como» del sistema se reemplaza por una ruta fija.
+  await electronApp.evaluate(({ session }, dir) => {
+    session.defaultSession.on('will-download', (_event, item) => item.setSavePath(`${dir}/${item.getFilename()}`));
+  }, out);
+  await win.getByRole('tab', { name: 'Impresión' }).click();
+  await win.getByRole('button', { name: 'Hoja de calibración' }).click();
+  const box = win.getByTestId('last-export');
+  await expect(box).toBeVisible({ timeout: 60_000 });
+  await expect(box).toContainText(out);
+  const saved = (await box.locator('span').first().textContent())!;
+  expect((await stat(saved)).size).toBeGreaterThan(1000);
+
+  // Lo que la aplicación guardó se puede mostrar en su carpeta; lo demás, no, venga de donde venga.
+  const call = (route: string, path: string) =>
+    win.evaluate<{ status: number; ok: boolean }>(
+      `fetch('/_sys/${route}', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ path: ${JSON.stringify(path)} }) }).then(async (r) => ({ status: r.status, ok: r.ok && (await r.json()).ok === true }))`,
+    );
+  expect(await call('reveal', saved)).toEqual({ status: 200, ok: true });
+  expect((await call('reveal', '/etc/passwd')).status).toBe(403);
+  expect((await call('open', join(out, '..', 'otra.pdf'))).status).toBe(403);
+  expect((await call('reveal', `${saved}/../../../etc/passwd`)).status).toBe(403);
+  // Y el botón de la pantalla llega al mismo lugar sin errores.
+  await box.getByRole('button', { name: 'Abrir carpeta' }).click();
+  await expect(box).toBeVisible();
+});
+
+test('un archivo de agenda pasado a la aplicación («Abrir con…», doble clic) se abre solo', async () => {
+  const file = join(profile, 'Desde el sistema.agenda.json');
+  await writeFile(file, JSON.stringify({ name: 'Desde el sistema', calendar: { year: 2031 } }));
+  const electronApp = await launch(file);
+  const win = await electronApp.firstWindow();
+  await expect.poll(() => win.evaluate<string | null>('globalThis.__agenda?.getState().design?.name ?? null'), { timeout: 60_000 }).toBe('Desde el sistema');
+  expect(await win.evaluate<number>('globalThis.__agenda.getState().design.calendar.year')).toBe(2031);
+  await expect(win.locator('[data-page-index]').first()).toBeVisible({ timeout: 60_000 });
+});
+
+test('cerrar la ventana espera a que termine el guardado pendiente', async () => {
+  const { electronApp, win } = await launchWithPlanner();
+  await win.evaluate(`globalThis.__agenda.getState().update((d) => { d.name = 'Último cambio'; }, 'e2e-close')`);
+  const closed = electronApp.evaluate(({ BrowserWindow }) => new Promise<void>((resolve) => {
+    const w = BrowserWindow.getAllWindows()[0]!;
+    w.once('closed', () => resolve());
+    w.close();
+  }));
+  await closed;
+  app = null;
+  // Se vuelve a abrir con el mismo perfil: lo último que se escribió está en la biblioteca.
+  const again = await launch();
+  const w2 = await again.firstWindow();
+  await w2.evaluate("localStorage.setItem('agenda-studio.uiLang', 'es')");
+  await w2.reload();
+  await expect.poll(() => w2.evaluate<string | null>('globalThis.__agenda?.getState().design?.name ?? null'), { timeout: 60_000 }).toBe('Último cambio');
 });

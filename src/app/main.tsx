@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { App } from './App';
 import { AppBoundary } from './components/ErrorBoundary';
 import { stats } from './state/stats';
+import { openFromText } from './state/fileActions';
 import { flushSave, useStore } from './state/store';
 import './styles.css';
 
@@ -12,9 +13,15 @@ declare global {
     __agenda?: typeof useStore;
     /** Contadores de trabajo del editor (ver `state/stats`), para las pruebas. */
     __agendaStats?: typeof stats;
+    __heritageFlush?: () => Promise<void>;
+    __heritageOpen?: (text: string, name: string) => Promise<void>;
   }
 }
 window.__agenda = useStore;
+// Lo usa la aplicación de escritorio al cerrar la ventana: termina el guardado pendiente (ver `electron/lib/closing.mjs`).
+window.__heritageFlush = flushSave;
+// Lo usa la aplicación de escritorio cuando el sistema le pide abrir un archivo de agenda (doble clic, «Abrir con…»).
+window.__heritageOpen = (text) => openFromText(text);
 window.__agendaStats = stats;
 
 // Versión nueva instalada mientras la aplicación estaba abierta: los archivos que se cargan bajo

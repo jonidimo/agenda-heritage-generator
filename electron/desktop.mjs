@@ -6,10 +6,13 @@
  * behave as on the website and saved planners persist across launches. The page runs in a fully
  * sandboxed renderer, without a preload script or Node.js.
  */
-import { stat } from 'node:fs/promises';
+import { readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { app, BrowserWindow, dialog, Menu, net, protocol, screen, shell } from 'electron';
+import { app, BrowserWindow, dialog, Menu, net, protocol, screen, session, shell } from 'electron';
+import { agendaFileFromArgv, MAX_OPEN_BYTES } from './lib/args.mjs';
+import { createCloseGuard } from './lib/closing.mjs';
+import { DownloadLog, sysRequestAllowed, sysRoute } from './lib/downloads.mjs';
 import { createRevealer, gpuCrashAction, gpuFallbackRelaunch } from './lib/reveal.mjs';
 
 const APP_NAME = 'Heritage Studio';
@@ -34,6 +37,48 @@ protocol.registerSchemesAsPrivileged([
 
 const notFound = () => new Response('Not found', { status: 404, headers: { 'content-type': 'text/plain' } });
 
+/** @param {unknown} data @param {number} [status] */
+const json = (data, status = 200) => new Response(JSON.stringify(data), { status, headers: { 'content-type': 'application/json' } });
+
+/** What was saved to disk from the page (PDFs), so it can say where and open them. */
+const downloads = new DownloadLog();
+
+/**
+ * app://heritage/_sys/*: what the sandboxed page cannot do by itself. It learns where a download ended
+ * up, and can open that file or show its folder; only paths the app itself saved, never an arbitrary one.
+ * @param {Request} request
+ */
+async function sys(request) {
+  const url = new URL(request.url);
+  const route = sysRoute(url.pathname);
+  if (!route) return notFound();
+  if (!sysRequestAllowed(request.headers.get('origin'), request.headers.get('sec-fetch-site'))) return json({ error: 'forbidden' }, 403);
+  if (route === 'downloads') {
+    if (request.method !== 'GET') return json({ error: 'method' }, 405);
+    const after = Number.parseInt(url.searchParams.get('after') ?? '0', 10) || 0;
+    const wait = Number.parseInt(url.searchParams.get('wait') ?? '0', 10) || 0;
+    const items = await downloads.wait(after, wait);
+    return json({ seq: downloads.lastId, items });
+  }
+  if (request.method !== 'POST') return json({ error: 'method' }, 405);
+  /** @type {unknown} */
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ error: 'body' }, 400);
+  }
+  const file = body && typeof body === 'object' ? /** @type {{ path?: unknown }} */ (body).path : undefined;
+  if (typeof file !== 'string' || !downloads.hasSaved(file)) return json({ error: 'unknown file' }, 403);
+  if (!(await stat(file).catch(() => null))) return json({ error: 'missing' }, 404);
+  if (route === 'reveal') {
+    shell.showItemInFolder(file);
+    return json({ ok: true });
+  }
+  const error = await shell.openPath(file);
+  return json({ ok: error === '', error });
+}
+
 /**
  * Serves app://heritage/<path> from dist/, never from outside it.
  * @param {Request} request
@@ -41,6 +86,7 @@ const notFound = () => new Response('Not found', { status: 404, headers: { 'cont
 async function serve(request) {
   const { host, pathname } = new URL(request.url);
   if (host !== HOST) return notFound();
+  if (pathname.startsWith('/_sys/')) return sys(request);
   // The PWA service worker is for the website (offline cache); here every file is already local.
   // An empty registerSW.js registers nothing, and sw.js is not served, so nothing can register it.
   if (pathname === '/registerSW.js') return new Response('', { headers: { 'content-type': 'text/javascript' } });
@@ -98,6 +144,44 @@ function buildMenu() {
 /** @type {BrowserWindow | null} */
 let mainWindow = null;
 
+/** A planner file asked for before the page was ready (double click, "Open with…", macOS open-file). */
+let pendingOpen = agendaFileFromArgv(process.argv);
+
+/**
+ * Opens a planner file in the page. The page exposes `__heritageOpen(text, name)`; the text travels as a
+ * JSON string literal, so nothing in the file can run as code.
+ * @param {string} file
+ */
+async function openPlannerFile(file) {
+  const win = mainWindow;
+  if (!win || win.isDestroyed() || !loaded) {
+    pendingOpen = file;
+    return;
+  }
+  const info = await stat(file).catch(() => null);
+  if (!info?.isFile() || info.size > MAX_OPEN_BYTES) {
+    dialog.showErrorBox(APP_NAME, `Could not open ${file}.`);
+    return;
+  }
+  const text = await readFile(file, 'utf8');
+  app.addRecentDocument(file);
+  await win.webContents.executeJavaScript(`window.__heritageOpen && window.__heritageOpen(${JSON.stringify(text)}, ${JSON.stringify(path.basename(file))})`);
+  if (win.isMinimized()) win.restore();
+  win.focus();
+}
+
+// macOS delivers the file through this event (also before the app is ready).
+app.on('open-file', (event, file) => {
+  event.preventDefault();
+  void openPlannerFile(file);
+});
+
+/** The app is quitting (not just one window closing). */
+let quitting = false;
+app.on('before-quit', () => {
+  quitting = true;
+});
+
 /** Whether the page has finished loading once: from then on the startup is over. */
 let loaded = false;
 
@@ -140,10 +224,25 @@ function createWindow() {
   win.webContents.once('did-finish-load', () => {
     loaded = true;
     revealer.reveal();
+    if (pendingOpen) {
+      const file = pendingOpen;
+      pendingOpen = null;
+      void openPlannerFile(file);
+    }
   });
   win.webContents.on('did-fail-load', (_event, _code, _description, _url, isMainFrame) => {
     if (isMainFrame) revealer.reveal();
   });
+  // Closing waits (briefly) for the page to finish saving its last change.
+  const closing = createCloseGuard({
+    flush: () => (win.webContents.isDestroyed() ? Promise.resolve() : win.webContents.executeJavaScript('window.__heritageFlush ? window.__heritageFlush() : null')),
+    destroy: () => {
+      if (!win.isDestroyed()) win.destroy();
+      // Holding the close back also held back a quit (Cmd+Q): pick it up again.
+      if (quitting) app.quit();
+    },
+  });
+  win.on('close', (event) => closing.onClose(event));
   win.on('closed', () => {
     revealer.dispose();
     mainWindow = null;
@@ -188,7 +287,9 @@ app.on('web-contents-created', (_event, contents) => {
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
-  app.on('second-instance', () => {
+  app.on('second-instance', (_event, argv) => {
+    const file = agendaFileFromArgv(argv);
+    if (file) void openPlannerFile(file);
     if (!mainWindow) {
       // macOS keeps running without windows; before startup finishes, the first window is on its way.
       if (protocol.isProtocolHandled(SCHEME)) createWindow();
@@ -212,6 +313,15 @@ if (!app.requestSingleInstanceLock()) {
       return;
     }
     protocol.handle(SCHEME, serve);
+    // Each PDF the page saves: where it ended up is what "Open folder" needs.
+    session.defaultSession.on('will-download', (_event, item) => {
+      if (!item.getURL().startsWith(`blob:${APP_URL}`)) return;
+      const id = downloads.start(item.getFilename());
+      item.once('done', (_done, state) => {
+        const ended = state === 'completed' ? 'completed' : state === 'cancelled' ? 'cancelled' : 'interrupted';
+        downloads.finish(id, ended, ended === 'completed' ? item.getSavePath() : null);
+      });
+    });
     buildMenu();
     createWindow();
     app.on('activate', () => {

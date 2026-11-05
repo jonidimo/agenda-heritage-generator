@@ -4,7 +4,8 @@ import { Download, FileDown, Link2, Printer, Ruler, Scissors } from 'lucide-reac
 import { useState } from 'react';
 import { uiText, useT, type UiKey } from '../../i18n/ui';
 import { useDocument } from '../../state/doc';
-import { download, exportPageSvg, exportPdf, fileBase } from '../../state/exporter';
+import { openFile, revealFile } from '../../state/desktopBridge';
+import { deliverPdf, exportPageSvg, exportPdf, fileBase } from '../../state/exporter';
 import { scrub } from '../../state/scrub';
 import { useStore } from '../../state/store';
 import { Button, Field, Group, NumberInput, Segmented, Select, Slider, TextInput, Toggle } from '../ui';
@@ -20,6 +21,8 @@ export function PrintPanel() {
   const b = design.binding;
   const L = design.links;
   const [status, setStatus] = useState<string | null>(null);
+  const lastExport = useStore((s) => s.lastExport);
+  const setLastExport = useStore((s) => s.setLastExport);
   const [busy, setBusy] = useState(false);
   const [sigNo, setSigNo] = useState(1);
   const [customText, setCustomText] = useState<string | null>(null);
@@ -28,12 +31,14 @@ export function PrintPanel() {
 
   const run = async (kind: ExportKind, suffix: string, signature?: number): Promise<void> => {
     setBusy(true);
+    setLastExport(null);
     setStatus(t('export.working', { done: 0, total: '…' }));
     try {
       const bytes = await exportPdf(design, kind, (done, total) => setStatus(t('export.working', { done, total })), signature !== undefined ? { signature } : {});
       const name = `${fileBase(design)}-${suffix}.pdf`;
-      download(bytes, name);
-      setStatus(t('export.done', { name }));
+      const done = await deliverPdf(bytes, name);
+      setLastExport(done.kind === 'saved' ? { name: done.name, path: done.path } : null);
+      setStatus(done.kind === 'saved' ? t('export.saved') : done.kind === 'cancelled' ? t('export.cancelled') : t('export.done', { name }));
     } catch (err) {
       setStatus(t('export.error', { msg: (err as Error).message }));
     } finally {
@@ -115,7 +120,24 @@ export function PrintPanel() {
             </Button>
           )}
         </div>
-        {status && <p className="mt-2 text-[11.5px] text-ink-soft" role="status">{status}</p>}
+        {status && (
+          <p className="mt-2 text-[11.5px] text-ink-soft" role="status">
+            {status}
+          </p>
+        )}
+        {lastExport && (
+          <div className="mt-1 text-[11.5px]" data-testid="last-export">
+            <button type="button" className="font-semibold text-accent underline" title={t('export.openFile')} onClick={() => void openFile(lastExport.path)}>
+              {lastExport.name}
+            </button>
+            <span className="block break-all text-ink-soft">{lastExport.path}</span>
+            <div className="mt-1">
+              <Button variant="outline" onClick={() => void revealFile(lastExport.path)}>
+                {t('export.openFolder')}
+              </Button>
+            </div>
+          </div>
+        )}
       </Group>
 
       <Group title={t('links.title')} defaultOpen={false}>

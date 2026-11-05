@@ -86,6 +86,9 @@ interface StoreState {
   showShortcuts: boolean;
   setShowShortcuts(b: boolean): void;
   /** Pedido de editar el texto de un elemento en su lugar (F2): la página que lo tiene lo atiende y lo limpia. */
+  /** Lo último que se guardó como PDF en esta computadora (solo la aplicación de escritorio sabe la ruta). */
+  lastExport: { name: string; path: string } | null;
+  setLastExport(e: { name: string; path: string } | null): void;
   textEditRequest: { pageKey: string; blockId: string } | null;
   requestTextEdit(r: { pageKey: string; blockId: string } | null): void;
   sidebarOpen: boolean;
@@ -262,6 +265,7 @@ export const useStore = create<StoreState>((set, get) => ({
   searchOpen: false,
   showShortcuts: false,
   textEditRequest: null,
+  lastExport: null,
   sidebarOpen: true,
   guides: false,
   snap: true,
@@ -352,6 +356,7 @@ export const useStore = create<StoreState>((set, get) => ({
   setView: (view) => set({ view, selection: null, selectedIds: [] }),
   setPanel: (panel) => set({ panel }),
   setSearchOpen: (searchOpen) => set({ searchOpen }),
+  setLastExport: (lastExport) => set({ lastExport }),
   setShowShortcuts: (showShortcuts) => set({ showShortcuts }),
   requestTextEdit: (textEditRequest) => set({ textEditRequest }),
   goToPage: (i) => set({ pageIndex: Math.max(0, i), selection: null, selectedIds: [] }),

@@ -3,7 +3,7 @@
  * Linux sin pantalla hay que decir cómo hacerlo andar. Funciones puras, sin Electron.
  */
 import { describe, expect, it } from 'vitest';
-import { HEADLESS_FLAG, MCP_FLAG, MISSING_DISPLAY_MESSAGE, missingDisplay, wantsMcp, windowsMcpMessage } from '../electron/lib/args.mjs';
+import { agendaFileFromArgv, HEADLESS_FLAG, MCP_FLAG, MISSING_DISPLAY_MESSAGE, missingDisplay, wantsMcp, windowsMcpMessage } from '../electron/lib/args.mjs';
 
 describe('wantsMcp', () => {
   it('detecta --mcp en la aplicación instalada y en `electron .`', () => {
@@ -52,5 +52,14 @@ describe('windowsMcpMessage', () => {
     expect(message).toContain('ELECTRON_RUN_AS_NODE');
     expect(message).toContain(JSON.stringify('C:\\Apps\\Heritage Studio.exe'));
     expect(message).toContain(JSON.stringify('C:\\Apps\\resources\\app.asar\\dist-mcp\\main.mjs'));
+  });
+});
+
+describe('archivo de agenda en la línea de comandos', () => {
+  it('toma el primer .json que no es una opción', () => {
+    expect(agendaFileFromArgv(['/app/heritage', '/home/a/Mi agenda.agenda.json'])).toBe('/home/a/Mi agenda.agenda.json');
+    expect(agendaFileFromArgv(['electron', '/repo', '--no-sandbox', 'C:\\Agendas\\2027.AGENDA.JSON'])).toBe('C:\\Agendas\\2027.AGENDA.JSON');
+    expect(agendaFileFromArgv(['electron', '--flag.json', 'x.txt'])).toBeNull();
+    expect(agendaFileFromArgv(['electron'])).toBeNull();
   });
 });

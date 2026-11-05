@@ -10,6 +10,7 @@ import { useStore, ZOOM, type View } from '../state/store';
 import { supportsUiScale } from '../state/uiScale';
 import { IconButton, Segmented } from './ui';
 import { goBack, goForward } from '../state/navigation';
+import { revealFile } from '../state/desktopBridge';
 import { SearchPalette } from './SearchPalette';
 
 /** Un botón de la barra que abre un menú justo debajo; el menú se arma al abrirlo, con lo que haya en ese momento. */
@@ -49,6 +50,7 @@ export function Topbar() {
   const uiScale = useStore((s) => s.uiScale);
   const setUiScale = useStore((s) => s.setUiScale);
   const autoReveal = useStore((s) => s.autoReveal);
+  const lastExport = useStore((s) => s.lastExport);
   const setShowShortcuts = useStore((s) => s.setShowShortcuts);
   const setAutoReveal = useStore((s) => s.setAutoReveal);
   const setShowAbout = useStore((s) => s.setShowAbout);
@@ -102,7 +104,7 @@ export function Topbar() {
             ...(supportsUiScale()
               ? [{ separator: true }, { heading: t('file.uiScale') }, ...UI_SCALE.presets.map((p) => ({ label: `${Math.round(p * 100)} %`, checked: Math.abs(uiScale - p) < 0.005, onSelect: () => setUiScale(p) }))]
               : []),
-            { separator: true },
+            ...(lastExport ? [{ label: t('file.openLastFolder'), onSelect: () => void revealFile(lastExport.path) }, { separator: true as const }] : [{ separator: true as const }]),
             { label: t('file.autoReveal'), checked: autoReveal, onSelect: () => setAutoReveal(!autoReveal) },
             { label: t('file.shortcuts'), icon: <Keyboard size={14} />, hint: shortcutHint('help.shortcuts', t), onSelect: () => setShowShortcuts(true) },
             { label: t('file.about'), icon: <Info size={14} />, onSelect: () => setShowAbout(true) },

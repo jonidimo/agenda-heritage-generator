@@ -6,7 +6,7 @@ import { Canvas } from './components/canvas/Canvas';
 import { ContextMenuHost } from './components/ContextMenu';
 import { AboutDialog, LibraryDialog, SaveTemplateDialog, ShortcutsDialog, WelcomeDialog } from './components/Dialogs';
 import { ErrorBoundary, ViewError } from './components/ErrorBoundary';
-import { openAnyFile } from './state/fileActions';
+import { installFileDrop, openAnyFile } from './state/fileActions';
 import { Inspector } from './components/Inspector';
 import { Navigator } from './components/Navigator';
 import { AssetsPanel } from './components/panels/AssetsPanel';
@@ -239,6 +239,9 @@ export function App() {
 
   // Todos los atajos de teclado, en un solo oyente (ver `state/shortcuts.ts`).
   useEffect(() => installShortcuts(), []);
+
+  // Soltar un archivo de agenda sobre la ventana lo abre.
+  useEffect(() => installFileDrop(), []);
 
   return (
     <div className="flex h-full flex-col">

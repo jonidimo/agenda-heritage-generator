@@ -7,6 +7,7 @@ import type { Design } from '@core/design/schema';
 import { pageToSvg } from '@core/render/svg';
 import type { PdfJob, PdfReply } from '@core/document/job';
 import { resources } from './resources';
+import { awaitDownload, downloadMark } from './desktopBridge';
 
 let worker: Worker | null = null;
 let seq = 0;
@@ -34,6 +35,30 @@ export function download(bytes: Uint8Array | Blob, name: string, mime = 'applica
   a.click();
   a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 60_000);
+}
+
+/** Cómo terminó entregar un PDF: se bajó con el navegador, se guardó en una ruta (escritorio) o se canceló. */
+export type Delivered = { kind: 'browser'; name: string } | { kind: 'saved'; name: string; path: string } | { kind: 'cancelled'; name: string } | { kind: 'unknown'; name: string };
+
+/** Cuánto se espera, como mucho, a que alguien elija dónde guardar (el cuadro «Guardar como» es del sistema). */
+const SAVE_DIALOG_WAIT_MS = 10 * 60_000;
+
+/**
+ * Entrega un PDF: en el navegador, la descarga de siempre; en el escritorio, la misma descarga (el
+ * sistema pregunta dónde guardarlo) y después se averigua la ruta para poder mostrarla y abrir su carpeta.
+ */
+export async function deliverPdf(bytes: Uint8Array, name: string): Promise<Delivered> {
+  const mark = await downloadMark();
+  download(bytes, name);
+  if (mark === null) return { kind: 'browser', name };
+  const started = Date.now();
+  while (Date.now() - started < SAVE_DIALOG_WAIT_MS) {
+    const done = await awaitDownload(mark, 60_000);
+    if (!done) continue;
+    if (done.state === 'completed' && done.path) return { kind: 'saved', name: done.name, path: done.path };
+    return done.state === 'cancelled' ? { kind: 'cancelled', name } : { kind: 'unknown', name };
+  }
+  return { kind: 'unknown', name };
 }
 
 /** Nombre de archivo a partir del nombre de una agenda, plantilla o tema (sin tildes ni signos). */
