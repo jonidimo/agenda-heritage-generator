@@ -4,7 +4,7 @@
  * (mover, escalar, rotar, opacidad, ocultar) con verificación de límites.
  */
 import { enumProp, IMAGE_FITS, numProp, PROP_DEFAULTS, PROP_RANGES, TEXT_ALIGNS, TEXT_ROLES, TEXT_VALIGNS } from '../design/customBlocks';
-import type { BlockOverride, CustomBlock, Design, PageStyle, WatermarkPlacement } from '../design/schema';
+import type { BlockOverride, BlockStyle, CustomBlock, Design, PageStyle, WatermarkPlacement } from '../design/schema';
 import { fmt as fmtStr } from '../i18n';
 import { inset } from '../layout/box';
 import { adjustedSize, type BoxAdjust } from '../layout/box';
@@ -21,6 +21,7 @@ import { parseFontSpec, type FontRegistry } from '../text/fonts';
 import { assetPrims } from './assets';
 import { pageGeometry } from './context';
 import { pageTextVars } from '../sections/common';
+import { applyBlockStyle, blockStyleMap, mergeLineTable } from './blockstyle';
 import { applyLineStyles, hasLineStyles } from './linestyle';
 
 export function findOverride(overrides: readonly BlockOverride[], page: { key: string; type: string }, blockId: string): BlockOverride | undefined {
@@ -87,6 +88,8 @@ export interface PageInputs {
   readonly blocks: readonly CustomBlock[];
   readonly watermarks: readonly WatermarkPlacement[];
   readonly overrides: readonly BlockOverride[];
+  /** Estilo propio de los elementos (líneas, relleno, color del texto). */
+  readonly blockStyles: readonly BlockStyle[];
   readonly styles: readonly PageStyle[];
   /** Adónde lleva el número de página (el único dato de «Enlaces» que cambia lo maquetado). */
   readonly pageNumberLink: Design['links']['pageNumber'];
@@ -99,6 +102,7 @@ export function pageInputs(design: Design, plan: PagePlan): PageInputs {
     watermarks: design.watermarks.filter((wm) => watermarkApplies(wm, plan.type, plan.key)),
     // Un ajuste atado a la clave de la página vale aunque su tipo haya cambiado (ver `findOverride`).
     overrides: design.overrides.filter((o) => o.pageKey === plan.key || (o.pageKey === null && o.pageType === plan.type)),
+    blockStyles: design.blockStyles.filter(onPage),
     styles: design.pageStyles.filter(onPage),
     pageNumberLink: design.links.pageNumber,
   };
@@ -108,7 +112,7 @@ const sameList = <T>(a: readonly T[], b: readonly T[]): boolean => a.length === 
 
 /** ¿Las mismas entradas? Por identidad, elemento por elemento (el editor no muta: lo que no se tocó es el mismo objeto). */
 export function samePageInputs(a: PageInputs, b: PageInputs): boolean {
-  return a.pageNumberLink === b.pageNumberLink && sameList(a.blocks, b.blocks) && sameList(a.watermarks, b.watermarks) && sameList(a.overrides, b.overrides) && sameList(a.styles, b.styles);
+  return a.pageNumberLink === b.pageNumberLink && sameList(a.blocks, b.blocks) && sameList(a.watermarks, b.watermarks) && sameList(a.overrides, b.overrides) && sameList(a.blockStyles, b.blockStyles) && sameList(a.styles, b.styles);
 }
 
 function watermarkApplies(wm: WatermarkPlacement, type: string, key: string): boolean {
@@ -401,8 +405,15 @@ export function layoutPage(
     const a = adjuster(b.id);
     if (a && (a.dw !== 0 || a.dh !== 0)) stretchBlock(b, a);
   }
-  // Estilo de líneas y ornamentos del tema (renglones, separadores, tablas, marcos).
-  if (hasLineStyles(ctx.theme.lines)) for (const b of ctx.blocks) b.prims = applyLineStyles(b.prims, ctx.theme.lines, doc.assets);
+  // Estilo propio de cada elemento y, encima, el de líneas y ornamentos del tema (renglones,
+  // separadores, tablas, marcos): el del elemento primero, así las guardas usan su grosor y su color.
+  const styleOf = blockStyleMap(inputs.blockStyles, plan);
+  for (const b of ctx.blocks) {
+    const st = styleOf.get(b.id);
+    if (st) b.prims = applyBlockStyle(b.prims, st);
+    const lines = st ? mergeLineTable(ctx.theme.lines, st.lines) : ctx.theme.lines;
+    if (hasLineStyles(lines)) b.prims = applyLineStyles(b.prims, lines, doc.assets);
+  }
 
   // Ajustes del editor.
   const blocks: Block[] = [];

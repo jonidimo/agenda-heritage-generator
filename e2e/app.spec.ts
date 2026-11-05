@@ -1085,3 +1085,42 @@ test.describe('texto en su lugar', () => {
     await expect.poll(async () => (await page.locator('[data-block="custom.e2e"]').first().boundingBox())!.height).toBeGreaterThan(h1 * 2);
   });
 });
+
+test.describe('estilo propio de un elemento', () => {
+  test('el panel cambia el dibujo y el grosor de sus líneas: un paso por cambio, con vista previa al arrastrar', async ({ page }) => {
+    await openQuiet(page);
+    await toWeek(page);
+    await settled(page);
+    await selectBlock(page, 'week.notes');
+    const section = page.locator('[data-reveal="blockstyle"]');
+    await expect(section).toBeVisible();
+    const state = () => page.evaluate<{ styles: unknown[]; past: number; previewStyles: number | null }>(`(() => {
+      const s = globalThis.__agenda.getState();
+      return { styles: s.design.blockStyles, past: s.past.length, previewStyles: s.previewDesign ? s.previewDesign.blockStyles.length : null };
+    })()`);
+    const before = await state();
+    expect(before.styles).toHaveLength(0);
+
+    await section.locator('fieldset').first().locator('select').selectOption('dashed');
+    await expect.poll(async () => (await state()).styles.length).toBe(1);
+    const after = await state();
+    expect(after.past).toBe(before.past + 1);
+    expect(JSON.stringify(after.styles)).toContain('"pattern":"dashed"');
+
+    // El grosor se ve mientras se arrastra y se confirma una sola vez al soltar.
+    const slider = section.getByRole('slider').first();
+    await dragThrough(slider, ['1', '2', '3']);
+    await frames(page);
+    const during = await state();
+    expect(during.past).toBe(after.past);
+    expect(during.previewStyles).toBe(1);
+    await release(slider);
+    await expect.poll(async () => (await state()).previewStyles).toBeNull();
+    expect((await state()).past).toBe(after.past + 1);
+    expect(JSON.stringify((await state()).styles)).toContain('"widthPt":3');
+
+    // «Quitar el estilo propio» deja todo como estaba.
+    await section.getByRole('button', { name: 'Quitar el estilo propio' }).click();
+    await expect.poll(async () => (await state()).styles.length).toBe(0);
+  });
+});

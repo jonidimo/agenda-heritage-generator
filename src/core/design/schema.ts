@@ -4,7 +4,8 @@
  * así un archivo viejo o incompleto siempre se completa y valida.
  */
 import { z } from 'zod';
-import { pruneTokens } from './themes';
+import { normalizeColor } from '../util/color';
+import { LINE_PATTERNS, LINE_USES, pruneTokens } from './themes';
 
 // Sin compilación a medida: zod decide si compilar sus validadores probando `new Function`, y la
 // política de seguridad de la aplicación prohíbe evaluar texto como código, así que el navegador
@@ -319,6 +320,43 @@ export type BlockOverride = z.infer<typeof BlockOverrideZ>;
 export const OVERRIDE_DEFAULTS: BlockOverride = BlockOverrideZ.parse({ pageType: '', blockId: '' });
 export const WATERMARK_DEFAULTS: WatermarkPlacement = WatermarkZ.parse({ id: '', assetId: '' });
 
+/** Un color escrito de cualquier forma válida; uno que no lo es se descarta (el campo queda sin valor). */
+const colorProp = z.string().transform((v) => normalizeColor(v) ?? undefined);
+
+/** Para qué trazos vale un estilo de línea de un elemento: los cuatro usos del tema y los que no tienen uso (`other`). */
+export const BLOCK_LINE_KEYS = [...LINE_USES, 'other'] as const;
+export type BlockLineKey = (typeof BLOCK_LINE_KEYS)[number];
+
+export const BlockLineStyleZ = z.object({
+  /** Dibujo de la línea (lisa, guiones, puntos, doble, guarda, separador con ornamento). No vale para `other`. */
+  pattern: z.enum(LINE_PATTERNS).optional(),
+  color: colorProp.optional(),
+  /** Grosor en puntos tipográficos. */
+  widthPt: z.number().meta({ minimum: 0.1, maximum: 6 }).transform(clampTo(0.1, 6)).optional(),
+  /** Ornamento de las guardas y los separadores: `builtin:<id>` o `asset:<id>`. */
+  ornament: z.string().max(80).optional(),
+  /** Alto del ornamento en mm. */
+  size: z.number().meta({ minimum: 1, maximum: 30 }).transform(clampTo(1, 30)).optional(),
+});
+export type BlockLineStyle = z.infer<typeof BlockLineStyleZ>;
+
+/**
+ * Estilo propio de un elemento del programa (líneas, relleno, color del texto), por tipo de página
+ * o en una página. A diferencia de los ajustes de lugar y tamaño (`overrides`), el estilo del tipo
+ * y el de la página se suman campo por campo: no tiene geometría que haya que elegir.
+ */
+export const BlockStyleZ = z.object({
+  pageType: z.string(),
+  pageKey: z.string().nullable().default(null),
+  blockId: z.string(),
+  lines: z.partialRecord(z.enum(BLOCK_LINE_KEYS), BlockLineStyleZ).default({}),
+  /** Relleno de los recuadros del elemento (`null`: sin relleno). */
+  fill: z.object({ color: colorProp.nullable() }).optional(),
+  /** Color del texto: uno para todo, y por tipo de texto (que gana sobre el general). */
+  text: z.object({ color: colorProp.optional(), roles: z.record(z.string(), colorProp).default({}) }).optional(),
+});
+export type BlockStyle = z.infer<typeof BlockStyleZ>;
+
 /**
  * Estilo de escritura (renglones, puntos, cuadrícula, pasos, tamaño de punto, grosor) para un
  * tipo de página o una página puntual. Los valores son ajustes del tema, validados.
@@ -450,6 +488,7 @@ export const DesignZ = z.object({
   customBlocks: z.array(CustomBlockZ).default([]),
   watermarks: z.array(WatermarkZ).default([]),
   overrides: z.array(BlockOverrideZ).default([]),
+  blockStyles: z.array(BlockStyleZ).default([]),
   pageStyles: z.array(PageStyleZ).default([]),
   links: LinksZ,
   assets: z.array(AssetRefZ).default([]),

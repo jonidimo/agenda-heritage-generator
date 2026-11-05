@@ -102,7 +102,7 @@ export function designJsonSchema(): Json {
   box.h = mm(BLOCK_BOUNDS.size, 'Alto en mm');
   blocks.allOf = CustomBlockZ.shape.kind.options.map((kind) => ({ if: { properties: { kind: { const: kind } }, required: ['kind'] }, then: { properties: { props: customBlockPropsSchema(kind) } } }));
   // Tipos de página y temas: los nombres que existen.
-  for (const list of ['customBlocks', 'overrides', 'pageStyles']) ((props[list]!.items as Json).properties as Json).pageType = pageTypeSchema();
+  for (const list of ['customBlocks', 'overrides', 'blockStyles', 'pageStyles']) ((props[list]!.items as Json).properties as Json).pageType = pageTypeSchema();
   (((props.links!.properties as Json).blocks as Json).items as { properties: Json }).properties.pageType = pageTypeSchema();
   const wm = (props.watermarks!.items as Json).properties as Json;
   (wm.scope as Json).items = pageTypeSchema(['all']);

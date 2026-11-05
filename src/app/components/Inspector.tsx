@@ -69,6 +69,7 @@ import { scrub, type Scrubbing } from '../state/scrub';
 import { useStore, type Recipe } from '../state/store';
 import { Button, ColorInput, Field, NumberInput, Segmented, Select, Slider, TextArea, TextInput, Toggle } from './ui';
 import { jumpToPage } from '../state/navigation';
+import { BlockStyleFields } from './BlockStyleFields';
 import { MIN_BOX } from '@core/layout/box';
 import { parseFontSpec } from '@core/text/fonts';
 import { normalizeColor } from '@core/util/color';
@@ -137,7 +138,10 @@ export function Inspector({ doc }: { doc: AgendaDocument }) {
             {block.editable && block.role === 'watermark' && <WatermarkFields id={block.id.slice(3)} />}
             {block.editable && block.role === 'custom' && <CustomFields id={block.id.slice(7)} theme={doc.ctx.theme} />}
             {block.editable && block.role !== 'watermark' && block.role !== 'custom' && (
-              <BlockFields page={page} blockId={block.id} scope={scope} setScope={setScope} />
+              <>
+                <BlockFields page={page} blockId={block.id} scope={scope} setScope={setScope} />
+                <BlockStyleFields page={page} block={block} scope={scope} />
+              </>
             )}
             <TextRoleLinks block={block} />
             {block.editable && (

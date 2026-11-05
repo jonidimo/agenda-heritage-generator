@@ -30,7 +30,7 @@ export function samePlanInputs(a: Design, b: Design): boolean {
 const METADATA = ['id', 'name', 'createdAt', 'updatedAt', 'schemaVersion'] as const satisfies ReadonlyArray<keyof Design>;
 
 /** Lo que se mide por página: ver `PageInputs`. Los estilos de página están dentro de `pageStyles`. */
-const PAGE_SCOPED = ['customBlocks', 'watermarks', 'overrides', 'pageStyles'] as const satisfies ReadonlyArray<keyof Design>;
+const PAGE_SCOPED = ['customBlocks', 'watermarks', 'overrides', 'blockStyles', 'pageStyles'] as const satisfies ReadonlyArray<keyof Design>;
 
 /** Partes del diseño que solo cambian la tapa (se dibuja aparte, no es una página del libro). */
 const COVER_ONLY = ['cover'] as const satisfies ReadonlyArray<keyof Design>;

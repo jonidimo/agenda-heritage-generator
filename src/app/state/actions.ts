@@ -3,7 +3,7 @@
  * lienzo: mover, escalar, ocultar o restablecer bloques; mover marcas de agua y
  * elementos propios respetando sus anclajes y su espejado.
  */
-import type { BlockLink, BlockOverride, CustomBlock, Design } from '@core/design/schema';
+import type { BlockLineKey, BlockLineStyle, BlockLink, BlockOverride, BlockStyle, CustomBlock, Design } from '@core/design/schema';
 import { newId } from '@core/util/hash';
 import { readTextSource, writeTextSource } from '@core/design/textSource';
 import { resolveStrings } from '@core/i18n';
@@ -379,6 +379,73 @@ export function resizeBoxRecipe(page: PageModel, block: Block, box: Rect, scope:
 /** Cambia la caja de un bloque del programa (campos Ancho y Alto del panel: un paso de historial por campo). */
 export function resizeBox(page: PageModel, block: Block, box: Rect, scope: Scope, coalesce?: string): void {
   useStore.getState().update(resizeBoxRecipe(page, block, box, scope), coalesce);
+}
+
+/* ---------- Estilo propio de un elemento ---------- */
+
+/** El estilo guardado para un elemento en este alcance (sin sumar el del tipo ni el de la página). */
+export function blockStyleOf(design: Design, page: PageModel, blockId: string, scope: Scope): BlockStyle | undefined {
+  const key = effectiveScope(page, scope) === 'page' ? page.key : null;
+  return design.blockStyles.find((s) => s.blockId === blockId && s.pageType === page.type && s.pageKey === key);
+}
+
+const styleIsEmpty = (s: BlockStyle): boolean => Object.keys(s.lines).length === 0 && s.fill === undefined && s.text?.color === undefined && Object.keys(s.text?.roles ?? {}).length === 0;
+
+/** Receta que cambia el estilo de un elemento en el alcance dado; si queda vacío, se borra. */
+export function blockStyleRecipe(page: PageModel, blockId: string, scope: Scope, change: (style: Draft<BlockStyle>) => void): Recipe {
+  return (d) => {
+    const sc = effectiveScope(page, scope);
+    const key = sc === 'page' ? page.key : null;
+    let style = d.blockStyles.find((s) => s.blockId === blockId && s.pageType === page.type && s.pageKey === key);
+    if (!style) {
+      d.blockStyles.push({ pageType: page.type, pageKey: key, blockId, lines: {} });
+      style = d.blockStyles[d.blockStyles.length - 1]!;
+    }
+    change(style);
+    if (styleIsEmpty(style as BlockStyle)) d.blockStyles = d.blockStyles.filter((s) => s !== style);
+  };
+}
+
+/** Cambia campos del estilo de las líneas de un uso (`undefined` quita el campo: vuelve al tema). */
+export function lineStyleRecipe(page: PageModel, blockId: string, scope: Scope, key: BlockLineKey, patch: { [K in keyof BlockLineStyle]?: BlockLineStyle[K] | undefined }): Recipe {
+  return blockStyleRecipe(page, blockId, scope, (s) => {
+    const next: Record<string, unknown> = { ...s.lines[key] };
+    for (const [k, v] of Object.entries(patch)) {
+      if (v === undefined) delete next[k];
+      else next[k] = v;
+    }
+    if (Object.keys(next).length === 0) delete s.lines[key];
+    else s.lines[key] = next as BlockLineStyle;
+  });
+}
+
+/** Relleno de los recuadros del elemento: un color, `null` (sin relleno) o `undefined` (el del programa). */
+export function fillStyleRecipe(page: PageModel, blockId: string, scope: Scope, color: string | null | undefined): Recipe {
+  return blockStyleRecipe(page, blockId, scope, (s) => {
+    if (color === undefined) delete s.fill;
+    else s.fill = { color };
+  });
+}
+
+/** Color de todo el texto del elemento (`undefined` quita el color propio). */
+export function textColorRecipe(page: PageModel, blockId: string, scope: Scope, color: string | undefined): Recipe {
+  return blockStyleRecipe(page, blockId, scope, (s) => {
+    const roles = { ...s.text?.roles };
+    if (color === undefined && Object.keys(roles).length === 0) delete s.text;
+    else s.text = { ...(color ? { color } : {}), roles };
+  });
+}
+
+export function resetBlockStyle(page: PageModel, blockId: string, scope: Scope): void {
+  const key = effectiveScope(page, scope) === 'page' ? page.key : null;
+  useStore.getState().update((d) => void (d.blockStyles = d.blockStyles.filter((s) => !(s.blockId === blockId && s.pageType === page.type && s.pageKey === key))));
+}
+
+/** Receta que cambia el estilo de las líneas de varios usos de una vez (los menús: «líneas a guiones»). */
+export function allLinesRecipe(page: PageModel, blockId: string, scope: Scope, keys: readonly BlockLineKey[], patch: { [K in keyof BlockLineStyle]?: BlockLineStyle[K] | undefined }): Recipe {
+  return (d) => {
+    for (const k of keys) lineStyleRecipe(page, blockId, scope, k, patch)(d);
+  };
 }
 
 /** Receta que cambia un ajuste del elemento (la usan `patchOverride` y los deslizadores con vista previa). */
