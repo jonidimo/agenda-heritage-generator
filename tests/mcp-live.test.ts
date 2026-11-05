@@ -209,6 +209,26 @@ describe('servidor MCP con la aplicación abierta', () => {
     expect((await call('app_open', { id: 'a1' })).body).toMatchObject({ id: 'a1' });
   });
 
+  it('un pedido vencido no se repite si cambia algo (podría haberse aplicado), y uno que solo lee sí se puede repetir', async () => {
+    let calls = 0;
+    const slow = new AppLink(async () => ({
+      async request() {
+        calls++;
+        throw new LiveError('the app did not answer in time', LIVE_ERRORS.timeout);
+      },
+      close: () => undefined,
+    }));
+    await expect(slow.request('design.load', { design: {} })).rejects.toThrow(/no contestó a tiempo/);
+    expect(calls).toBe(1);
+    await expect(slow.request('design.patch', { patch: [] })).rejects.toThrow();
+    expect(calls).toBe(2);
+    // Una conexión cortada sí se reabre para leer, pero no para cambiar.
+    let opens = 0;
+    const cut = new AppLink(async () => (opens++, { request: async () => { throw new LiveError('closed', LIVE_ERRORS.unavailable); }, close: () => undefined }));
+    await expect(cut.request('design.patch', { patch: [] })).rejects.toThrow();
+    expect(opens).toBe(1);
+  });
+
   it('una conexión cortada se vuelve a abrir una vez, y si sigue cortada falla con un mensaje claro', async () => {
     let opens = 0;
     let broken = true;

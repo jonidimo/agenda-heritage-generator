@@ -5,6 +5,17 @@
 This guide takes you from a finished design to a sewn book. It was written for an
 HP LaserJet 4350 with its duplex unit, but every step applies to any duplex printer.
 
+## Print or read on screen
+
+The top bar has two modes. **Design** is for the page, spread and whole book. **Print** adds the
+printed-sheet view and the print panel, and draws on every page the area the printer does not print
+(red) and the binding margin (blue).
+
+In **Print → Destination** you choose what the planner is for. *Print and bind* is everything below.
+*Read on screen* drops the binding margin, trims, marks and the filler pages that complete signatures:
+the pages keep their size, the printing options fold away and the only PDF is page by page, with links
+and bookmarks. Switching back loses nothing.
+
 ## 1. Choose paper and page size
 
 | Sheet (what the printer takes) | Page (what you write on) | Notes |

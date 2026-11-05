@@ -56,8 +56,8 @@ matters: it keeps npm from printing anything on the channel the client and the s
 
 | Tool | What it does |
 | --- | --- |
-| `create_design` | New planner from a template (`heritage`, `heritage-norma` (with a dedication), `clara` (large print), `minimal`) for a year, language, country and name. With `out` it writes the file. |
-| `update_design` | Changes a file with [JSON Patch](https://datatracker.ietf.org/doc/html/rfc6902) operations (`add`, `remove`, `replace`, `move`, `copy`, `test`). All or nothing; if the result would not open, the file is left as it was. |
+| `create_design` | New planner from a template (`heritage`, `heritage-norma` (with a dedication), `clara` (large print), `minimal`) for a year, language, country and name. With `out` it writes the file; with `app: true` it opens it in the desktop app instead. |
+| `update_design` | Changes a file (`path`) or the planner open in the desktop app (`app: true`) with [JSON Patch](https://datatracker.ietf.org/doc/html/rfc6902) operations (`add`, `remove`, `replace`, `move`, `copy`, `test`). All or nothing; if the result would not open, nothing is changed. |
 | `check_design` | Lists what the program would ignore or correct in the file (unknown keys, invalid colours, values outside the list or range), and summarizes the built planner: pages, sheets, signatures, links and warnings (text that does not fit, missing images, broken links) with their pages. |
 | `list_pages` | The pages, with their number, key, type and title (filter by type). |
 | `render_page` | Draws one page exactly as it prints and returns it as a PNG image, with its side (right or left), its content area, its blocks (id, name and box in mm) and its warnings. |
@@ -65,6 +65,9 @@ matters: it keeps npm from printing anything on the channel the client and the s
 | `export_theme` | Saves the planner's style as a `.tema.json` theme file (fonts, colours, lines, ornaments and their images) to import in the app. |
 | `list_catalogue` | Section types with their options and allowed values, themes, templates, built-in fonts, ornaments, line uses and patterns, colour harmonies, element kinds, page types and text variables. |
 | `get_schema` | The JSON Schema, whole or by part (`"theme.tokens.lines"`, `"sections"`, `"customBlocks"`…). |
+| `app_status` | Whether the desktop app is open and which planner it has: name, year, pages and revision. Never an error when it is closed. |
+| `app_reveal` | Takes the app to a page (and, with `blockId`, selects that element), so the person sees what you are talking about. |
+| `app_library` / `app_open` | The planners saved in the app, and opening one of them. |
 
 The resources `agenda://guide` (this guide), `agenda://schema` and `agenda://catalogue` carry the
 same reference for clients that read resources.
@@ -76,6 +79,15 @@ same reference for clients that read resources.
 3. Read `warnings` in every `update_design` answer: they are the layout problems that change just produced (text that does not fit, elements off the page or overlapping, with their page). Fix them before going on. `check_design` then, until `issues` is empty and there are no warnings.
 4. `render_page` on the pages you touched (the first week, a month page, the cover) and look.
 5. `export_pdf` with `pages` to read it on a tablet, or `imposed` to print it.
+
+### Working on the planner that is open in the desktop app
+
+With the desktop app open (see [Use it with an AI model](desktop.md#5-use-it-with-an-ai-model-mcp)), every tool that takes `path` or `design` also takes **`app: true`**: the planner open right now. `app_status` tells you what is open.
+
+- `update_design` with `app: true` reads the planner with its **revision**, applies and checks your patch, and sends the app only the patch with that revision. The person sees the change at once and can undo it (it is one step). If they edited the planner meanwhile, the app refuses with a conflict: read it again (`check_design` with `app: true`) and retry.
+- `render_page` and `check_design` with `app: true` use the open planner, with its images.
+- The person can turn the link off in **File → Let an AI model edit the open planner**; then every call fails with that reason. Nothing is written to disk: the app saves its own planners as always.
+- Ids of elements come from `render_page`; `app_reveal` with `page` and `blockId` selects one in the app.
 
 ## 2. Without MCP: schema, catalogue and check
 
@@ -102,17 +114,17 @@ sizes in **points**, colours are `#rrggbb`.
 | Key | What it holds |
 | --- | --- |
 | `name`, `locale` | Planner name; language and country (`es-AR`, `en-US`, `pt-BR`, `it-IT`…), which also set the date order and the first day of the week. |
-| `calendar` | `year`, `startMonth`, `monthCount`, `weekStart` (`auto` follows the country), `numbering`, `dateFormat` (`auto`, `dmy`, `mdy`, `ymd`). |
+| `calendar` | `year`, `startMonth`, `monthCount`, `weekStart` (`auto` follows the country), `numbering`, `dateFormat` (`auto`, `dmy`, `mdy`, `ymd`), `hiddenMonths` (`YYYY-MM` list of months left out of the book: no pages and no links; the yearly calendar still shows them). |
 | `holidays` | `country` (ISO code or `null`) and the holiday types to show; `personalDates` holds birthdays and anniversaries. |
-| `paper`, `binding` | Sheet size and how it is folded and bound (signatures, duplex, creep, marks). |
+| `paper`, `binding` | Sheet size and how it is folded and bound (signatures, duplex, creep, marks). `binding.target` is `print` (default) or `screen`: a planner to **read on screen** has no binding margin, trims, marks or signature filler pages, keeps the page size, and only the `pages` PDF applies (the print PDFs are refused). |
 | `theme` | Base theme `id`, `comfort` (`compact`, `normal`, `wide`) and `tokens` (see section 6). |
 | `persona` | Name, title, dedication and one phrase per month. |
 | `sections` | The planner's pages, in order (see section 4). |
 | `pageTemplates` | Pages you design once and repeat (see section 5). |
 | `customPages` | One-off pages: an image, a PDF page, a text or a writing background. |
-| `customBlocks` | Your own elements on a page type or on one page: text, image, lines, dots, grid, frame, line. A text element with `props.autoHeight: true` takes its height from its lines (`h` is ignored). Keep every box inside the page: `check_design` reports the ones that are not. |
+| `customBlocks` | Your own elements on a page type or on one page: `text`, `image`, `lines`, `dots`, `grid`, `rect`, `line`, and the composite kinds `table` (`rows`, `cols`, `header`, `headers`), `checklist` (`items`, `columns`, `shape`, `labels`), `habits` (`rows`, `days`, `names`), `finance` (`lines`, `total`, `title`), `minical` (`month`: `auto` or `YYYY-MM`; its days link to their pages), `quadrants` (`titles`, `style`), `notes` (`title`, `style`, `frame`), `timeline` (`from`, `to`, `step` in minutes) and `rating` (`count`, `shape`, `text`); composite kinds also take `paper: true` (white background). A text element draws at its `props.size` (points) unless `props.fit` is not `false`, which shrinks it to fit the box; `props.autoHeight: true` takes its height from its lines (`h` is ignored). The `drawing` kind is made by copying a built-in element in the app: do not write it by hand. Keep every box inside the page: `check_design` reports the ones that are not. |
 | `watermarks` | Images on many pages (where, size, opacity, mirrored on left pages). |
-| `overrides` | Moves, scales, rotates or hides a built-in block on a page type or one page. `dw` and `dh` (mm) change the width and height of its box and the content is laid out again inside it (text wraps, writing areas gain or lose lines). |
+| `overrides` | Moves, scales, rotates or hides a built-in block on a page type or one page. `dw` and `dh` (mm) change the width and height of its box and the content is laid out again inside it (text wraps, writing areas gain or lose lines). `scale` and `scaleY` scale it (a different `scaleY` deforms it); with `deform: true` the box is not laid out again: the drawing is stretched. `layer` sets its stacking order (higher is on top), `label` renames it and `blend` is `normal`, `multiply`, `screen`, `darken` or `lighten`. |
 | `blockStyles` | Own style for a built-in block: `lines` (per use: `writing`, `separator`, `table`, `frame`, `other`) with `pattern`, `color`, `widthPt`; `fill.color` (`null` for none); `text.color` and `text.roles`. The page entry wins over the page-type entry field by field. |
 | `pageStyles` | Theme tokens for one page type or one page only. |
 | `links` | Links and bookmarks of the PDF for tablets and e-readers. In `links.blocks`, `area` picks one tappable spot of a block (`date:2027-01-05`, `month:2027-03`, `toc`…); empty means the whole block. |

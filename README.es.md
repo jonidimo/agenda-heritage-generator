@@ -51,6 +51,8 @@ Para usarla en el navegador, mirá [Cómo usarla](#cómo-usarla).
 - La **verificación previa** encuentra textos que no entran, textos que se pisan, lo que
   sale de la página o cae en el margen que la impresora no imprime, caracteres que le
   faltan a una fuente e imágenes con poca resolución.
+- **Modos Diseño e Impresión**: *Diseño* es para la página, el pliego y el libro entero; *Impresión* suma la hoja impresa y el panel de impresión, y dibuja en cada página la zona que la impresora no imprime y el margen de costura.
+- **Destino**: una agenda hecha para **leer en pantalla** deja de lado el margen de costura, los recortes, las marcas y las páginas de relleno de los cuadernillos; sus páginas conservan el tamaño y se exporta de a una página, con enlaces. Podés volver a *Imprimir y encuadernar* cuando quieras.
 
 ### Se edita con el mouse
 
@@ -96,6 +98,12 @@ Para usarla en el navegador, mirá [Cómo usarla](#cómo-usarla).
   en una cuadrícula que encuentra sus filas y columnas.
 - **Renglones, puntos o cuadrícula por tipo de página o por página**: separación de
   renglones, separación horizontal y vertical de puntos, tamaño de punto y grosor.
+- **Escalar y deformar**: cada elemento tiene ocho tiradores que reacomodan su contenido en la caja nueva; la escala es un deslizador aparte, y **Permitir deformar** estira el dibujo en cualquier dirección en su lugar.
+- **Copiá los elementos del programa** (Ctrl+C sobre el nombre de un mes, un marco, una tabla…) y pegá un elemento propio editable: el texto sigue siendo texto editable; lo demás pasa a ser un dibujo que conserva el grosor de sus líneas.
+- **Nueve tipos más de elemento**: tabla, lista de pendientes, seguimiento de hábitos, renglones de finanzas, minicalendario (sus días llevan a su página), cuadrantes, notas, horario del día y valoración, cada uno con sus propios campos.
+- **Capas**: un panel lista los elementos de la página de arriba hacia abajo; subir, bajar, llevar al fondo, renombrar, ocultar y fusionar con lo de abajo (multiplicar, trama, oscurecer, aclarar). Ctrl+↑ y Ctrl+↓ mueven el elemento elegido.
+- **Lo oculto no se pierde**: Edición → *Mostrar elementos ocultos* los lista y devuelve cada uno. **Acercar a la selección** con Ctrl+Mayús+2; el pie de la página cuenta los avisos de la página actual y las miniaturas muestran un punto.
+- **Atajos de teclado** para todo, listados en la aplicación (F1) y junto a cada ítem de menú, con menús Archivo, Edición y Ver.
 
 ### Secciones y plantillas de página
 
@@ -105,6 +113,7 @@ Para usarla en el navegador, mirá [Cómo usarla](#cómo-usarla).
 - **Plantillas de página**: diseñás una página una vez (fondo de renglones, puntos o
   cuadrícula, textos, imágenes, marcos) y la repetís donde quieras. Textos como `{date}`,
   `{weekday}` o `{month}` cambian en cada copia.
+- **Clic derecho en un mes** de la tira de páginas para ir a su portada, su registro o su primera semana, repetir una página en cada mes, ocultar el mes, exportar solo ese mes a PDF o ver solo ese mes en la tira. Los meses ocultos salen del libro; el calendario anual los conserva, sin enlaces. Un marcador **Año** salta a la vista anual y la tira se desplaza con la rueda del mouse.
 
 ### Encontrar cualquier cosa
 
@@ -203,6 +212,8 @@ Para usarla en el navegador, mirá [Cómo usarla](#cómo-usarla).
   archivo; al abrirlo se restauran.
 - Las agendas también quedan en el navegador, pero solo en ese navegador y en esa
   dirección de la aplicación: los archivos son la copia segura.
+- Los paneles **Imágenes** y **Fuentes** dicen dónde se usa cada imagen (marca de agua, tapa, elementos, páginas, ornamentos) y la quitan junto con todo lo que la usaba; las fuentes muestran qué caracteres faltan y dónde se usa cada familia, y las tuyas se pueden quitar.
+- Aplicación de escritorio: al exportar un PDF muestra **dónde quedó guardado**, con *Abrir carpeta*; las agendas se abren con doble clic en un `.agenda.json` o soltándolas sobre la ventana, y cerrar nunca pierde el último cambio.
 
 ### Diseñar con un modelo de inteligencia artificial
 
@@ -215,6 +226,7 @@ Para usarla en el navegador, mirá [Cómo usarla](#cómo-usarla).
   [guía](docs/plantillas-llm.md) ([in English](docs/llm-templates.md)).
 - Cada cambio del modelo vuelve con los avisos de maquetación que produjo (textos que no
   entran, elementos fuera de la página o superpuestos), así puede corregirlos sin que nadie mire.
+- **Enlace en vivo (aplicación de escritorio)**: con la aplicación abierta, el mismo servidor trabaja sobre **la agenda que tenés abierta**. El modelo la lee, la cambia en un solo paso que se puede deshacer (se rechaza si la editaste mientras tanto), te muestra una página o abre otra agenda. Se apaga en *Archivo → Permitir que un modelo de IA edite la agenda abierta*. Nada escucha en la red: es un socket local protegido por un token que se genera en cada arranque.
 
 ### Hecha para durar
 

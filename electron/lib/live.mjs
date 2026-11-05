@@ -25,6 +25,12 @@ export const LIVE_PROTOCOL = 1;
 export const MAX_FRAME_BYTES = 64 * 1024 * 1024;
 export const REQUEST_TIMEOUT_MS = 30_000;
 export const CONNECT_TIMEOUT_MS = 3_000;
+/** Before saying hello a connection may send little, for a short time; and only so many may be open. */
+export const HELLO_DEADLINE_MS = 5_000;
+export const HELLO_MAX_BYTES = 4096;
+export const MAX_CONNECTIONS = 8;
+/** Responses carry whole planners with their images (base64): the client accepts more than the app does of a request. */
+export const MAX_RESPONSE_BYTES = 256 * 1024 * 1024;
 export const LIVE_INFO_FILE = 'live.json';
 /** Environment variable that points to a `live.json` (to use another app instance, or in tests). */
 export const LIVE_LINK_ENV = 'AGENDA_APP_LINK';
@@ -178,6 +184,7 @@ export function createFrameParser({ onFrame, onError, maxBytes = MAX_FRAME_BYTES
   let parts = [];
   let size = 0;
   let stopped = false;
+  let limit = maxBytes;
   /** @param {Buffer} line */
   const emit = (line) => {
     const text = line.toString('utf8').trim();
@@ -193,6 +200,10 @@ export function createFrameParser({ onFrame, onError, maxBytes = MAX_FRAME_BYTES
     onFrame(value);
   };
   return {
+    /** @param {number} bytes */
+    setMax(bytes) {
+      limit = bytes;
+    },
     /** @param {Buffer | string} chunk */
     push(chunk) {
       if (stopped) return;
@@ -202,7 +213,7 @@ export function createFrameParser({ onFrame, onError, maxBytes = MAX_FRAME_BYTES
         if (at < 0) {
           parts.push(data);
           size += data.length;
-          if (size > maxBytes) {
+          if (size > limit) {
             stopped = true;
             parts = [];
             onError('too-large');
@@ -213,7 +224,7 @@ export function createFrameParser({ onFrame, onError, maxBytes = MAX_FRAME_BYTES
         parts = [];
         size = 0;
         data = data.subarray(at + 1);
-        if (line.length > maxBytes) {
+        if (line.length > limit) {
           stopped = true;
           onError('too-large');
           return;
@@ -306,23 +317,33 @@ export async function createLiveBroker({ endpoint, token, handler, timeoutMs, ma
   /** @type {Set<net.Socket>} */
   const sockets = new Set();
   const server = net.createServer((socket) => {
+    if (sockets.size >= MAX_CONNECTIONS) return void socket.destroy();
     sockets.add(socket);
     socket.setNoDelay(true);
+    // Whoever does not say hello soon is cut off; until then only a small frame is accepted.
+    const deadline = setTimeout(() => socket.destroy(), HELLO_DEADLINE_MS);
+    socket.once('close', () => clearTimeout(deadline));
+    /** @type {ReturnType<typeof createFrameParser> | null} */
+    let parser = null;
     const conn = core.accept(
       (response) => {
+        if (response.result && typeof response.result === 'object' && /** @type {{ protocol?: unknown }} */ (response.result).protocol === LIVE_PROTOCOL) {
+          clearTimeout(deadline);
+          parser?.setMax(maxFrameBytes ?? MAX_FRAME_BYTES);
+        }
         if (!socket.destroyed) socket.write(encodeFrame(response));
       },
       // End after the pending write, so the client reads the error that explains why.
       () => socket.end(),
     );
-    const parser = createFrameParser({
+    parser = createFrameParser({
       onFrame: (frame) => conn.onFrame(frame),
       onError: () => {
         socket.destroy();
       },
-      ...(maxFrameBytes ? { maxBytes: maxFrameBytes } : {}),
+      maxBytes: HELLO_MAX_BYTES,
     });
-    socket.on('data', (chunk) => parser.push(chunk));
+    socket.on('data', (chunk) => parser?.push(chunk));
     socket.on('error', () => socket.destroy());
     socket.on('close', () => {
       conn.onClose();
@@ -411,7 +432,7 @@ export async function connectLive({ endpoint, token, connectTimeoutMs = CONNECT_
       failAll(new LiveError('the app sent something that is not valid', LIVE_ERRORS.badRequest));
       socket.destroy();
     },
-    ...(maxFrameBytes ? { maxBytes: maxFrameBytes } : {}),
+    maxBytes: maxFrameBytes ?? MAX_RESPONSE_BYTES,
   });
   socket.on('data', (chunk) => parser.push(chunk));
   socket.on('error', (err) => failAll(new LiveError(`cannot reach the app: ${err.message}`, LIVE_ERRORS.unavailable)));

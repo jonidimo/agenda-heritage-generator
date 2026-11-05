@@ -18,7 +18,7 @@ import { jumpToPage } from './navigation';
 import { listDesigns, loadDesign } from './persist';
 import { resources } from './resources';
 import { currentDocument } from './selectionContext';
-import { useStore } from './store';
+import { flushSave, useStore } from './store';
 
 export type LiveEnvelope = { ok: true; result: unknown } | { ok: false; code: number; message: string };
 
@@ -125,6 +125,8 @@ function showOpened(name: string, key: 'live.opened' | 'live.created'): LiveOpen
 }
 
 async function openSaved(params: { id: string }): Promise<LiveOpened> {
+  // Lo último que la persona escribió todavía puede estar sin guardar: se guarda antes de leer la biblioteca.
+  await flushSave();
   const design = await loadDesign(params.id).catch((err: unknown) => {
     throw new LiveFailure(LIVE_CODES.invalid, `Esa agenda no se puede abrir: ${(err as Error).message}`);
   });
@@ -191,6 +193,8 @@ export function handleLive(request: unknown): Promise<LiveEnvelope> {
       return { ok: false, code: LIVE_CODES.invalid, message: (err as Error).message };
     }
   };
+  // Preguntar si hay agenda no espera a un pedido lento: si no, una carga trabada haría parecer cerrada a la aplicación.
+  if ((request as { method?: unknown } | null)?.method === 'design.info') return run();
   const result = queue.then(run, run);
   queue = result.catch(() => undefined);
   return result;

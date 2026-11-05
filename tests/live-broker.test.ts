@@ -122,6 +122,31 @@ describe('intermediario y cliente', () => {
   });
 });
 
+describe('límites antes del saludo', () => {
+  it('quien manda mucho antes de saludar es cortado, y no se aceptan más conexiones que el tope', async () => {
+    const { endpoint, token } = await start(async () => 'ok');
+    const noisy = net.connect(endpoint);
+    closers.push(() => void noisy.destroy());
+    const closed = new Promise<void>((resolve) => noisy.on('close', () => resolve()));
+    noisy.on('error', () => undefined);
+    noisy.on('connect', () => noisy.write(`${'x'.repeat(10_000)}\n`));
+    await closed;
+    // Con el tope lleno, la siguiente se descarta; al liberarse lugar, entra.
+    const held = await Promise.all(Array.from({ length: 8 }, () => client(endpoint, token)));
+    await expect(connectLive({ endpoint, token, connectTimeoutMs: 1000 })).rejects.toBeInstanceOf(LiveError);
+    held[0]!.close();
+    await new Promise((r) => setTimeout(r, 50));
+    const again = await client(endpoint, token);
+    expect(await again.request('ping')).toBe('pong');
+  });
+
+  it('un cliente puede recibir una respuesta mayor que el tope de lo que acepta la aplicación', async () => {
+    const { endpoint, token } = await start(async () => ({ big: 'y'.repeat(3000) }), { maxFrameBytes: 2000 });
+    const c = await client(endpoint, token);
+    expect((await c.request('design.get') as { big: string }).big).toHaveLength(3000);
+  });
+});
+
 describe.skipIf(!posix)('el archivo del socket', () => {
   it('solo lo puede usar quien lo creó (modo 0600) y se borra al cerrar', async () => {
     const { endpoint, broker } = await start(async () => 1);

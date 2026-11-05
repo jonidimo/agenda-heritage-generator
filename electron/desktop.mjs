@@ -213,7 +213,9 @@ async function startLive() {
 }
 
 app.on('will-quit', () => {
-  void liveBroker?.close();
+  // A second launch (it quits at once) must not remove the files of the instance that is running.
+  if (!liveBroker) return;
+  void liveBroker.close();
   // Synchronous too, since the process may exit before the asynchronous close finishes.
   try {
     rmSync(path.join(app.getPath('userData'), LIVE_INFO_FILE), { force: true });

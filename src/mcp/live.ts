@@ -25,8 +25,14 @@ export class AppNotRunning extends Error {
   }
 }
 
-/** La conexión se cortó (la aplicación se cerró o dejó de contestar): conviene volver a abrirla una vez. */
+/** La conexión se cortó (la aplicación se cerró): conviene volver a abrirla. */
 const isConnectionError = (err: unknown): boolean => err instanceof LiveError && (err.code === LIVE_ERRORS.unavailable || err.code === LIVE_ERRORS.timeout);
+
+/**
+ * Los pedidos que se pueden repetir sin efecto: leer o mostrar. Cambiar, abrir o cargar una agenda no se repite
+ * nunca (un pedido que venció puede haberse aplicado igual: repetirlo duplicaría el cambio).
+ */
+const REPEATABLE: ReadonlySet<LiveMethodName> = new Set(['design.info', 'design.get', 'library.list', 'view.reveal']);
 
 /** El mensaje para quien usa el modelo: el de la aplicación si lo trae; si no, uno claro. */
 function readable(err: unknown): Error {
@@ -67,7 +73,8 @@ export class AppLink {
         if (!this.conn) throw new AppNotRunning();
         return (await this.conn.request(method, params)) as T;
       } catch (err) {
-        if (attempt === 0 && isConnectionError(err)) {
+        // Solo una conexión cortada (no un pedido vencido) y solo si repetirlo no cambia nada.
+        if (attempt === 0 && REPEATABLE.has(method) && err instanceof LiveError && err.code === LIVE_ERRORS.unavailable) {
           this.close();
           continue;
         }

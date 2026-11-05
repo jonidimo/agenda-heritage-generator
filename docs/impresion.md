@@ -6,6 +6,17 @@ Esta guía lleva un diseño terminado hasta un libro cosido. Está pensada para 
 HP LaserJet 4350 con módulo dúplex, pero cada paso sirve para cualquier impresora
 que imprima a doble faz.
 
+## Imprimir o leer en pantalla
+
+La barra superior tiene dos modos. **Diseño** es para la página, el pliego y el libro entero.
+**Impresión** suma la hoja impresa y el panel de impresión, y dibuja en cada página la zona que la
+impresora no imprime (roja) y el margen de costura (azul).
+
+En **Impresión → Destino** elegís para qué es la agenda. *Imprimir y encuadernar* es todo lo que sigue.
+*Leer en pantalla* deja de lado el margen de costura, los recortes, las marcas y las páginas de relleno
+que completan los cuadernillos: las páginas conservan su tamaño, las opciones de impresión se pliegan y
+el único PDF es de a una página, con enlaces y marcadores. Volver atrás no pierde nada.
+
 ## 1. Elegir papel y tamaño de página
 
 | Hoja (lo que entra en la impresora) | Página (donde se escribe) | Notas |

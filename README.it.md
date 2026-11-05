@@ -51,6 +51,8 @@ Per usarla nel browser, vedi [Come usarla](#come-usarla).
 - La **verifica preliminare** trova testi che non entrano, testi sovrapposti, ciò che esce
   dalla pagina o finisce nel margine che la stampante non stampa, segni mancanti in un
   carattere e immagini con poca risoluzione.
+- **Modalità Progetto e Stampa**: *Progetto* serve per la pagina, il doppio e l’intero libro; *Stampa* aggiunge il foglio stampato e il pannello di stampa, e disegna su ogni pagina l’area che la stampante non stampa e il margine di cucitura.
+- **Destinazione**: un’agenda fatta per essere **letta a schermo** rinuncia a margine di cucitura, rifili, segni e pagine di riempimento dei fascicoli; le pagine mantengono la dimensione e si esporta pagina per pagina, con collegamenti. Puoi tornare a *Stampare e rilegare* quando vuoi.
 
 ### Modifica con il mouse
 
@@ -96,6 +98,12 @@ Per usarla nel browser, vedi [Come usarla](#come-usarla).
   che ne trova righe e colonne.
 - **Righe, puntini o quadretti per tipo di pagina o per pagina**: interlinea, passo
   orizzontale e verticale dei puntini, dimensione del puntino e spessore.
+- **Scala e deforma**: ogni elemento ha otto maniglie che riorganizzano il contenuto nel nuovo riquadro; la scala è un controllo a parte, e **Consenti deformazione** allunga invece il disegno in qualsiasi direzione.
+- **Copia gli elementi del programma** (Ctrl+C sul nome di un mese, una cornice, una tabella…) e incolla un elemento tuo modificabile: il testo resta testo modificabile; il resto diventa un disegno che mantiene lo spessore delle linee.
+- **Altri nove tipi di elemento**: tabella, lista di cose da fare, monitoraggio abitudini, righe di finanze, mini calendario (i giorni portano alla loro pagina), quadranti, note, orario del giorno e valutazione, ciascuno con i suoi campi.
+- **Livelli**: un pannello elenca gli elementi della pagina dall’alto in basso; sposta su, giù, sullo sfondo, rinomina, nascondi e fondi con ciò che sta sotto (moltiplica, scherma, scurisci, schiarisci). Ctrl+↑ e Ctrl+↓ spostano l’elemento scelto.
+- **Ciò che nascondi non si perde**: Modifica → *Mostra elementi nascosti* li elenca e li riporta uno per uno. **Ingrandisci sulla selezione** con Ctrl+Maiusc+2; il piè di pagina conta gli avvisi della pagina corrente e le miniature mostrano un punto.
+- **Scorciatoie da tastiera** per tutto, elencate nell’app (F1) e accanto a ogni voce di menu, con i menu File, Modifica e Vista.
 
 ### Sezioni e modelli di pagina
 
@@ -105,6 +113,7 @@ Per usarla nel browser, vedi [Come usarla](#come-usarla).
 - **Modelli di pagina**: disegni una pagina una volta (sfondo a righe, puntini o quadretti,
   testi, immagini, cornici) e la ripeti dove vuoi. Testi come `{date}`, `{weekday}` o
   `{month}` cambiano in ogni copia.
+- **Clic destro su un mese** nella barra delle pagine per andare alla copertina, al registro o alla prima settimana, ripetere una pagina in ogni mese, nascondere il mese, esportare solo quel mese in PDF o vedere solo quel mese nella barra. I mesi nascosti escono dal libro; il calendario annuale li mantiene, senza collegamenti. Un indicatore **Anno** salta alla vista annuale e la barra scorre con la rotellina.
 
 ### Trova qualsiasi cosa
 
@@ -203,6 +212,8 @@ Per usarla nel browser, vedi [Come usarla](#come-usarla).
   ripristinati.
 - Le agende restano anche nel browser, ma solo in quel browser e a quell’indirizzo
   dell’app: i file sono la copia sicura.
+- I pannelli **Immagini** e **Caratteri** dicono dove si usa ogni immagine (filigrana, copertina, elementi, pagine, ornamenti) e la rimuovono insieme a tutto ciò che la usava; i caratteri mostrano quali caratteri mancano e dove si usa ogni famiglia, e i tuoi si possono rimuovere.
+- App desktop: dopo aver esportato un PDF mostra **dove è stato salvato**, con *Apri cartella*; le agende si aprono con doppio clic su un `.agenda.json` o trascinandole sulla finestra, e chiudere non perde mai l’ultima modifica.
 
 ### Progetta con un modello di intelligenza artificiale
 
@@ -214,6 +225,7 @@ Per usarla nel browser, vedi [Come usarla](#come-usarla).
   [guida](docs/llm-templates.md) (in inglese; [en español](docs/plantillas-llm.md)).
 - Ogni modifica del modello torna con gli avvisi di impaginazione che ha prodotto (testi che
   non entrano, elementi fuori pagina o sovrapposti), così può correggerli senza che nessuno guardi.
+- **Collegamento in tempo reale (app desktop)**: con l’app aperta, lo stesso server lavora sull’**agenda che hai aperta**. Il modello la legge, la modifica in un solo passo annullabile (rifiutato se l’hai modificata nel frattempo), ti mostra una pagina o apre un’altra agenda. Si disattiva in *File → Consenti a un modello di IA di modificare l’agenda aperta*. Niente ascolta in rete: è un socket locale protetto da un token creato a ogni avvio.
 
 ### Fatta per durare
 
