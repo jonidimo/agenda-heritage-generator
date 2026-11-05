@@ -8,6 +8,7 @@ import { parseDesign, type Design } from '../src/core/design/schema';
 import type { AgendaDocument } from '../src/core/document';
 import { blockBounds } from '../src/core/document/layout';
 import { primsBounds, type Block, type Prim } from '../src/core/layout/prims';
+import { adjustBox, naturalBox, storeAdjust } from '../src/core/layout/box';
 import { boxMap, stretchPrims, stretchRect } from '../src/core/layout/stretch';
 import { openDocument } from './helpers/node-env';
 
@@ -127,5 +128,20 @@ describe('cobertura: qué bloques editables no tienen caja', () => {
       });
       expect([...missing].sort()).toEqual([]);
     }
+  });
+});
+
+describe('ajuste guardado ↔ caja que se ve', () => {
+  const natural = { x: 20, y: 30, w: 80, h: 40 };
+  const shown = (a: { dx: number; dy: number; dw: number; dh: number }, mirror: boolean) => adjustBox(natural, { dx: mirror ? -(a.dx + a.dw) : a.dx, dy: a.dy, dw: a.dw, dh: a.dh });
+
+  it.each([false, true])('guardar y volver a aplicar da la caja pedida (espejo: %s)', (mirror) => {
+    const target = { x: 12, y: 33, w: 95, h: 52 };
+    expect(shown(storeAdjust(natural, target, mirror), mirror)).toEqual(target);
+  });
+
+  it('la caja natural se recupera de la que se ve', () => {
+    const applied = { dx: 3, dy: -2, dw: 10, dh: 5 };
+    expect(naturalBox(adjustBox(natural, applied), applied)).toEqual(natural);
   });
 });

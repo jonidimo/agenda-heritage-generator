@@ -14,6 +14,7 @@ import type { Design } from '../core/design/schema';
 import { themeFile, themeFromDesign } from '../core/design/themeFile';
 import { EXPORT_KINDS } from '../core/document';
 import { documentSummary } from '../core/document/summary';
+import { blockBounds } from '../core/document/layout';
 import { pageToSvg } from '../core/render/svg';
 import { toBase64 } from '../core/resources';
 import type { FontRegistry } from '../core/text/fonts';
@@ -240,7 +241,7 @@ export function createServer(opts: ServerOptions): McpServer {
         size: { w: model.w, h: model.h },
         // Cajas como [x, y, ancho, alto] en mm desde la esquina superior izquierda de esta página.
         content: box(model.content),
-        blocks: model.blocks.map((b) => ({ id: b.id, label: b.label, box: box(b.bbox) })),
+        blocks: model.blocks.map((b) => ({ id: b.id, label: b.label, box: box(blockBounds(b)) })),
         warnings: doc.pageWarnings(page - 1).map((w) => w.message),
       };
       let png: Uint8Array;

@@ -53,9 +53,11 @@ import {
   pageStyleOf,
   pageStyleRecipe,
   patchOverride,
+  reflowable,
   resetBlock,
   resetBlocks,
   resetPageStyle,
+  resizeBox,
   setBlockLink,
   setPageStyle,
   tidyBlocks,
@@ -67,6 +69,7 @@ import { scrub, type Scrubbing } from '../state/scrub';
 import { useStore, type Recipe } from '../state/store';
 import { Button, ColorInput, Field, NumberInput, Segmented, Select, Slider, TextArea, TextInput, Toggle } from './ui';
 import { jumpToPage } from '../state/navigation';
+import { MIN_BOX } from '@core/layout/box';
 import { parseFontSpec } from '@core/text/fonts';
 import { normalizeColor } from '@core/util/color';
 import type { TextRole } from '@core/layout/context';
@@ -304,6 +307,9 @@ function BlockFields({ page, blockId, scope, setScope }: { page: PageModel; bloc
   const showFlipped = mirrored && (level === 'type' || inherited);
   const v = { dx: (showFlipped ? -1 : 1) * (o?.dx ?? 0), dy: o?.dy ?? 0, scale: o?.scale ?? 1, rotation: o?.rotation ?? 0, opacity: o?.opacity ?? 1 };
   const flipOnWrite = mirrored && level === 'type';
+  // Los bloques que su sección maqueta dentro de una caja también tienen ancho y alto.
+  const block = page.blocks.find((b) => b.id === blockId);
+  const box = block && reflowable(block) ? block.box : undefined;
   const set = (patch: Partial<typeof v>, key: string): void =>
     patchOverride(page, blockId, scope, patch.dx !== undefined && flipOnWrite ? { ...patch, dx: -patch.dx } : patch, `insp:${blockId}:${key}`);
   /** Un deslizador del ajuste (escala, giro, opacidad): vista previa mientras se arrastra, una confirmación al soltar. */
@@ -330,6 +336,16 @@ function BlockFields({ page, blockId, scope, setScope }: { page: PageModel; bloc
           <NumberInput value={v.dy} step={0.5} onChange={(x) => set({ dy: x }, 'dy')} />
         </Field>
       </div>
+      {box && (
+        <div className="grid grid-cols-2 gap-2">
+          <Field label={t('insp.boxW')}>
+            <NumberInput value={box.w} step={0.5} min={MIN_BOX} onChange={(x) => resizeBox(page, block!, { ...box, w: x }, scope, `insp:${blockId}:w`)} />
+          </Field>
+          <Field label={t('insp.boxH')}>
+            <NumberInput value={box.h} step={0.5} min={MIN_BOX} onChange={(x) => resizeBox(page, block!, { ...box, h: x }, scope, `insp:${blockId}:h`)} />
+          </Field>
+        </div>
+      )}
       {level === 'type' && mirrored && <p className="mb-1 text-[11px] leading-snug text-ink-soft">{t('insp.mirrored')}</p>}
       {level === 'type' && pageO && (
         <p className="mb-1 text-[11px] leading-snug text-warn">

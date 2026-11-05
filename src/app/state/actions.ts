@@ -8,7 +8,8 @@ import { newId } from '@core/util/hash';
 import { withPageStyle } from '@core/design/pageStyles';
 import type { Block, PageModel } from '@core/layout/prims';
 import type { Rect } from '@core/util/geometry';
-import { blockBounds } from '@core/document/layout';
+import { blockBounds, findOverride as appliedOverride } from '@core/document/layout';
+import { MIN_BOX, naturalBox, storeAdjust, type BoxAdjust } from '@core/layout/box';
 import { alignDeltas, centerGroupDeltas, distributeDeltas, tidyGridDeltas, unionRect, type AlignMode, type Delta } from '@core/layout/align';
 import { current, type Draft } from 'immer';
 import { documentFor } from './doc';
@@ -294,6 +295,68 @@ export function scaleBlock(page: PageModel, block: Block, factor: number, scope:
     const own = effectiveScope(page, scope) === 'type' ? findOverride(d, page, block.id, 'page') : undefined;
     if (own) own.scale = Number(Math.min(20, Math.max(0.05, own.scale * factor)).toFixed(4));
   }, coalesce);
+}
+
+/**
+ * ¿Los tiradores de los lados reacomodan este bloque? Sí cuando su sección lo dibuja dentro de una
+ * caja (`LayoutContext.rect`), no va girado ni escalado (entonces lo que se ve no es su caja) y no es
+ * un dibujo rígido. Los demás conservan el tirador de la esquina, que los escala.
+ */
+export function reflowable(block: Block): boolean {
+  if (!block.editable || !block.box || block.rigid || block.role === 'custom' || block.role === 'watermark') return false;
+  const seen = blockBounds(block);
+  const box = block.box;
+  return Math.abs(seen.x - box.x) < 1e-6 && Math.abs(seen.y - box.y) < 1e-6 && Math.abs(seen.w - box.w) < 1e-6 && Math.abs(seen.h - box.h) < 1e-6;
+}
+
+/**
+ * Receta que deja la caja de un bloque del programa en `box` (tal como se ve en esta página). Parte
+ * de la caja natural (la de la sección sin ajustes) y escribe el ajuste que lleva hasta ahí; en una
+ * página izquierda con ajuste «por tipo» el lado se espeja igual que al maquetar. Es la misma receta
+ * para la vista previa mientras se arrastra y para confirmar al soltar.
+ */
+export function resizeBoxRecipe(page: PageModel, block: Block, box: Rect, scope: Scope): Recipe {
+  return (d) => {
+    const seen = block.box;
+    if (!seen) return;
+    const sc = effectiveScope(page, scope);
+    const mirrored = typeMirrored(page);
+    // Lo que se aplicaba cuando se tomó `block`: el de la página si lo hay, si no el del tipo.
+    const before = appliedOverride(d.overrides, page, block.id);
+    const was: BoxAdjust = before
+      ? { dx: before.pageKey === null && mirrored ? -(before.dx + before.dw) : before.dx, dy: before.dy, dw: before.dw, dh: before.dh }
+      : { dx: 0, dy: 0, dw: 0, dh: 0 };
+    const natural = naturalBox(seen, was);
+    const target = { x: box.x, y: box.y, w: Math.max(MIN_BOX, box.w), h: Math.max(MIN_BOX, box.h) };
+    const shown = storeAdjust(natural, target, false);
+    const stored = storeAdjust(natural, target, sc === 'type' && mirrored);
+    upsertOverride(
+      d,
+      page,
+      block.id,
+      sc,
+      (o) => {
+        o.dx = r2(stored.dx);
+        o.dy = r2(stored.dy);
+        o.dw = r2(stored.dw);
+        o.dh = r2(stored.dh);
+      },
+      mirrored,
+    );
+    // «Todas las páginas» desde una página con ajuste propio: ese manda aquí, así que también cambia.
+    const own = sc === 'type' ? findOverride(d, page, block.id, 'page') : undefined;
+    if (own) {
+      own.dx = r2(shown.dx);
+      own.dy = r2(shown.dy);
+      own.dw = r2(shown.dw);
+      own.dh = r2(shown.dh);
+    }
+  };
+}
+
+/** Cambia la caja de un bloque del programa (campos Ancho y Alto del panel: un paso de historial por campo). */
+export function resizeBox(page: PageModel, block: Block, box: Rect, scope: Scope, coalesce?: string): void {
+  useStore.getState().update(resizeBoxRecipe(page, block, box, scope), coalesce);
 }
 
 /** Receta que cambia un ajuste del elemento (la usan `patchOverride` y los deslizadores con vista previa). */

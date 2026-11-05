@@ -9,7 +9,9 @@ import { pageInnerSvg } from '@core/render/svg';
 import { fmt, type Rect } from '@core/util/geometry';
 import { useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { unionRect } from '@core/layout/align';
-import { clampMoveDelta, moveBlocks, resizeCustomBlock, scaleBlock } from '../../state/actions';
+import { clampMoveDelta, moveBlocks, reflowable, resizeBoxRecipe, resizeCustomBlock, scaleBlock } from '../../state/actions';
+import { frameThrottle, type FrameThrottle } from '../../state/frame';
+import { MIN_BOX } from '@core/layout/box';
 import { HANDLES, resizeRect, type Handle } from '@core/layout/resize';
 import { openMenuAt } from '../ContextMenu';
 import { blockMenu, multiMenu, pageMenu } from './menus';
@@ -47,9 +49,15 @@ interface Drag {
   handle: Handle;
   box: Rect | null;
   moved: boolean;
+  /** Bloque del programa que se reacomoda en su caja nueva: la vista previa sale del documento, no de una transformación. */
+  reflow: boolean;
+  /** Entrega la caja a la vista previa a lo sumo una vez por cuadro. */
+  push: FrameThrottle<Rect> | null;
 }
 
 const SNAP_PX = 7;
+/** Clave que liga la vista previa de un redimensionado con su confirmación. */
+const reflowKey = (page: { key: string }, block: Block): string => `box:${page.key}:${block.id}`;
 const RESIZE_CURSOR: Record<Handle, string> = { n: 'ns-resize', s: 'ns-resize', e: 'ew-resize', w: 'ew-resize', ne: 'nesw-resize', sw: 'nesw-resize', nw: 'nwse-resize', se: 'nwse-resize' };
 /** Movimiento mínimo (px de pantalla) para que un clic se convierta en arrastre. */
 const DRAG_START_PX = 3;
@@ -190,6 +198,7 @@ export function PageView({ doc, index, scale, interactive = true }: Props) {
         const el = svgRef.current?.querySelector<SVGGElement>(`[data-block="${CSS.escape(b.id)}"]`) ?? null;
         return { block: b, el, base: el?.getAttribute('transform') ?? null, origin: blockBounds(b) };
       });
+    const reflow = mode === 'resize' && reflowable(block);
     drag.current = {
       block,
       mode,
@@ -207,6 +216,8 @@ export function PageView({ doc, index, scale, interactive = true }: Props) {
       box: null,
       moved: false,
       additive: false,
+      reflow,
+      push: reflow ? frameThrottle((r: Rect) => useStore.getState().preview(resizeBoxRecipe(page, block, r, scope), reflowKey(page, block))) : null,
     };
     wrapRef.current?.setPointerCapture?.(e.pointerId);
     e.preventDefault();
@@ -231,7 +242,7 @@ export function PageView({ doc, index, scale, interactive = true }: Props) {
       }
       // Recuadro de selección desde un lugar vacío.
       const p = toMm(e);
-      drag.current = { block: page.blocks[0]!, mode: 'marquee', pointerId: e.pointerId, startClientX: e.clientX, startClientY: e.clientY, startX: p.x, startY: p.y, origin: { x: p.x, y: p.y, w: 0, h: 0 }, parts: [], dx: 0, dy: 0, factor: 1, handle: 'se', box: null, moved: false, additive };
+      drag.current = { block: page.blocks[0]!, mode: 'marquee', pointerId: e.pointerId, startClientX: e.clientX, startClientY: e.clientY, startX: p.x, startY: p.y, origin: { x: p.x, y: p.y, w: 0, h: 0 }, parts: [], dx: 0, dy: 0, factor: 1, handle: 'se', box: null, moved: false, additive, reflow: false, push: null };
       wrapRef.current?.setPointerCapture?.(e.pointerId);
       e.preventDefault();
       return;
@@ -291,9 +302,15 @@ export function PageView({ doc, index, scale, interactive = true }: Props) {
       const pageBox = { x: 0, y: 0, w: page.w, h: page.h };
       // Un elemento propio cambia de ancho y alto por separado; los demás (composiciones del diseño)
       // solo en proporción. Mayús mantiene la proporción también en los propios.
-      const free = d.block.role === 'custom';
-      const r = resizeRect(o, free ? d.handle : 'se', p.x - d.startX, p.y - d.startY, { keepAspect: !free || e.shiftKey, min: 2, bounds: pageBox });
+      const free = d.block.role === 'custom' || d.reflow;
+      const r = resizeRect(o, free ? d.handle : 'se', p.x - d.startX, p.y - d.startY, { keepAspect: !free || e.shiftKey, min: MIN_BOX, bounds: pageBox });
       d.box = r;
+      if (d.reflow) {
+        // El contenido se reacomoda en la caja nueva: la vista previa es la página maquetada otra vez.
+        d.push?.push(r);
+        setLive(r);
+        return;
+      }
       d.factor = r.w / Math.max(0.01, o.w);
       const sx = r.w / Math.max(0.01, o.w);
       const sy = r.h / Math.max(0.01, o.h);
@@ -306,6 +323,19 @@ export function PageView({ doc, index, scale, interactive = true }: Props) {
     const d = drag.current;
     if (!d || e.pointerId !== d.pointerId) return;
     drag.current = null;
+    if (d.reflow) {
+      setLive(null);
+      setGuides({ x: [], y: [] });
+      if (commit && d.moved && d.box) {
+        // Lo último que se movió llega a la vista previa antes de confirmarla (la confirmación la adopta).
+        d.push?.flush();
+        useStore.getState().commit(resizeBoxRecipe(page, d.block, d.box, scope), reflowKey(page, d.block));
+      } else {
+        d.push?.cancel();
+        useStore.getState().clearPreview();
+      }
+      return;
+    }
     if (d.mode === 'marquee') {
       setMarquee(null);
       if (!commit) return;
@@ -460,7 +490,7 @@ export function PageView({ doc, index, scale, interactive = true }: Props) {
         <>
           {/* Capa del elemento seleccionado: con el dedo se arrastra desde acá sin desplazar la página. */}
           <div data-sel-surface="" className="absolute cursor-move" style={{ left: selBounds.x * scale, top: selBounds.y * scale, width: selBounds.w * scale, height: selBounds.h * scale, touchAction: 'none' }} />
-          {(selected.role === 'custom' ? HANDLES : (['se'] as const)).map((h) => {
+          {(selected.role === 'custom' || reflowable(selected) ? HANDLES : (['se'] as const)).map((h) => {
             // Esquinas: cuadrados; lados: barras sobre el borde. Grandes para el dedo.
             const corner = h.length === 2;
             const cx = (h.includes('w') ? selBounds.x : h.includes('e') ? selBounds.x + selBounds.w : selBounds.x + selBounds.w / 2) * scale;

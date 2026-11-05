@@ -911,3 +911,74 @@ test.describe('interfaz', () => {
     expect(after.past).toBe(before.past + 1);
   });
 });
+
+/** Selecciona por el almacén el bloque `blockId` de la primera página que lo muestra y devuelve el tipo y la clave de esa página. */
+async function selectBlock(page: Page, blockId: string): Promise<{ pageKey: string; pageType: string }> {
+  const where = await page.evaluate<{ pageKey: string; pageType: string } | null>(`(() => {
+    const wrap = document.querySelector('[data-block="${blockId}"]')?.closest('[data-page-key]');
+    if (!wrap) return null;
+    const where = { pageKey: wrap.getAttribute('data-page-key') ?? '', pageType: wrap.getAttribute('data-page-type') ?? '' };
+    globalThis.__agenda.getState().setSelection({ ...where, blockId: '${blockId}', role: 'content' }, ['${blockId}']);
+    return where;
+  })()`);
+  if (!where) throw new Error(`No hay un bloque ${blockId} a la vista`);
+  return where;
+}
+
+/** Lo que el almacén sabe del ajuste de un bloque: en la vista previa, confirmado, y cuánto historial hay. */
+interface BoxState {
+  hasPreview: boolean;
+  previewDw: number;
+  committedDw: number | null;
+  past: number;
+  transform: string;
+}
+const boxState = (page: Page, blockId: string): Promise<BoxState> =>
+  page.evaluate<BoxState>(`(() => {
+    const s = globalThis.__agenda.getState();
+    const find = (d) => d?.overrides.find((q) => q.blockId === '${blockId}');
+    return {
+      hasPreview: s.previewDesign !== null,
+      previewDw: find(s.previewDesign)?.dw ?? 0,
+      committedDw: find(s.design)?.dw ?? null,
+      past: s.past.length,
+      transform: document.querySelector('[data-block="${blockId}"]')?.getAttribute('transform') ?? '',
+    };
+  })()`);
+
+test.describe('tiradores con reflujo en bloques del programa', () => {
+  test('un tirador lateral ensancha el bloque reacomodando su contenido, con vista previa y un solo paso de historial', async ({ page }) => {
+    await openQuiet(page);
+    await toWeek(page);
+    await settled(page);
+    const where = await selectBlock(page, 'week.notes');
+    const handle = page.locator(`[data-page-key="${where.pageKey}"] [data-handle="e"]`).first();
+    await expect(handle).toBeVisible();
+    const before = await boxState(page, 'week.notes');
+    const box = (await handle.boundingBox())!;
+    const x = box.x + box.width / 2;
+    const y = box.y + box.height / 2;
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    await page.mouse.move(x - 40, y, { steps: 8 });
+    await frames(page);
+
+    // Durante el arrastre: la vista previa lleva el ajuste de ancho, nada está confirmado y la página se
+    // dibuja de nuevo (el bloque no lleva una transformación de escala: es contenido reacomodado, no deformado).
+    const during = await boxState(page, 'week.notes');
+    expect(during.hasPreview).toBe(true);
+    expect(Math.abs(during.previewDw)).toBeGreaterThan(1);
+    expect(during.committedDw).toBeNull();
+    expect(during.past).toBe(before.past);
+    expect(during.transform).not.toContain('scale(');
+
+    await page.mouse.up();
+    await expect.poll(async () => (await boxState(page, 'week.notes')).hasPreview).toBe(false);
+    const after = await boxState(page, 'week.notes');
+    expect(after.past).toBe(before.past + 1);
+    expect(Math.abs(after.committedDw ?? 0)).toBeGreaterThan(1);
+
+    await page.keyboard.press('Control+z');
+    await expect.poll(async () => (await boxState(page, 'week.notes')).committedDw).toBeNull();
+  });
+});
