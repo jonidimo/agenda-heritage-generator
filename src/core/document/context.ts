@@ -58,6 +58,7 @@ export function calendarOptions(design: Design): CalendarOptions {
     year: design.calendar.year,
     startMonth: design.calendar.startMonth,
     monthCount: design.calendar.monthCount,
+    hiddenMonths: design.calendar.hiddenMonths,
     weekStart: weekStartNumber(design),
     weekend,
     numbering: design.calendar.numbering,

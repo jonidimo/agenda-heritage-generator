@@ -10,12 +10,12 @@ import { impose, type SheetSide } from '../imposition/impose';
 import type { DocContext } from '../layout/context';
 import type { PageModel, PageWarning } from '../layout/prims';
 import { addMonths } from '../util/dates';
-import { renderPdf, type PdfPageInput } from '../render/pdf';
+import { renderPdf, type PdfLink, type PdfPageInput } from '../render/pdf';
 import { SECTION_REGISTRY } from '../sections/registry';
 import { shapeText } from '../text/shape';
 import { createDocContext, pageFormat, type PageFormat, type Resources } from './context';
 import { dedupeWarnings, layoutPage, pageInputs, pagePrims, samePageInputs, verifyPage, type PageInputs } from './layout';
-import { buildOutline, LinkResolver, pageFullTitle, pageLinks, type ResolvedLink } from './links';
+import { buildOutline, LinkResolver, pageFullTitle, pageLinks, remapOutline, type ResolvedLink } from './links';
 import { planDocument, type DocumentPlan, type PlanOptions } from './plan';
 import { samePageDesign, samePlanInputs } from './reuse';
 
@@ -28,6 +28,8 @@ export interface ExportOptions {
   onProgress?: (done: number, total: number) => void;
   /** Para `signature`: índice del cuadernillo. */
   signature?: number;
+  /** Para `pages`: solo estas páginas (índices desde 0); los enlaces y marcadores a las demás se omiten. */
+  pages?: readonly number[];
 }
 
 export interface DocumentOptions {
@@ -234,16 +236,25 @@ export class AgendaDocument {
         // Para leer en pantalla (tableta, lector de tinta electrónica): con enlaces y marcadores.
         const pages: PdfPageInput[] = [];
         const label = (n: number): string => `${this.pageLabel(n)} · ${this.ctx.strings.common.page} ${n + 1}`;
-        for (let i = 0; i < this.pageCount; i++) {
+        // Una parte de la agenda: las páginas pedidas, en orden y sin repetir; la numeración de los enlaces es la del archivo nuevo.
+        const wanted = opts.pages ? [...new Set(opts.pages)].filter((i) => i >= 0 && i < this.pageCount).sort((a, b) => a - b) : Array.from({ length: this.pageCount }, (_, i) => i);
+        if (wanted.length === 0) throw new Error('No hay páginas para exportar.');
+        const position = new Map(wanted.map((index, at) => [index, at]));
+        for (const i of wanted) {
           const p = this.page(i);
-          const links = this.links(i).map((l) => ({ rect: l.rect, ...(l.page !== undefined ? { page: l.page, label: label(l.page) } : { url: l.url!, label: l.url! }) }));
+          const links = this.links(i).flatMap((l): PdfLink[] => {
+            if (l.page === undefined) return [{ rect: l.rect, url: l.url!, label: l.url! }];
+            const to = position.get(l.page);
+            return to === undefined ? [] : [{ rect: l.rect, page: to, label: label(l.page) }];
+          });
           pages.push({ w: p.w, h: p.h, prims: pagePrims(p), ...(links.length > 0 ? { links } : {}) });
         }
+        const outline = d.links.bookmarks ? remapOutline(buildOutline(this.ctx, wanted.map((i) => this.plan.pages[i]!)), position) : null;
         return renderPdf(pages, {
           ...base,
           duplex: 'DuplexFlipLongEdge',
           lang: d.locale,
-          ...(d.links.bookmarks ? { outline: buildOutline(this.ctx, this.plan.pages) } : {}),
+          ...(outline ? { outline } : {}),
         });
       }
       case 'imposed':

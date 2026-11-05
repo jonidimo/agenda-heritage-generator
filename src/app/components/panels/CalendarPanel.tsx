@@ -7,6 +7,7 @@ import { isUiLang, UI_LANG_NAMES, useT, type UiKey } from '../../i18n/ui';
 
 /** Idioma de una etiqueta tal como viene ('es-AR' → 'es', 'de-DE' → 'de'). */
 const baseLang = (locale: string): string => locale.toLowerCase().split(/[-_]/)[0] || 'es';
+import { showMonth } from '../../state/months';
 import { resources } from '../../state/resources';
 import { useStore } from '../../state/store';
 import { Button, Field, Group, NumberInput, Select, TextInput, Toggle } from '../ui';
@@ -60,6 +61,20 @@ export function CalendarPanel() {
         <Field label={t('cal.startMonth')}>
           <Select value={String(c.startMonth)} onChange={(v) => update((d) => void (d.calendar.startMonth = Number(v)))} options={months.map((m, i) => ({ value: String(i + 1), label: m }))} />
         </Field>
+        {c.hiddenMonths.length > 0 && (
+          <Field label={t('cal.hiddenMonths')} group>
+            <div className="flex flex-wrap gap-1.5">
+              {c.hiddenMonths.map((k) => {
+                const [y, m] = k.split('-').map(Number);
+                return (
+                  <Button key={k} variant="outline" onClick={() => showMonth(k)}>
+                    {t('cal.showMonth', { month: `${months[(m ?? 1) - 1] ?? k} ${y}` })}
+                  </Button>
+                );
+              })}
+            </div>
+          </Field>
+        )}
         <Field label={t('cal.locale')} hint={t('cal.uiHint')}>
           <Select
             value={baseLang(design.locale)}

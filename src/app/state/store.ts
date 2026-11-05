@@ -126,6 +126,9 @@ interface StoreState {
   /** Mostrar el asistente de «Nueva agenda» al abrir el programa. */
   welcomeOnStart: boolean;
   setWelcomeOnStart(show: boolean): void;
+  /** Al elegir un elemento que solo tiene filetes, el panel de Estilo muestra el estilo de esa línea. */
+  autoReveal: boolean;
+  setAutoReveal(on: boolean): void;
   /** Tamaños de los paneles: se ven al instante y se guardan al soltar el divisor. */
   panelSizes: PanelSizes;
   setPanelSize(panel: PanelId, size: number): void;
@@ -238,6 +241,7 @@ export const useStore = create<StoreState>((set, get) => ({
   uiLangChosen: prefs.uiLang.isSet(),
   uiScale: prefs.uiScale.read(),
   welcomeOnStart: prefs.welcomeOnStart.read(),
+  autoReveal: prefs.autoReveal.read(),
   panelSizes: { left: prefs.panel.left.read(), right: prefs.panel.right.read(), thumbs: prefs.panel.thumbs.read() },
   resVersion: 0,
   showWelcome: false,
@@ -342,6 +346,10 @@ export const useStore = create<StoreState>((set, get) => ({
     const v = clampTo(uiScale, UI_SCALE.min, UI_SCALE.max);
     prefs.uiScale.write(v);
     set({ uiScale: v });
+  },
+  setAutoReveal(autoReveal) {
+    prefs.autoReveal.write(autoReveal);
+    set({ autoReveal });
   },
   setWelcomeOnStart(welcomeOnStart) {
     prefs.welcomeOnStart.write(welcomeOnStart);

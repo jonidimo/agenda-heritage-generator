@@ -119,6 +119,19 @@ export interface GroupPrim {
   clip?: Rect;
 }
 
+/** Los usos de línea (en orden de aparición, sin repetir) de unas primitivas, entrando en los grupos. */
+export function strokeUses(prims: readonly Prim[]): Array<NonNullable<Stroke['use']>> {
+  const found = new Set<NonNullable<Stroke['use']>>();
+  const walk = (ps: readonly Prim[]): void => {
+    for (const p of ps) {
+      if (p.t === 'group') walk(p.children);
+      else if ((p.t === 'line' || p.t === 'rect') && p.stroke?.use) found.add(p.stroke.use);
+    }
+  };
+  walk(prims);
+  return [...found];
+}
+
 export type Prim = LinePrim | RectPrim | CirclePrim | PathPrim | DotsPrim | TextPrim | ImagePrim | PdfPrim | GroupPrim;
 
 /** `writing`: áreas de renglones, puntos o cuadrícula (su estilo se ajusta por tipo de página o por página). */
@@ -190,6 +203,12 @@ export interface Block {
    * otro). Cuando los dos se mueven juntos, el de adentro ya sigue al de afuera: no se mueve de nuevo.
    */
   parent?: string;
+  /**
+   * Para qué sirven las líneas que dibuja (renglón, separador, tabla, marco), tomadas antes del estilo
+   * de líneas del tema: con una guarda u ornamento las líneas dejan de ser líneas y el uso se pierde.
+   * Es lo que el editor usa para llevar al estilo de esa clase de línea.
+   */
+  uses?: readonly import('../design/themes').LineUse[];
   /** De dónde sale su texto principal, si se puede editar en su lugar. */
   text?: TextSource;
   prims: Prim[];

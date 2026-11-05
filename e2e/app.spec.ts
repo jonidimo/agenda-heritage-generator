@@ -1181,3 +1181,51 @@ test.describe('enlaces por zona', () => {
     await expect(zones).toHaveCount(before - 1);
   });
 });
+
+test.describe('tira inferior y filetes', () => {
+  test('la rueda del mouse desplaza la tira de miniaturas a los costados', async ({ page }) => {
+    await openQuiet(page);
+    const strip = page.locator('[data-thumb="0"]').first().locator('xpath=ancestor::div[contains(@class,"overflow-x-auto")][1]');
+    await expect(strip).toBeVisible();
+    const left = () => strip.evaluate((el) => (el as unknown as { scrollLeft: number }).scrollLeft);
+    expect(await left()).toBe(0);
+    await strip.hover();
+    await page.mouse.wheel(0, 600);
+    await expect.poll(left).toBeGreaterThan(100);
+    await page.mouse.wheel(0, -600);
+    await expect.poll(left).toBeLessThan(50);
+  });
+
+  test('«Año» lleva al calendario anual y el menú de un mes oculta y vuelve a mostrar ese mes', async ({ page }) => {
+    await openQuiet(page);
+    await page.getByRole('button', { name: 'Año', exact: true }).click();
+    await expect(page.locator('[data-page-type="yearOverview"]').first()).toBeVisible();
+
+    const feb = page.getByRole('button', { name: 'Feb 27', exact: true });
+    await expect(feb).toBeVisible();
+    await feb.click({ button: 'right' });
+    await expect(page.getByRole('menuitem', { name: 'Ir a la portada del mes' })).toBeVisible();
+    await page.getByRole('menuitem', { name: 'Ocultar este mes de la agenda' }).click();
+    await expect(feb).toHaveCount(0);
+    const hidden = () => page.evaluate<string[]>('globalThis.__agenda.getState().design.calendar.hiddenMonths');
+    expect(await hidden()).toEqual(['2027-02']);
+
+    // Se vuelve a mostrar desde el panel de calendario.
+    await page.getByRole('tab', { name: 'Calendario' }).click();
+    await page.getByRole('button', { name: /Mostrar febrero 2027/i }).click();
+    expect(await hidden()).toEqual([]);
+    await expect(page.getByRole('button', { name: 'Feb 27', exact: true })).toBeVisible();
+  });
+
+  test('elegir un filete lleva solo al estilo de sus líneas, sin quitarle el foco a la página', async ({ page }) => {
+    await openQuiet(page);
+    await page.getByRole('button', { name: 'Año', exact: true }).click();
+    await expect(page.locator('[data-page-type="yearOverview"]').first()).toBeVisible();
+    await selectBlock(page, 'header.rule');
+    const target = page.locator('[data-reveal="line.separator"]');
+    await expect(target).toBeVisible();
+    await expect(target).toHaveClass(/reveal-flash/);
+    // El Inspector ofrece el mismo atajo para quien no tiene el panel de Estilo abierto.
+    await expect(page.getByTestId('line-uses')).toBeVisible();
+  });
+});

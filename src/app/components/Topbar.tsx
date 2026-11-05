@@ -27,6 +27,8 @@ export function Topbar() {
   const setLang = useStore((s) => s.setUiLang);
   const uiScale = useStore((s) => s.uiScale);
   const setUiScale = useStore((s) => s.setUiScale);
+  const autoReveal = useStore((s) => s.autoReveal);
+  const setAutoReveal = useStore((s) => s.setAutoReveal);
   const setShowAbout = useStore((s) => s.setShowAbout);
   const setShowLibrary = useStore((s) => s.setShowLibrary);
   const setShowSaveTemplate = useStore((s) => s.setShowSaveTemplate);
@@ -109,6 +111,7 @@ export function Topbar() {
               ? [{ separator: true }, { heading: t('file.uiScale') }, ...UI_SCALE.presets.map((p) => ({ label: `${Math.round(p * 100)} %`, checked: Math.abs(uiScale - p) < 0.005, onSelect: () => setUiScale(p) }))]
               : []),
             { separator: true },
+            { label: t('file.autoReveal'), checked: autoReveal, onSelect: () => setAutoReveal(!autoReveal) },
             { label: t('file.about'), icon: <Info size={14} />, onSelect: () => setShowAbout(true) },
           ]);
         }}

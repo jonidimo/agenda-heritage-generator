@@ -10,7 +10,7 @@ import { inset } from '../layout/box';
 import { adjustedSize, type BoxAdjust } from '../layout/box';
 import { LayoutContext, type BoxAdjuster, type DocContext } from '../layout/context';
 import { stretchPrims, stretchRect } from '../layout/stretch';
-import { primsBounds, type Block, type LinkArea, type LinkTarget, type PageModel, type PageWarning, type Prim } from '../layout/prims';
+import { primsBounds, strokeUses, type Block, type LinkArea, type LinkTarget, type PageModel, type PageWarning, type Prim } from '../layout/prims';
 import { dotField, ruledLines, squareGrid } from '../layout/widgets';
 import type { PagePlan, SectionModule } from '../sections/types';
 import { compose, composeAll, IDENTITY, ptToMm, rectContains, rotateAround, scale, transformRect, translate, type Matrix, type Rect } from '../util/geometry';
@@ -410,6 +410,8 @@ export function layoutPage(
   // separadores, tablas, marcos): el del elemento primero, así las guardas usan su grosor y su color.
   const styleOf = blockStyleMap(inputs.blockStyles, plan);
   for (const b of ctx.blocks) {
+    const uses = strokeUses(b.prims);
+    if (uses.length > 0) b.uses = uses;
     const st = styleOf.get(b.id);
     if (st) b.prims = applyBlockStyle(b.prims, st);
     const lines = st ? mergeLineTable(ctx.theme.lines, st.lines) : ctx.theme.lines;

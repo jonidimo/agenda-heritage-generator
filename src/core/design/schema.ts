@@ -39,11 +39,24 @@ const clampTo = (min: number, max: number) => (v: number): number => Math.min(ma
 const num = (def: number, min = -10_000, max = 10_000) => z.number().meta({ minimum: min, maximum: max }).transform(clampTo(min, max)).default(def);
 const intIn = (min: number, max: number) => z.number().meta({ minimum: min, maximum: max, multipleOf: 1 }).transform((v) => clampTo(min, max)(Math.round(v)));
 
+const MONTH_KEY = /^\d{4}-(0[1-9]|1[0-2])$/;
+
 export const CalendarZ = z
   .object({
     year: intIn(1900, 2200).default(new Date().getFullYear() + 1),
     startMonth: intIn(1, 12).default(1),
     monthCount: intIn(1, 24).default(12),
+    /**
+     * Meses que no entran en la agenda (`2027-03`): no tienen páginas, ni pestañas, ni enlaces. El
+     * calendario anual los sigue mostrando, porque es del año y no de la agenda. Para sacar el primero
+     * o el último mes de la agenda conviene cambiar `startMonth` o `monthCount`.
+     */
+    hiddenMonths: z
+      .array(z.string().meta({ pattern: '^\\d{4}-(0[1-9]|1[0-2])$', description: 'Mes, como 2027-03' }))
+      .max(48)
+      .default([])
+      // Un valor que no es un mes se descarta (un archivo ajeno no impide abrir la agenda).
+      .transform((l) => [...new Set(l.filter((k) => MONTH_KEY.test(k)))].sort()),
     weekStart: z.enum(['auto', 'monday', 'sunday', 'saturday']).default('monday'),
     weekend: z.union([z.literal('auto'), z.array(intIn(1, 7))]).default('auto'),
     numbering: z.enum(['iso', 'simple', 'none']).default('iso'),

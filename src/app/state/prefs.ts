@@ -96,6 +96,8 @@ export const prefs = {
   /** Idioma elegido a mano; sin valor, la interfaz sigue al idioma de la agenda abierta. */
   uiLang: definePref<Lang | null>('agenda-studio.uiLang', null, choiceCodec<Lang>(LANGUAGES)),
   welcomeOnStart: definePref<boolean>('agenda-studio.welcomeOnStart', WELCOME_ON_START_DEFAULT, boolCodec),
+  /** Al elegir un filete u ornamento, el panel de Estilo se desplaza solo a su editor. */
+  autoReveal: definePref<boolean>('agenda-studio.autoReveal', true, boolCodec),
   uiScale: definePref<number>('agenda-studio.uiScale', UI_SCALE.default, rangeCodec(UI_SCALE.min, UI_SCALE.max)),
   panel: {
     left: definePref<number>('agenda-studio.panel.left', PANEL_LIMITS.left.default, rangeCodec(PANEL_LIMITS.left.min, PANEL_LIMITS.left.max)),

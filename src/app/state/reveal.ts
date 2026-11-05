@@ -28,6 +28,8 @@ export interface RevealTarget {
   selector?: string;
   /** O su texto visible. */
   text?: string;
+  /** Pasar el foco al control (por defecto, sí). Al mostrarlo solo de paso no se lo quita al lienzo. */
+  focus?: boolean;
 }
 
 /** Devuelve si lo encontró. */
@@ -54,6 +56,6 @@ export async function reveal(target: RevealTarget): Promise<boolean> {
   spot.classList.add('reveal-flash');
   window.setTimeout(() => spot.classList.remove('reveal-flash'), 2200);
   const focusable = spot.matches('input, select, textarea, button') ? spot : spot.querySelector<HTMLElement>('input, select, textarea, button');
-  focusable?.focus({ preventScroll: true });
+  if (target.focus !== false) focusable?.focus({ preventScroll: true });
   return true;
 }

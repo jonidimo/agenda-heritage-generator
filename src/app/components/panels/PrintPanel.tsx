@@ -30,7 +30,7 @@ export function PrintPanel() {
     setBusy(true);
     setStatus(t('export.working', { done: 0, total: '…' }));
     try {
-      const bytes = await exportPdf(design, kind, (done, total) => setStatus(t('export.working', { done, total })), signature);
+      const bytes = await exportPdf(design, kind, (done, total) => setStatus(t('export.working', { done, total })), signature !== undefined ? { signature } : {});
       const name = `${fileBase(design)}-${suffix}.pdf`;
       download(bytes, name);
       setStatus(t('export.done', { name }));

@@ -25,6 +25,7 @@ ctx.onmessage = async (ev: MessageEvent<PdfJob>) => {
     const pdf = await doc.exportPdf(job.kind, {
       assetBytes: (id) => bytes.get(id),
       ...(job.signature !== undefined ? { signature: job.signature } : {}),
+      ...(job.pages ? { pages: job.pages } : {}),
       onProgress: (done, total) => ctx.postMessage({ id: job.id, type: 'progress', done, total } satisfies PdfReply),
     });
     ctx.postMessage({ id: job.id, type: 'done', bytes: pdf } satisfies PdfReply, [pdf.buffer as ArrayBuffer]);

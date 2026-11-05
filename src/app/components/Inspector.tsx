@@ -94,6 +94,19 @@ export function Inspector({ doc }: { doc: AgendaDocument }) {
   const group = selection ? page.blocks.filter((b) => selectedIds.includes(b.id)) : [];
   const movable = group.filter((b) => b.editable);
 
+  // Un elemento que solo tiene una clase de línea (un filete, un ornamento): si el panel de Estilo está
+  // abierto, se desplaza solo al estilo de esa línea, para no buscarlo (sin quitarle el foco al lienzo).
+  const autoReveal = useStore((s) => s.autoReveal);
+  const sidebarPanel = useStore((s) => (s.sidebarOpen ? s.panel : null));
+  const lineUse = block && group.length <= 1 && block.uses?.length === 1 && !block.prims.some((p) => p.t === 'text') ? block.uses[0] : undefined;
+  const revealKey = lineUse ? `${page.key}:${block!.id}` : '';
+  useEffect(() => {
+    if (!autoReveal || !lineUse || sidebarPanel !== 'style') return;
+    void reveal({ selector: `[data-reveal="line.${lineUse}"]`, focus: false });
+    // Solo cuando se elige otro elemento (o se abre el panel de Estilo), no con cada cambio del diseño.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [revealKey, sidebarPanel]);
+
   // Teclado: flechas mueven (a todo lo seleccionado), Supr oculta, Esc deselecciona.
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
@@ -145,6 +158,7 @@ export function Inspector({ doc }: { doc: AgendaDocument }) {
               </>
             )}
             <TextRoleLinks block={block} />
+            <LineUseLinks block={block} />
             {block.editable && (
               <div className="mt-2 flex flex-wrap gap-1.5">
                 <Button
@@ -697,6 +711,26 @@ function LinkFields(props: { doc: AgendaDocument; page: PageModel; block: Block;
  * Qué tipos de texto usa el elemento (títulos, rótulos…) y un atajo a su letra y color en Estilo:
  * cambiarlos ahí cambia todos los textos de ese tipo en la agenda.
  */
+/** Lleva al estilo de cada clase de línea del elemento (filetes, ornamentos, marcos), que se cambia para toda la agenda. */
+function LineUseLinks({ block }: { block: Block }) {
+  const t = useT();
+  const uses = block.uses ?? [];
+  if (uses.length === 0) return null;
+  return (
+    <div className="mt-2 rounded-md bg-paper/70 p-2 text-[11.5px]" data-testid="line-uses">
+      <div className="mb-1 font-semibold text-ink-soft">{t('insp.lineUses')}</div>
+      <div className="flex flex-wrap gap-1.5">
+        {uses.map((u) => (
+          <Button key={u} variant="outline" onClick={() => void reveal({ panel: 'style', selector: `[data-reveal="line.${u}"]` })}>
+            <Minus size={13} /> {t('insp.editLineUse', { use: t(`bstyle.use.${u}`) })}
+          </Button>
+        ))}
+      </div>
+      <p className="mt-1 leading-snug text-ink-soft">{t('insp.lineUsesHelp')}</p>
+    </div>
+  );
+}
+
 function TextRoleLinks({ block }: { block: Block }) {
   const t = useT();
   const roles = useMemo(() => {

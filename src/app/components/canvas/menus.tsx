@@ -4,9 +4,9 @@
  */
 import type { AgendaDocument } from '@core/document';
 import type { WritingStyle } from '@core/design/themes';
-import type { BlockLineKey } from '@core/design/schema';
+import { trimmedRange } from '@core/calendar/range';
 import type { ResolvedLink } from '@core/document/links';
-import type { Block, PageModel, Prim } from '@core/layout/prims';
+import type { Block, PageModel } from '@core/layout/prims';
 import {
   AlignCenterHorizontal,
   AlignCenterVertical,
@@ -60,6 +60,9 @@ import {
 } from '../../state/actions';
 import { copySelection, cutSelection, pasteSelection } from '../../state/clipboard';
 import { customPageHere } from '../../state/customPages';
+import { exportRange } from '../../state/exportFlow';
+import { canHideMonth, hideMonth, trimMonth, visibleMonths } from '../../state/months';
+import { setEnabled } from '../../state/sections';
 import { reveal } from '../../state/reveal';
 import { exportPageSvg, fileBase } from '../../state/exporter';
 import { useStore } from '../../state/store';
@@ -82,18 +85,6 @@ const labelsFor = (t: T) => ({ text: t('insp.addText'), image: t('insp.addImage'
 
 const openProperties = (): void => useStore.getState().setInspectorOpen(true);
 
-/** Clases de línea con dibujo propio (renglones, separadores, tablas, marcos) que usa un elemento. */
-function lineUsesOf(prims: readonly Prim[]): BlockLineKey[] {
-  const found = new Set<BlockLineKey>();
-  const walk = (ps: readonly Prim[]): void => {
-    for (const p of ps) {
-      if (p.t === 'group') walk(p.children);
-      else if ((p.t === 'line' || p.t === 'rect') && p.stroke?.use) found.add(p.stroke.use);
-    }
-  };
-  walk(prims);
-  return [...found];
-}
 
 /** Elige el elemento, muestra sus zonas tocables y lleva a la sección «Enlaces» de su panel. */
 function editLinks(page: PageModel, block: Block): void {
@@ -218,14 +209,19 @@ export function blockMenu(c: MenuContext, block: Block): MenuItem[] {
       { separator: true },
     );
     // Dibujo de todas las líneas del elemento de una vez (el detalle por clase de línea está en el panel).
-    const uses = lineUsesOf(block.prims);
+    const uses = [...(block.uses ?? [])];
     if (uses.length > 0) {
       items.push({ heading: t('bstyle.linesMenu') });
       for (const p of ['solid', 'dashed', 'dotted', 'double'] as const)
         items.push({ label: t(`bstyle.pattern.${p}`), onSelect: () => update(allLinesRecipe(page, block.id, scope, uses, { pattern: p }), `bstyle:${block.id}:all:pattern`) });
     }
     items.push({ label: t('bstyle.open'), icon: <SlidersHorizontal size={14} />, onSelect: () => void reveal({ inspector: true, selector: '[data-reveal="blockstyle"]' }) }, { separator: true }, hideHere, hideType);
-  } else items.push({ label: t('insp.locked'), disabled: true });
+  } else {
+    items.push({ label: t('insp.locked'), disabled: true });
+    // Un filete u ornamento fijo: su estilo (dibujo, color, ornamento) se cambia para toda la agenda.
+    for (const u of block.uses ?? [])
+      items.push({ label: t('insp.editLineUse', { use: t(`bstyle.use.${u}`) }), icon: <SlidersHorizontal size={14} />, onSelect: () => void reveal({ panel: 'style', selector: `[data-reveal="line.${u}"]` }) });
+  }
   items.push(
     { separator: true },
     { label: t('menu.editLinks'), icon: <Link2 size={14} />, onSelect: () => editLinks(page, block) },
@@ -287,6 +283,75 @@ function insertPageAfter(doc: AgendaDocument, index: number): void {
   const cp = customPageHere(doc, index, { assetId: st.design?.assets.find((a) => !a.builtin)?.id ?? null });
   st.update((d) => void d.customPages.push(cp));
   st.setGoToKey(`custom:${cp.id}`);
+}
+
+/** Un grupo de páginas de la tira inferior: el inicio, el año, un mes o el final. */
+export interface StripGroup {
+  key: string;
+  label: string;
+  /** Primera página a la que lleva. */
+  first: number;
+  /** Todas sus páginas (para exportarlas). */
+  pages: number[];
+}
+
+/** Las páginas de la agenda de un grupo (`front`, `month:2027-03`, `back`), con su primera página de cada tipo. */
+function typesIn(doc: AgendaDocument, pages: readonly number[]): Array<{ type: string; index: number }> {
+  const seen = new Set<string>();
+  const out: Array<{ type: string; index: number }> = [];
+  for (const i of pages) {
+    const p = doc.plan.pages[i]!;
+    if (p.type === 'filler' || seen.has(p.type)) continue;
+    seen.add(p.type);
+    out.push({ type: p.type, index: i });
+  }
+  return out;
+}
+
+/** Opciones sobre el rótulo de un mes de la tira inferior. */
+export function monthMenu(t: T, doc: AgendaDocument, g: StripGroup, hooks: { onlyHere(): void }): MenuItem[] {
+  const design = useStore.getState().design!;
+  const key = g.key.slice('month:'.length);
+  const sections = design.sections.find((s) => s.type === 'months')?.items ?? [];
+  const monthsIndex = design.sections.findIndex((s) => s.type === 'months');
+  const goTo = typesIn(doc, g.pages).filter((x) => x.index !== g.first);
+  const items: MenuItem[] = [
+    { heading: g.label },
+    { label: t('nav.month.cover'), icon: <MousePointerClick size={14} />, onSelect: () => jumpToPage(g.first) },
+  ];
+  if (goTo.length > 0) {
+    items.push({ heading: t('nav.month.goTo') });
+    for (const x of goTo.slice(0, 12)) items.push({ label: pageTitle(t, doc.plan.pages[x.index]!), onSelect: () => jumpToPage(x.index) });
+  }
+  items.push(
+    { separator: true },
+    { label: t('menu.insertPage'), icon: <FilePlus2 size={14} />, onSelect: () => insertPageAfter(doc, g.pages[g.pages.length - 1]!) },
+    { label: t('nav.exportRange'), onSelect: () => void exportRange(t, design, g.pages, key) },
+    { label: t('nav.month.only'), onSelect: hooks.onlyHere },
+  );
+  if (monthsIndex >= 0 && sections.length > 0) {
+    items.push({ separator: true }, { heading: t('nav.month.sections') });
+    sections.forEach((it, index) => items.push({ label: sectionName(t, it.type), checked: it.enabled, onSelect: () => setEnabled({ list: 'month', index }, !it.enabled) }));
+  }
+  const visible = visibleMonths(design.calendar);
+  items.push(
+    { separator: true },
+    { label: t('nav.month.hide'), icon: <EyeOff size={14} />, disabled: !canHideMonth(key), onSelect: () => hideMonth(key) },
+  );
+  if (key === visible[0] && trimmedRange(design.calendar, 'first')) items.push({ label: t('nav.month.trimFirst'), onSelect: () => void trimMonth('first') });
+  if (key === visible[visible.length - 1] && trimmedRange(design.calendar, 'last')) items.push({ label: t('nav.month.trimLast'), onSelect: () => void trimMonth('last') });
+  return items;
+}
+
+/** Opciones sobre «Inicio», «Año» o «Final» de la tira inferior. */
+export function stripGroupMenu(t: T, doc: AgendaDocument, g: StripGroup): MenuItem[] {
+  const design = useStore.getState().design!;
+  return [
+    { heading: g.label },
+    { label: t('nav.group.go'), icon: <MousePointerClick size={14} />, onSelect: () => jumpToPage(g.first) },
+    { label: t('nav.exportRange'), onSelect: () => void exportRange(t, design, g.pages, g.key) },
+    ...typesIn(doc, g.pages).slice(0, 12).filter((x) => x.index !== g.first).map((x) => ({ label: pageTitle(t, doc.plan.pages[x.index]!), onSelect: () => jumpToPage(x.index) })),
+  ];
 }
 
 /** Opciones sobre una miniatura del navegador. */
