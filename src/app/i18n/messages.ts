@@ -16,7 +16,9 @@ const BY_LABEL: Record<string, UiKey> = {
   'Marca de agua': 'blk.watermark',
 };
 
-export function blockLabel(t: T, id: string, fallback: string): string {
+export function blockLabel(t: T, id: string, fallback: string, renamed = false): string {
+  // Un nombre que puso la persona manda sobre el del programa.
+  if (renamed) return fallback;
   const exact = `blk.${id}` as UiKey;
   const v = t(exact);
   if (v !== exact) return v;

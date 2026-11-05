@@ -107,3 +107,15 @@ describe('pasar de página', () => {
     expect(pageStep('page', 0, 0, 1)).toBe(0);
   });
 });
+
+describe('AltGr y teclas sin `key`', () => {
+  const e = (o: Record<string, unknown>) => ({ key: '', code: '', ctrlKey: false, metaKey: false, shiftKey: false, altKey: false, ...o }) as Parameters<typeof matchesChord>[1];
+  it('un símbolo que se escribe con AltGr sigue valiendo, pero Ctrl+Alt común no', () => {
+    expect(matchesChord({ key: '[', shift: 'any' }, { ...e({ key: '[', ctrlKey: true, altKey: true }), getModifierState: (k: string) => k === 'AltGraph' })).toBe(true);
+    expect(matchesChord({ key: '[', shift: 'any' }, { ...e({ key: '[', ctrlKey: true, altKey: true }), getModifierState: () => false })).toBe(false);
+    expect(matchesChord({ key: 'z', mod: true }, { ...e({ key: 'z', ctrlKey: true, altKey: true }), getModifierState: (k: string) => k === 'AltGraph' })).toBe(false);
+  });
+  it('un evento sin key no rompe la comparación', () => {
+    expect(matchesChord({ key: 'a', mod: true }, e({ key: undefined, ctrlKey: true }))).toBe(false);
+  });
+});

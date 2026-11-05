@@ -70,6 +70,8 @@ function clampWeight(w: number): number {
  */
 export class FontRegistry {
   private readonly faces = new Map<string, FontFace>();
+  /** Las caras integradas que una subida con la misma familia, peso y estilo tapó: vuelven al quitarla. */
+  private readonly shadowed = new Map<string, FontFace>();
 
   register(
     bytes: Uint8Array,
@@ -91,6 +93,8 @@ export class FontRegistry {
       variable: Object.keys(font.variationAxes ?? {}).length > 0,
       ...(meta.file ? { file: meta.file } : {}),
     };
+    const prev = this.faces.get(face.key);
+    if (prev && prev.source === 'builtin' && face.source === 'user') this.shadowed.set(face.key, prev);
     this.faces.set(face.key, face);
     return face;
   }
@@ -99,7 +103,14 @@ export class FontRegistry {
   unregisterFile(file: string): number {
     let removed = 0;
     for (const [key, face] of this.faces) {
-      if (face.file === file && this.faces.delete(key)) removed++;
+      if (face.file === file && this.faces.delete(key)) {
+        removed++;
+        const back = this.shadowed.get(key);
+        if (back) {
+          this.faces.set(key, back);
+          this.shadowed.delete(key);
+        }
+      }
     }
     return removed;
   }

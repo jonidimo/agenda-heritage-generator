@@ -63,6 +63,7 @@ import {
 import { copySelection, cutSelection, duplicateSelection, pasteSelection } from '../../state/clipboard';
 import { customPageHere } from '../../state/customPages';
 import { exportRange } from '../../state/exportFlow';
+import { monthKeysOf } from '@core/calendar/range';
 import { canHideMonth, hideMonth, trimMonth, visibleMonths } from '../../state/months';
 import { setEnabled } from '../../state/sections';
 import { reveal } from '../../state/reveal';
@@ -151,7 +152,7 @@ export function blockMenu(c: MenuContext, block: Block): MenuItem[] {
   const { t, page, scope } = c;
   const design = useStore.getState().design!;
   const update = useStore.getState().update;
-  const items: MenuItem[] = [{ heading: blockLabel(t, block.id, block.label) }];
+  const items: MenuItem[] = [{ heading: blockLabel(t, block.id, block.label, block.renamed) }];
   const hideHere = { label: t('menu.hideHere'), icon: <EyeOff size={14} />, onSelect: () => hideBlocks(page, [block], 'page') };
   const hideType = { label: t('menu.hideType', { type: sectionName(t, page.type) }), icon: <EyeOff size={14} />, onSelect: () => hideBlocks(page, [block], 'type') };
 
@@ -354,8 +355,8 @@ export function monthMenu(t: T, doc: AgendaDocument, g: StripGroup, hooks: { onl
     { separator: true },
     { label: t('nav.month.hide'), icon: <EyeOff size={14} />, disabled: !canHideMonth(key), onSelect: () => hideMonth(key) },
   );
-  if (key === visible[0] && trimmedRange(design.calendar, 'first')) items.push({ label: t('nav.month.trimFirst'), onSelect: () => void trimMonth('first') });
-  if (key === visible[visible.length - 1] && trimmedRange(design.calendar, 'last')) items.push({ label: t('nav.month.trimLast'), onSelect: () => void trimMonth('last') });
+  if (key === visible[0] && key === monthKeysOf(design.calendar)[0] && trimmedRange(design.calendar, 'first')) items.push({ label: t('nav.month.trimFirst'), onSelect: () => void trimMonth('first') });
+  if (key === visible[visible.length - 1] && key === monthKeysOf(design.calendar).at(-1) && trimmedRange(design.calendar, 'last')) items.push({ label: t('nav.month.trimLast'), onSelect: () => void trimMonth('last') });
   return items;
 }
 

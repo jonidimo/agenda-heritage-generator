@@ -1,6 +1,6 @@
 /** Orden de apilado: mover un elemento un lugar, al frente o al fondo, y dar capa solo a los que la necesitan. */
 import { describe, expect, it } from 'vitest';
-import { LAYER_LIMIT, moveInOrder, restack, type StackItem } from '../src/core/layout/stack';
+import { LAYER_LIMIT, moveInOrder, restack, restackOne, type StackItem } from '../src/core/layout/stack';
 
 /** Elementos de una página en el orden en que la sección los agregó (de ahí sale su `seq`). */
 const items = (...pairs: Array<[string, number]>): StackItem[] => pairs.map(([id, layer], seq) => ({ id, layer, seq }));
@@ -79,5 +79,29 @@ describe('restack', () => {
     const changes = restack(order);
     expect(drawn(order, changes)).toBe('abc');
     expect([...changes.values()].every((v) => v <= LAYER_LIMIT)).toBe(true);
+  });
+});
+
+describe('restackOne', () => {
+  it('mover uno entre otros de la misma capa le cambia la capa solo a él cuando hay lugar, y el orden queda como se pidió', () => {
+    const original = items(['a', 10], ['b', 11], ['c', 12], ['d', 13]);
+    for (const move of ['up', 'down', 'front', 'back'] as const) {
+      for (const { id } of original) {
+        const want = moveInOrder(original, id, move);
+        const changes = restackOne(want, id);
+        expect(drawn(original, changes), `${id} ${move}`).toBe(ids(want));
+        expect(changes.size).toBeLessThanOrEqual(1);
+      }
+    }
+  });
+
+  it('con todas en la misma capa no hay lugar entre vecinos: se reparte, pero sigue quedando como se pidió', () => {
+    const original = items(['a', 10], ['b', 10], ['c', 10], ['d', 10]);
+    for (const move of ['up', 'down', 'front', 'back'] as const) {
+      for (const { id } of original) {
+        const want = moveInOrder(original, id, move);
+        expect(drawn(original, restackOne(want, id)), `${id} ${move}`).toBe(ids(want));
+      }
+    }
   });
 });

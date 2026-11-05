@@ -223,6 +223,8 @@ export interface Block {
   layer: number;
   /** Lugar en que la sección lo agregó a la página: con la misma capa, el de menor lugar se dibuja debajo. */
   seq?: number;
+  /** El nombre lo puso la persona (un ajuste de nombre propio): no se traduce. */
+  renamed?: boolean;
   /** Transformación final (ajustes del editor). */
   m?: Matrix;
   opacity?: number;

@@ -60,3 +60,23 @@ export function restack(order: readonly StackItem[]): Map<string, number> {
   }
   return changes;
 }
+
+/**
+ * Lo mismo para un solo elemento que se movió: le alcanza una capa propia entre sus dos vecinos nuevos (sin tocar a
+ * los demás). Si los vecinos comparten capa no hay lugar entre ellos y se reparte con `restack`.
+ */
+export function restackOne(order: readonly StackItem[], id: string): Map<string, number> {
+  const at = order.findIndex((x) => x.id === id);
+  const self = order[at];
+  if (!self) return new Map();
+  const lo = order[at - 1];
+  const hi = order[at + 1];
+  const fits = (!lo || self.layer > lo.layer || (self.layer === lo.layer && self.seq > lo.seq)) && (!hi || self.layer < hi.layer || (self.layer === hi.layer && self.seq < hi.seq));
+  if (fits) return new Map();
+  let layer: number | null = null;
+  if (lo && hi) layer = hi.layer > lo.layer ? round((lo.layer + hi.layer) / 2) : null;
+  else if (lo) layer = round(lo.layer + LAYER_STEP);
+  else if (hi) layer = round(hi.layer - LAYER_STEP);
+  if (layer === null || layer > LAYER_LIMIT || layer < -LAYER_LIMIT || (lo && layer <= lo.layer) || (hi && layer >= hi.layer)) return restack(order);
+  return new Map([[id, layer]]);
+}

@@ -346,9 +346,9 @@ export const BlockOverrideZ = z.object({
   /** Orden de apilado propio (mayor, más arriba), en lugar del que le da la sección; sin valor, el de siempre. */
   layer: z.number().meta({ minimum: -1000, maximum: 1000 }).transform(clampTo(-1000, 1000)).nullable().default(null),
   /** Nombre propio del elemento (en el panel de capas y en las avisos); sin valor, el de la sección. */
-  label: z.string().max(120).nullable().default(null),
+  label: z.string().transform((v) => v.slice(0, 120)).nullable().default(null),
   /** Cómo se fusiona con lo que tiene debajo. */
-  blend: z.enum(BLEND_MODES).default('normal'),
+  blend: z.enum(BLEND_MODES).catch('normal').default('normal'),
 });
 export type BlockOverride = z.infer<typeof BlockOverrideZ>;
 

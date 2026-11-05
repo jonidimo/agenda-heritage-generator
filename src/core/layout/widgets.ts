@@ -301,7 +301,7 @@ export function checklist(ctx: LayoutContext, r: Rect, pitch: number, opts: { ci
  */
 export function amountLines(ctx: LayoutContext, area: Rect, pitch: number): Prim[] {
   const out: Prim[] = [];
-  const n = Math.floor(area.h / pitch);
+  const n = Math.floor(area.h / pitch + 1e-6);
   for (let k = 1; k <= n; k++) {
     const y = area.y + k * pitch;
     out.push(line(area.x, y, area.x + area.w, y, ctx.stroke('hair', undefined, { use: 'table' })));

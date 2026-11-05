@@ -13,6 +13,7 @@ import {
   RotateCcw,
 } from "lucide-react";
 import { useState } from "react";
+import { blockLabel } from "../i18n/messages";
 import { useT, type UiKey } from "../i18n/ui";
 import {
   currentOverride,
@@ -164,9 +165,9 @@ function Row({
           className="min-w-0 flex-1 truncate text-left"
           title={t("layers.rename")}
           onClick={pick}
-          onDoubleClick={() => block.editable && setRenaming(block.label)}
+          onDoubleClick={() => block.editable && setRenaming(blockLabel(t, block.id, block.label, block.renamed))}
         >
-          {block.label}
+          {blockLabel(t, block.id, block.label, block.renamed)}
         </button>
       )}
       {block.editable && (
@@ -254,7 +255,7 @@ export function LayersPanel({
                 >
                   <EyeOff size={12} />
                 </StackButton>
-                <span className="min-w-0 flex-1 truncate">{h.label}</span>
+                <span className="min-w-0 flex-1 truncate">{blockLabel(t, h.id, h.label)}</span>
               </li>
             ))}
           </ul>
@@ -281,6 +282,7 @@ export function StackFields({
     currentOverride(design, page, block.id, level) ??
     currentOverride(design, page, block.id, "type");
   const blend: BlendMode = own?.blend ?? "normal";
+  const [draft, setDraft] = useState<string | null>(null);
   return (
     <div className="mt-2 border-t border-line pt-2" data-testid="stack-fields">
       <h4 className="mb-1 text-[11px] font-extrabold tracking-[0.08em] uppercase">
@@ -290,11 +292,16 @@ export function StackFields({
         <StackButtons page={page} block={block} scope={scope} />
       </div>
       <Field label={t("layers.name")}>
+        {/* Un borrador local: el nombre se guarda al salir del campo (al escribir no se puede recortar). */}
         <TextInput
-          value={own?.label ?? ""}
-          placeholder={block.label}
+          value={draft ?? own?.label ?? ""}
+          placeholder={blockLabel(t, block.id, block.label, block.renamed)}
           ariaLabel={t("layers.name")}
-          onChange={(v) => renameBlock(page, block.id, scope, v)}
+          onChange={setDraft}
+          onBlur={() => {
+            if (draft !== null) renameBlock(page, block.id, scope, draft);
+            setDraft(null);
+          }}
         />
       </Field>
       <Field label={t("layers.blend")}>

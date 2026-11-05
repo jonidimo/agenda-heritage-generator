@@ -54,7 +54,11 @@ export async function deliverPdf(bytes: Uint8Array, name: string): Promise<Deliv
   const started = Date.now();
   while (Date.now() - started < SAVE_DIALOG_WAIT_MS) {
     const done = await awaitDownload(mark, 60_000);
-    if (!done) continue;
+    if (!done) {
+      // Sin respuesta (ruta caída o espera agotada): una pausa corta evita pedir sin parar.
+      await new Promise((r) => setTimeout(r, 250));
+      continue;
+    }
     if (done.state === 'completed' && done.path) return { kind: 'saved', name: done.name, path: done.path };
     return done.state === 'cancelled' ? { kind: 'cancelled', name } : { kind: 'unknown', name };
   }

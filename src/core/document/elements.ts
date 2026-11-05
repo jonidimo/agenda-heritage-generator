@@ -68,10 +68,12 @@ function drawTable(ctx: LayoutContext, p: Record<string, unknown>, box: Rect): E
 
 function drawChecklist(ctx: LayoutContext, p: Record<string, unknown>, box: Rect): ElementDrawing {
   const items = int(p.items, PROP_RANGES.checkItems, PROP_DEFAULTS.checkItems);
-  const columns = Math.min(int(p.columns, PROP_RANGES.checkColumns, 1), items);
+  const wanted = Math.min(int(p.columns, PROP_RANGES.checkColumns, 1), items);
   const shape = enumProp(p.shape, CHECK_SHAPES, 'circle');
   const labels = stringList(p.labels);
-  const perColumn = Math.ceil(items / columns);
+  const perColumn = Math.ceil(items / wanted);
+  // Sin columnas vacías que reserven ancho (4 renglones en 3 columnas son 2 columnas de 2).
+  const columns = Math.ceil(items / perColumn);
   const gap = 5;
   const colW = (box.w - gap * (columns - 1)) / columns;
   const pitch = box.h / perColumn;

@@ -151,7 +151,7 @@ export function Inspector({ doc }: { doc: AgendaDocument }) {
         {block && group.length > 1 && <MultiFields page={page} blocks={group} primary={block} scope={scope} setScope={setScope} />}
         {block && group.length <= 1 && (
           <div>
-            <p className="mb-2 text-[13px] font-semibold">{blockLabel(t, block.id, block.label)}</p>
+            <p className="mb-2 text-[13px] font-semibold">{blockLabel(t, block.id, block.label, block.renamed)}</p>
             {!block.editable && <p className="text-[12px] text-ink-soft">{t('insp.locked')}</p>}
             {block.editable && block.role === 'writing' && <WritingFields page={page} scope={scope} setScope={setScope} />}
             {block.editable && block.role === 'watermark' && <WatermarkFields id={block.id.slice(3)} />}

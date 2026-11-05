@@ -46,7 +46,12 @@ export interface KeyLike {
   altKey: boolean;
 }
 
-export function matchesChord(c: Chord, e: KeyLike): boolean {
+export function matchesChord(c: Chord, e: KeyLike & { getModifierState?: (key: string) => boolean }): boolean {
+  if (typeof e.key !== 'string') return false;
+  // AltGr (Ctrl+Alt) escribe símbolos como [ ] / ; en las distribuciones españolas, alemanas o francesas: una tecla de
+  // carácter sin Ctrl ni Alt pedidos cuenta aunque el sistema reporte Ctrl+Alt por el AltGr.
+  const altGr = c.mod !== true && c.alt !== true && c.code === undefined && c.key !== undefined && c.key.length === 1 && e.ctrlKey && e.altKey && e.getModifierState?.('AltGraph') === true;
+  if (altGr) return e.key === c.key;
   if ((e.ctrlKey || e.metaKey) !== (c.mod === true)) return false;
   if (c.shift !== 'any' && e.shiftKey !== (c.shift === true)) return false;
   // Ctrl+Alt es AltGr: sin pedirlo expresamente, una Alt apretada no deja pasar la combinación.
@@ -229,8 +234,8 @@ export const SHORTCUTS: readonly Shortcut[] = [
       state().select(null);
     },
   },
-  { id: 'select.next', group: 'select', chords: [{ key: ']' }], run: () => stepSelection(1) },
-  { id: 'select.prev', group: 'select', chords: [{ key: '[' }], run: () => stepSelection(-1) },
+  { id: 'select.next', group: 'select', chords: [{ key: ']', shift: 'any' }], run: () => stepSelection(1) },
+  { id: 'select.prev', group: 'select', chords: [{ key: '[', shift: 'any' }], run: () => stepSelection(-1) },
 
   { id: 'view.zoomIn', group: 'view', typing: true, chords: [{ key: '+', mod: true, shift: 'any' }, { key: '=', mod: true, shift: 'any' }], run: () => state().zoomBy(ZOOM.step) },
   { id: 'view.zoomOut', group: 'view', typing: true, chords: [{ key: '-', mod: true, shift: 'any' }, { key: '_', mod: true, shift: 'any' }], run: () => state().zoomBy(1 / ZOOM.step) },
@@ -249,7 +254,7 @@ export const SHORTCUTS: readonly Shortcut[] = [
   },
   { id: 'view.sidebar', group: 'view', chords: [{ key: 'b', mod: true }], run: () => state().setSidebarOpen(!state().sidebarOpen) },
   { id: 'view.guides', group: 'view', chords: [{ key: "'", mod: true }], run: () => state().toggleGuides() },
-  { id: 'view.snap', group: 'view', chords: [{ key: ';', mod: true }], run: () => state().toggleSnap() },
+  { id: 'view.snap', group: 'view', chords: [{ key: ';', mod: true, shift: 'any' }], run: () => state().toggleSnap() },
   { id: 'view.links', group: 'view', chords: [{ key: 'l', mod: true, shift: true }], run: () => state().setShowLinks(!state().showLinks) },
 
   { id: 'nav.next', group: 'navigate', chords: [{ key: 'PageDown' }, { key: 'ArrowRight' }], run: (e) => (e.key === 'ArrowRight' && state().selection ? false : page(1)) },
@@ -261,7 +266,7 @@ export const SHORTCUTS: readonly Shortcut[] = [
 
   ...PANEL_ORDER.map((panel, i): Shortcut => ({ id: `panel.${panel}`, group: 'panels', typing: true, chords: digit(i + 1), run: () => openPanel(panel) })),
 
-  { id: 'search.open', group: 'help', typing: true, chords: [{ key: 'f', mod: true }, { key: 'k', mod: true }, { key: '/' }], run: (e) => (e.key === '/' && isTyping(e.target) ? false : state().setSearchOpen(true)) },
+  { id: 'search.open', group: 'help', typing: true, chords: [{ key: 'f', mod: true }, { key: 'k', mod: true }, { key: '/', shift: 'any' }], run: (e) => (e.key === '/' && isTyping(e.target) ? false : state().setSearchOpen(true)) },
   { id: 'help.shortcuts', group: 'help', typing: true, chords: [{ key: 'F1' }, { key: '/', mod: true }, { key: '?', shift: 'any' }], run: (e) => (e.key === '?' && isTyping(e.target) ? false : state().setShowShortcuts(true)) },
 ];
 
@@ -273,7 +278,8 @@ export function shortcutsFor(e: KeyLike, typing: boolean): Shortcut[] {
 /** Engancha el oyente único de teclado. Devuelve la función que lo desengancha. */
 export function installShortcuts(): () => void {
   const onKey = (e: KeyboardEvent): void => {
-    if (e.defaultPrevented || e.isComposing) return;
+    // El autocompletado del navegador manda teclas sin `key`: no son del teclado.
+    if (e.defaultPrevented || e.isComposing || typeof e.key !== 'string') return;
     // Si el primero no corresponde ahora (`false`: p. ej. las flechas sin nada elegido), sigue el siguiente
     // (Alt+← sin elemento elegido es «Atrás»); si ninguno, la tecla sigue su camino.
     // Con un diálogo abierto, solo las teclas que valen escribiendo (zoom, buscar, ayuda): nada se mueve detrás.

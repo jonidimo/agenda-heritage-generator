@@ -496,7 +496,10 @@ export function layoutPage(
     // Capa, nombre y fusión propios (valen también para los elementos que no se mueven ni se escalan).
     if (o) {
       if (o.layer !== null) b.layer = o.layer;
-      if (o.label) b.label = o.label;
+      if (o.label) {
+        b.label = o.label;
+        b.renamed = true;
+      }
       if (o.blend !== 'normal') b.blend = o.blend;
     }
     blocks.push(b);

@@ -12,7 +12,7 @@ import type { Block, PageModel, TextSource } from '@core/layout/prims';
 import type { Rect } from '@core/util/geometry';
 import type { BlendMode } from '@core/design/blend';
 import type { HiddenElement } from '@core/document/hidden';
-import { moveInOrder, restack, type StackMove } from '@core/layout/stack';
+import { moveInOrder, restackOne, type StackMove } from '@core/layout/stack';
 import { blockBounds, findOverride as appliedOverride } from '@core/document/layout';
 import { deformable } from '@core/layout/handles';
 import { axisScales, deformScales, MIN_BOX, naturalBox, storeAdjust, visualToBox, type BoxAdjust } from '@core/layout/box';
@@ -555,12 +555,19 @@ export function hideBlocks(page: PageModel, blocks: Block[], scope: Scope): void
 /** Receta que mueve un elemento en el apilado de la página (o `null` si ya está en el extremo). */
 export function stackRecipe(page: PageModel, id: string, move: StackMove, scope: Scope): Recipe | null {
   const order = page.blocks.map((b) => ({ id: b.id, layer: b.layer, seq: b.seq ?? 0 }));
-  const changes = restack(moveInOrder(order, id, move));
+  const changes = restackOne(moveInOrder(order, id, move), id);
   if (changes.size === 0) return null;
   const sc = effectiveScope(page, scope);
   const mirrored = typeMirrored(page);
   return (d) => {
-    for (const [blockId, layer] of changes) upsertOverride(d, page, blockId, sc, (o) => void (o.layer = layer), mirrored);
+    for (const [blockId, layer] of changes) {
+      upsertOverride(d, page, blockId, sc, (o) => void (o.layer = layer), mirrored);
+      // Un ajuste de esta página con capa propia manda sobre el del tipo: se acompaña, o el cambio no se vería.
+      if (sc === 'type') {
+        const own = d.overrides.find((o) => o.blockId === blockId && o.pageKey === page.key && o.layer !== null);
+        if (own) own.layer = layer;
+      }
+    }
   };
 }
 
@@ -573,8 +580,10 @@ export function moveInStack(page: PageModel, id: string, move: StackMove, scope:
 export function resetStack(page: PageModel, scope: Scope): void {
   const key = effectiveScope(page, scope) === 'page' ? page.key : null;
   useStore.getState().update((d) => {
-    for (const o of d.overrides) if (o.pageType === page.type && o.pageKey === key) o.layer = null;
-    d.overrides = d.overrides.filter((o) => !isNeutralOverride(o));
+    const mine = d.overrides.filter((o) => o.pageType === page.type && o.pageKey === key);
+    for (const o of mine) o.layer = null;
+    // Solo los de esta página (o tipo) que quedaron sin nada: los demás ajustes, ocultos incluidos, no se tocan.
+    d.overrides = d.overrides.filter((o) => !(mine.includes(o) && isNeutralOverride(o) && !o.hidden));
   });
 }
 

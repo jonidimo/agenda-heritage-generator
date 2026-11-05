@@ -77,6 +77,8 @@ async function sys(request) {
     shell.showItemInFolder(file);
     return json({ ok: true });
   }
+  // Only documents are opened: a file renamed to .exe or .bat in "Save as" is shown in its folder, never run.
+  if (!/\.(pdf|json)$/i.test(file)) return json({ ok: false, error: 'not a document' }, 403);
   const error = await shell.openPath(file);
   return json({ ok: error === '', error });
 }
@@ -172,10 +174,15 @@ async function openPlannerFile(file) {
   win.focus();
 }
 
+/** Opens a file; a failure (unreadable file, page reloading) is told to the user, never left unhandled. @param {string} file */
+function safeOpen(file) {
+  openPlannerFile(file).catch(() => dialog.showErrorBox(APP_NAME, `Could not open ${file}.`));
+}
+
 // macOS delivers the file through this event (also before the app is ready).
 app.on('open-file', (event, file) => {
   event.preventDefault();
-  void openPlannerFile(file);
+  safeOpen(file);
 });
 
 /**
@@ -239,6 +246,8 @@ const GPU_FAILED_MESSAGE =
   'Update your graphics drivers or, on Linux with Wayland, start the app with --ozone-platform=x11.';
 
 function createWindow() {
+  // A new window has not loaded its page yet (macOS reopens windows without quitting).
+  loaded = false;
   const area = screen.getPrimaryDisplay().workAreaSize;
   const win = new BrowserWindow({
     width: Math.min(1400, area.width),
@@ -276,7 +285,7 @@ function createWindow() {
     if (pendingOpen) {
       const file = pendingOpen;
       pendingOpen = null;
-      void openPlannerFile(file);
+      safeOpen(file);
     }
   });
   win.webContents.on('did-fail-load', (_event, _code, _description, _url, isMainFrame) => {
@@ -336,9 +345,11 @@ app.on('web-contents-created', (_event, contents) => {
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
-  app.on('second-instance', (_event, argv) => {
-    const file = agendaFileFromArgv(argv);
-    if (file) void openPlannerFile(file);
+  app.on('second-instance', (_event, argv, workingDirectory) => {
+    const given = agendaFileFromArgv(argv);
+    // A relative path means relative to where the second instance was started.
+    const file = given ? path.resolve(workingDirectory || process.cwd(), given) : null;
+    if (file) safeOpen(file);
     if (!mainWindow) {
       // macOS keeps running without windows; before startup finishes, the first window is on its way.
       if (protocol.isProtocolHandled(SCHEME)) createWindow();
