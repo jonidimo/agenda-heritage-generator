@@ -110,11 +110,12 @@ sizes in **points**, colours are `#rrggbb`.
 | `sections` | The planner's pages, in order (see section 4). |
 | `pageTemplates` | Pages you design once and repeat (see section 5). |
 | `customPages` | One-off pages: an image, a PDF page, a text or a writing background. |
-| `customBlocks` | Your own elements on a page type or on one page: text, image, lines, dots, grid, frame, line. |
+| `customBlocks` | Your own elements on a page type or on one page: text, image, lines, dots, grid, frame, line. A text element with `props.autoHeight: true` takes its height from its lines (`h` is ignored). Keep every box inside the page: `check_design` reports the ones that are not. |
 | `watermarks` | Images on many pages (where, size, opacity, mirrored on left pages). |
-| `overrides` | Moves, scales, rotates or hides a built-in block on a page type or one page. |
+| `overrides` | Moves, scales, rotates or hides a built-in block on a page type or one page. `dw` and `dh` (mm) change the width and height of its box and the content is laid out again inside it (text wraps, writing areas gain or lose lines). |
+| `blockStyles` | Own style for a built-in block: `lines` (per use: `writing`, `separator`, `table`, `frame`, `other`) with `pattern`, `color`, `widthPt`; `fill.color` (`null` for none); `text.color` and `text.roles`. The page entry wins over the page-type entry field by field. |
 | `pageStyles` | Theme tokens for one page type or one page only. |
-| `links` | Links and bookmarks of the PDF for tablets and e-readers. |
+| `links` | Links and bookmarks of the PDF for tablets and e-readers. In `links.blocks`, `area` picks one tappable spot of a block (`date:2027-01-05`, `month:2027-03`, `toc`…); empty means the whole block. |
 | `assets` | Images and PDFs, as built-in paths (`watermarks/colibri.svg`) or base64 data. |
 
 **Page types and keys.** Every page has a *type* (`weekLeft`, `monthLog`, `notes`… listed as

@@ -111,11 +111,12 @@ Todo campo tiene valor por defecto: alcanza con escribir lo que cambia. Las medi
 | `sections` | Las páginas de la agenda, en orden (ver la sección 4). |
 | `pageTemplates` | Páginas que se diseñan una vez y se repiten (ver la sección 5). |
 | `customPages` | Páginas sueltas: una imagen, una página de un PDF, un texto o un fondo para escribir. |
-| `customBlocks` | Elementos propios en un tipo de página o en una página: texto, imagen, renglones, puntos, cuadrícula, recuadro, línea. |
+| `customBlocks` | Elementos propios en un tipo de página o en una página: texto, imagen, renglones, puntos, cuadrícula, recuadro, línea. Un texto con `props.autoHeight: true` toma su alto de sus renglones (`h` no se usa). Dejá cada caja dentro de la página: `check_design` avisa las que no lo están. |
 | `watermarks` | Imágenes en muchas páginas (dónde, tamaño, opacidad, espejadas en las páginas izquierdas). |
-| `overrides` | Mueve, escala, gira u oculta un bloque del programa en un tipo de página o en una página. |
+| `overrides` | Mueve, escala, gira u oculta un bloque del programa en un tipo de página o en una página. `dw` y `dh` (mm) cambian el ancho y el alto de su caja y el contenido se vuelve a acomodar adentro (el texto reparte sus renglones, las áreas de escritura suman o quitan renglones). |
+| `blockStyles` | Estilo propio de un bloque del programa: `lines` (por uso: `writing`, `separator`, `table`, `frame`, `other`) con `pattern`, `color`, `widthPt`; `fill.color` (`null`: sin relleno); `text.color` y `text.roles`. La entrada de la página gana a la del tipo, campo por campo. |
 | `pageStyles` | Ajustes del tema solo para un tipo de página o una página. |
-| `links` | Enlaces y marcadores del PDF para tabletas y lectores de tinta electrónica. |
+| `links` | Enlaces y marcadores del PDF para tabletas y lectores de tinta electrónica. En `links.blocks`, `area` elige una zona tocable de un bloque (`date:2027-01-05`, `month:2027-03`, `toc`…); vacía, vale para todo el bloque. |
 | `assets` | Imágenes y PDF, como ruta integrada (`watermarks/colibri.svg`) o datos en base64. |
 
 **Tipos y claves de página.** Cada página tiene un *tipo* (`weekLeft`, `monthLog`, `notes`…,

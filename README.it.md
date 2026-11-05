@@ -65,6 +65,21 @@ Per usarla nel browser, vedi [Come usarla](#come-usarla).
 - Aggiungi testi, immagini, righe e cornici a qualsiasi tipo di pagina.
 - Ridimensiona i tuoi elementi da qualsiasi bordo o angolo; con Maiusc mantengono le
   proporzioni.
+- **Anche gli elementi propri dell’agenda** (il nome di un mese, una cornice, una tabella,
+  un’area di scrittura) si ridimensionano da qualsiasi bordo o angolo: il contenuto viene
+  riorganizzato nel nuovo riquadro invece di essere stirato, e il pannello ha i campi di
+  larghezza e altezza.
+- **Doppio clic su qualsiasi testo** per modificarlo lì dov’è: i tuoi e quelli dell’agenda
+  (nome e titolo della copertina, dedica, la frase di ogni mese, titoli delle pagine).
+  Invio o Ctrl+Invio conferma, Esc annulla, e la pagina si ridisegna mentre scrivi. Un
+  testo proprio può seguire le sue righe (altezza automatica).
+- **Stile per elemento**: linee tratteggiate, punteggiate o doppie, colore e spessore di
+  ogni tipo di linea, riempimento e colore del testo, per un elemento in tutte le pagine
+  del suo tipo o in una sola.
+- **Copia, taglia, incolla e duplica** i tuoi elementi (Ctrl+C, X, V e D) in una pagina o
+  tra pagine.
+- Trascinare un cursore o un selettore di colore è fluido: la pagina segue in diretta, le
+  miniature aspettano e tutto il trascinamento è un solo passo di annullamento.
 - Un elemento immagine accetta qualsiasi immagine: scegline una dall’agenda o carica un PNG,
   JPG o SVG.
 - Ogni testo può avere il suo carattere e il suo colore, oppure seguire quelli del suo tipo
@@ -173,6 +188,8 @@ Per usarla nel browser, vedi [Come usarla](#come-usarla).
   sezioni. Il pulsante dei link nella barra in alto li mostra sulla pagina e un clic li
   segue; il pannello di ogni elemento mostra dove porta e permette di togliergli i link o
   mandarlo a un’altra pagina o a un indirizzo web. Il PDF da stampare non li contiene.
+- Ogni zona toccabile si può cambiare da sola: clicca un numero di giorno o il nome di un
+  mese nella pagina, o usa il tasto destro, per mandare solo quella altrove o toglierla.
 
 ### I tuoi file e modelli
 
@@ -195,6 +212,8 @@ Per usarla nel browser, vedi [Come usarla](#come-usarla).
 - Il formato del file ha uno **schema JSON** e un catalogo generati dal codice, e
   `npm run agenda -- check` dice esattamente cosa verrebbe ignorato o corretto. Leggi la
   [guida](docs/llm-templates.md) (in inglese; [en español](docs/plantillas-llm.md)).
+- Ogni modifica del modello torna con gli avvisi di impaginazione che ha prodotto (testi che
+  non entrano, elementi fuori pagina o sovrapposti), così può correggerli senza che nessuno guardi.
 
 ### Fatta per durare
 
