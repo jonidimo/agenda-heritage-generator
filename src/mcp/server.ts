@@ -7,8 +7,6 @@
  * Los archivos se leen y escriben solo dentro de la carpeta de trabajo (ver `Workspace`).
  */
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { readFile } from 'node:fs/promises';
-import { join } from 'node:path';
 import { z } from 'zod';
 import { createDesign, TEMPLATES, type TemplateId } from '../core/design/defaults';
 import { designJsonSchema, schemaPart } from '../core/design/jsonSchema';
@@ -21,7 +19,8 @@ import { toBase64 } from '../core/resources';
 import type { FontRegistry } from '../core/text/fonts';
 import { applyJsonPatch, type JsonPatchOp } from '../core/util/jsonPatch';
 import { checkDesignData, type CheckResult } from '../node/check';
-import { fullCatalogue, loadFonts, openNodeDocument, ROOT } from '../node/env';
+import { fullCatalogue, loadFonts, openNodeDocument } from '../node/env';
+import type { Rasterizer } from './resvg';
 import { Workspace } from './workspace';
 
 const DESIGN_EXT = ['.agenda.json'] as const;
@@ -40,7 +39,6 @@ function parseJson(body: string, path: string): unknown {
     throw new Error(`«${path}» no es JSON válido${where ? ` (${where})` : ''}.`, { cause: err });
   }
 }
-const VERSION = '2.0.0';
 
 const INSTRUCTIONS = `Diseño de agendas imprimibles (Agenda Heritage Studio). Una agenda es un archivo JSON (.agenda.json).
 Flujo: create_design (desde una plantilla) → update_design (JSON Patch) → check_design hasta que no queden problemas → render_page para ver páginas → export_pdf / export_theme.
@@ -63,14 +61,23 @@ const patchOp = z.union([
   z.object({ op: z.enum(['move', 'copy']), from: z.string(), path: z.string() }),
 ]);
 
-export interface ServerOptions {
+/** Lo que cambia según desde dónde corre el servidor (el código fuente o el paquete de la aplicación de escritorio). */
+export interface ServerResources {
+  version: string;
+  /** Las guías para modelos de lenguaje (recursos `agenda://guide`), en inglés y en castellano. */
+  guides: { en: () => Promise<string>; es: () => Promise<string> };
+  /** SVG → PNG para `render_page`. */
+  rasterize: Rasterizer;
+}
+
+export interface ServerOptions extends ServerResources {
   /** Carpeta de trabajo (los archivos se leen y escriben solo adentro). */
   root: string;
 }
 
 export function createServer(opts: ServerOptions): McpServer {
   const ws = new Workspace(opts.root);
-  const server = new McpServer({ name: 'agenda-heritage-studio', version: VERSION }, { instructions: INSTRUCTIONS });
+  const server = new McpServer({ name: 'agenda-heritage-studio', version: opts.version }, { instructions: INSTRUCTIONS });
 
   // Un solo registro con todas las fuentes integradas para todas las agendas (se carga al primer uso).
   let fonts: Promise<FontRegistry> | null = null;
@@ -236,8 +243,13 @@ export function createServer(opts: ServerOptions): McpServer {
         blocks: model.blocks.map((b) => ({ id: b.id, label: b.label, box: box(b.bbox) })),
         warnings: model.warnings.map((w) => w.message),
       };
-      const png = await rasterize(svg, width ?? 800);
-      if (!png) return text({ ...info, note: 'No se pudo cargar el dibujante de PNG (@resvg/resvg-js): va el SVG.', svg });
+      let png: Uint8Array;
+      try {
+        png = await opts.rasterize(svg, width ?? 800);
+      } catch (err) {
+        // Sin PNG la página igual se puede ver: va el SVG, con el motivo.
+        return text({ ...info, note: `No se pudo dibujar la imagen PNG (${(err as Error).message}): va el SVG.`, svg });
+      }
       return { content: [{ type: 'image', data: toBase64(png), mimeType: 'image/png' }, { type: 'text', text: JSON.stringify(info, null, 2) }] };
     },
   );
@@ -288,10 +300,10 @@ export function createServer(opts: ServerOptions): McpServer {
 
   /* ---------- Recursos ---------- */
 
-  const guide = (name: string, file: string, title: string, uri: string) =>
-    server.registerResource(name, uri, { title, mimeType: 'text/markdown' }, async () => ({ contents: [{ uri, mimeType: 'text/markdown', text: await readFile(join(ROOT, 'docs', file), 'utf8') }] }));
-  guide('guide', 'llm-templates.md', 'Guide: planners, page templates and themes with an LLM', 'agenda://guide');
-  guide('guide-es', 'plantillas-llm.md', 'Guía: agendas, plantillas y temas con un modelo de lenguaje', 'agenda://guide/es');
+  const guide = (name: string, read: () => Promise<string>, title: string, uri: string) =>
+    server.registerResource(name, uri, { title, mimeType: 'text/markdown' }, async () => ({ contents: [{ uri, mimeType: 'text/markdown', text: await read() }] }));
+  guide('guide', opts.guides.en, 'Guide: planners, page templates and themes with an LLM', 'agenda://guide');
+  guide('guide-es', opts.guides.es, 'Guía: agendas, plantillas y temas con un modelo de lenguaje', 'agenda://guide/es');
   server.registerResource('schema', 'agenda://schema', { title: 'Esquema JSON de .agenda.json', mimeType: 'application/schema+json' }, async (uri) => ({
     contents: [{ uri: uri.href, mimeType: 'application/schema+json', text: JSON.stringify(designJsonSchema(), null, 2) }],
   }));
@@ -300,14 +312,4 @@ export function createServer(opts: ServerOptions): McpServer {
   }));
 
   return server;
-}
-
-/** SVG → PNG con resvg (opcional: si no está instalado, devuelve null y se manda el SVG). */
-async function rasterize(svg: string, width: number): Promise<Uint8Array | null> {
-  try {
-    const { Resvg } = await import('@resvg/resvg-js');
-    return new Uint8Array(new Resvg(svg, { fitTo: { mode: 'width', value: width } }).render().asPng());
-  } catch {
-    return null;
-  }
 }

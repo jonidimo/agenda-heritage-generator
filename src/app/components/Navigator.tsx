@@ -3,15 +3,22 @@ import type { AgendaDocument } from '@core/document';
 import { monthNames } from '@core/calendar/locale';
 import { useEffect, useMemo, useRef } from 'react';
 import { pageTitle, useT } from '../i18n/ui';
+import { PANEL_LIMITS } from '../state/prefs';
 import { useStore } from '../state/store';
 import { thumbMenu } from './canvas/menus';
 import { Thumb } from './canvas/Thumb';
 import { openMenuAt } from './ContextMenu';
 import { jumpToPage } from '../state/navigation';
+import { Splitter } from './ui';
 
 export function Navigator({ doc }: { doc: AgendaDocument }) {
   const t = useT();
   const current = useStore((s) => s.pageIndex);
+  const thumbWidth = useStore((s) => s.panelSizes.thumbs);
+  const setPanelSize = useStore((s) => s.setPanelSize);
+  const commitPanelSizes = useStore((s) => s.commitPanelSizes);
+  // Arrastrar el divisor cambia el alto de la tira; el ancho de cada miniatura sigue la proporción de la página.
+  const aspect = doc.format.h / doc.format.w;
   const stripRef = useRef<HTMLDivElement | null>(null);
   const groups = useMemo(() => {
     const out: Array<{ key: string; label: string; first: number }> = [];
@@ -38,6 +45,18 @@ export function Navigator({ doc }: { doc: AgendaDocument }) {
 
   return (
     <div className="border-t border-line bg-paper-2/70">
+      <Splitter
+        orientation="horizontal"
+        label={t('panel.resize.thumbs')}
+        value={thumbWidth}
+        min={PANEL_LIMITS.thumbs.min}
+        max={PANEL_LIMITS.thumbs.max}
+        defaultValue={PANEL_LIMITS.thumbs.default}
+        invert
+        ratio={1 / aspect}
+        onChange={(v) => setPanelSize('thumbs', v)}
+        onCommit={commitPanelSizes}
+      />
       <div className="scroll-thin flex gap-1 overflow-x-auto px-2 pt-1.5 text-[11px]">
         {groups.map((g) => (
           <button key={`${g.key}-${g.first}`} type="button" onClick={() => jumpToPage(g.first)} className="shrink-0 rounded px-1.5 py-0.5 font-semibold whitespace-nowrap text-ink-soft hover:bg-white hover:text-ink">
@@ -57,7 +76,7 @@ export function Navigator({ doc }: { doc: AgendaDocument }) {
             className={`flex shrink-0 flex-col items-center gap-0.5 ${i % 2 === 1 ? 'ml-1.5' : ''}`}
           >
             <span className={`block border ${current === i ? 'border-accent ring-2 ring-accent/40' : 'border-black/10'}`}>
-              <Thumb doc={doc} index={i} width={46} />
+              <Thumb doc={doc} index={i} width={Math.round(thumbWidth)} />
             </span>
             <span className="text-[9.5px] text-ink-soft tabular-nums">{i + 1}</span>
           </button>

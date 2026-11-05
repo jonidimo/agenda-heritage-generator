@@ -16,6 +16,7 @@ import { parseDesign } from '../src/core/design/schema';
 import { parseThemeFile } from '../src/core/design/themeFile';
 import { SECTION_MODULES } from '../src/core/sections/registry';
 import { applyJsonPatch } from '../src/core/util/jsonPatch';
+import { sourceResources } from '../src/mcp/dev';
 import { createServer } from '../src/mcp/server';
 import { checkDesignData, checkDesignJson } from '../src/node/check';
 import { nodeIO } from '../src/node/env';
@@ -214,7 +215,7 @@ describe('servidor MCP', () => {
     await writeFile(join(outside, 'secreto.agenda.json'), '{"name":"secreto"}');
     await symlink(join(outside, 'secreto.agenda.json'), join(dir, 'enlace.agenda.json'));
     const [a, b] = InMemoryTransport.createLinkedPair();
-    await createServer({ root: dir }).connect(a);
+    await createServer({ root: dir, ...sourceResources() }).connect(a);
     client = new Client({ name: 'prueba', version: '1.0.0' });
     await client.connect(b);
   });

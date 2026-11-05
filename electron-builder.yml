@@ -1,6 +1,7 @@
 # Desktop packaging with electron-builder (see docs/desktop.md).
-# Build the web app first (`npm run build`), then `npx electron-builder --publish never`
-# packages it for the current OS into release/ (`npm run desktop:build` does both).
+# Build the web app and the MCP server first (`npm run build:desktop`), then
+# `npx electron-builder --publish never` packages them for the current OS into release/
+# (`npm run desktop:build` does both). Without dist-mcp/ the app starts but `--mcp` fails.
 appId: io.github.jonidimo.heritagestudio
 productName: Heritage Studio
 directories:
@@ -11,6 +12,7 @@ directories:
 files:
   - dist/**
   - electron/**
+  - dist-mcp/**
   - package.json
   - '!node_modules{,/**/*}'
   - '!dist/**/*.map'

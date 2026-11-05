@@ -69,6 +69,9 @@ Per usarla nel browser, vedi [Come usarla](#come-usarla).
   JPG o SVG.
 - Ogni testo può avere il suo carattere e il suo colore, oppure seguire quelli del suo tipo
   di testo.
+- **Zoom** della pagina con Ctrl e + / − / 0 (o la rotellina del mouse con Ctrl). **File →
+  Dimensione dell'interfaccia** ingrandisce o riduce tutta l'interfaccia, e i pannelli laterali
+  e la striscia di miniature si ridimensionano trascinandone i bordi; l'app ricorda entrambe le cose.
 - **Clic destro** (o pressione prolungata sul telefono) su qualsiasi elemento, pagina o
   miniatura: cambiare l’immagine della filigrana, nascondere qualcosa in una pagina o in
   tutte quelle di quel tipo, selezionare elementi simili, aggiungere testi o immagini dove
@@ -187,7 +190,7 @@ Per usarla nel browser, vedi [Come usarla](#come-usarla).
 ### Progetta con un modello di intelligenza artificiale
 
 - Un **server MCP** permette a Claude, o a qualsiasi modello compatibile con MCP, di creare
-  un’agenda, modificarla, controllarla, guardarne le pagine ed esportare il PDF o un tema.
+  un’agenda, modificarla, controllarla, guardarne le pagine ed esportare il PDF o un tema. L’app desktop lo include: si avvia con `--mcp` ([come](docs/desktop.md#5-use-it-with-an-ai-model-mcp), in inglese).
   Chiedigli "un’agenda per insegnanti da marzo a dicembre" o "un tema con ghirigori liberty".
 - Il formato del file ha uno **schema JSON** e un catalogo generati dal codice, e
   `npm run agenda -- check` dice esattamente cosa verrebbe ignorato o corretto. Leggi la
@@ -211,8 +214,8 @@ Per usarla nel browser, vedi [Come usarla](#come-usarla).
 | ![I metodi e la guida stampata](docs/images/methods-panel.png) | ![Il libro intero e le festività del Paese](docs/images/book-view.png) |
 | I metodi e la guida che li spiega, con evidenze e riferimenti. | Il libro intero e le festività del Paese scelto. |
 
-Le schermate mostrano l’interfaccia in inglese; per cambiare lingua usa il selettore in
-alto a destra.
+Le schermate mostrano l’interfaccia in inglese; per cambiare lingua usa il menu
+**File**.
 
 <p align="center"><img src="docs/images/phone.png" alt="L’editor su un telefono Android" width="280"></p>
 

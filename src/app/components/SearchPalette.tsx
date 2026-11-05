@@ -43,7 +43,7 @@ export function SearchPalette({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/25 p-4 pt-[12vh]" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+    <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/25 p-4 pt-[calc(12*var(--vh))]" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div role="dialog" aria-modal="true" aria-label={t('search.open')} className="w-full max-w-lg overflow-hidden rounded-xl border border-line bg-paper shadow-2xl">
         <div className="flex items-center gap-2 border-b border-line px-3 py-2">
           <Search size={16} className="text-ink-soft" />
@@ -68,7 +68,7 @@ export function SearchPalette({ onClose }: { onClose: () => void }) {
             }}
           />
         </div>
-        <ul id={listId} role="listbox" className="scroll-thin max-h-[55vh] overflow-y-auto py-1">
+        <ul id={listId} role="listbox" className="scroll-thin max-h-[calc(55*var(--vh))] overflow-y-auto py-1">
           {query && results.length === 0 && <li className="px-3 py-2 text-[12.5px] text-ink-soft">{t('search.none')}</li>}
           {results.map((r, i) => (
             <li

@@ -97,14 +97,84 @@ desktop app, on the website and on any other computer. Anything that was not sav
 file is lost if that folder is deleted. Files and PDFs are saved through the usual system
 **Save** dialog.
 
-## 4. Build it yourself
+## 4. If the window does not appear
+
+On some Linux computers (for example Wayland with an NVIDIA graphics card) Chromium cannot
+start its graphics process, and an app that waits for it never shows a window. Heritage
+Studio does not wait: it shows the window as soon as the page has loaded and, if the
+graphics process failed while starting, it restarts once with graphics acceleration off by
+itself. If that does not work either, it says so in a message. You can also start it that
+way yourself:
+
+```sh
+./heritage-studio-*.AppImage --disable-gpu
+./heritage-studio-*.AppImage --ozone-platform=x11   # use X11 (XWayland) instead of Wayland
+```
+
+## 5. Use it with an AI model (MCP)
+
+The same program is the **MCP server** that lets Claude Desktop, Claude Code or any MCP
+client create and edit planners, look at their pages and export the PDF (see [the
+guide](llm-templates.md)). Nothing else to install: Node.js and the repository are not
+needed. The client starts the app with `--mcp`, which opens no window.
+
+Set `AGENDA_MCP_ROOT` (required in the installed app) to the folder where the model may read
+and write planners; the server touches nothing outside it. In Claude Desktop (`claude_desktop_config.json`, under
+*Settings → Developer*), use the command for your system:
+
+| System | `command` |
+| --- | --- |
+| Linux, AppImage | The `AppRun` of the extracted AppImage, e.g. `/home/me/Apps/squashfs-root/AppRun` (see below) |
+| Linux, `.deb` | `/opt/Heritage Studio/agenda-heritage-studio` |
+| Windows (installed) | The `Heritage Studio.exe` in the folder you installed it in (backslashes doubled, as JSON needs), e.g. `C:\\Users\\me\\AppData\\Local\\Programs\\Heritage Studio\\Heritage Studio.exe` |
+| macOS | `/Applications/Heritage Studio.app/Contents/MacOS/Heritage Studio` |
+
+```json
+{
+  "mcpServers": {
+    "agenda": {
+      "command": "/home/me/Apps/squashfs-root/AppRun",
+      "args": ["--ozone-platform=headless", "--mcp"],
+      "env": { "AGENDA_MCP_ROOT": "/home/me/Planners" }
+    }
+  }
+}
+```
+
+On Windows and macOS the arguments are just `["--mcp"]`. On Linux keep
+`--ozone-platform=headless`: Chromium needs a display server to start, and clients often
+start the server without one; this option makes it unnecessary. For Claude Code:
+
+```sh
+claude mcp add agenda --env AGENDA_MCP_ROOT="$HOME/Planners" -- "/opt/Heritage Studio/agenda-heritage-studio" --ozone-platform=headless --mcp
+```
+
+**AppImage:** extract it once, in the folder where you keep it, and point the client to the
+extracted `AppRun`:
+
+```sh
+cd ~/Apps
+./heritage-studio-2.1.0-linux-x86_64.AppImage --appimage-extract   # creates ~/Apps/squashfs-root
+```
+
+This also starts faster and needs no FUSE. Do not use `--appimage-extract-and-run` (or the
+`APPIMAGE_EXTRACT_AND_RUN` variable) for the server: the AppImage then prints the list of
+extracted files on standard output, which breaks the channel the client talks through. The
+`.deb` needs none of this.
+
+Everything the server needs travels inside the app, so the first start does not download
+or generate anything. It ends by itself when the client closes it. If the client says the
+server stopped right away, run the same command in a terminal: the reason is printed there
+(for example a missing `AGENDA_MCP_ROOT` folder, or no display server on Linux).
+
+## 6. Build it yourself
 
 You need Node.js 22.12 or later. The first run downloads Electron and the packaging tools
 (a few hundred MB).
 
 ```sh
 npm ci
-npm run desktop:build   # builds the web app, then packages it for this system into release/
+npm run desktop:build   # builds the web app and the MCP server, then packages them for this system into release/
 ```
 
 Each system builds its own installers: Windows files on Windows, `.dmg` files on a Mac,
@@ -114,14 +184,14 @@ settings are in `electron-builder.yml`.
 To try the app without packaging it:
 
 ```sh
-npm run build     # web app → dist/
-npm run desktop   # opens dist/ in Electron
+npm run build:desktop   # web app → dist/, MCP server → dist-mcp/
+npm run desktop         # opens dist/ in Electron (add -- --mcp to start the server instead)
 ```
 
 This development run keeps its data in a separate `Heritage Studio (dev)` folder and adds
 a **View** menu with **Reload** and **Toggle Developer Tools**.
 
-## 5. Publish a release
+## 7. Publish a release
 
 1. Set the new `version` in `package.json` (the files are named after it) and commit.
 2. Push a tag that starts with `v`:
@@ -148,10 +218,14 @@ created with the files that were built; once the Mac job succeeds on a re-run, r
 
 ## How it works
 
-- `electron/main.mjs` serves the built web app (`dist/`) at the private address
+- `electron/desktop.mjs` serves the built web app (`dist/`) at the private address
   `app://heritage/`. The address never changes, so saved data persists between launches.
 - The page runs sandboxed, without access to Node.js. Links to websites open in your
   default browser, and the app does not navigate anywhere else.
 - The website's service worker (its offline cache) is not used: in the desktop app every
   file is already local.
 - Opening the app again while it is running brings the existing window to the front.
+- With `--mcp`, `electron/mcp.mjs` starts the server bundled in `dist-mcp/` instead: no
+  window, no menu, nothing written to standard output except the protocol. `npm run
+  build:mcp` creates the bundle, and `scripts/mcp-smoke.ts` checks any build of the server
+  end to end.

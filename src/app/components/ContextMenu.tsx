@@ -6,6 +6,7 @@ import clsx from 'clsx';
 import { Check } from 'lucide-react';
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { create } from 'zustand';
+import { currentUiZoom } from '../state/uiScale';
 
 export interface MenuItem {
   label?: string;
@@ -47,10 +48,15 @@ export function ContextMenuHost() {
   useLayoutEffect(() => {
     const el = ref.current;
     if (!menu || !el) return setPos(null);
-    const { innerWidth: vw, innerHeight: vh } = window;
+    // El puntero llega en píxeles de pantalla; el menú se coloca (y mide) en los de la maquetación.
+    const zoom = currentUiZoom();
+    const vw = window.innerWidth / zoom;
+    const vh = window.innerHeight / zoom;
+    const x = menu.x / zoom;
+    const y = menu.y / zoom;
     const w = el.offsetWidth;
     const h = el.offsetHeight;
-    setPos({ left: Math.max(4, Math.min(menu.x, vw - w - 4)), top: Math.max(4, menu.y + h > vh - 4 ? Math.max(4, menu.y - h) : menu.y) });
+    setPos({ left: Math.max(4, Math.min(x, vw - w - 4)), top: Math.max(4, y + h > vh - 4 ? Math.max(4, y - h) : y) });
     el.querySelector<HTMLButtonElement>('button:not([disabled])')?.focus();
   }, [menu]);
 
@@ -89,8 +95,8 @@ export function ContextMenuHost() {
     <div
       ref={ref}
       role="menu"
-      className="scroll-thin fixed z-[60] max-h-[75vh] min-w-[230px] max-w-[320px] overflow-y-auto rounded-lg border border-line bg-paper py-1 text-[12.5px] shadow-2xl"
-      style={{ left: pos?.left ?? menu.x, top: pos?.top ?? menu.y, visibility: pos ? 'visible' : 'hidden' }}
+      className="scroll-thin fixed z-[60] max-h-[calc(75*var(--vh))] min-w-[230px] max-w-[320px] overflow-y-auto rounded-lg border border-line bg-paper py-1 text-[12.5px] shadow-2xl"
+      style={{ left: pos?.left ?? menu.x / currentUiZoom(), top: pos?.top ?? menu.y / currentUiZoom(), visibility: pos ? 'visible' : 'hidden' }}
       onContextMenu={(e) => e.preventDefault()}
     >
       {menu.items.map((it, i) =>

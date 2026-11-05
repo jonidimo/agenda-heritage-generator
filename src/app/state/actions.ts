@@ -5,11 +5,12 @@
  */
 import type { BlockLink, BlockOverride, CustomBlock, Design } from '@core/design/schema';
 import { newId } from '@core/util/hash';
+import { withPageStyle } from '@core/design/pageStyles';
 import type { Block, PageModel } from '@core/layout/prims';
 import type { Rect } from '@core/util/geometry';
 import { blockBounds } from '@core/document/layout';
 import { alignDeltas, centerGroupDeltas, distributeDeltas, tidyGridDeltas, unionRect, type AlignMode, type Delta } from '@core/layout/align';
-import type { Draft } from 'immer';
+import { current, type Draft } from 'immer';
 import { documentFor } from './doc';
 import { useStore } from './store';
 
@@ -211,22 +212,13 @@ export function pageStyleOf(design: Design, page: PageModel, scope: Scope): Reco
   return design.pageStyles.find((s) => s.pageType === page.type && s.pageKey === key)?.tokens ?? {};
 }
 
-/** Cambia un valor del estilo de escritura (p. ej. `['dots', 'pitch']`) para el tipo o la página. */
+/**
+ * Cambia un valor del estilo de escritura (p. ej. `['dots', 'pitch']`) para el tipo o la página.
+ * Con `undefined` lo quita (el valor vuelve a salir del tema) y descarta lo que quede vacío.
+ */
 export function setPageStyle(page: PageModel, scope: Scope, path: string[], value: unknown, coalesce?: string): void {
   const key = effectiveScope(page, scope) === 'page' ? page.key : null;
-  useStore.getState().update((d) => {
-    let st = d.pageStyles.find((s) => s.pageType === page.type && s.pageKey === key);
-    if (!st) {
-      d.pageStyles.push({ pageType: page.type, pageKey: key, tokens: {} });
-      st = d.pageStyles[d.pageStyles.length - 1]!;
-    }
-    let node = st.tokens as Record<string, unknown>;
-    for (const k of path.slice(0, -1)) {
-      if (typeof node[k] !== 'object' || node[k] === null) node[k] = {};
-      node = node[k] as Record<string, unknown>;
-    }
-    node[path[path.length - 1]!] = value;
-  }, coalesce);
+  useStore.getState().update((d) => void (d.pageStyles = withPageStyle(current(d.pageStyles), { pageType: page.type, pageKey: key }, path, value)), coalesce);
 }
 
 export function resetPageStyle(page: PageModel, scope: Scope): void {

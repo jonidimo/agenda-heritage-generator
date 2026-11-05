@@ -27,6 +27,9 @@ export const PROP_RANGES = {
   tracking: { min: -0.1, max: 0.5 },
 } as const;
 
+/** Valores que toma un elemento propio mientras su propiedad no esté escrita (los pasos de renglones y puntos los da el tema). */
+export const PROP_DEFAULTS = { opacity: 1, gridPitch: 5, radius: 0, tracking: 0 } as const;
+
 /** Un número de un archivo, dentro de su rango (si no es un número, el valor por defecto). */
 export function numProp(v: unknown, r: { min: number; max: number }, def: number): number {
   return typeof v === 'number' && Number.isFinite(v) ? Math.min(r.max, Math.max(r.min, v)) : def;

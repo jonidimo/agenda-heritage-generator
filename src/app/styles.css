@@ -46,6 +46,17 @@ body,
   height: 100%;
 }
 
+/*
+ * Tamaño de la interfaz (state/uiScale.ts fija --ui-zoom y el zoom de <html>). Con zoom, las
+ * unidades vw y vh se multiplican por él: calc(52 * var(--vh)) ocupa el 52 % de la ventana con
+ * cualquier tamaño de interfaz, y 52vh no.
+ */
+:root {
+  --ui-zoom: 1;
+  --vw: calc(1vw / var(--ui-zoom));
+  --vh: calc(1vh / var(--ui-zoom));
+}
+
 body {
   margin: 0;
   background: var(--color-paper);

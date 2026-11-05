@@ -72,6 +72,9 @@ ficam as suas agendas e como gerar o aplicativo. Para usar no navegador, veja
   ou SVG.
 - Cada texto pode ter a sua própria fonte e a sua própria cor, ou seguir as do seu tipo de
   texto.
+- **Zoom** da página com Ctrl e + / − / 0 (ou a roda do mouse com Ctrl). **Arquivo →
+  Tamanho da interface** aumenta ou diminui toda a interface, e os painéis laterais e a faixa
+  de miniaturas se redimensionam arrastando as bordas; o aplicativo lembra as duas coisas.
 - **Clique direito** (ou toque longo no celular) em qualquer elemento, página ou
   miniatura: trocar a imagem da marca d’água, ocultar algo numa página ou em todas as
   desse tipo, selecionar elementos semelhantes, adicionar textos ou imagens onde você
@@ -189,7 +192,8 @@ ficam as suas agendas e como gerar o aplicativo. Para usar no navegador, veja
 ### Crie com um modelo de inteligência artificial
 
 - Um **servidor MCP** permite que o Claude, ou qualquer modelo compatível com MCP, crie
-  uma agenda, a altere, a revise, veja as páginas e exporte o PDF ou um tema. Peça "uma
+  uma agenda, a altere, a revise, veja as páginas e exporte o PDF ou um tema. O aplicativo de
+  desktop o inclui: inicie-o com `--mcp` ([como](docs/desktop.md#5-use-it-with-an-ai-model-mcp), em inglês). Peça "uma
   agenda de professor de março a dezembro" ou "um tema com arabescos art nouveau".
 - O formato do arquivo tem um **esquema JSON** e um catálogo gerados a partir do código,
   e `npm run agenda -- check` diz exatamente o que seria ignorado ou corrigido. Leia o
@@ -212,8 +216,8 @@ ficam as suas agendas e como gerar o aplicativo. Para usar no navegador, veja
 | ![Os métodos e o guia impresso](docs/images/methods-panel.png) | ![O livro inteiro e os feriados do país](docs/images/book-view.png) |
 | Os métodos e o guia que os explica, com evidências e referências. | O livro inteiro e os feriados do país escolhido. |
 
-As capturas mostram a interface em inglês; para mudar o idioma, use o seletor no canto
-superior direito.
+As capturas mostram a interface em inglês; para mudar o idioma, use o menu
+**Arquivo**.
 
 <p align="center"><img src="docs/images/phone.png" alt="O editor num celular Android" width="280"></p>
 

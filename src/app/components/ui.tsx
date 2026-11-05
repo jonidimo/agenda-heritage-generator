@@ -1,7 +1,8 @@
 /** Controles base de la interfaz (accesibles, compactos y consistentes). */
 import clsx from 'clsx';
-import { ChevronDown, ChevronRight } from 'lucide-react';
-import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
+import { ChevronDown, ChevronRight, RotateCcw } from 'lucide-react';
+import { useEffect, useId, useRef, useState, type KeyboardEvent, type PointerEvent, type ReactNode } from 'react';
+import { useT } from '../i18n/ui';
 
 export function Button(props: { children: ReactNode; onClick?: () => void; variant?: 'primary' | 'ghost' | 'outline' | 'danger'; disabled?: boolean; title?: string; className?: string; type?: 'button' | 'submit' }) {
   const v = props.variant ?? 'outline';
@@ -118,17 +119,48 @@ export function NumberInput(props: { value: number; onChange: (v: number) => voi
   );
 }
 
-/** Deslizador con valor numérico editable al lado. */
-export function Slider(props: { label: string; value: number; onChange: (v: number) => void; min: number; max: number; step?: number; unit?: string; integer?: boolean }) {
+/** Botón de «restablecer» de un valor que se apartó del que trae por defecto. */
+function ResetButton({ label, onClick }: { label: string; onClick: () => void }) {
+  const t = useT();
+  const name = `${t('common.reset')}: ${label}`;
+  return (
+    <button type="button" aria-label={name} title={name} onClick={onClick} className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded text-ink-soft hover:bg-black/5 hover:text-ink">
+      <RotateCcw size={12} />
+    </button>
+  );
+}
+
+/** Dos números se consideran iguales si difieren menos que esto (los deslizadores usan pasos decimales). */
+const SAME_VALUE = 1e-9;
+
+/**
+ * Cómo se restablece un control. Con `defaultValue`, el botón aparece mientras el valor sea otro y
+ * lo vuelve a ese valor. Si el valor por defecto es «sin ajuste» (el valor lo da el tema, no hay un
+ * número propio), el control indica con `modified` si tiene un ajuste y `onReset` lo quita.
+ */
+interface ResetProps<T> {
+  defaultValue?: T;
+  modified?: boolean;
+  onReset?: () => void;
+}
+
+/** Deslizador con valor numérico editable al lado y botón para restablecerlo. */
+export function Slider(props: { label: string; value: number; onChange: (v: number) => void; min: number; max: number; step?: number; unit?: string; integer?: boolean } & ResetProps<number>) {
   const id = useId();
+  const { defaultValue } = props;
+  const reset = props.onReset ?? (defaultValue === undefined ? undefined : () => props.onChange(defaultValue));
+  const modified = props.modified ?? (defaultValue !== undefined && Math.abs(props.value - defaultValue) > SAME_VALUE);
   return (
     <div className="py-1">
       <div className="mb-0.5 flex items-center justify-between">
         <label htmlFor={id} className="text-[11.5px] font-semibold text-ink-soft">
           {props.label}
         </label>
-        <div className="w-[74px]">
-          <NumberInput value={props.value} onChange={props.onChange} min={props.min} max={props.max} step={props.step} integer={props.integer} ariaLabel={props.label} className="!py-0.5 text-right" />
+        <div className="flex items-center gap-1">
+          {modified && reset && <ResetButton label={props.label} onClick={reset} />}
+          <div className="w-[74px]">
+            <NumberInput value={props.value} onChange={props.onChange} min={props.min} max={props.max} step={props.step} integer={props.integer} ariaLabel={props.label} className="!py-0.5 text-right" />
+          </div>
         </div>
       </div>
       <input id={id} className="w-full" type="range" min={props.min} max={props.max} step={props.step ?? 1} value={props.value} onChange={(e) => props.onChange(props.integer ? Math.round(Number(e.target.value)) : Number(e.target.value))} />
@@ -160,11 +192,15 @@ export function Select<T extends string>(props: { value: T; onChange: (v: T) => 
   );
 }
 
-export function ColorInput(props: { label: string; value: string; onChange: (v: string) => void }) {
+export function ColorInput(props: { label: string; value: string; onChange: (v: string) => void } & ResetProps<string>) {
+  const { defaultValue } = props;
+  const reset = props.onReset ?? (defaultValue === undefined ? undefined : () => props.onChange(defaultValue));
+  const modified = props.modified ?? (defaultValue !== undefined && props.value.toLowerCase() !== defaultValue.toLowerCase());
   return (
     <label className="flex items-center justify-between gap-2 py-1">
       <span className="text-[12px] text-ink">{props.label}</span>
       <span className="flex items-center gap-1.5">
+        {modified && reset && <ResetButton label={props.label} onClick={reset} />}
         <span className="font-mono text-[11px] text-ink-soft">{props.value}</span>
         <input type="color" className="h-6 w-8 cursor-pointer rounded border border-line bg-white p-0" value={props.value} onChange={(e) => props.onChange(e.target.value)} />
       </span>
@@ -221,9 +257,14 @@ export function Badge(props: { children: ReactNode; tone?: 'strong' | 'moderate'
   );
 }
 
+/**
+ * Opciones en fila. Si no entran en el ancho disponible (un panel angosto, un idioma de textos
+ * largos) pasan a la fila siguiente en lugar de salirse del panel. Con ícono, en pantallas muy
+ * chicas se ve solo el ícono; sin ícono el texto se ve siempre.
+ */
 export function Segmented<T extends string>(props: { value: T; onChange: (v: T) => void; options: Array<{ value: T; label: string; icon?: ReactNode }> }) {
   return (
-    <div className="inline-flex rounded-lg border border-line bg-white/60 p-0.5">
+    <div className="inline-flex max-w-full flex-wrap rounded-lg border border-line bg-white/60 p-0.5">
       {props.options.map((o) => (
         <button
           key={o.value}
@@ -238,9 +279,109 @@ export function Segmented<T extends string>(props: { value: T; onChange: (v: T) 
           )}
         >
           {o.icon}
-          <span className="hidden sm:inline">{o.label}</span>
+          <span className={o.icon ? 'hidden sm:inline' : undefined}>{o.label}</span>
         </button>
       ))}
+    </div>
+  );
+}
+
+/** Cuánto se mueve un divisor con las flechas del teclado (con Mayús, el triple). */
+const SPLITTER_KEY_STEP_PX = 16;
+
+/**
+ * Divisor para cambiar el tamaño de un panel arrastrándolo (o con las flechas del teclado, o con
+ * doble clic para volver al tamaño original). No ocupa lugar: se superpone al borde del panel.
+ * `value` y sus límites están en las unidades del panel (normalmente píxeles de maquetación).
+ */
+export function Splitter(props: {
+  /** `vertical`: una barra vertical que cambia anchos; `horizontal`: una barra horizontal que cambia alturas. */
+  orientation: 'vertical' | 'horizontal';
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  defaultValue: number;
+  /** El valor crece al arrastrar hacia atrás (izquierda o arriba): paneles de la derecha y de abajo. */
+  invert?: boolean;
+  /** Cuánto cambia el valor por cada píxel arrastrado (1 si el valor está en píxeles). */
+  ratio?: number;
+  onChange: (value: number) => void;
+  /** Se soltó el divisor (o se usó el teclado): es el momento de guardar el tamaño. */
+  onCommit: () => void;
+}) {
+  const t = useT();
+  const vertical = props.orientation === 'vertical';
+  const ratio = props.ratio ?? 1;
+  const sign = props.invert ? -1 : 1;
+  const ref = useRef<HTMLDivElement | null>(null);
+  const drag = useRef<{ start: number; value: number; pxPerCssPx: number } | null>(null);
+  const [dragging, setDragging] = useState(false);
+  const clamp = (v: number): number => Math.min(props.max, Math.max(props.min, v));
+
+  const onPointerDown = (e: PointerEvent<HTMLDivElement>): void => {
+    const el = ref.current;
+    if (!el || e.button !== 0) return;
+    e.preventDefault();
+    el.setPointerCapture(e.pointerId);
+    // El puntero llega en píxeles de pantalla y el valor está en los de la maquetación: con zoom
+    // de interfaz no son iguales. La razón sale del propio divisor (a lo largo de su eje).
+    const layout = vertical ? el.offsetHeight : el.offsetWidth;
+    const screen = vertical ? el.getBoundingClientRect().height : el.getBoundingClientRect().width;
+    drag.current = { start: vertical ? e.clientX : e.clientY, value: props.value, pxPerCssPx: layout > 0 && screen > 0 ? screen / layout : 1 };
+    setDragging(true);
+  };
+  const onPointerMove = (e: PointerEvent<HTMLDivElement>): void => {
+    const d = drag.current;
+    if (!d) return;
+    const moved = ((vertical ? e.clientX : e.clientY) - d.start) / d.pxPerCssPx;
+    props.onChange(clamp(d.value + sign * moved * ratio));
+  };
+  const onPointerEnd = (e: PointerEvent<HTMLDivElement>): void => {
+    if (!drag.current) return;
+    drag.current = null;
+    setDragging(false);
+    if (ref.current?.hasPointerCapture(e.pointerId)) ref.current.releasePointerCapture(e.pointerId);
+    props.onCommit();
+  };
+  const onKeyDown = (e: KeyboardEvent<HTMLDivElement>): void => {
+    const step = SPLITTER_KEY_STEP_PX * (e.shiftKey ? 3 : 1) * ratio;
+    const forward = vertical ? 'ArrowRight' : 'ArrowDown';
+    const back = vertical ? 'ArrowLeft' : 'ArrowUp';
+    const next = e.key === forward ? props.value + sign * step : e.key === back ? props.value - sign * step : e.key === 'Home' ? props.min : e.key === 'End' ? props.max : e.key === 'Enter' ? props.defaultValue : null;
+    if (next === null) return;
+    e.preventDefault();
+    props.onChange(clamp(next));
+    props.onCommit();
+  };
+
+  return (
+    <div className={clsx('relative z-20 shrink-0', vertical ? 'h-full w-0' : 'h-0 w-full')}>
+      <div
+        ref={ref}
+        role="separator"
+        aria-orientation={vertical ? 'vertical' : 'horizontal'}
+        aria-label={props.label}
+        aria-valuenow={Math.round(props.value)}
+        aria-valuemin={props.min}
+        aria-valuemax={props.max}
+        tabIndex={0}
+        title={t('panel.resizeHint')}
+        className={clsx(
+          'absolute touch-none transition-colors outline-none hover:bg-accent/30 focus-visible:bg-accent/40',
+          dragging && 'bg-accent/40',
+          vertical ? 'inset-y-0 -left-[3px] w-[7px] cursor-col-resize' : 'inset-x-0 -top-[3px] h-[7px] cursor-row-resize',
+        )}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerEnd}
+        onPointerCancel={onPointerEnd}
+        onKeyDown={onKeyDown}
+        onDoubleClick={() => {
+          props.onChange(clamp(props.defaultValue));
+          props.onCommit();
+        }}
+      />
     </div>
   );
 }

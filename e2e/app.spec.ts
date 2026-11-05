@@ -6,6 +6,11 @@ type StoreHandle = {
     pageIndex: number;
     selectedIds: string[];
     uiLang: string;
+    zoom: number;
+    fit: boolean;
+    uiScale: number;
+    showLinks: boolean;
+    panelSizes: { left: number; right: number; thumbs: number };
     goToPage: (i: number) => void;
     setView: (v: string) => void;
   };
@@ -73,7 +78,8 @@ test('la verificación previa de la agenda de Norma no encuentra problemas', asy
 
 test('la interfaz cambia de idioma y traduce los nombres de los elementos', async ({ page }) => {
   await open(page);
-  await page.getByRole('combobox', { name: 'Idioma de la interfaz' }).selectOption('en');
+  await page.getByRole('button', { name: 'Archivo' }).click();
+  await page.getByRole('menuitem', { name: 'English' }).click();
   await expect(page.getByRole('button', { name: 'Print / export' })).toBeVisible();
   for (let i = 0; i < 11; i++) await page.keyboard.press('PageDown');
   const block = page.locator('[data-block="week.minical"]').first();
@@ -157,6 +163,8 @@ test('la política de seguridad no bloquea nada de la aplicación', async ({ pag
 test('si el editor falla, ofrece cómo seguir y la agenda no se reabre sola al recargar', async ({ page }) => {
   test.setTimeout(180_000);
   await open(page);
+  // El panel de secciones es el que lee ese dato: se lo abre para que la falla simulada lo alcance.
+  await page.getByRole('tab', { name: 'Secciones' }).click();
   // Un estado que el esquema nunca deja pasar (simula un error del programa al dibujar).
   await page.evaluate(() => {
     const st = (globalThis as unknown as { __agenda: { getState: () => { design: object }; setState: (s: object) => void } }).__agenda;
@@ -247,7 +255,7 @@ test('los puntos de una página de notas se pueden cambiar por renglones', async
   const p = await center(page, '[data-block="notes.area"]');
   await page.mouse.click(p.x, p.y);
   await expect(page.getByText('Renglones y puntos')).toBeVisible();
-  await page.getByRole('group', { name: 'Estilo' }).getByRole('button', { name: 'Renglones' }).click();
+  await page.locator('[data-inspector]').getByRole('group', { name: 'Estilo' }).getByRole('button', { name: 'Renglones' }).click();
   await expect.poll(async () => JSON.stringify((await state(page)).design!.pageStyles)).toContain('"style":"lines"');
   // Las líneas horizontales no tienen alto (Playwright no las considera «visibles»): se cuentan.
   await expect.poll(async () => page.locator('[data-block="notes.area"] line').count()).toBeGreaterThan(5);
@@ -339,7 +347,7 @@ test.describe('enlaces para leer en tableta', () => {
   const links = (page: Page) => page.evaluate(() => (globalThis as unknown as { __agenda: { getState: () => LinksState } }).__agenda.getState().design.links);
   const areas = (page: Page) => page.locator('[data-page-type="yearOverview"] [data-link-to]');
 
-  test('el calendario anual muestra sus enlaces y un clic en un día lleva a su semana', async ({ page }) => {
+  test('el calendario anual muestra sus enlaces: un clic elige el elemento y el doble clic lleva a la semana', async ({ page }) => {
     await open(page);
     await page.evaluate(() => (globalThis as unknown as { __agenda: StoreHandle }).__agenda.getState().goToPage(7));
     await page.getByRole('button', { name: 'Ver y seguir los enlaces del PDF' }).click();
@@ -347,7 +355,13 @@ test.describe('enlaces para leer en tableta', () => {
     await expect.poll(async () => areas(page).count()).toBeGreaterThan(370);
     const day = areas(page).and(page.locator('[title*="Semana 9 "]')).first();
     const to = Number(await day.getAttribute('data-link-to'));
+    const box = (await day.boundingBox())!;
     await day.click();
+    // Un clic no navega: elige el elemento al que pertenece la zona y su panel muestra los enlaces.
+    await expect(page.getByTestId('link-fields')).toBeVisible();
+    expect((await state(page)).pageIndex).toBe(7);
+    // Con el elemento ya elegido (su capa de arrastre queda encima), el doble clic sigue el enlace.
+    await page.mouse.dblclick(box.x + box.width / 2, box.y + box.height / 2);
     await expect.poll(async () => (await state(page)).pageIndex).toBe(to);
     await expect(page.locator('[data-page-type="weekLeft"]')).toBeVisible();
     // El título de la semana sube al mes.
@@ -395,6 +409,7 @@ test.describe('enlaces para leer en tableta', () => {
 
 test('tocar una sección lleva a sus páginas, se puede repetir cada semana y «Atrás» vuelve', async ({ page }) => {
   await open(page);
+  await page.getByRole('tab', { name: 'Secciones' }).click();
   const row = page.locator('li').filter({ has: page.getByRole('checkbox', { name: 'Estimé / tardé' }) });
   await row.getByRole('checkbox').check();
   await row.getByRole('button', { name: /Estimé \/ tardé/ }).click();
@@ -414,7 +429,7 @@ test('tocar una sección lleva a sus páginas, se puede repetir cada semana y «
 
 test('un texto propio se estira solo a lo ancho con el tirador del lado, y en proporción con Mayús', async ({ page }) => {
   await open(page);
-  await page.getByRole('button', { name: 'Texto' }).first().click();
+  await page.getByRole('button', { name: 'Texto', exact: true }).first().click();
   const custom = () => page.evaluate(() => (globalThis as unknown as { __agenda: { getState: () => { design: { customBlocks: Array<{ w: number; h: number }> } } } }).__agenda.getState().design.customBlocks.at(-1)!);
   const before = await custom();
   const side = (await page.locator('[data-handle="e"]').boundingBox())!;
@@ -484,5 +499,273 @@ test.describe('estilo integral y buscador', () => {
     await page.getByLabel('Nombre del tema').fill('Mi azul');
     await page.getByRole('button', { name: 'Guardar', exact: true }).click();
     await expect(page.locator('[data-reveal="themes.mine"]').getByText('Mi azul')).toBeVisible();
+  });
+});
+
+/** Como `open`, pero el asistente no vuelve a aparecer al recargar (para las pruebas que recargan). */
+async function openQuiet(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    if (localStorage.getItem('agenda-studio.welcomeOnStart') === null) localStorage.setItem('agenda-studio.welcomeOnStart', 'false');
+  });
+  await open(page);
+}
+
+/** Lleva el lienzo a la semana (las páginas de abajo del año), donde están el minicalendario y los bloques de prueba. */
+async function toWeek(page: Page): Promise<void> {
+  for (let i = 0; i < 11; i++) await page.keyboard.press('PageDown');
+}
+
+test.describe('interfaz', () => {
+  test('el asistente alinea sus campos y recuerda si se muestra al iniciar', async ({ page }) => {
+    await page.addInitScript(() => localStorage.setItem('agenda-studio.uiLang', 'es'));
+    await page.goto('/');
+    await expect(page.getByRole('button', { name: 'Crear agenda' })).toBeVisible({ timeout: 60_000 });
+    // Calendario: semana, mes de inicio y cantidad de meses quedan alineados por abajo.
+    const bottoms = await Promise.all(
+      ['La semana empieza', 'Mes de inicio', 'Cantidad de meses'].map(async (name) => {
+        const box = (await page.getByLabel(name).boundingBox())!;
+        return box.y + box.height;
+      }),
+    );
+    expect(Math.max(...bottoms) - Math.min(...bottoms)).toBeLessThan(1.5);
+    const show = page.getByRole('checkbox', { name: 'Mostrar esta ventana al iniciar' });
+    await expect(show).toBeChecked();
+    await show.uncheck();
+    await page.getByRole('button', { name: 'Crear agenda' }).click();
+    await expect(page.locator('[data-page-index]').first()).toBeVisible({ timeout: 60_000 });
+    expect(await page.evaluate(() => localStorage.getItem('agenda-studio.welcomeOnStart'))).toBe('false');
+    await page.reload();
+    await expect(page.locator('[data-page-index]').first()).toBeVisible({ timeout: 60_000 });
+    await expect(page.getByRole('dialog', { name: 'Nueva agenda' })).toHaveCount(0);
+    // Con la opción activada, el asistente aparece sobre la agenda abierta y se puede cancelar.
+    await page.evaluate(() => localStorage.setItem('agenda-studio.welcomeOnStart', 'true'));
+    await page.reload();
+    const dialog = page.getByRole('dialog', { name: 'Nueva agenda' });
+    await expect(dialog).toBeVisible({ timeout: 60_000 });
+    await expect(dialog.getByRole('checkbox', { name: 'Mostrar esta ventana al iniciar' })).toBeChecked();
+    await dialog.getByRole('button', { name: 'Cancelar' }).click();
+    await expect(dialog).toHaveCount(0);
+  });
+
+  test('el panel izquierdo abre en Estilo y la barra superior no repite el nombre ni trae el idioma', async ({ page }) => {
+    await open(page);
+    const tabs = page.getByRole('tab');
+    await expect(tabs.first()).toHaveAttribute('title', 'Estilo');
+    await expect(tabs.first()).toHaveAttribute('aria-selected', 'true');
+    await expect(tabs.nth(1)).toHaveAttribute('title', 'Secciones');
+    await expect(page.locator('header').getByText('Heritage')).toHaveCount(0);
+    await expect(page.getByRole('combobox', { name: 'Idioma de la interfaz' })).toHaveCount(0);
+  });
+
+  test('los paneles se redimensionan con el divisor, con el teclado y con doble clic, y el tamaño se recuerda', async ({ page }) => {
+    await openQuiet(page);
+    const drag = async (name: string, dx: number, dy = 0): Promise<void> => {
+      const box = (await page.getByRole('separator', { name }).boundingBox())!;
+      const x = box.x + box.width / 2;
+      const y = box.y + box.height / 2;
+      await page.mouse.move(x, y);
+      await page.mouse.down();
+      await page.mouse.move(x + dx, y + dy, { steps: 6 });
+      await page.mouse.up();
+    };
+    // Panel izquierdo.
+    const left = page.locator('aside').first();
+    const leftWidth = async (): Promise<number> => Math.round((await left.boundingBox())!.width);
+    expect(await leftWidth()).toBe(330);
+    await drag('Ancho del panel izquierdo', 80);
+    await expect.poll(leftWidth).toBe(410);
+    await expect(page.getByRole('separator', { name: 'Ancho del panel izquierdo' })).toHaveAttribute('aria-valuenow', '410');
+    await page.reload();
+    await expect.poll(leftWidth).toBe(410);
+    // Teclado: flechas (con Mayús, el triple), extremos y doble clic (tamaño original).
+    const leftHandle = page.getByRole('separator', { name: 'Ancho del panel izquierdo' });
+    await leftHandle.focus();
+    await page.keyboard.press('ArrowLeft');
+    await expect.poll(leftWidth).toBe(394);
+    await page.keyboard.press('Shift+ArrowRight');
+    await expect.poll(leftWidth).toBe(442);
+    await page.keyboard.press('End');
+    await expect.poll(leftWidth).toBe(520);
+    await leftHandle.dblclick();
+    await expect.poll(leftWidth).toBe(330);
+    // Se arrastra más allá del límite: queda en el máximo.
+    await drag('Ancho del panel izquierdo', 900);
+    await expect.poll(leftWidth).toBe(520);
+    // Panel derecho: arrastrar hacia la izquierda lo agranda.
+    const right = page.locator('aside').last();
+    const rightWidth = async (): Promise<number> => Math.round((await right.boundingBox())!.width);
+    expect(await rightWidth()).toBe(280);
+    await drag('Ancho del panel derecho', -60);
+    await expect.poll(rightWidth).toBe(340);
+    // Miniaturas de abajo: arrastrar hacia arriba las agranda.
+    const thumb = page.locator('[data-thumb="0"] canvas').first();
+    const thumbWidth = async (): Promise<number> => Math.round((await thumb.boundingBox())!.width);
+    expect(await thumbWidth()).toBe(46);
+    await drag('Tamaño de las miniaturas', 0, -40);
+    await expect.poll(thumbWidth).toBeGreaterThan(65);
+    await page.reload();
+    await expect.poll(rightWidth).toBe(340);
+    await expect.poll(async () => (await state(page)).panelSizes.thumbs).toBeGreaterThan(65);
+  });
+
+  test('los botones en fila no se salen de un panel angosto', async ({ page }) => {
+    await openQuiet(page);
+    await page.getByRole('separator', { name: 'Ancho del panel derecho' }).focus();
+    await page.keyboard.press('Home');
+    await page.evaluate(() => (globalThis as unknown as { __agenda: StoreHandle }).__agenda.getState().goToPage(19));
+    const p = await center(page, '[data-block="notes.area"]');
+    await page.mouse.click(p.x, p.y);
+    const inspector = page.locator('aside').last();
+    await expect(inspector.getByText('Renglones y puntos')).toBeVisible();
+    const aside = (await inspector.boundingBox())!;
+    expect(Math.round(aside.width)).toBe(240);
+    const buttons = inspector.getByRole('group', { name: 'Estilo' }).getByRole('button');
+    await expect(buttons).toHaveCount(4);
+    for (let i = 0; i < 4; i++) {
+      const b = (await buttons.nth(i).boundingBox())!;
+      expect(b.x + b.width).toBeLessThanOrEqual(aside.x + aside.width + 0.5);
+    }
+  });
+
+  test('Ctrl + y Ctrl − acercan y alejan el lienzo, y Ctrl 0 lo ajusta a la ventana', async ({ page }) => {
+    await open(page);
+    const zoom = async () => {
+      const s = await state(page);
+      return { zoom: Number(s.zoom.toFixed(4)), fit: s.fit };
+    };
+    const pageWidth = async () => (await page.locator('[data-page-index]').first().boundingBox())!.width;
+    expect(await zoom()).toEqual({ zoom: 1, fit: true });
+    const base = await pageWidth();
+    await page.keyboard.press('Control+Equal');
+    await expect.poll(zoom).toEqual({ zoom: 1.2, fit: false });
+    expect(await pageWidth()).toBeCloseTo(base * 1.2, 0);
+    await page.keyboard.press('Control+Shift+Equal');
+    await expect.poll(zoom).toEqual({ zoom: 1.44, fit: false });
+    await page.keyboard.press('Control+Minus');
+    await expect.poll(zoom).toEqual({ zoom: 1.2, fit: false });
+    await page.keyboard.press('Control+0');
+    await expect.poll(zoom).toEqual({ zoom: 1, fit: true });
+    expect(await pageWidth()).toBeCloseTo(base, 0);
+  });
+
+  test('los deslizadores muestran un botón para restablecer su valor', async ({ page }) => {
+    await open(page);
+    // Del elemento (ajuste propio de un bloque): vuelve al valor por defecto.
+    await toWeek(page);
+    const p = await center(page, '[data-block="week.minical"]');
+    await page.mouse.click(p.x, p.y);
+    const opacity = page.locator('[data-inspector]').getByRole('spinbutton', { name: 'Opacidad' });
+    const resetOpacity = page.getByRole('button', { name: 'Restablecer: Opacidad' });
+    await expect(opacity).toBeVisible();
+    await expect(resetOpacity).toHaveCount(0);
+    await opacity.fill('0.5');
+    await expect(resetOpacity).toBeVisible();
+    await resetOpacity.click();
+    await expect(resetOpacity).toHaveCount(0);
+    await expect(opacity).toHaveValue('1');
+    // Del tema: el ajuste se quita y el valor vuelve a salir del tema.
+    type TokensState = { design: { theme: { tokens: { writing?: { pitch?: number } } } } };
+    const tokens = () => page.evaluate(() => (globalThis as unknown as { __agenda: { getState: () => TokensState } }).__agenda.getState().design.theme.tokens);
+    const pitch = page.getByRole('spinbutton', { name: 'Separación entre renglones (mm)' });
+    const resetPitch = page.getByRole('button', { name: 'Restablecer: Separación entre renglones (mm)' });
+    await page.getByRole('tab', { name: 'Estilo' }).click();
+    await expect(pitch).toBeVisible();
+    const original = await pitch.inputValue();
+    await pitch.fill('9');
+    await expect.poll(async () => (await tokens()).writing?.pitch).toBe(9);
+    await resetPitch.click();
+    await expect.poll(async () => (await tokens()).writing).toBeUndefined();
+    await expect(pitch).toHaveValue(original);
+    await expect(resetPitch).toHaveCount(0);
+  });
+
+  test('Archivo: idioma, tamaño de la interfaz y «Acerca de»', async ({ page }) => {
+    await open(page);
+    // Tamaño de la interfaz: la raíz se escala y un arrastre sigue siendo exacto.
+    await page.getByRole('button', { name: 'Archivo' }).click();
+    await page.getByRole('menuitem', { name: '125 %' }).click();
+    await expect.poll(() => page.evaluate('document.documentElement.style.zoom')).toBe('1.25');
+    expect(await page.evaluate('document.documentElement.style.getPropertyValue("--ui-zoom")')).toBe('1.25');
+    expect((await state(page)).uiScale).toBe(1.25);
+    await toWeek(page);
+    const block = page.locator('[data-block="week.minical"]').first();
+    const pageBox = (await page.locator('[data-page-index]').filter({ has: block }).boundingBox())!;
+    const pxPerMm = pageBox.width / 148.5;
+    const box = (await block.boundingBox())!;
+    const cx = box.x + box.width / 2;
+    const cy = box.y + box.height / 2;
+    const before = (await state(page)).design!.overrides.length;
+    // Un arrastre corto (el elemento no puede pasar del borde de la página) y con Alt, que apaga el imán.
+    const dragPx = 24;
+    await page.keyboard.down('Alt');
+    await page.mouse.move(cx, cy);
+    await page.mouse.down();
+    await page.mouse.move(cx + dragPx, cy, { steps: 6 });
+    await page.mouse.up();
+    await page.keyboard.up('Alt');
+    await expect.poll(async () => (await state(page)).design!.overrides.length).toBe(before + 1);
+    const moved = (await state(page)).design!.overrides.at(-1)!;
+    // Los píxeles de pantalla se convierten en milímetros con la escala real de la página, aunque la interfaz esté ampliada.
+    expect(Math.abs(Math.abs(moved.dx) - dragPx / pxPerMm)).toBeLessThan(0.3);
+    // Idioma desde el menú.
+    await page.getByRole('button', { name: 'Archivo' }).click();
+    await page.getByRole('menuitem', { name: 'English' }).click();
+    await expect(page.getByRole('button', { name: 'Print / export' })).toBeVisible();
+    // «Acerca de».
+    await page.getByRole('button', { name: 'File' }).click();
+    await page.getByRole('menuitem', { name: 'About Heritage Studio…' }).click();
+    const about = page.getByRole('dialog', { name: 'About Heritage Studio' });
+    await expect(about).toBeVisible();
+    await expect(about.getByText(/^Version \d+\.\d+\.\d+$/)).toBeVisible();
+    await expect(about.getByRole('link', { name: 'Source code' })).toHaveAttribute('href', /github\.com\/jonidimo\/agenda-heritage-generator$/);
+    await expect(about.getByText(/Cormorant Garamond —/)).toBeVisible();
+    // En un navegador no hay carpeta: explica dónde guarda.
+    await expect(about.getByText(/are kept in this browser/)).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(about).toHaveCount(0);
+  });
+
+  test('con otro tamaño de interfaz, las unidades de la ventana se compensan', async ({ browser }) => {
+    const ctx = await browser.newContext({ viewport: { width: 900, height: 800 } });
+    const page = await ctx.newPage();
+    await page.addInitScript(() => localStorage.setItem('agenda-studio.uiScale', '1.1'));
+    await open(page);
+    expect(await page.evaluate('document.documentElement.style.zoom')).toBe('1.1');
+    await toWeek(page);
+    const p = await center(page, '[data-block="week.minical"]');
+    await page.mouse.click(p.x, p.y);
+    // A 900 px con la interfaz al 110 %, el panel del elemento es una hoja inferior: el 52 % de la ventana.
+    const sheet = page.getByRole('dialog', { name: 'Elemento' });
+    await expect(sheet).toBeVisible();
+    expect(Math.abs((await sheet.boundingBox())!.height - 0.52 * 800)).toBeLessThan(3);
+    await ctx.close();
+  });
+
+  test('el menú contextual se abre junto al puntero con la interfaz ampliada', async ({ browser }) => {
+    const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+    const page = await ctx.newPage();
+    await page.addInitScript(() => localStorage.setItem('agenda-studio.uiScale', '1.25'));
+    await open(page);
+    await toWeek(page);
+    const p = await center(page, '[data-block="week.minical"]');
+    await page.mouse.click(p.x, p.y, { button: 'right' });
+    const menu = page.getByRole('menu');
+    await expect(menu).toBeVisible();
+    const box = (await menu.boundingBox())!;
+    expect(Math.abs(box.x - p.x)).toBeLessThan(2);
+    expect(Math.abs(box.y - p.y)).toBeLessThan(2);
+    await ctx.close();
+  });
+
+  test('«Editar enlaces…» elige el elemento y lleva a su sección de enlaces', async ({ page }) => {
+    await open(page);
+    await page.evaluate(() => (globalThis as unknown as { __agenda: StoreHandle }).__agenda.getState().goToPage(7));
+    const p = await center(page, '[data-block="month.3"]');
+    await page.mouse.click(p.x, p.y, { button: 'right' });
+    await page.getByRole('menuitem', { name: 'Editar enlaces…' }).click();
+    await expect(page.getByTestId('link-fields')).toBeVisible();
+    await expect(page.getByTestId('link-fields').getByRole('combobox').first()).toBeFocused();
+    expect((await state(page)).showLinks).toBe(true);
+    expect((await state(page)).selectedIds).toEqual(['month.3']);
   });
 });

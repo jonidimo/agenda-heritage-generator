@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import type { AgendaDocument } from '@core/document';
 import { Canvas } from './components/canvas/Canvas';
 import { ContextMenuHost } from './components/ContextMenu';
-import { LibraryDialog, SaveTemplateDialog, WelcomeDialog } from './components/Dialogs';
+import { AboutDialog, LibraryDialog, SaveTemplateDialog, WelcomeDialog } from './components/Dialogs';
 import { ErrorBoundary, ViewError } from './components/ErrorBoundary';
 import { openAnyFile, saveCurrent } from './state/fileActions';
 import { Inspector } from './components/Inspector';
@@ -16,6 +16,7 @@ import { PersonaPanel } from './components/panels/PersonaPanel';
 import { PrintPanel } from './components/panels/PrintPanel';
 import { SectionsPanel } from './components/panels/SectionsPanel';
 import { StylePanel } from './components/panels/StylePanel';
+import { Splitter } from './components/ui';
 import { Topbar } from './components/Topbar';
 import { isUiLang, useT, type UiKey } from './i18n/ui';
 import { langOf } from '@core/i18n';
@@ -23,12 +24,14 @@ import { clearCrashed, crashedId } from './state/crash';
 import { useDocument } from './state/doc';
 import { collectUnusedAssets, listDesigns, loadDesign } from './state/persist';
 import { resources } from './state/resources';
-import { flushSave, useStore, type Panel } from './state/store';
+import { PANEL_LIMITS } from './state/prefs';
+import { flushSave, useStore, ZOOM, type Panel } from './state/store';
+import { DESKTOP_BREAKPOINT, useUiLayout } from './state/uiScale';
 import { jumpToPage } from './state/navigation';
 
 const TABS: Array<{ id: Panel; key: UiKey; icon: React.ReactNode }> = [
-  { id: 'sections', key: 'tab.sections', icon: <LayoutList size={16} /> },
   { id: 'style', key: 'tab.style', icon: <Palette size={16} /> },
+  { id: 'sections', key: 'tab.sections', icon: <LayoutList size={16} /> },
   { id: 'methods', key: 'tab.methods', icon: <BookMarked size={16} /> },
   { id: 'persona', key: 'tab.persona', icon: <UserRound size={16} /> },
   { id: 'calendar', key: 'tab.calendar', icon: <CalendarDays size={16} /> },
@@ -41,7 +44,7 @@ function Sidebar() {
   const panel = useStore((s) => s.panel);
   const setPanel = useStore((s) => s.setPanel);
   return (
-    <aside className="flex h-full min-h-0 w-full flex-col border-r border-line bg-paper md:w-[330px]">
+    <aside className="flex h-full min-h-0 w-full flex-col border-r border-line bg-paper">
       <nav className="scroll-thin flex shrink-0 gap-0.5 overflow-x-auto border-b border-line px-1.5 pt-1.5" role="tablist">
         {TABS.map((tab) => (
           <button
@@ -69,19 +72,6 @@ function Sidebar() {
       </div>
     </aside>
   );
-}
-
-/** Coincidencia de una media query (se actualiza al girar el teléfono o cambiar el tamaño). */
-function useMediaQuery(query: string): boolean {
-  const [match, setMatch] = useState(() => typeof window !== 'undefined' && window.matchMedia(query).matches);
-  useEffect(() => {
-    const mq = window.matchMedia(query);
-    const on = (): void => setMatch(mq.matches);
-    on();
-    mq.addEventListener('change', on);
-    return () => mq.removeEventListener('change', on);
-  }, [query]);
-  return match;
 }
 
 /** Vista central: si una página o la hoja no se pueden dibujar, el resto del editor sigue andando. */
@@ -115,6 +105,7 @@ export function App() {
   const showWelcome = useStore((s) => s.showWelcome);
   const showLibrary = useStore((s) => s.showLibrary);
   const showSaveTemplate = useStore((s) => s.showSaveTemplate);
+  const showAbout = useStore((s) => s.showAbout);
   const setShowWelcome = useStore((s) => s.setShowWelcome);
   const sidebarOpen = useStore((s) => s.sidebarOpen);
   const setSidebarOpen = useStore((s) => s.setSidebarOpen);
@@ -125,7 +116,10 @@ export function App() {
   const bump = useStore((s) => s.bumpResources);
   const [ready, setReady] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const large = useMediaQuery('(min-width: 1024px)');
+  const { desktop, wide: large } = useUiLayout();
+  const panelSizes = useStore((s) => s.panelSizes);
+  const setPanelSize = useStore((s) => s.setPanelSize);
+  const commitPanelSizes = useStore((s) => s.commitPanelSizes);
   const sheetOpen = useStore((s) => s.inspectorOpen);
   const setSheetOpen = useStore((s) => s.setInspectorOpen);
   const { doc, error } = useDocument();
@@ -156,8 +150,11 @@ export function App() {
           try {
             const last = first ? await loadDesign(first.id) : null;
             // Si mientras tanto ya se abrió o importó otra agenda, no se la reemplaza.
-            if (last && !useStore.getState().design) setDesign(last);
-            else if (!useStore.getState().design) setShowWelcome(true);
+            if (last && !useStore.getState().design) {
+              setDesign(last);
+              // El asistente de «Nueva agenda», si así se eligió, sobre la agenda recién abierta (se puede cerrar).
+              if (useStore.getState().welcomeOnStart) setShowWelcome(true);
+            } else if (!useStore.getState().design) setShowWelcome(true);
           } catch (err) {
             setNotice(`${t('notice.loadFailed')} ${(err as Error).message}`);
             if (!useStore.getState().design) setShowWelcome(true);
@@ -177,7 +174,7 @@ export function App() {
   useEffect(() => {
     const unsub = resources.subscribe(() => bump(resources.version));
     void start();
-    if (typeof window !== 'undefined' && window.innerWidth < 768) setSidebarOpen(false);
+    if (typeof window !== 'undefined' && window.innerWidth < DESKTOP_BREAKPOINT) setSidebarOpen(false);
     return unsub;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -258,14 +255,43 @@ export function App() {
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
+  // Zoom del lienzo con Ctrl/⌘ y +, − o 0 (también dentro de un campo de texto: ahí no significan nada).
+  // El navegador y el menú de la aplicación de escritorio no los usan para otra cosa.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      // Alt con Ctrl es AltGr en varias distribuciones de teclado: se usa para escribir caracteres.
+      if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
+      const { zoomBy, zoomFit } = useStore.getState();
+      if (e.key === '+' || e.key === '=') zoomBy(ZOOM.step);
+      else if (e.key === '-' || e.key === '_') zoomBy(1 / ZOOM.step);
+      else if (e.key === '0') zoomFit();
+      else return;
+      e.preventDefault();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
   return (
     <div className="flex h-full flex-col">
       <Topbar />
       <div className="relative flex min-h-0 flex-1">
         {sidebarOpen && design && (
-          <div className="absolute inset-y-0 left-0 z-30 w-[92vw] max-w-[360px] shadow-xl md:static md:w-auto md:max-w-none md:shadow-none">
+          <div className="absolute inset-y-0 left-0 z-30 w-[calc(92*var(--vw))] max-w-[360px] shadow-xl md:static md:max-w-none md:shrink-0 md:shadow-none" style={desktop ? { width: panelSizes.left } : undefined}>
             <Sidebar />
           </div>
+        )}
+        {sidebarOpen && design && desktop && (
+          <Splitter
+            orientation="vertical"
+            label={t('panel.resize.left')}
+            value={panelSizes.left}
+            min={PANEL_LIMITS.left.min}
+            max={PANEL_LIMITS.left.max}
+            defaultValue={PANEL_LIMITS.left.default}
+            onChange={(v) => setPanelSize('left', v)}
+            onCommit={commitPanelSizes}
+          />
         )}
         <main className="relative flex min-h-0 min-w-0 flex-1 flex-col">
           {doc && !large && !sheetOpen && (
@@ -326,12 +352,25 @@ export function App() {
           )}
         </main>
         {doc && large && (
-          <aside className="w-[280px] shrink-0 border-l border-line bg-paper">
-            <InspectorArea doc={doc} />
-          </aside>
+          <>
+            <Splitter
+              orientation="vertical"
+              label={t('panel.resize.right')}
+              value={panelSizes.right}
+              min={PANEL_LIMITS.right.min}
+              max={PANEL_LIMITS.right.max}
+              defaultValue={PANEL_LIMITS.right.default}
+              invert
+              onChange={(v) => setPanelSize('right', v)}
+              onCommit={commitPanelSizes}
+            />
+            <aside className="shrink-0 border-l border-line bg-paper" style={{ width: panelSizes.right }}>
+              <InspectorArea doc={doc} />
+            </aside>
+          </>
         )}
         {doc && !large && sheetOpen && (
-          <div className="fixed inset-x-0 bottom-0 z-40 flex h-[52vh] flex-col rounded-t-xl border-t border-line bg-paper shadow-2xl" role="dialog" aria-label={t('insp.title')}>
+          <div className="fixed inset-x-0 bottom-0 z-40 flex h-[calc(52*var(--vh))] flex-col rounded-t-xl border-t border-line bg-paper shadow-2xl" role="dialog" aria-label={t('insp.title')}>
             <div className="flex shrink-0 justify-end border-b border-line px-2 py-1">
               <button type="button" className="rounded p-1 hover:bg-black/5" aria-label={t('common.close')} onClick={() => setSheetOpen(false)}>
                 <X size={16} />
@@ -347,6 +386,7 @@ export function App() {
       {showWelcome && <WelcomeDialog />}
       {showLibrary && <LibraryDialog />}
       {showSaveTemplate && <SaveTemplateDialog />}
+      {showAbout && <AboutDialog />}
     </div>
   );
 }

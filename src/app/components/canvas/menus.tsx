@@ -22,6 +22,7 @@ import {
   Grip,
   Image as ImageIcon,
   ImagePlus,
+  Link2,
   MousePointerClick,
   RotateCcw,
   Scaling,
@@ -50,6 +51,7 @@ import {
   type Scope,
 } from '../../state/actions';
 import { customPageHere } from '../../state/customPages';
+import { reveal } from '../../state/reveal';
 import { exportPageSvg, fileBase } from '../../state/exporter';
 import { useStore } from '../../state/store';
 import { addAssetFiles, pickFiles } from '../../state/uploads';
@@ -70,6 +72,15 @@ export interface MenuContext {
 const labelsFor = (t: T) => ({ text: t('insp.addText'), image: t('insp.addImage'), rect: t('insp.addRect'), lines: t('insp.addLines'), dots: t('insp.addDots') });
 
 const openProperties = (): void => useStore.getState().setInspectorOpen(true);
+
+/** Elige el elemento, muestra sus zonas tocables y lleva a la sección «Enlaces» de su panel. */
+function editLinks(page: PageModel, block: Block): void {
+  const st = useStore.getState();
+  st.select({ pageKey: page.key, pageType: page.type, blockId: block.id, role: block.role });
+  st.setShowLinks(true);
+  st.setInspectorOpen(true);
+  void reveal({ inspector: true, selector: '[data-reveal="links"] select' });
+}
 
 function selectBlocks(page: PageModel, blocks: Block[], primary: Block): void {
   useStore.getState().setSelection(
@@ -185,7 +196,11 @@ export function blockMenu(c: MenuContext, block: Block): MenuItem[] {
       hideType,
     );
   } else items.push({ label: t('insp.locked'), disabled: true });
-  items.push({ separator: true }, { label: t('menu.properties'), icon: <SlidersHorizontal size={14} />, onSelect: openProperties });
+  items.push(
+    { separator: true },
+    { label: t('menu.editLinks'), icon: <Link2 size={14} />, onSelect: () => editLinks(page, block) },
+    { label: t('menu.properties'), icon: <SlidersHorizontal size={14} />, onSelect: openProperties },
+  );
   return items;
 }
 

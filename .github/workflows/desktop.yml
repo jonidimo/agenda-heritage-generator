@@ -16,6 +16,9 @@ on:
       - 'src/**'
       - 'public/**'
       - 'scripts/**'
+      # The MCP server bundle carries both guides.
+      - 'docs/llm-templates.md'
+      - 'docs/plantillas-llm.md'
       - 'index.html'
       - 'package.json'
       - 'package-lock.json'
@@ -35,9 +38,11 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { os: ubuntu-latest, name: linux }
-          - { os: windows-latest, name: windows }
-          - { os: macos-latest, name: macos }
+          # `app`: the unpacked app that electron-builder leaves next to the installers, started
+          # below with --mcp to prove that the MCP server works inside the package.
+          - { os: ubuntu-latest, name: linux, app: release/linux-unpacked/agenda-heritage-studio }
+          - { os: windows-latest, name: windows, app: 'release/win-unpacked/Heritage Studio.exe' }
+          - { os: macos-latest, name: macos, app: 'release/mac-arm64/Heritage Studio.app/Contents/MacOS/Heritage Studio' }
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
     steps:
@@ -47,11 +52,30 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      # Also generates the holiday data (prebuild hook, about a minute).
-      - run: npm run build
+      # The web app (also generates the holiday data: prebuild hook, about a minute) and the MCP
+      # server bundle that the app carries.
+      - run: npm run build:desktop
       # Targets per OS are in electron-builder.yml. No certificates: Windows builds are unsigned
       # and macOS builds ad-hoc signed.
       - run: npx electron-builder --publish never
+      # The packaged app as an AI client launches it: no window, protocol-only stdout, fonts and
+      # holidays read from inside the package. --no-sandbox because CI runners restrict Chromium's
+      # sandbox; --ozone-platform=headless because there is no display server on Linux.
+      - name: MCP server works inside the package
+        shell: bash
+        run: |
+          flags=(--no-sandbox)
+          if [ "${{ matrix.name }}" = linux ]; then flags+=(--ozone-platform=headless); fi
+          npx tsx scripts/mcp-smoke.ts -- "${{ matrix.app }}" "${flags[@]}" --mcp
+      # The AppImage as documented for MCP: extracted once, then its AppRun is the command. (Its
+      # --appimage-extract-and-run mode prints the extracted files on stdout, so it is not usable.)
+      - name: MCP server works from the extracted AppImage
+        if: matrix.name == 'linux'
+        run: |
+          mkdir appimage && cd appimage
+          ../release/heritage-studio-*-linux-x86_64.AppImage --appimage-extract > /dev/null
+          cd ..
+          npx tsx scripts/mcp-smoke.ts -- "$PWD/appimage/squashfs-root/AppRun" --no-sandbox --ozone-platform=headless --mcp
       - uses: actions/upload-artifact@v7
         with:
           name: heritage-studio-${{ matrix.name }}

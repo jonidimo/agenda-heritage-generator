@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
@@ -22,7 +23,11 @@ const CSP = [
   "form-action 'none'",
 ].join('; ');
 
+/** Versión y dirección del proyecto: una sola fuente (package.json) para el «Acerca de» y el servidor MCP. */
+const pkg = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8')) as { version: string; homepage: string };
+
 export default defineConfig({
+  define: { __APP_VERSION__: JSON.stringify(pkg.version), __APP_HOMEPAGE__: JSON.stringify(pkg.homepage) },
   // Rutas relativas: el sitio funciona igual en GitHub Pages, en una carpeta local o en un servidor propio.
   base: './',
   resolve: {
