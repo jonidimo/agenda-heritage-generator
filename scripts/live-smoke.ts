@@ -12,7 +12,7 @@
 import { spawn } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { connectLive, findLiveApp } from '../electron/lib/live.mjs';
@@ -23,12 +23,15 @@ const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms
 export async function smokeLive(command: string, args: readonly string[], timeoutMs = 90_000): Promise<string[]> {
   const problems: string[] = [];
   const profile = await mkdtemp(join(tmpdir(), 'heritage-live-smoke-'));
-  const env = { ...process.env, XDG_CONFIG_HOME: profile, APPDATA: profile, HOME: profile };
+  // Solo Linux obedece XDG_CONFIG_HOME. Electron en Windows y macOS toma la carpeta de datos del sistema (no de APPDATA ni de HOME):
+  // ahí la aplicación de la prueba escribe su live.json en la carpeta real del usuario del runner, y se busca allí.
+  const isolated = process.platform === 'linux';
+  const env = { ...process.env, ...(isolated ? { XDG_CONFIG_HOME: profile } : {}) };
   const child = spawn(command, [...args], { env, stdio: ['ignore', 'ignore', 'pipe'] });
   let stderr = '';
   child.stderr.setEncoding('utf8').on('data', (chunk: string) => (stderr += chunk));
   const exited = new Promise<void>((resolve) => child.once('close', () => resolve()));
-  const where = { env: { XDG_CONFIG_HOME: profile, APPDATA: profile }, platform: process.platform, home: profile };
+  const where = isolated ? { env: { XDG_CONFIG_HOME: profile }, platform: process.platform, home: profile } : { env: process.env as Record<string, string | undefined>, platform: process.platform, home: homedir() };
   try {
     const until = Date.now() + timeoutMs;
     let found = await findLiveApp(where);
