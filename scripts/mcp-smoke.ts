@@ -14,7 +14,7 @@
  *   tsx scripts/mcp-smoke.ts [--env CLAVE=valor]… [--timeout segundos] -- <comando> [argumentos…]
  *   tsx scripts/mcp-smoke.ts -- tsx src/mcp/main.ts
  *   tsx scripts/mcp-smoke.ts --env AGENDA_PUBLIC_DIR=public -- node dist-mcp/main.mjs
- *   tsx scripts/mcp-smoke.ts -- "release/linux-unpacked/heritage-studio" --no-sandbox --mcp
+ *   tsx scripts/mcp-smoke.ts -- "release/linux-unpacked/agenda-heritage-studio" --no-sandbox --mcp
  */
 import { spawn } from 'node:child_process';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';

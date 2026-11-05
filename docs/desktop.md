@@ -118,8 +118,8 @@ client create and edit planners, look at their pages and export the PDF (see [th
 guide](llm-templates.md)). Nothing else to install: Node.js and the repository are not
 needed. The client starts the app with `--mcp`, which opens no window.
 
-Set `AGENDA_MCP_ROOT` to the folder where the model may read and write planners; the server
-touches nothing outside it. In Claude Desktop (`claude_desktop_config.json`, under
+Set `AGENDA_MCP_ROOT` (required in the installed app) to the folder where the model may read
+and write planners; the server touches nothing outside it. In Claude Desktop (`claude_desktop_config.json`, under
 *Settings → Developer*), use the command for your system:
 
 | System | `command` |

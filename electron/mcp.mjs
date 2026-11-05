@@ -13,7 +13,7 @@
  * The server itself is the bundle in dist-mcp/ (`npm run build:mcp`), loaded from inside the app
  * package. Fonts, holidays and images come from the app's own dist/ folder.
  */
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, readdirSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -28,9 +28,28 @@ app.disableHardwareAcceleration();
 app.dock?.hide();
 
 // A throwaway data folder, so a server never shares Chromium's profile files with the desktop app
-// or with another server (and leaves nothing behind).
-const scratch = mkdtempSync(path.join(tmpdir(), 'heritage-studio-mcp-'));
+// or with another server. Chromium writes into it while shutting down, after this code has removed
+// it, and a killed server never gets to clean up; so leftovers from earlier runs are swept here.
+const SCRATCH_PREFIX = 'heritage-studio-mcp-';
+const STALE_AFTER_MS = 24 * 60 * 60 * 1000;
+for (const name of readdirSync(tmpdir())) {
+  if (!name.startsWith(SCRATCH_PREFIX)) continue;
+  const old = path.join(tmpdir(), name);
+  try {
+    if (Date.now() - statSync(old).mtimeMs > STALE_AFTER_MS) rmSync(old, { recursive: true, force: true });
+  } catch {
+    /* in use by another server, or already gone */
+  }
+}
+const scratch = mkdtempSync(path.join(tmpdir(), SCRATCH_PREFIX));
 app.setPath('userData', scratch);
+app.on('quit', () => {
+  try {
+    rmSync(scratch, { recursive: true, force: true });
+  } catch {
+    /* swept by a later run */
+  }
+});
 
 let finished = false;
 
@@ -52,9 +71,8 @@ function fail(err) {
   finish(1);
 }
 
-// A client that goes away takes the server with it.
-process.stdin.on('end', () => finish(0));
-process.stdin.on('close', () => finish(0));
+// The server ends by itself once the client closes its input and the requests in flight are
+// answered (see src/mcp/run.ts); a client that is killed or asks politely takes it down at once.
 for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP']) process.on(signal, () => finish(0));
 process.on('uncaughtException', fail);
 process.on('unhandledRejection', fail);
@@ -65,10 +83,16 @@ process.on('unhandledRejection', fail);
 if (missingDisplay(process.argv, process.env, process.platform)) console.error(MISSING_DISPLAY_MESSAGE);
 
 try {
+  // An installed app is started by the AI client from a folder nobody chose (the install folder,
+  // System32…): the working folder has to be named, or planners would be written there.
+  if (app.isPackaged && !process.env.AGENDA_MCP_ROOT) {
+    throw new Error('Set AGENDA_MCP_ROOT to the folder where planners may be read and written (see docs/desktop.md).');
+  }
   const appPath = app.getAppPath();
   process.env[PUBLIC_DIR_ENV] ||= path.join(appPath, 'dist');
   // The server reads the working folder from AGENDA_MCP_ROOT, or else from where it was launched.
   await import(pathToFileURL(path.join(appPath, 'dist-mcp', 'main.mjs')).href);
+  finish(0);
 } catch (err) {
   fail(err);
 }
