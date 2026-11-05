@@ -89,11 +89,11 @@ describe('estilo propio de un elemento', () => {
     expect(t.color).toBe('#aa00aa');
 
     const frameAt = plain.doc.plan.pages.findIndex((p) => plain.doc.page(p.index).blocks.some((b) => b.id === 'vision.frame'));
-    const framed = await openDocument(norma([{ pageType: plain.doc.plan.pages[frameAt]!.type, blockId: 'vision.frame', fill: { color: '#fff3cd' } }]));
-    const r = flat(framed.doc.page(frameAt).blocks.find((b) => b.id === 'vision.frame')!.prims).find((p): p is RectPrim => p.t === 'rect')!;
+    const framed = await openDocument(norma([{ pageType: plain.doc.plan.pages[frameAt]!.type, blockId: 'vision.head', fill: { color: '#fff3cd' } }]));
+    const r = flat(framed.doc.page(frameAt).blocks.find((b) => b.id === 'vision.head')!.prims).find((p): p is RectPrim => p.t === 'rect')!;
     expect(r.fill?.color).toBe('#fff3cd');
-    const cleared = await openDocument(norma([{ pageType: plain.doc.plan.pages[frameAt]!.type, blockId: 'vision.frame', fill: { color: null } }]));
-    expect(flat(cleared.doc.page(frameAt).blocks.find((b) => b.id === 'vision.frame')!.prims).find((p): p is RectPrim => p.t === 'rect')!.fill).toBeUndefined();
+    const cleared = await openDocument(norma([{ pageType: plain.doc.plan.pages[frameAt]!.type, blockId: 'vision.head', fill: { color: null } }]));
+    expect(flat(cleared.doc.page(frameAt).blocks.find((b) => b.id === 'vision.head')!.prims).find((p): p is RectPrim => p.t === 'rect')!.fill).toBeUndefined();
   });
 
   it('un color que no se entiende se descarta y el PDF se genera', async () => {

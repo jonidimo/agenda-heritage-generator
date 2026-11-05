@@ -86,6 +86,8 @@ export function TextEditor({ doc, page, blockId, source, scale, onDone }: Props)
 
   useEffect(() => {
     const pending = push.current;
+    // En desarrollo, React monta, desmonta y vuelve a montar: el estado de «cerrado» empieza limpio cada vez.
+    done.current = false;
     return () => {
       // Si el cuadro desaparece sin cerrarse (se cambió de página), lo escrito se confirma.
       if (!done.current) {

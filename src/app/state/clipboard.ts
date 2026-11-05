@@ -75,6 +75,8 @@ export function cutSelection(data?: DataTransfer | null): boolean {
 export function pasteSelection(data?: DataTransfer | null): boolean {
   let copies = internal;
   const raw = data?.getData(CLIPBOARD_MIME);
+  // Pegar algo de otra aplicación no es pegar lo último que se copió acá.
+  if (data && !raw && data.types.length > 0) return false;
   if (raw) {
     try {
       const parsed = PayloadZ.safeParse(JSON.parse(raw));

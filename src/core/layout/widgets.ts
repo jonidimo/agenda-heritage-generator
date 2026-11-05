@@ -123,12 +123,12 @@ export function pageHeader(
 }
 
 /** Rótulo de sección en mayúsculas con filete debajo (se achica para entrar en el ancho). Devuelve el alto usado. */
-export function sectionHeader(ctx: LayoutContext, r: Rect, text: string, id: string, opts: { size?: SizeKey | number; rule?: 'rule' | 'hair' | 'none'; gap?: number } = {}): number {
+export function sectionHeader(ctx: LayoutContext, r: Rect, text: string, id: string, opts: { size?: SizeKey | number; rule?: 'rule' | 'hair' | 'none'; gap?: number; parent?: string } = {}): number {
   const size = opts.size ?? 'heading';
   const run = ctx.run(text, { role: 'heading', size, upper: true, tracking: ctx.theme.tracking.heading });
   // La caja llega hasta el filete: cambiarla de tamaño ajusta el texto (de ancho) y baja o sube el filete.
   const ruleBase = run.capHeight + 1.2;
-  const box = ctx.rect(id, { x: r.x, y: r.y, w: r.w, h: ruleBase });
+  const box = ctx.rect(id, { x: r.x, y: r.y, w: r.w, h: ruleBase }, opts.parent);
   const t = ctx.textIn(text, { x: box.x, y: box.y, w: box.w, h: run.capHeight + 1 }, { role: 'heading', size, upper: true, tracking: ctx.theme.tracking.heading, fit: true, ellipsis: true });
   const prims: Prim[] = [...t.prims];
   const ruleY = box.y + box.h;

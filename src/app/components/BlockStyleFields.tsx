@@ -26,7 +26,7 @@ function usedBy(prims: readonly Prim[], out: Used = { lines: new Map(), rect: fa
     if (p.t === 'group') usedBy(p.children, out);
     else if (p.t === 'text') out.textColor ??= p.color;
     else if (p.t === 'line' || p.t === 'rect' || p.t === 'circle' || p.t === 'path') {
-      if (p.t === 'rect') out.rect = true;
+      if (p.t === 'rect' && (p.fill || p.stroke?.use !== 'frame')) out.rect = true;
       if (p.stroke) {
         const key: BlockLineKey = p.stroke.use ?? 'other';
         if (!out.lines.has(key)) out.lines.set(key, { color: p.stroke.color, width: p.stroke.width });

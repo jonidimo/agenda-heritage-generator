@@ -375,7 +375,7 @@ export const vision: SectionModule = {
     // ajustan además por su cuenta.
     const r = ctx.rect('vision.frame', area);
     const [headBase, body] = takeTop(r, 10);
-    const headRow = ctx.rect('vision.head', headBase);
+    const headRow = ctx.rect('vision.head', headBase, 'vision.frame');
     const colsR = hsplit(headRow, [24, flex(), flex(), flex()]);
     const ink = ctx.theme.colors.ink;
     const prims: Prim[] = [rect(headRow, { fill: { color: ink } })];
@@ -387,7 +387,7 @@ export const vision: SectionModule = {
     ctx.add('vision.head', 'Encabezado de la matriz', prims);
     const rowRects = rows(body, Math.max(1, cats.length));
     rowRects.forEach((baseRow, i) => {
-      const row = ctx.rect(`vision.row.${i}`, baseRow);
+      const row = ctx.rect(`vision.row.${i}`, baseRow, 'vision.frame');
       const c = hsplit(row, [24, flex(), flex(), flex()]);
       const p: Prim[] = [line(row.x, row.y + row.h, row.x + row.w, row.y + row.h, ctx.stroke('rule', 'ink', { use: 'table' }))];
       const label = ctx.textIn(cats[i] ?? '', inset(c[0]!, 2, 1.5), { role: 'heading', size: 'labelSmall', upper: true, tracking: 0.06, wrap: true, valign: 'middle', align: 'center' });

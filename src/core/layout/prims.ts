@@ -185,6 +185,11 @@ export interface Block {
   box?: Rect;
   /** No admite cambiar su ancho y su alto por los lados (p. ej. dibujado girado): solo se escala. */
   rigid?: true;
+  /**
+   * Id del elemento dentro de cuya caja se maquetó este (su base sale de la caja ya ajustada del
+   * otro). Cuando los dos se mueven juntos, el de adentro ya sigue al de afuera: no se mueve de nuevo.
+   */
+  parent?: string;
   /** De dónde sale su texto principal, si se puede editar en su lugar. */
   text?: TextSource;
   prims: Prim[];

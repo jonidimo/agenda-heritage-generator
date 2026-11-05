@@ -130,7 +130,9 @@ export function moveBlock(page: PageModel, block: Block, dx: number, dy: number,
 
 /** Desplaza varios bloques en un solo paso de la historia (deshacer los vuelve a todos). */
 export function moveBlocks(page: PageModel, moves: Array<{ block: Block; dx: number; dy: number }>, scope: Scope, coalesce?: string): void {
-  const real = moves.filter((m) => Math.abs(m.dx) >= 1e-4 || Math.abs(m.dy) >= 1e-4);
+  // Un elemento maquetado dentro de la caja de otro que también se mueve ya lo sigue: no se mueve de nuevo.
+  const ids = new Set(moves.map((m) => m.block.id));
+  const real = moves.filter((m) => (Math.abs(m.dx) >= 1e-4 || Math.abs(m.dy) >= 1e-4) && !(m.block.parent && ids.has(m.block.parent)));
   if (real.length === 0) return;
   const sc = effectiveScope(page, scope);
   const mirrored = typeMirrored(page);
@@ -486,8 +488,10 @@ export function hideBlocks(page: PageModel, blocks: Block[], scope: Scope): void
         } else if (!wm.exclude.includes(page.type)) wm.exclude.push(page.type);
       } else if (block.role === 'custom' && block.id.startsWith('custom.')) {
         d.customBlocks = d.customBlocks.filter((c) => c.id !== block.id.slice(7));
-        // Sus enlaces a mano se van con él.
+        // Sus enlaces a mano, su estilo y sus ajustes se van con él.
         d.links.blocks = d.links.blocks.filter((l) => l.blockId !== block.id);
+        d.blockStyles = d.blockStyles.filter((s) => s.blockId !== block.id);
+        d.overrides = d.overrides.filter((o) => o.blockId !== block.id);
       } else {
         upsertOverride(d, page, block.id, sc, (o) => void (o.hidden = true), mirrored);
       }
@@ -518,10 +522,26 @@ export function pasteCustomBlocks(page: PageModel, copies: readonly CustomBlock[
     const y = Math.min(Math.max(0, src.y + (same ? 5 : 0)), page.h - h);
     return { ...JSON.parse(JSON.stringify(src)), id: newId('el'), pageType: page.type, pageKey, x: r2(x), y: r2(y), w, h };
   });
-  useStore.getState().update((d) => void d.customBlocks.push(...made));
+  useStore.getState().update((d) => {
+    d.customBlocks.push(...made);
+    copies.forEach((src, i) => cloneBlockData(d, src, made[i]!));
+  });
   const ids = made.map((c) => `custom.${c.id}`);
   useStore.getState().setSelection({ pageKey: page.key, pageType: page.type, blockId: ids[ids.length - 1]!, role: 'custom' }, ids);
   return ids;
+}
+
+/** Copia lo propio de un elemento (estilo, ajustes, enlaces a mano) al elemento nuevo que salió de él. */
+function cloneBlockData(d: Draft<Design>, from: CustomBlock, to: CustomBlock): void {
+  const old = `custom.${from.id}`;
+  const fresh = `custom.${to.id}`;
+  const mine = (x: { blockId: string; pageType: string; pageKey: string | null }): boolean => x.blockId === old && x.pageType === from.pageType && x.pageKey === from.pageKey;
+  const copy = <T extends { blockId: string; pageType: string; pageKey: string | null }>(list: Draft<T>[]): void => {
+    for (const x of list.filter((e) => mine(e as T)).map((e) => current(e) as T)) list.push({ ...x, blockId: fresh, pageType: to.pageType, pageKey: to.pageKey } as Draft<T>);
+  };
+  copy(d.blockStyles);
+  copy(d.overrides);
+  copy(d.links.blocks);
 }
 
 /* ---------- Enlaces ---------- */
@@ -611,7 +631,11 @@ export function duplicateCustomBlock(page: PageModel, block: Block): void {
   const id = newId('el');
   useStore.getState().update((d) => {
     const src = d.customBlocks.find((c) => c.id === block.id.slice(7));
-    if (src) d.customBlocks.push({ ...JSON.parse(JSON.stringify(src)), id, x: r2(src.x + 5), y: r2(src.y + 5) });
+    if (src) {
+      const copy: CustomBlock = { ...JSON.parse(JSON.stringify(src)), id, x: r2(src.x + 5), y: r2(src.y + 5) };
+      d.customBlocks.push(copy);
+      cloneBlockData(d, current(src) as CustomBlock, copy);
+    }
   });
   useStore.getState().select({ pageKey: page.key, pageType: page.type, blockId: `custom.${id}`, role: 'custom' });
 }

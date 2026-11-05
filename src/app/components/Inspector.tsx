@@ -310,13 +310,14 @@ function BlockFields({ page, blockId, scope, setScope }: { page: PageModel; bloc
   const inherited = level === 'page' && !pageO;
   const o = level === 'page' ? (pageO ?? typeO) : typeO;
   const showFlipped = mirrored && (level === 'type' || inherited);
-  const v = { dx: (showFlipped ? -1 : 1) * (o?.dx ?? 0), dy: o?.dy ?? 0, scale: o?.scale ?? 1, rotation: o?.rotation ?? 0, opacity: o?.opacity ?? 1 };
+  // En una página izquierda con ajuste «por tipo», el borde izquierdo es -(dx + dw) (ver `adjuster`).
+  const v = { dx: showFlipped ? -((o?.dx ?? 0) + (o?.dw ?? 0)) : (o?.dx ?? 0), dy: o?.dy ?? 0, scale: o?.scale ?? 1, rotation: o?.rotation ?? 0, opacity: o?.opacity ?? 1 };
   const flipOnWrite = mirrored && level === 'type';
   // Los bloques que su sección maqueta dentro de una caja también tienen ancho y alto.
   const block = page.blocks.find((b) => b.id === blockId);
   const box = block && reflowable(block) ? block.box : undefined;
   const set = (patch: Partial<typeof v>, key: string): void =>
-    patchOverride(page, blockId, scope, patch.dx !== undefined && flipOnWrite ? { ...patch, dx: -patch.dx } : patch, `insp:${blockId}:${key}`);
+    patchOverride(page, blockId, scope, patch.dx !== undefined && flipOnWrite ? { ...patch, dx: -patch.dx - (o?.dw ?? 0) } : patch, `insp:${blockId}:${key}`);
   /** Un deslizador del ajuste (escala, giro, opacidad): vista previa mientras se arrastra, una confirmación al soltar. */
   const drag = (key: 'scale' | 'rotation' | 'opacity'): Scrubbing<number> => scrub<number>((x) => overrideRecipe(page, blockId, scope, { [key]: x }), `insp:${blockId}:${key}`);
   return (

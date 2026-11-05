@@ -197,7 +197,8 @@ function placeCustomBlock(ctx: LayoutContext, cb: CustomBlock, page: PagePlan): 
         role: enumProp(p.role, TEXT_ROLES, 'body'),
         size: numProp(p.size, PROP_RANGES.textSize, ctx.theme.sizes.body),
         align: enumProp(p.align, TEXT_ALIGNS, 'left'),
-        valign: enumProp(p.valign, TEXT_VALIGNS, 'top'),
+        // Con alto automático la caja se ajusta a los renglones: arriba, o el texto caería en la caja de prueba.
+        valign: auto ? 'top' : enumProp(p.valign, TEXT_VALIGNS, 'top'),
         upper: Boolean(p.upper),
         tracking: numProp(p.tracking, PROP_RANGES.tracking, PROP_DEFAULTS.tracking),
         wrap: p.wrap !== false,

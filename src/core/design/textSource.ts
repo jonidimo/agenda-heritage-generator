@@ -15,6 +15,11 @@ import type { Design } from './schema';
 /** Ruta de un texto fijo en las cadenas del idioma (`pages.sleep.title` → `['pages', 'sleep', 'title']`). */
 const pathOf = (path: string): string[] => path.split('.');
 
+/** El título de la portada cuando la persona no puso uno: el del idioma, con su rótulo propio si lo tiene. */
+function titleDefault(design: Pick<Design, 'persona'>, base: AgendaStrings): string {
+  return design.persona.labels['titlePage.title'] ?? base.titlePage.title;
+}
+
 /** Las doce frases con las que se guarda la lista cuando se cambia una. */
 const PHRASES = 12;
 
@@ -39,7 +44,7 @@ export function readTextSource(design: Design, source: TextSource, base: AgendaS
       return String(design.customBlocks.find((c) => c.id === source.id)?.props.text ?? '');
     case 'persona':
       // El título de la portada vacío es «el del idioma».
-      return source.field === 'title' ? design.persona.title || base.titlePage.title : design.persona[source.field];
+      return source.field === 'title' ? design.persona.title || titleDefault(design, base) : design.persona[source.field];
     case 'phrase':
       return phrasesOf(design, base)[source.index] ?? '';
     case 'label':
@@ -64,7 +69,7 @@ export function writeTextSource(design: Design, source: TextSource, value: strin
       return;
     }
     case 'persona':
-      design.persona[source.field] = source.field === 'title' && value === base.titlePage.title ? '' : value;
+      design.persona[source.field] = source.field === 'title' && value === titleDefault(design, base) ? '' : value;
       return;
     case 'phrase': {
       // Se guardan las doce juntas: una lista a medias no se usa (ver `phrasesOf`).

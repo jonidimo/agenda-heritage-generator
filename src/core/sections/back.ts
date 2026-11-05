@@ -121,7 +121,7 @@ export const contacts: SectionModule = {
     const pitch = Math.max(7.5, ctx.theme.writing.pitch * 1.35);
     cats.forEach((cat, i) => {
       const box = ctx.rect(`contacts.${i}`, parts[i]!);
-      const h = sectionHeader(ctx, box, cat, `contacts.${i}.head`);
+      const h = sectionHeader(ctx, box, cat, `contacts.${i}.head`, { parent: `contacts.${i}` });
       ctx.add(`contacts.${i}`, cat, ruledLines({ x: box.x, y: box.y + h, w: box.w, h: box.h - h }, pitch, ctx.stroke('hair')));
     });
   },

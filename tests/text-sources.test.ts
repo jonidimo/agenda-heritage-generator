@@ -131,3 +131,26 @@ describe('alto automático de un texto propio', () => {
     expect(await withText('Un texto bastante más largo que tiene que partirse en varios renglones al entrar en una caja angosta de cuarenta milímetros', false)).toBe(30);
   });
 });
+
+describe('correcciones de la revisión', () => {
+  it('un texto de alto automático con valign centrado o abajo queda en su lugar', async () => {
+    for (const valign of ['middle', 'bottom']) {
+      const d = norma((x) => {
+        x.customBlocks.push({ id: 'abc', pageType: 'weekLeft', pageKey: null, kind: 'text', x: 20, y: 40, w: 40, h: 30, mirror: false, props: { text: 'Hola', size: 10, autoHeight: true, valign } });
+      });
+      const { doc } = await openDocument(d);
+      const i = doc.plan.pages.findIndex((p) => p.type === 'weekLeft');
+      const b = doc.page(i).blocks.find((x) => x.id === 'custom.abc')!;
+      expect(b.bbox.y).toBe(40);
+      expect(doc.page(i).blocks.find((x) => x.id === 'custom.abc')!.prims.every((p) => p.t !== 'text' || p.y < 100)).toBe(true);
+    }
+  });
+
+  it('el título de la portada sin escribir toma el rótulo propio si lo hay', () => {
+    const d = norma((x) => void ((x.persona.title = ''), (x.persona.labels['titlePage.title'] = 'Mi título')));
+    const src: TextSource = { kind: 'persona', field: 'title' };
+    expect(readTextSource(d, src, base)).toBe('Mi título');
+    writeTextSource(d, src, 'Mi título', base);
+    expect(d.persona.title).toBe('');
+  });
+});

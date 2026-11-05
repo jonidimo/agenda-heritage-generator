@@ -103,7 +103,8 @@ export function applyBlockStyle(prims: readonly Prim[], st: ResolvedBlockStyle):
           return { ...p, stroke: stroked(p.stroke, st)! };
         case 'rect': {
           const stroke = stroked(p.stroke, st);
-          return setFill(stroke ? { ...p, stroke } : p, filled(p.fill, st, true));
+          // Un marco (contenedor de otros elementos) no se rellena si no lo estaba: taparía lo que lleva adentro.
+          return setFill(stroke ? { ...p, stroke } : p, filled(p.fill, st, p.stroke?.use !== 'frame'));
         }
         case 'circle':
         case 'path': {

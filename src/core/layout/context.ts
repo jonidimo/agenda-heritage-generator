@@ -128,6 +128,7 @@ export class LayoutContext {
   readonly warnings: PageWarning[] = [];
   /** Cajas ya pedidas con `rect`, por elemento: `add` las guarda en el bloque. */
   private readonly boxes = new Map<string, Rect>();
+  private readonly parents = new Map<string, string>();
 
   constructor(
     readonly doc: DocContext,
@@ -147,7 +148,8 @@ export class LayoutContext {
    * crecen con lo que llevan) en lugar de deformarse. Sin ajustes devuelve `base`, igual.
    * El elemento tiene que agregarse después con el mismo `id` (`add`).
    */
-  rect(id: string, base: Rect): Rect {
+  rect(id: string, base: Rect, parent?: string): Rect {
+    if (parent) this.parents.set(id, parent);
     const adjust = this.adjuster?.(id);
     const box = adjust ? adjustBox(base, adjust) : base;
     this.boxes.set(id, box);
@@ -317,11 +319,13 @@ export class LayoutContext {
   add(id: string, label: string, prims: Prim[], opts: { role?: BlockRole; editable?: boolean; layer?: number; bbox?: Rect; links?: LinkArea[]; rigid?: boolean; text?: TextSource } = {}): Block {
     const bbox = opts.bbox ?? primsBounds(prims) ?? { x: 0, y: 0, w: 0, h: 0 };
     const box = this.boxes.get(id);
+    const parent = this.parents.get(id);
     const block: Block = {
       id,
       label,
       bbox,
       ...(box ? { box } : {}),
+      ...(parent ? { parent } : {}),
       ...(opts.rigid ? { rigid: true as const } : {}),
       ...(opts.text ? { text: opts.text } : {}),
       prims,

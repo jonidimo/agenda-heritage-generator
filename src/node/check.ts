@@ -132,7 +132,8 @@ function offPageElements(design: Design): CheckIssue[] {
     if (cb.x < -0.01) over.push('x es negativo');
     if (cb.y < -0.01) over.push('y es negativo');
     if (cb.x + cb.w > w + 0.01) over.push(`x + w (${Math.round((cb.x + cb.w) * 10) / 10}) pasa del ancho de la página (${Math.round(w * 10) / 10} mm)`);
-    if (cb.y + cb.h > h + 0.01) over.push(`y + h (${Math.round((cb.y + cb.h) * 10) / 10}) pasa del alto de la página (${Math.round(h * 10) / 10} mm)`);
+    // Un texto de alto automático toma su alto de los renglones: `h` no cuenta.
+    if (!(cb.kind === 'text' && cb.props.autoHeight === true) && cb.y + cb.h > h + 0.01) over.push(`y + h (${Math.round((cb.y + cb.h) * 10) / 10}) pasa del alto de la página (${Math.round(h * 10) / 10} mm)`);
     if (over.length > 0) out.push({ path: `/customBlocks/${i}`, message: `el elemento «${cb.id}» sale de la página: ${over.join('; ')}`, severity: 'adjusted' });
   });
   return out;

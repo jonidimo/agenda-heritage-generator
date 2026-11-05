@@ -145,3 +145,14 @@ describe('ajuste guardado ↔ caja que se ve', () => {
     expect(naturalBox(adjustBox(natural, applied), applied)).toEqual(natural);
   });
 });
+
+describe('elementos dentro de la caja de otro', () => {
+  it('la fila y el encabezado de la visión anual saben de qué marco salen', async () => {
+    const { doc } = await openDocument(base());
+    const at = find(doc, 'vision.frame');
+    const page = doc.page(at.index);
+    expect(page.blocks.find((b) => b.id === 'vision.head')!.parent).toBe('vision.frame');
+    expect(page.blocks.find((b) => b.id === 'vision.row.0')!.parent).toBe('vision.frame');
+    expect(page.blocks.find((b) => b.id === 'vision.frame')!.parent).toBeUndefined();
+  });
+});
