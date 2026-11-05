@@ -2,9 +2,10 @@
 import type { AgendaDocument } from '@core/document';
 import { primsToSvg, GlyphSink } from '@core/render/svg';
 import { ChevronLeft, ChevronRight, RefreshCw } from 'lucide-react';
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { pageTitle, useT } from '../../i18n/ui';
 import { assetHref } from '../../state/assetUrls';
+import { pageStep, spreadOf } from '../../state/paging';
 import { useStore } from '../../state/store';
 import { IconButton } from '../ui';
 import { ErrorBoundary, ViewError } from '../ErrorBoundary';
@@ -24,13 +25,6 @@ function useSize(): [React.RefObject<HTMLDivElement | null>, { w: number; h: num
     return () => ro.disconnect();
   }, []);
   return [ref, size];
-}
-
-export function spreadOf(index: number, count: number): [number | null, number | null] {
-  if (index <= 0) return [null, 0];
-  const left = index % 2 === 1 ? index : index - 1;
-  const right = left + 1 < count ? left + 1 : null;
-  return [left, right];
 }
 
 /**
@@ -55,27 +49,8 @@ export function Canvas({ committed, live }: { committed: AgendaDocument; live: A
   const fitScale = Math.max(0.5, Math.min((size.w - pad) / contentMm.w, (size.h - pad - 40) / contentMm.h));
   const scale = fit ? fitScale : fitScale * zoom;
 
-  const step = view === 'spread' ? 2 : 1;
-  const prev = (): void => goToPage(Math.max(0, view === 'spread' ? (spreadOf(pageIndex, live.pageCount)[0] ?? 0) - 1 : pageIndex - 1));
-  const next = (): void => goToPage(Math.min(live.pageCount - 1, view === 'spread' ? (spreadOf(pageIndex, live.pageCount)[1] ?? pageIndex) + 1 : pageIndex + step));
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent): void => {
-      const tag = (e.target as HTMLElement | null)?.tagName;
-      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
-      // Alt+flechas es «Atrás / Adelante» (barra superior), no pasar página.
-      if (useStore.getState().selection || e.altKey) return;
-      if (e.key === 'PageDown' || (e.key === 'ArrowRight' && !e.shiftKey)) {
-        next();
-        e.preventDefault();
-      } else if (e.key === 'PageUp' || (e.key === 'ArrowLeft' && !e.shiftKey)) {
-        prev();
-        e.preventDefault();
-      }
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  });
+  const prev = (): void => goToPage(pageStep(view, pageIndex, live.pageCount, -1));
+  const next = (): void => goToPage(pageStep(view, pageIndex, live.pageCount, 1));
 
   const plan = live.plan.pages[pageIndex];
   return (

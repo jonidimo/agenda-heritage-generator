@@ -12,9 +12,9 @@ import { z } from 'zod';
 import { newId } from '@core/util/hash';
 import { resolveStrings } from '@core/i18n';
 import { customBlockFromBlock } from '@core/document/snapshot';
-import type { AgendaDocument } from '@core/document';
 import { customBlocksOf, hideBlocks, pasteCustomBlocks } from './actions';
-import { documentFor } from './doc';
+import { isTyping } from './typing';
+import { selectionContext } from './selectionContext';
 import { useStore } from './store';
 
 /** Formato propio del portapapeles: lleva los elementos completos, no solo su texto. */
@@ -25,23 +25,6 @@ const PayloadZ = z.object({ app: z.literal('heritage-studio'), blocks: z.array(C
 
 /** Lo último que se copió en esta ventana (sirve a los menús y cuando el sistema no deja leer). */
 let internal: CustomBlock[] = [];
-
-const typing = (t: EventTarget | null): boolean => {
-  const el = t as HTMLElement | null;
-  return Boolean(el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable));
-};
-
-/** La página de la selección y sus bloques seleccionados; si no hay selección, la página actual. */
-function selectionContext(): { doc: AgendaDocument; page: PageModel; selected: Block[] } | null {
-  const s = useStore.getState();
-  if (!s.design) return null;
-  const doc = documentFor(s.design, s.resVersion).doc;
-  if (!doc) return null;
-  const index = s.selection ? doc.plan.pages.findIndex((p) => p.key === s.selection!.pageKey) : s.pageIndex;
-  if (index < 0 || index >= doc.pageCount) return null;
-  const page = doc.page(index);
-  return { doc, page, selected: page.blocks.filter((b) => s.selectedIds.includes(b.id)) };
-}
 
 /**
  * Lo seleccionado como elementos propios, con la página donde está: los propios tal cual y los del
@@ -116,32 +99,26 @@ export function duplicateSelection(): boolean {
   return true;
 }
 
-/** Engancha el portapapeles y Ctrl/⌘+D al documento. Devuelve la función que lo desengancha. */
+/** Engancha el portapapeles del sistema (copiar, cortar y pegar) al documento; Ctrl/⌘+D es un atajo del registro (`shortcuts.ts`). Devuelve la función que lo desengancha. */
 export function installClipboard(): () => void {
   const onCopy = (e: ClipboardEvent): void => {
-    if (typing(e.target)) return;
+    if (isTyping(e.target)) return;
     if (copySelection(e.clipboardData)) e.preventDefault();
   };
   const onCut = (e: ClipboardEvent): void => {
-    if (typing(e.target)) return;
+    if (isTyping(e.target)) return;
     if (cutSelection(e.clipboardData)) e.preventDefault();
   };
   const onPaste = (e: ClipboardEvent): void => {
-    if (typing(e.target)) return;
+    if (isTyping(e.target)) return;
     if (pasteSelection(e.clipboardData)) e.preventDefault();
-  };
-  const onKey = (e: KeyboardEvent): void => {
-    if (typing(e.target) || !(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey || e.key.toLowerCase() !== 'd') return;
-    if (duplicateSelection()) e.preventDefault();
   };
   document.addEventListener('copy', onCopy);
   document.addEventListener('cut', onCut);
   document.addEventListener('paste', onPaste);
-  window.addEventListener('keydown', onKey);
   return () => {
     document.removeEventListener('copy', onCopy);
     document.removeEventListener('cut', onCut);
     document.removeEventListener('paste', onPaste);
-    window.removeEventListener('keydown', onKey);
   };
 }

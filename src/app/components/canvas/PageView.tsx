@@ -80,6 +80,14 @@ export function PageView({ doc, index, scale, interactive = true }: Props) {
   const [marquee, setMarquee] = useState<Rect | null>(null);
   /** Elemento cuyo texto se edita en su lugar. */
   const [editing, setEditing] = useState<string | null>(null);
+  // Pedido de editar un texto desde el teclado (F2 / Enter): la página que lo tiene lo atiende.
+  const textEditRequest = useStore((s) => s.textEditRequest);
+  useEffect(() => {
+    if (!textEditRequest || textEditRequest.pageKey !== page.key) return;
+    useStore.getState().requestTextEdit(null);
+    const target = page.blocks.find((b) => b.id === textEditRequest.blockId);
+    if (target && editableInPlace(target)) setEditing(target.id);
+  }, [textEditRequest, page]);
   const selection = useStore((s) => s.selection);
   const selectedIds = useStore((s) => s.selectedIds);
   const select = useStore((s) => s.select);
@@ -425,16 +433,6 @@ export function PageView({ doc, index, scale, interactive = true }: Props) {
       onDoubleClick={onDoubleClick}
       tabIndex={interactive ? 0 : undefined}
       aria-label={interactive ? t('page.keys', { n: index + 1 }) : undefined}
-      onKeyDown={(e) => {
-        // Teclado: [ y ] recorren los elementos editables de la página (las flechas los mueven).
-        if (!interactive || (e.key !== '[' && e.key !== ']')) return;
-        const list = page.blocks.filter((b) => b.editable && b.role !== 'chrome');
-        if (list.length === 0) return;
-        const cur = selected ? list.findIndex((b) => b.id === selected.id) : -1;
-        const next = list[(cur + (e.key === ']' ? 1 : -1) + list.length) % list.length]!;
-        select(selOf(next));
-        e.preventDefault();
-      }}
     >
       <svg ref={svgRef} width={w} height={h} viewBox={`0 0 ${page.w} ${page.h}`} className="block select-none" role="img" aria-label={`${page.title} — ${index + 1}`}>
         <defs dangerouslySetInnerHTML={{ __html: defs }} />

@@ -1,11 +1,10 @@
 /** Panel derecho: elemento seleccionado (valores exactos), elementos propios y verificación previa. */
 import { PROP_DEFAULTS, PROP_RANGES, TEXT_ROLES } from '@core/design/customBlocks';
 import type { AgendaDocument } from '@core/document';
-import { blockBounds } from '@core/document/layout';
 import { OVERRIDE_DEFAULTS, WATERMARK_DEFAULTS, type CustomBlock, type WatermarkPlacement } from '@core/design/schema';
 import { getAtPath } from '@core/util/path';
 import type { Block, PageModel, PageWarning, Prim } from '@core/layout/prims';
-import { unionRect, type AlignMode } from '@core/layout/align';
+import type { AlignMode } from '@core/layout/align';
 import type { WritingStyle } from '@core/design/themes';
 import {
   AlertTriangle,
@@ -41,7 +40,6 @@ import {
   addCustomBlock,
   alignBlocks,
   centerBlocks,
-  clampMoveDelta,
   currentBlockLink,
   linkScope,
   currentOverride,
@@ -49,7 +47,6 @@ import {
   hideBlock,
   hideBlocks,
   matchScale,
-  moveBlocks,
   overrideRecipe,
   pageStyleOf,
   pageStyleRecipe,
@@ -92,7 +89,6 @@ export function Inspector({ doc }: { doc: AgendaDocument }) {
   const page: PageModel = doc.page(selPageIndex >= 0 ? selPageIndex : pageIndex);
   const block = selection ? page.blocks.find((b) => b.id === selection.blockId) : undefined;
   const group = selection ? page.blocks.filter((b) => selectedIds.includes(b.id)) : [];
-  const movable = group.filter((b) => b.editable);
 
   // Un elemento que solo tiene una clase de línea (un filete, un ornamento): si el panel de Estilo está
   // abierto, se desplaza solo al estilo de esa línea, para no buscarlo (sin quitarle el foco al lienzo).
@@ -106,32 +102,6 @@ export function Inspector({ doc }: { doc: AgendaDocument }) {
     // Solo cuando se elige otro elemento (o se abre el panel de Estilo), no con cada cambio del diseño.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [revealKey, sidebarPanel]);
-
-  // Teclado: flechas mueven (a todo lo seleccionado), Supr oculta, Esc deselecciona.
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent): void => {
-      const tag = (e.target as HTMLElement | null)?.tagName;
-      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
-      if (movable.length === 0) {
-        if (e.key === 'Escape') select(null);
-        return;
-      }
-      const stepMm = e.shiftKey ? 5 : e.altKey ? 0.1 : 0.5;
-      const map: Record<string, [number, number]> = { ArrowLeft: [-stepMm, 0], ArrowRight: [stepMm, 0], ArrowUp: [0, -stepMm], ArrowDown: [0, stepMm] };
-      const mv = map[e.key];
-      if (mv) {
-        const c = clampMoveDelta(page, unionRect(movable.map(blockBounds)), mv[0], mv[1]);
-        moveBlocks(page, movable.map((b) => ({ block: b, dx: c.dx, dy: c.dy })), scope, `nudge:${movable.map((b) => b.id).join(',')}`);
-        e.preventDefault();
-      } else if (e.key === 'Delete' || e.key === 'Backspace') {
-        hideBlocks(page, movable, scope);
-        select(null);
-        e.preventDefault();
-      } else if (e.key === 'Escape') select(null);
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [movable, page, scope, select]);
 
   const addCustom = (kind: CustomBlock['kind']): void =>
     void addCustomBlock(page, kind, { text: t('insp.addText'), image: t('insp.addImage'), rect: t('insp.addRect'), lines: t('insp.addLines'), dots: t('insp.addDots') }, selection?.pageKey === page.key ? scope : 'type');

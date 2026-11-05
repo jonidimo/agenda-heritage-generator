@@ -18,6 +18,11 @@ export function isDesktopApp(userAgent: string): boolean {
   return /\bElectron\//.test(userAgent);
 }
 
+/** ¿Es un Mac? (Ahí el atajo principal es ⌘ y no Ctrl.) */
+export function isMacUserAgent(userAgent: string): boolean {
+  return detectPlatform(userAgent) === 'mac';
+}
+
 /** El sistema operativo del agente de usuario, o `null` si no es uno de escritorio (un teléfono, p. ej.). */
 export function detectPlatform(userAgent: string): DesktopPlatform | null {
   if (/Android|iPhone|iPad|iPod/i.test(userAgent)) return null;

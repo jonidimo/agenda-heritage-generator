@@ -13,6 +13,9 @@ import type { UiLang } from '../i18n/ui';
 export type View = 'page' | 'spread' | 'sheet' | 'book';
 export type Panel = 'sections' | 'style' | 'methods' | 'persona' | 'calendar' | 'assets' | 'print';
 
+/** Las pestañas del panel lateral, en el orden en que se muestran (y en el que las eligen Ctrl+1, Ctrl+2…). */
+export const PANEL_ORDER: readonly Panel[] = ['style', 'sections', 'methods', 'persona', 'calendar', 'assets', 'print'];
+
 /** Límites y paso del zoom del lienzo (el de la página, no el de la interfaz). */
 export const ZOOM = { min: 0.2, max: 6, step: 1.2 } as const;
 
@@ -77,6 +80,14 @@ interface StoreState {
   /** Diálogo «Acerca de Heritage Studio». */
   showAbout: boolean;
   setShowAbout(b: boolean): void;
+  /** Buscador (Ctrl+F / Ctrl+K) y diálogo de atajos de teclado (F1). */
+  searchOpen: boolean;
+  setSearchOpen(b: boolean): void;
+  showShortcuts: boolean;
+  setShowShortcuts(b: boolean): void;
+  /** Pedido de editar el texto de un elemento en su lugar (F2): la página que lo tiene lo atiende y lo limpia. */
+  textEditRequest: { pageKey: string; blockId: string } | null;
+  requestTextEdit(r: { pageKey: string; blockId: string } | null): void;
   sidebarOpen: boolean;
   guides: boolean;
   snap: boolean;
@@ -248,6 +259,9 @@ export const useStore = create<StoreState>((set, get) => ({
   showLibrary: false,
   showSaveTemplate: false,
   showAbout: false,
+  searchOpen: false,
+  showShortcuts: false,
+  textEditRequest: null,
   sidebarOpen: true,
   guides: false,
   snap: true,
@@ -337,6 +351,9 @@ export const useStore = create<StoreState>((set, get) => ({
 
   setView: (view) => set({ view, selection: null, selectedIds: [] }),
   setPanel: (panel) => set({ panel }),
+  setSearchOpen: (searchOpen) => set({ searchOpen }),
+  setShowShortcuts: (showShortcuts) => set({ showShortcuts }),
+  requestTextEdit: (textEditRequest) => set({ textEditRequest }),
   goToPage: (i) => set({ pageIndex: Math.max(0, i), selection: null, selectedIds: [] }),
   setSheetSide: (sheetSide) => set({ sheetSide }),
   setZoom: (zoom, fit = false) => set({ zoom: clampTo(zoom, ZOOM.min, ZOOM.max), fit }),

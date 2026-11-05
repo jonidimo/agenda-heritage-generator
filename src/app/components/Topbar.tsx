@@ -1,7 +1,9 @@
-import { Archive, ArrowLeft, ArrowRight, BookOpen, Search, Columns2, File, FileDown, FolderOpen, Grid3x3, Info, LayoutTemplate, Link2, Magnet, Maximize, PanelLeft, Printer, Redo2, Ruler, Save, Undo2, Upload, ZoomIn, ZoomOut } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { Archive, ArrowLeft, Eye, Keyboard, Pencil, ArrowRight, BookOpen, Search, Columns2, File, FileDown, FolderOpen, Grid3x3, Info, LayoutTemplate, Link2, Magnet, Maximize, PanelLeft, Printer, Redo2, Ruler, Save, Undo2, Upload, ZoomIn, ZoomOut } from 'lucide-react';
+import { useEffect } from 'react';
 import { backupAll, openAnyFile, saveCurrent } from '../state/fileActions';
-import { openMenuAt } from './ContextMenu';
+import { openMenuAt, type MenuItem } from './ContextMenu';
+import { editMenu, viewMenu } from './topMenus';
+import { shortcutHint } from '../state/shortcutHints';
 import { UI_LANG_NAMES, UI_LANGS, useT } from '../i18n/ui';
 import { UI_SCALE } from '../state/prefs';
 import { useStore, ZOOM, type View } from '../state/store';
@@ -9,6 +11,25 @@ import { supportsUiScale } from '../state/uiScale';
 import { IconButton, Segmented } from './ui';
 import { goBack, goForward } from '../state/navigation';
 import { SearchPalette } from './SearchPalette';
+
+/** Un botón de la barra que abre un menú justo debajo; el menú se arma al abrirlo, con lo que haya en ese momento. */
+function MenuButton({ label, icon, build }: { label: string; icon: React.ReactNode; build: () => MenuItem[] }) {
+  return (
+    <button
+      type="button"
+      aria-haspopup="menu"
+      title={label}
+      className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-[12.5px] font-semibold hover:bg-black/5"
+      onClick={(e) => {
+        const r = e.currentTarget.getBoundingClientRect();
+        openMenuAt({ clientX: r.left, clientY: r.bottom + 4, preventDefault: () => undefined }, build());
+      }}
+    >
+      {icon}
+      <span className="hidden xl:inline">{label}</span>
+    </button>
+  );
+}
 
 export function Topbar() {
   const t = useT();
@@ -28,6 +49,7 @@ export function Topbar() {
   const uiScale = useStore((s) => s.uiScale);
   const setUiScale = useStore((s) => s.setUiScale);
   const autoReveal = useStore((s) => s.autoReveal);
+  const setShowShortcuts = useStore((s) => s.setShowShortcuts);
   const setAutoReveal = useStore((s) => s.setAutoReveal);
   const setShowAbout = useStore((s) => s.setShowAbout);
   const setShowLibrary = useStore((s) => s.setShowLibrary);
@@ -40,43 +62,20 @@ export function Topbar() {
   const snap = useStore((s) => s.snap);
   const toggleSnap = useStore((s) => s.toggleSnap);
   const showLinks = useStore((s) => s.showLinks);
-  const [searching, setSearching] = useState(false);
-  // Buscador: Ctrl+K (o ⌘K), o «/» si no se está escribiendo en un campo.
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent): void => {
-      const tag = (e.target as HTMLElement | null)?.tagName;
-      const typing = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (e.target as HTMLElement | null)?.isContentEditable;
-      if (((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') || (e.key === '/' && !typing)) {
-        setSearching(true);
-        e.preventDefault();
-      }
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, []);
+  const searching = useStore((s) => s.searchOpen);
+  const setSearching = useStore((s) => s.setSearchOpen);
   const canBack = useStore((s) => s.navBack.length > 0);
   const canForward = useStore((s) => s.navForward.length > 0);
-  // Alt+← / Alt+→ y los botones laterales del mouse, como en un navegador.
+  // Los botones laterales del mouse, como en un navegador (Alt+← y Alt+→ están en el registro de atajos).
   useEffect(() => {
-    const onKey = (e: KeyboardEvent): void => {
-      if (!e.altKey || e.ctrlKey || e.metaKey) return;
-      if (e.key === 'ArrowLeft') goBack();
-      else if (e.key === 'ArrowRight') goForward();
-      else return;
-      e.preventDefault();
-    };
     const onMouse = (e: MouseEvent): void => {
       if (e.button === 3) goBack();
       else if (e.button === 4) goForward();
       else return;
       e.preventDefault();
     };
-    window.addEventListener('keydown', onKey);
     window.addEventListener('mouseup', onMouse);
-    return () => {
-      window.removeEventListener('keydown', onKey);
-      window.removeEventListener('mouseup', onMouse);
-    };
+    return () => window.removeEventListener('mouseup', onMouse);
   }, []);
   const setShowLinks = useStore((s) => s.setShowLinks);
 
@@ -89,17 +88,10 @@ export function Topbar() {
         <FolderOpen size={16} />
         <span className="hidden xl:inline">{t('top.library')}</span>
       </button>
-      <button
-        type="button"
-        aria-haspopup="menu"
-        title={t('file.menu')}
-        className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-[12.5px] font-semibold hover:bg-black/5"
-        onClick={(e) => {
-          const r = e.currentTarget.getBoundingClientRect();
-          openMenuAt({ clientX: r.left, clientY: r.bottom + 4, preventDefault: () => undefined }, [
-            { label: t('file.save'), icon: <Save size={14} />, disabled: !design, onSelect: () => void saveCurrent(false) },
-            { label: t('file.saveAs'), icon: <FileDown size={14} />, disabled: !design, onSelect: () => void saveCurrent(true) },
-            { label: t('file.open'), icon: <Upload size={14} />, onSelect: () => void openAnyFile() },
+      <MenuButton label={t('file.menu')} icon={<Save size={16} />} build={() => [
+            { label: t('file.save'), icon: <Save size={14} />, hint: shortcutHint('file.save', t), disabled: !design, onSelect: () => void saveCurrent(false) },
+            { label: t('file.saveAs'), icon: <FileDown size={14} />, hint: shortcutHint('file.saveAs', t), disabled: !design, onSelect: () => void saveCurrent(true) },
+            { label: t('file.open'), icon: <Upload size={14} />, hint: shortcutHint('file.open', t), onSelect: () => void openAnyFile() },
             { separator: true },
             { label: t('file.saveTemplate'), icon: <LayoutTemplate size={14} />, disabled: !design, onSelect: () => setShowSaveTemplate(true) },
             { label: t('file.backup'), icon: <Archive size={14} />, onSelect: () => void backupAll() },
@@ -112,13 +104,11 @@ export function Topbar() {
               : []),
             { separator: true },
             { label: t('file.autoReveal'), checked: autoReveal, onSelect: () => setAutoReveal(!autoReveal) },
+            { label: t('file.shortcuts'), icon: <Keyboard size={14} />, hint: shortcutHint('help.shortcuts', t), onSelect: () => setShowShortcuts(true) },
             { label: t('file.about'), icon: <Info size={14} />, onSelect: () => setShowAbout(true) },
-          ]);
-        }}
-      >
-        <Save size={16} />
-        <span className="hidden xl:inline">{t('file.menu')}</span>
-      </button>
+          ]} />
+      <MenuButton label={t('menu.edit')} icon={<Pencil size={16} />} build={() => editMenu(t)} />
+      <MenuButton label={t('menu.view')} icon={<Eye size={16} />} build={() => viewMenu(t)} />
       {design && (
         <input
           aria-label={t('top.name')}
@@ -127,7 +117,7 @@ export function Topbar() {
           onChange={(e) => update((d) => void (d.name = e.target.value), 'name')}
         />
       )}
-      <IconButton label={t('search.open')} onClick={() => setSearching(true)}>
+      <IconButton label={`${t('search.open')} (${shortcutHint('search.open', t)})`} onClick={() => setSearching(true)}>
         <Search size={17} />
       </IconButton>
       {searching && <SearchPalette onClose={() => setSearching(false)} />}
@@ -140,10 +130,10 @@ export function Topbar() {
         </IconButton>
       </div>
       <div className="flex items-center">
-        <IconButton label={t('top.undo')} onClick={undo} disabled={!canUndo}>
+        <IconButton label={`${t('top.undo')} (${shortcutHint('edit.undo', t)})`} onClick={undo} disabled={!canUndo}>
           <Undo2 size={17} />
         </IconButton>
-        <IconButton label={t('top.redo')} onClick={redo} disabled={!canRedo}>
+        <IconButton label={`${t('top.redo')} (${shortcutHint('edit.redo', t)})`} onClick={redo} disabled={!canRedo}>
           <Redo2 size={17} />
         </IconButton>
       </div>

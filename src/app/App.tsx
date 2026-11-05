@@ -4,9 +4,9 @@ import { useCallback, useEffect, useState } from 'react';
 import type { AgendaDocument } from '@core/document';
 import { Canvas } from './components/canvas/Canvas';
 import { ContextMenuHost } from './components/ContextMenu';
-import { AboutDialog, LibraryDialog, SaveTemplateDialog, WelcomeDialog } from './components/Dialogs';
+import { AboutDialog, LibraryDialog, SaveTemplateDialog, ShortcutsDialog, WelcomeDialog } from './components/Dialogs';
 import { ErrorBoundary, ViewError } from './components/ErrorBoundary';
-import { openAnyFile, saveCurrent } from './state/fileActions';
+import { openAnyFile } from './state/fileActions';
 import { Inspector } from './components/Inspector';
 import { Navigator } from './components/Navigator';
 import { AssetsPanel } from './components/panels/AssetsPanel';
@@ -25,8 +25,9 @@ import { useDocument } from './state/doc';
 import { collectUnusedAssets, listDesigns, loadDesign } from './state/persist';
 import { resources } from './state/resources';
 import { installClipboard } from './state/clipboard';
+import { installShortcuts } from './state/shortcuts';
 import { PANEL_LIMITS } from './state/prefs';
-import { flushSave, useStore, ZOOM, type Panel } from './state/store';
+import { flushSave, useStore, type Panel } from './state/store';
 import { DESKTOP_BREAKPOINT, useUiLayout } from './state/uiScale';
 import { jumpToPage } from './state/navigation';
 
@@ -107,6 +108,7 @@ export function App() {
   const showLibrary = useStore((s) => s.showLibrary);
   const showSaveTemplate = useStore((s) => s.showSaveTemplate);
   const showAbout = useStore((s) => s.showAbout);
+  const showShortcuts = useStore((s) => s.showShortcuts);
   const setShowWelcome = useStore((s) => s.setShowWelcome);
   const sidebarOpen = useStore((s) => s.sidebarOpen);
   const setSidebarOpen = useStore((s) => s.setSidebarOpen);
@@ -235,48 +237,8 @@ export function App() {
   // Sin fuentes no hay páginas: en lugar de «Cargando…» para siempre, el motivo y un botón para reintentar.
   const noFonts = ready && !doc && resources.fonts.list().length === 0 && resources.errors.length > 0;
 
-  // Atajos globales: deshacer / rehacer.
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent): void => {
-      const tag = (e.target as HTMLElement | null)?.tagName;
-      if (tag === 'INPUT' || tag === 'TEXTAREA') return;
-      const mod = e.ctrlKey || e.metaKey;
-      if (mod && e.key.toLowerCase() === 'z') {
-        if (e.shiftKey) useStore.getState().redo();
-        else useStore.getState().undo();
-        e.preventDefault();
-      } else if (mod && e.key.toLowerCase() === 'y') {
-        useStore.getState().redo();
-        e.preventDefault();
-      } else if (mod && e.key.toLowerCase() === 's') {
-        // Ctrl+S guarda en el archivo elegido (Ctrl+Mayús+S: «Guardar como»).
-        void saveCurrent(e.shiftKey);
-        e.preventDefault();
-      } else if (mod && e.key.toLowerCase() === 'o') {
-        void openAnyFile();
-        e.preventDefault();
-      }
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, []);
-
-  // Zoom del lienzo con Ctrl/⌘ y +, − o 0 (también dentro de un campo de texto: ahí no significan nada).
-  // El navegador y el menú de la aplicación de escritorio no los usan para otra cosa.
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent): void => {
-      // Alt con Ctrl es AltGr en varias distribuciones de teclado: se usa para escribir caracteres.
-      if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
-      const { zoomBy, zoomFit } = useStore.getState();
-      if (e.key === '+' || e.key === '=') zoomBy(ZOOM.step);
-      else if (e.key === '-' || e.key === '_') zoomBy(1 / ZOOM.step);
-      else if (e.key === '0') zoomFit();
-      else return;
-      e.preventDefault();
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, []);
+  // Todos los atajos de teclado, en un solo oyente (ver `state/shortcuts.ts`).
+  useEffect(() => installShortcuts(), []);
 
   return (
     <div className="flex h-full flex-col">
@@ -393,6 +355,7 @@ export function App() {
       {showLibrary && <LibraryDialog />}
       {showSaveTemplate && <SaveTemplateDialog />}
       {showAbout && <AboutDialog />}
+      {showShortcuts && <ShortcutsDialog />}
     </div>
   );
 }

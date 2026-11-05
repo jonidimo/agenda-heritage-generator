@@ -1326,3 +1326,70 @@ test.describe('copiar elementos del programa', () => {
     await expect(page.locator('[data-block="week.minical"]').first()).toBeVisible();
   });
 });
+
+test.describe('atajos de teclado', () => {
+  test('Ctrl+F busca, Ctrl+3 cambia de pestaña, Inicio y Fin cambian de página', async ({ page }) => {
+    await openQuiet(page);
+    await page.keyboard.press('Control+f');
+    await expect(page.getByRole('dialog').or(page.getByRole('combobox')).first()).toBeVisible();
+    await page.keyboard.press('Escape');
+
+    await page.keyboard.press('Control+3');
+    await expect(page.locator('[data-sidebar="methods"]')).toBeVisible();
+    await page.keyboard.press('Control+7');
+    await expect(page.locator('[data-sidebar="print"]')).toBeVisible();
+
+    const index = () => page.evaluate<number>('globalThis.__agenda.getState().pageIndex');
+    await page.keyboard.press('End');
+    await expect.poll(index).toBeGreaterThan(100);
+    await page.keyboard.press('Home');
+    await expect.poll(index).toBe(0);
+    await page.keyboard.press('PageDown');
+    await expect.poll(index).toBe(1);
+  });
+
+  test('F1 abre la lista de atajos, que sale del registro, y Esc la cierra', async ({ page }) => {
+    await openQuiet(page);
+    await page.keyboard.press('F1');
+    const dialog = page.getByRole('dialog', { name: 'Atajos de teclado' });
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByText('Buscar en la interfaz')).toBeVisible();
+    await expect(dialog.getByText('Ctrl+F', { exact: false }).first()).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(dialog).toHaveCount(0);
+  });
+
+  test('Ctrl+A elige todos los elementos de la página, Esc los suelta y el menú Edición muestra las teclas', async ({ page }) => {
+    await openQuiet(page);
+    await toWeek(page);
+    await settled(page);
+    await page.keyboard.press('Control+a');
+    await expect.poll(() => page.evaluate<number>('globalThis.__agenda.getState().selectedIds.length')).toBeGreaterThan(3);
+    await page.keyboard.press('Escape');
+    await expect.poll(() => page.evaluate<number>('globalThis.__agenda.getState().selectedIds.length')).toBe(0);
+
+    await page.getByRole('button', { name: 'Edición', exact: true }).click();
+    await expect(page.getByRole('menuitem', { name: /Deshacer/ })).toContainText('Ctrl+Z');
+    await expect(page.getByRole('menuitem', { name: /Elegir todos los elementos/ })).toContainText('Ctrl+A');
+  });
+
+  test('con un elemento propio elegido, las flechas lo mueven y Enter edita su texto; sin nada elegido las flechas pasan de página', async ({ page }) => {
+    await openQuiet(page);
+    await page.evaluate(`globalThis.__agenda.getState().update((d) => { d.customBlocks.push({ id: 'kb', pageType: 'titlePage', pageKey: null, kind: 'text', x: 20, y: 20, w: 40, h: 10, mirror: false, props: { text: 'Hola' } }); }, 'e2e')`);
+    await expect(page.locator('[data-block="custom.kb"]').first()).toBeVisible();
+    await selectBlock(page, 'custom.kb');
+    const x = () => page.evaluate<number>(`globalThis.__agenda.getState().design.customBlocks.find((c) => c.id === 'kb').x`);
+    const x0 = await x();
+    await page.keyboard.press('ArrowRight');
+    await expect.poll(x).toBeCloseTo(x0 + 0.5, 3);
+    await page.keyboard.press('Shift+ArrowRight');
+    await expect.poll(x).toBeCloseTo(x0 + 5.5, 3);
+    await page.keyboard.press('Enter');
+    await expect(page.locator('[data-text-editor]')).toBeFocused();
+    await page.keyboard.press('Escape');
+    await expect(page.locator('[data-text-editor]')).toHaveCount(0);
+    await page.keyboard.press('Escape');
+    await page.keyboard.press('ArrowRight');
+    await expect.poll(() => page.evaluate<number>('globalThis.__agenda.getState().pageIndex')).toBe(1);
+  });
+});
