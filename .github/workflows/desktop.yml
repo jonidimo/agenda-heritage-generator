@@ -38,11 +38,12 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # `app`: the unpacked app that electron-builder leaves next to the installers, started
-          # below with --mcp to prove that the MCP server works inside the package.
-          - { os: ubuntu-latest, name: linux, app: release/linux-unpacked/agenda-heritage-studio }
-          - { os: windows-latest, name: windows, app: 'release/win-unpacked/Heritage Studio.exe' }
-          - { os: macos-latest, name: macos, app: 'release/mac-arm64/Heritage Studio.app/Contents/MacOS/Heritage Studio' }
+          # `app`: the unpacked app that electron-builder leaves next to the installers, and
+          # `bundle`: the MCP server inside its package. Both are started below to prove that the
+          # server works from the package.
+          - { os: ubuntu-latest, name: linux, app: release/linux-unpacked/agenda-heritage-studio, bundle: release/linux-unpacked/resources/app.asar/dist-mcp/main.mjs }
+          - { os: windows-latest, name: windows, app: 'release/win-unpacked/Heritage Studio.exe', bundle: release/win-unpacked/resources/app.asar/dist-mcp/main.mjs }
+          - { os: macos-latest, name: macos, app: 'release/mac-arm64/Heritage Studio.app/Contents/MacOS/Heritage Studio', bundle: 'release/mac-arm64/Heritage Studio.app/Contents/Resources/app.asar/dist-mcp/main.mjs' }
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
     steps:
@@ -58,15 +59,21 @@ jobs:
       # Targets per OS are in electron-builder.yml. No certificates: Windows builds are unsigned
       # and macOS builds ad-hoc signed.
       - run: npx electron-builder --publish never
-      # The packaged app as an AI client launches it: no window, protocol-only stdout, fonts and
-      # holidays read from inside the package. --no-sandbox because CI runners restrict Chromium's
-      # sandbox; --ozone-platform=headless because there is no display server on Linux.
-      - name: MCP server works inside the package
+      # The packaged app as an AI client launches it. Windows cannot use --mcp (a graphical program
+      # gets no standard input there), so on every system the same executable is also run as plain
+      # Node (ELECTRON_RUN_AS_NODE), which is the form documented for Windows.
+      # --no-sandbox because CI runners restrict Chromium's sandbox; --ozone-platform=headless
+      # because there is no display server on Linux.
+      - name: MCP server works inside the package (--mcp)
+        if: matrix.name != 'windows'
         shell: bash
         run: |
           flags=(--no-sandbox)
           if [ "${{ matrix.name }}" = linux ]; then flags+=(--ozone-platform=headless); fi
           npx tsx scripts/mcp-smoke.ts -- "${{ matrix.app }}" "${flags[@]}" --mcp
+      - name: MCP server works inside the package (as Node)
+        shell: bash
+        run: npx tsx scripts/mcp-smoke.ts --env ELECTRON_RUN_AS_NODE=1 -- "${{ matrix.app }}" "${{ matrix.bundle }}"
       # The AppImage as documented for MCP: extracted once, then its AppRun is the command. (Its
       # --appimage-extract-and-run mode prints the extracted files on stdout, so it is not usable.)
       - name: MCP server works from the extracted AppImage

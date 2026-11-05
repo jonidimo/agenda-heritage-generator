@@ -13,20 +13,13 @@ jobs:
       - run: npm ci
       - run: npm run build:desktop
       - run: npx electron-builder --dir --publish never --win
-      - name: A) Electron de desarrollo como Node
-        continue-on-error: true
+      - name: Como Node (el paso que usará desktop.yml)
+        shell: bash
+        run: npx tsx scripts/mcp-smoke.ts --env ELECTRON_RUN_AS_NODE=1 -- "release/win-unpacked/Heritage Studio.exe" release/win-unpacked/resources/app.asar/dist-mcp/main.mjs
+      - name: --mcp en Windows da el mensaje claro
         shell: bash
         run: |
-          node node_modules/electron/install.js
-          ELECTRON=$(node -e "console.log(require('electron'))" | tail -1)
-          npx tsx scripts/mcp-smoke.ts --timeout 40 --env ELECTRON_RUN_AS_NODE=1 --env AGENDA_PUBLIC_DIR=dist -- "$ELECTRON" dist-mcp/main.mjs
-      - name: B) App empaquetada como Node (paquete dentro de app.asar)
-        continue-on-error: true
-        shell: bash
-        run: |
-          npx tsx scripts/mcp-smoke.ts --timeout 40 --env ELECTRON_RUN_AS_NODE=1 --env AGENDA_PUBLIC_DIR=release/win-unpacked/resources/app.asar/dist -- "release/win-unpacked/Heritage Studio.exe" release/win-unpacked/resources/app.asar/dist-mcp/main.mjs
-      - name: C) App empaquetada con --mcp (referencia, estricta)
-        continue-on-error: true
-        shell: bash
-        run: |
-          npx tsx scripts/mcp-smoke.ts --timeout 20 -- "release/win-unpacked/Heritage Studio.exe" --no-sandbox --mcp
+          set +e
+          out=$(npx tsx scripts/mcp-smoke.ts --timeout 15 -- "release/win-unpacked/Heritage Studio.exe" --no-sandbox --mcp 2>&1)
+          echo "$out"
+          echo "$out" | grep -q "ELECTRON_RUN_AS_NODE" && echo "MENSAJE_OK"
