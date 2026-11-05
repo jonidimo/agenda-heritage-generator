@@ -3,7 +3,7 @@
  * Linux sin pantalla hay que decir cómo hacerlo andar. Funciones puras, sin Electron.
  */
 import { describe, expect, it } from 'vitest';
-import { HEADLESS_FLAG, MCP_FLAG, MISSING_DISPLAY_MESSAGE, missingDisplay, wantsMcp } from '../electron/lib/args.mjs';
+import { HEADLESS_FLAG, MCP_FLAG, MISSING_DISPLAY_MESSAGE, missingDisplay, wantsMcp, windowsMcpMessage } from '../electron/lib/args.mjs';
 
 describe('wantsMcp', () => {
   it('detecta --mcp en la aplicación instalada y en `electron .`', () => {
@@ -43,5 +43,14 @@ describe('missingDisplay', () => {
   it('el mensaje dice qué agregar', () => {
     expect(MISSING_DISPLAY_MESSAGE).toContain(HEADLESS_FLAG);
     expect(MISSING_DISPLAY_MESSAGE).toContain(MCP_FLAG);
+  });
+});
+
+describe('windowsMcpMessage', () => {
+  it('da la configuración que sí funciona, con las rutas del programa', () => {
+    const message = windowsMcpMessage('C:\\Apps\\Heritage Studio.exe', 'C:\\Apps\\resources\\app.asar\\dist-mcp\\main.mjs');
+    expect(message).toContain('ELECTRON_RUN_AS_NODE');
+    expect(message).toContain(JSON.stringify('C:\\Apps\\Heritage Studio.exe'));
+    expect(message).toContain(JSON.stringify('C:\\Apps\\resources\\app.asar\\dist-mcp\\main.mjs'));
   });
 });

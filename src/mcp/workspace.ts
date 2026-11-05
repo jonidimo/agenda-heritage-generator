@@ -14,7 +14,9 @@ export class Workspace {
   readonly root: string;
 
   constructor(root: string) {
-    this.root = realpathSync(resolve(root));
+    // La versión nativa: en Windows es la única que expande los nombres cortos (`RUNNER~1`) igual
+    // que `realpath` de las lecturas; con la de JavaScript la raíz y las rutas no coincidirían.
+    this.root = realpathSync.native(resolve(root));
   }
 
   private inside(full: string): boolean {

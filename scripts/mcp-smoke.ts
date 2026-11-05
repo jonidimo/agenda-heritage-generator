@@ -84,7 +84,11 @@ export async function smokeMcp(opts: SmokeOptions): Promise<SmokeReport> {
     for (let nl = buffer.indexOf('\n'); nl >= 0; nl = buffer.indexOf('\n')) {
       const line = buffer.slice(0, nl).replace(/\r$/, '');
       buffer = buffer.slice(nl + 1);
-      if (line === '') continue;
+      // Ni siquiera una línea en blanco: el cliente intenta leerla como un mensaje.
+      if (line === '') {
+        problems.push('La salida estándar tiene una línea en blanco.');
+        continue;
+      }
       report.stdoutLines++;
       let message: Json;
       try {

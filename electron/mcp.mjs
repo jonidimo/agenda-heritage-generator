@@ -18,7 +18,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { app } from 'electron';
-import { MISSING_DISPLAY_MESSAGE, missingDisplay } from './lib/args.mjs';
+import { MISSING_DISPLAY_MESSAGE, missingDisplay, windowsMcpMessage } from './lib/args.mjs';
 
 /** Environment variable that points the server to its fonts, holidays and images. */
 const PUBLIC_DIR_ENV = 'AGENDA_PUBLIC_DIR';
@@ -83,6 +83,8 @@ process.on('unhandledRejection', fail);
 if (missingDisplay(process.argv, process.env, process.platform)) console.error(MISSING_DISPLAY_MESSAGE);
 
 try {
+  const bundle = path.join(app.getAppPath(), 'dist-mcp', 'main.mjs');
+  if (process.platform === 'win32') throw new Error(windowsMcpMessage(process.execPath, bundle));
   // An installed app is started by the AI client from a folder nobody chose (the install folder,
   // System32…): the working folder has to be named, or planners would be written there.
   if (app.isPackaged && !process.env.AGENDA_MCP_ROOT) {
@@ -91,7 +93,7 @@ try {
   const appPath = app.getAppPath();
   process.env[PUBLIC_DIR_ENV] ||= path.join(appPath, 'dist');
   // The server reads the working folder from AGENDA_MCP_ROOT, or else from where it was launched.
-  await import(pathToFileURL(path.join(appPath, 'dist-mcp', 'main.mjs')).href);
+  await import(pathToFileURL(bundle).href);
   finish(0);
 } catch (err) {
   fail(err);

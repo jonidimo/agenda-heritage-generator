@@ -116,7 +116,7 @@ way yourself:
 The same program is the **MCP server** that lets Claude Desktop, Claude Code or any MCP
 client create and edit planners, look at their pages and export the PDF (see [the
 guide](llm-templates.md)). Nothing else to install: Node.js and the repository are not
-needed. The client starts the app with `--mcp`, which opens no window.
+needed. The client starts the app with `--mcp` (on Windows, see below), which opens no window.
 
 Set `AGENDA_MCP_ROOT` (required in the installed app) to the folder where the model may read
 and write planners; the server touches nothing outside it. In Claude Desktop (`claude_desktop_config.json`, under
@@ -126,7 +126,7 @@ and write planners; the server touches nothing outside it. In Claude Desktop (`c
 | --- | --- |
 | Linux, AppImage | The `AppRun` of the extracted AppImage, e.g. `/home/me/Apps/squashfs-root/AppRun` (see below) |
 | Linux, `.deb` | `/opt/Heritage Studio/agenda-heritage-studio` |
-| Windows (installed) | The `Heritage Studio.exe` in the folder you installed it in (backslashes doubled, as JSON needs), e.g. `C:\\Users\\me\\AppData\\Local\\Programs\\Heritage Studio\\Heritage Studio.exe` |
+| Windows (installed) | The `Heritage Studio.exe` in the folder you installed it in, with a different configuration (see **Windows** below) |
 | macOS | `/Applications/Heritage Studio.app/Contents/MacOS/Heritage Studio` |
 
 ```json
@@ -141,13 +141,34 @@ and write planners; the server touches nothing outside it. In Claude Desktop (`c
 }
 ```
 
-On Windows and macOS the arguments are just `["--mcp"]`. On Linux keep
+On macOS the arguments are just `["--mcp"]`. On Linux keep
 `--ozone-platform=headless`: Chromium needs a display server to start, and clients often
 start the server without one; this option makes it unnecessary. For Claude Code:
 
 ```sh
 claude mcp add agenda --env AGENDA_MCP_ROOT="$HOME/Planners" -- "/opt/Heritage Studio/agenda-heritage-studio" --ozone-platform=headless --mcp
 ```
+
+**Windows:** a graphical program receives nothing on standard input there, so `--mcp` cannot
+work (the app says so and exits). Run the same program as plain Node instead, with the server
+bundle inside the app as its argument and `ELECTRON_RUN_AS_NODE` set. Use the installed app (the
+portable `.exe` unpacks itself on every start). Backslashes are doubled, as JSON needs:
+
+```json
+{
+  "mcpServers": {
+    "agenda": {
+      "command": "C:\\Users\\me\\AppData\\Local\\Programs\\Heritage Studio\\Heritage Studio.exe",
+      "args": ["C:\\Users\\me\\AppData\\Local\\Programs\\Heritage Studio\\resources\\app.asar\\dist-mcp\\main.mjs"],
+      "env": { "ELECTRON_RUN_AS_NODE": "1", "AGENDA_MCP_ROOT": "C:\\Users\\me\\Planners" }
+    }
+  }
+}
+```
+
+This form works on every system and needs no display server, so it is also an option on Linux
+and macOS (`…/resources/app.asar/dist-mcp/main.mjs`; on macOS inside
+`Heritage Studio.app/Contents/Resources`).
 
 **AppImage:** extract it once, in the folder where you keep it, and point the client to the
 extracted `AppRun`:
