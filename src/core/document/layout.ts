@@ -493,6 +493,12 @@ export function layoutPage(
       if (o.deform) b.deform = true;
       if (o.opacity < 1) b.opacity = o.opacity;
     }
+    // Capa, nombre y fusión propios (valen también para los elementos que no se mueven ni se escalan).
+    if (o) {
+      if (o.layer !== null) b.layer = o.layer;
+      if (o.label) b.label = o.label;
+      if (o.blend !== 'normal') b.blend = o.blend;
+    }
     blocks.push(b);
   }
   blocks.sort((a, b) => a.layer - b.layer);
@@ -559,8 +565,8 @@ export function verifyPage(doc: Pick<DocContext, 'design' | 'binding' | 'fonts' 
 /** Aplana una página en primitivas (bloques ordenados con sus transformaciones). */
 export function pagePrims(page: PageModel): Prim[] {
   return page.blocks.map((b) => {
-    if (!b.m && b.opacity === undefined) return { t: 'group', children: b.prims } satisfies Prim;
-    return { t: 'group', children: b.prims, ...(b.m ? { m: b.m } : {}), ...(b.opacity !== undefined ? { opacity: b.opacity } : {}) } satisfies Prim;
+    if (!b.m && b.opacity === undefined && b.blend === undefined) return { t: 'group', children: b.prims } satisfies Prim;
+    return { t: 'group', children: b.prims, ...(b.m ? { m: b.m } : {}), ...(b.opacity !== undefined ? { opacity: b.opacity } : {}), ...(b.blend ? { blend: b.blend } : {}) } satisfies Prim;
   });
 }
 

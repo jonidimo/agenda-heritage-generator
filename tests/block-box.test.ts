@@ -13,12 +13,13 @@ import { adjustBox, axisScales, deformScales, naturalBox, SCALE_LIMITS, storeAdj
 import { deformable, reflowable } from '../src/core/layout/handles';
 import { boxMap, stretchPrims, stretchRect } from '../src/core/layout/stretch';
 import { openDocument } from './helpers/node-env';
+import { ov } from './helpers/overrides';
 
 const base = (): Design => parseDesign(createDesign('heritage-norma', { year: 2027, locale: 'es-AR', country: 'AR' }));
 
 function withOverride(d: Design, pageType: string, blockId: string, patch: Partial<Design['overrides'][number]>): Design {
   const next = structuredClone(d);
-  next.overrides.push({ pageType, pageKey: null, blockId, dx: 0, dy: 0, dw: 0, dh: 0, scale: 1, scaleY: null, deform: false, rotation: 0, opacity: 1, hidden: false, ...patch });
+  next.overrides.push(ov({ pageType, blockId, ...patch }));
   return parseDesign(next);
 }
 

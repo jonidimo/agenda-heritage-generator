@@ -10,7 +10,9 @@ import { resolveStrings } from '@core/i18n';
 import { withPageStyle } from '@core/design/pageStyles';
 import type { Block, PageModel, TextSource } from '@core/layout/prims';
 import type { Rect } from '@core/util/geometry';
+import type { BlendMode } from '@core/design/blend';
 import type { HiddenElement } from '@core/document/hidden';
+import { moveInOrder, restack, type StackMove } from '@core/layout/stack';
 import { blockBounds, findOverride as appliedOverride } from '@core/document/layout';
 import { deformable } from '@core/layout/handles';
 import { axisScales, deformScales, MIN_BOX, naturalBox, storeAdjust, visualToBox, type BoxAdjust } from '@core/layout/box';
@@ -61,6 +63,9 @@ function upsertOverride(d: Draft<Design>, page: PageModel, blockId: string, scop
       rotation: base?.rotation ?? 0,
       opacity: base?.opacity ?? 1,
       hidden: base?.hidden ?? false,
+      layer: base?.layer ?? null,
+      label: base?.label ?? null,
+      blend: base?.blend ?? 'normal',
     });
     o = d.overrides[d.overrides.length - 1]!;
   }
@@ -545,9 +550,46 @@ export function hideBlocks(page: PageModel, blocks: Block[], scope: Scope): void
   });
 }
 
+/* ---------- Capas ---------- */
+
+/** Receta que mueve un elemento en el apilado de la página (o `null` si ya está en el extremo). */
+export function stackRecipe(page: PageModel, id: string, move: StackMove, scope: Scope): Recipe | null {
+  const order = page.blocks.map((b) => ({ id: b.id, layer: b.layer, seq: b.seq ?? 0 }));
+  const changes = restack(moveInOrder(order, id, move));
+  if (changes.size === 0) return null;
+  const sc = effectiveScope(page, scope);
+  const mirrored = typeMirrored(page);
+  return (d) => {
+    for (const [blockId, layer] of changes) upsertOverride(d, page, blockId, sc, (o) => void (o.layer = layer), mirrored);
+  };
+}
+
+export function moveInStack(page: PageModel, id: string, move: StackMove, scope: Scope): void {
+  const recipe = stackRecipe(page, id, move, scope);
+  if (recipe) useStore.getState().update(recipe);
+}
+
+/** Vuelve al orden de apilado que da la sección: quita las capas propias de esta página (o de su tipo). */
+export function resetStack(page: PageModel, scope: Scope): void {
+  const key = effectiveScope(page, scope) === 'page' ? page.key : null;
+  useStore.getState().update((d) => {
+    for (const o of d.overrides) if (o.pageType === page.type && o.pageKey === key) o.layer = null;
+    d.overrides = d.overrides.filter((o) => !isNeutralOverride(o));
+  });
+}
+
+/** Nombre propio de un elemento (vacío: vuelve el de la sección). */
+export function renameBlock(page: PageModel, id: string, scope: Scope, name: string): void {
+  patchOverride(page, id, scope, { label: name.trim() === '' ? null : name.trim().slice(0, 120) }, `label:${id}`);
+}
+
+export function setBlend(page: PageModel, id: string, scope: Scope, blend: BlendMode): void {
+  patchOverride(page, id, scope, { blend }, `blend:${id}`);
+}
+
 /** ¿Un ajuste sin ningún cambio (solo estaba para ocultar)? */
 function isNeutralOverride(o: BlockOverride): boolean {
-  return o.dx === 0 && o.dy === 0 && o.dw === 0 && o.dh === 0 && o.scale === 1 && o.scaleY === null && !o.deform && o.rotation === 0 && o.opacity === 1;
+  return o.dx === 0 && o.dy === 0 && o.dw === 0 && o.dh === 0 && o.scale === 1 && o.scaleY === null && !o.deform && o.rotation === 0 && o.opacity === 1 && o.layer === null && o.label === null && o.blend === 'normal';
 }
 
 /**

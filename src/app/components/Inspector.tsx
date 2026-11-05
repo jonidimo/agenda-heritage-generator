@@ -33,6 +33,7 @@ import {
 } from 'lucide-react';
 import { pageLinks, safeUrl } from '@core/document/links';
 import { ElementFields, ELEMENT_ICONS, type MonthChoice } from './ElementFields';
+import { LayersPanel, StackFields } from './LayersPanel';
 import { ELEMENT_KINDS, ELEMENT_LABELS, elementProps, elementSize, isElementKind, type ElementKind } from '../state/elements';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { blockLabel, warningText } from '../i18n/messages';
@@ -91,6 +92,7 @@ export function Inspector({ doc }: { doc: AgendaDocument }) {
   const page: PageModel = doc.page(selPageIndex >= 0 ? selPageIndex : pageIndex);
   const block = selection ? page.blocks.find((b) => b.id === selection.blockId) : undefined;
   const group = selection ? page.blocks.filter((b) => selectedIds.includes(b.id)) : [];
+  const [tab, setTab] = useState<'element' | 'layers'>('element');
 
   // Un elemento que solo tiene una clase de línea (un filete, un ornamento): si el panel de Estilo está
   // abierto, se desplaza solo al estilo de esa línea, para no buscarlo (sin quitarle el foco al lienzo).
@@ -115,9 +117,34 @@ export function Inspector({ doc }: { doc: AgendaDocument }) {
     });
 
   const sideLabel = page.side === 'recto' ? t('insp.recto') : t('insp.verso');
+  const header = (
+    <>
+      <div className="border-b border-line px-3 py-2 text-[11.5px] text-ink-soft">{t('insp.page', { n: page.index + 1, type: sectionName(t, page.type), side: sideLabel })}</div>
+      <div className="border-b border-line px-3 py-1.5">
+        <Segmented
+          value={tab}
+          onChange={setTab}
+          options={[
+            { value: 'element', label: t('insp.tab.element') },
+            { value: 'layers', label: t('insp.tab.layers') },
+          ]}
+        />
+      </div>
+    </>
+  );
+  if (tab === 'layers') {
+    return (
+      <div className="flex h-full flex-col" data-inspector="">
+        {header}
+        <div className="scroll-thin min-h-0 flex-1 overflow-y-auto px-3 py-2">
+          <LayersPanel doc={doc} page={page} />
+        </div>
+      </div>
+    );
+  }
   return (
     <div className="flex h-full flex-col" data-inspector="">
-      <div className="border-b border-line px-3 py-2 text-[11.5px] text-ink-soft">{t('insp.page', { n: page.index + 1, type: sectionName(t, page.type), side: sideLabel })}</div>
+      {header}
       <div className="scroll-thin min-h-0 flex-1 overflow-y-auto px-3 py-2">
         <h3 className="mb-1 text-[11px] font-extrabold tracking-[0.08em] uppercase">{t('insp.title')}</h3>
         {!block && <p className="text-[12px] leading-snug text-ink-soft">{t('insp.none')}</p>}
@@ -135,6 +162,7 @@ export function Inspector({ doc }: { doc: AgendaDocument }) {
                 <BlockStyleFields page={page} block={block} scope={scope} />
               </>
             )}
+            {block.editable && block.role !== 'watermark' && <StackFields page={page} block={block} scope={scope} />}
             <TextRoleLinks block={block} />
             <LineUseLinks block={block} />
             {block.editable && (

@@ -2,6 +2,7 @@
  * Dibujante Canvas 2D para miniaturas (rápido, sin DOM por glifo). Usa los
  * mismos contornos de glifos que la vista SVG y el PDF.
  */
+import { BLEND_NAMES } from '@core/design/blend';
 import type { Prim } from '@core/layout/prims';
 import type { FontRegistry } from '@core/text/fonts';
 import { glyphPath } from '@core/text/shape';
@@ -124,6 +125,7 @@ export function paintPrims(ctx: CanvasRenderingContext2D, prims: Prim[], fonts: 
         ctx.save();
         if (p.m) ctx.transform(p.m[0], p.m[1], p.m[2], p.m[3], p.m[4], p.m[5]);
         if (p.opacity !== undefined) ctx.globalAlpha *= p.opacity;
+        if (p.blend) ctx.globalCompositeOperation = BLEND_NAMES[p.blend].canvas;
         if (p.clip) {
           ctx.beginPath();
           ctx.rect(p.clip.x, p.clip.y, p.clip.w, p.clip.h);

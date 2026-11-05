@@ -1,5 +1,5 @@
 import clsx from 'clsx';
-import { BookMarked, CalendarDays, Image as ImageIcon, LayoutList, Palette, Printer, SlidersHorizontal, UserRound, X } from 'lucide-react';
+import { BookMarked, CalendarDays, Image as ImageIcon, LayoutList, Palette, Printer, SlidersHorizontal, Type, UserRound, X } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import type { AgendaDocument } from '@core/document';
 import { Canvas } from './components/canvas/Canvas';
@@ -10,6 +10,7 @@ import { installFileDrop, openAnyFile } from './state/fileActions';
 import { Inspector } from './components/Inspector';
 import { Navigator } from './components/Navigator';
 import { AssetsPanel } from './components/panels/AssetsPanel';
+import { FontsPanel } from './components/panels/FontsPanel';
 import { CalendarPanel } from './components/panels/CalendarPanel';
 import { MethodsPanel } from './components/panels/MethodsPanel';
 import { PersonaPanel } from './components/panels/PersonaPanel';
@@ -38,6 +39,7 @@ const TABS: Array<{ id: Panel; key: UiKey; icon: React.ReactNode }> = [
   { id: 'persona', key: 'tab.persona', icon: <UserRound size={16} /> },
   { id: 'calendar', key: 'tab.calendar', icon: <CalendarDays size={16} /> },
   { id: 'assets', key: 'tab.assets', icon: <ImageIcon size={16} /> },
+  { id: 'fonts', key: 'tab.fonts', icon: <Type size={16} /> },
   { id: 'print', key: 'tab.print', icon: <Printer size={16} /> },
 ];
 
@@ -71,6 +73,7 @@ function Sidebar() {
         {panel === 'persona' && <PersonaPanel />}
         {panel === 'calendar' && <CalendarPanel />}
         {panel === 'assets' && <AssetsPanel />}
+        {panel === 'fonts' && <FontsPanel />}
         {panel === 'print' && <PrintPanel />}
       </div>
     </aside>

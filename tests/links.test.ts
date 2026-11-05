@@ -11,6 +11,7 @@ import type { AgendaDocument } from '../src/core/document';
 import { blockBounds } from '../src/core/document/layout';
 import { safeUrl } from '../src/core/document/links';
 import { openDocument } from './helpers/node-env';
+import { ov } from './helpers/overrides';
 
 const norma = (patch: (d: Design) => void = () => {}): Design => {
   const d = parseDesign(createDesign('heritage-norma', { year: 2027, locale: 'es-AR', country: 'AR' }));
@@ -179,7 +180,7 @@ describe('enlaces automáticos', () => {
     const base = await openDocument(norma());
     const yp = base.doc.plan.pages.find((p) => p.type === 'yearOverview')!;
     const before = base.doc.links(yp.index).find((l) => l.blockId === 'month.3' && l.target.kind === 'date')!;
-    const moved = await openDocument(norma((d) => void d.overrides.push({ pageType: 'yearOverview', pageKey: null, blockId: 'month.3', dx: 4, dy: -3, dw: 0, dh: 0, scale: 1, scaleY: null, deform: false, rotation: 0, opacity: 1, hidden: false })));
+    const moved = await openDocument(norma((d) => void d.overrides.push(ov({ pageType: 'yearOverview', pageKey: null, blockId: 'month.3', dx: 4, dy: -3, dw: 0, dh: 0, scale: 1, scaleY: null, deform: false, rotation: 0, opacity: 1, hidden: false }))));
     const after = moved.doc.links(yp.index).find((l) => l.blockId === 'month.3' && l.target.kind === 'date')!;
     // El calendario cae a ambos lados: en esta página izquierda el ajuste «por tipo» se espeja en X.
     const block = (doc: AgendaDocument) => blockBounds(doc.page(yp.index).blocks.find((b) => b.id === 'month.3')!);
@@ -187,7 +188,7 @@ describe('enlaces automáticos', () => {
     expect(Math.abs(dx)).toBeCloseTo(4, 5);
     expect(after.rect.x - before.rect.x).toBeCloseTo(dx, 5);
     expect(after.rect.y - before.rect.y).toBeCloseTo(-3, 5);
-    const hidden = await openDocument(norma((d) => void d.overrides.push({ pageType: 'yearOverview', pageKey: null, blockId: 'month.3', dx: 0, dy: 0, dw: 0, dh: 0, scale: 1, scaleY: null, deform: false, rotation: 0, opacity: 1, hidden: true })));
+    const hidden = await openDocument(norma((d) => void d.overrides.push(ov({ pageType: 'yearOverview', pageKey: null, blockId: 'month.3', dx: 0, dy: 0, dw: 0, dh: 0, scale: 1, scaleY: null, deform: false, rotation: 0, opacity: 1, hidden: true }))));
     expect(hidden.doc.links(yp.index).some((l) => l.blockId === 'month.3')).toBe(false);
   });
 

@@ -6,6 +6,7 @@
  *
  * Funciona igual en Node (CLI), en el navegador y en un Web Worker.
  */
+import { BLEND_NAMES, type BlendMode } from '../design/blend';
 import type { FontRegistry } from '../text/fonts';
 import { compose, IDENTITY, matrixScale, PT_PER_MM, type Matrix } from '../util/geometry';
 import type { Fill, Prim, Stroke } from '../layout/prims';
@@ -32,7 +33,7 @@ interface PdfKitDoc {
   dash(len: number | number[], opts: { space?: number; phase?: number }): PdfKitDoc;
   miterLimit(m: number): PdfKitDoc;
   addContent(data: string): PdfKitDoc;
-  page: { xobjects: Record<string, unknown>; annotations: PdfRef[] };
+  page: { xobjects: Record<string, unknown>; ext_gstates: Record<string, unknown>; annotations: PdfRef[] };
   undash(): PdfKitDoc;
   fillColor(c: string, opacity?: number): PdfKitDoc;
   strokeColor(c: string, opacity?: number): PdfKitDoc;
@@ -139,6 +140,8 @@ class PdfPainter {
   private ctm: Matrix = IDENTITY;
   /** Opacidad acumulada de los grupos (pdfkit la reinicia en cada cambio de color). */
   private alpha = 1;
+  /** Estados gráficos de fusión de la página en curso (se declaran por página). */
+  private readonly blendStates = new Map<BlendMode, string>();
   drewSomething = false;
   readonly placements: PdfArtPlacement[] = [];
   pageIndex = 0;
@@ -159,6 +162,19 @@ class PdfPainter {
     this.ctm = prev?.ctm ?? IDENTITY;
     this.alpha = prev?.alpha ?? 1;
   }
+  /** Fusiona lo que se dibuje a continuación (hasta el `restore`) con lo de abajo: un estado gráfico `/BM` por modo y página. */
+  private setBlend(mode: BlendMode): void {
+    let name = this.blendStates.get(mode);
+    if (!name) {
+      const ref = this.doc.ref({ Type: 'ExtGState', BM: BLEND_NAMES[mode].pdf });
+      ref.end();
+      name = `Bm${this.blendStates.size + 1}`;
+      this.doc.page.ext_gstates[name] = ref;
+      this.blendStates.set(mode, name);
+    }
+    this.doc.addContent(`/${name} gs`);
+  }
+
   private transform(m: Matrix): void {
     this.doc.transform(m[0], m[1], m[2], m[3], m[4], m[5]);
     this.ctm = compose(this.ctm, m);
@@ -171,6 +187,7 @@ class PdfPainter {
     this.alpha = 1;
     this.ctmStack.length = 0;
     this.drewSomething = false;
+    this.blendStates.clear();
     this.save();
     this.transform([PT_PER_MM, 0, 0, PT_PER_MM, 0, 0]);
     // Igual que SVG (el PDF usa 10 por defecto).
@@ -305,13 +322,15 @@ class PdfPainter {
         break;
       }
       case 'group': {
-        const needsState = p.m || p.clip || (p.opacity !== undefined && p.opacity < 1);
+        const blend = p.blend && p.blend !== 'normal' ? p.blend : null;
+        const needsState = p.m || p.clip || blend || (p.opacity !== undefined && p.opacity < 1);
         if (!needsState) {
           this.draw(p.children);
           break;
         }
         this.save();
         if (p.m) this.transform(p.m);
+        if (blend) this.setBlend(blend);
         if (p.opacity !== undefined && p.opacity < 1) this.alpha *= p.opacity;
         if (p.clip) doc.rect(p.clip.x, p.clip.y, p.clip.w, p.clip.h).clip();
         this.draw(p.children);

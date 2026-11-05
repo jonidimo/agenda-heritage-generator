@@ -3,6 +3,7 @@
  * secciones y los dibujantes (SVG para la pantalla, Canvas para miniaturas,
  * pdfkit para el PDF): lo que se ve es exactamente lo que se imprime.
  */
+import type { BlendMode } from '../design/blend';
 import type { ShapedRun } from '../text/shape';
 import { transformRect, type Matrix, type Rect } from '../util/geometry';
 
@@ -117,6 +118,8 @@ export interface GroupPrim {
   m?: Matrix;
   opacity?: number;
   clip?: Rect;
+  /** Modo de fusión con lo que hay debajo (sin valor, normal). */
+  blend?: BlendMode;
 }
 
 /** Los usos de línea (en orden de aparición, sin repetir) de unas primitivas, entrando en los grupos. */
@@ -218,9 +221,12 @@ export interface Block {
   editable: boolean;
   /** Orden de apilado: 0 fondo, 10 contenido, 20 por encima (marcas de agua). */
   layer: number;
+  /** Lugar en que la sección lo agregó a la página: con la misma capa, el de menor lugar se dibuja debajo. */
+  seq?: number;
   /** Transformación final (ajustes del editor). */
   m?: Matrix;
   opacity?: number;
+  blend?: BlendMode;
   /** Enlaces automáticos dentro del bloque (días, meses, títulos…); se mueven con él. */
   links?: LinkArea[];
 }

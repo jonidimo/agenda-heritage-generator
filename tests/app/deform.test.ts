@@ -5,6 +5,7 @@ import { createDesign } from '../../src/core/design/defaults';
 import { parseDesign, type Design } from '../../src/core/design/schema';
 import type { Block, PageModel } from '../../src/core/layout/prims';
 import { resizeRecipeFor } from '../../src/app/state/actions';
+import { ov } from '../helpers/overrides';
 
 const design = (): Design => parseDesign(createDesign('heritage', { year: 2027, locale: 'es-AR', country: 'AR' }));
 
@@ -52,7 +53,7 @@ describe('permitir deformar', () => {
   });
 
   it('un ajuste de tamaño ya hecho se conserva al deformar (el ancho y el alto estirados ya están en el dibujo)', () => {
-    const d0 = apply(design(), (x) => void x.overrides.push({ pageType: 'weekRight', pageKey: null, blockId: 'week.notes', dx: 0, dy: 0, dw: 10, dh: 0, scale: 1, scaleY: null, deform: true, rotation: 0, opacity: 1, hidden: false }));
+    const d0 = apply(design(), (x) => void x.overrides.push(ov({ pageType: 'weekRight', pageKey: null, blockId: 'week.notes', dx: 0, dy: 0, dw: 10, dh: 0, scale: 1, scaleY: null, deform: true, rotation: 0, opacity: 1, hidden: false })));
     const b = block({ deform: true, bbox: { x: 20, y: 30, w: 80, h: 40 } });
     const o = only(apply(d0, resizeRecipeFor(page(), b, { x: 20, y: 30, w: 80, h: 80 }, 'type')));
     expect(o.dw).toBe(10);

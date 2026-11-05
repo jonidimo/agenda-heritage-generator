@@ -95,6 +95,15 @@ export class FontRegistry {
     return face;
   }
 
+  /** Quita las caras que vinieron de un archivo subido (`file`); devuelve cuántas quitó. */
+  unregisterFile(file: string): number {
+    let removed = 0;
+    for (const [key, face] of this.faces) {
+      if (face.file === file && this.faces.delete(key)) removed++;
+    }
+    return removed;
+  }
+
   has(spec: FontSpec): boolean {
     return this.faces.has(faceKey(spec));
   }

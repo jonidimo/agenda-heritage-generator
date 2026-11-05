@@ -8,8 +8,9 @@
  */
 import { blockBounds } from '@core/document/layout';
 import { unionRect } from '@core/layout/align';
+import type { StackMove } from '@core/layout/stack';
 import type { Block } from '@core/layout/prims';
-import { clampMoveDelta, hideBlocks, moveBlocks } from './actions';
+import { clampMoveDelta, hideBlocks, moveBlocks, moveInStack } from './actions';
 import { duplicateSelection } from './clipboard';
 import { openAnyFile, saveCurrent } from './fileActions';
 import { goBack, goForward } from './navigation';
@@ -141,6 +142,16 @@ function editText(e: KeyboardEvent): boolean {
   return true;
 }
 
+/** Mueve en el apilado el elemento elegido (con varios, el principal). */
+function restackSelection(move: StackMove): boolean {
+  const ctx = selectionContext();
+  const id = state().selection?.blockId;
+  const block = id ? ctx?.page.blocks.find((b) => b.id === id) : undefined;
+  if (!ctx || !block || !block.editable) return false;
+  moveInStack(ctx.page, block.id, move, state().scope);
+  return true;
+}
+
 /** Acerca la vista al elemento elegido (a todos los elegidos, si son varios). */
 function zoomToSelection(): boolean {
   const ctx = selectionContext();
@@ -202,6 +213,10 @@ export const SHORTCUTS: readonly Shortcut[] = [
     chords: ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].map((key) => ({ key, shift: 'any' as const, alt: 'any' as const })),
     run: nudge,
   },
+  { id: 'layer.up', group: 'edit', chords: [{ key: 'ArrowUp', mod: true }], run: () => restackSelection('up') },
+  { id: 'layer.down', group: 'edit', chords: [{ key: 'ArrowDown', mod: true }], run: () => restackSelection('down') },
+  { id: 'layer.front', group: 'edit', chords: [{ key: 'ArrowUp', mod: true, shift: true }], run: () => restackSelection('front') },
+  { id: 'layer.back', group: 'edit', chords: [{ key: 'ArrowDown', mod: true, shift: true }], run: () => restackSelection('back') },
   { id: 'edit.editText', group: 'edit', chords: [{ key: 'F2' }, { key: 'Enter' }], run: editText },
 
   { id: 'select.all', group: 'select', chords: [{ key: 'a', mod: true }], run: selectAll },

@@ -3,25 +3,13 @@ import { produce } from 'immer';
 import { describe, expect, it } from 'vitest';
 import { showHiddenRecipe } from '../../src/app/state/actions';
 import { createDesign } from '../../src/core/design/defaults';
-import { parseDesign, WatermarkZ, type BlockOverride, type Design } from '../../src/core/design/schema';
+import { BlockOverrideZ, parseDesign, WatermarkZ, type BlockOverride, type Design } from '../../src/core/design/schema';
 import { openDocument } from '../helpers/node-env';
 
 const base = (): Design => parseDesign(createDesign('heritage-norma', { year: 2027, locale: 'es-AR', country: 'AR' }));
 
-const override = (patch: Partial<BlockOverride> & Pick<BlockOverride, 'pageType' | 'blockId'>): BlockOverride => ({
-  pageKey: null,
-  dx: 0,
-  dy: 0,
-  dw: 0,
-  dh: 0,
-  scale: 1,
-  scaleY: null,
-  deform: false,
-  rotation: 0,
-  opacity: 1,
-  hidden: false,
-  ...patch,
-});
+/** Un ajuste con todos sus valores por defecto (así un campo nuevo del esquema no rompe esta prueba). */
+const override = (patch: Partial<BlockOverride> & Pick<BlockOverride, 'pageType' | 'blockId'>): BlockOverride => BlockOverrideZ.parse(patch);
 
 async function firstMonthPage(design: Design) {
   const { doc } = await openDocument(design);

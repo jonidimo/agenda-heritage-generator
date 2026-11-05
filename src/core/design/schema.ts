@@ -6,6 +6,7 @@
 import { z } from 'zod';
 import { normalizeColor } from '../util/color';
 import { LINE_PATTERNS, LINE_USES, pruneTokens } from './themes';
+import { BLEND_MODES } from './blend';
 import { ELEMENT_KINDS } from './customBlocks';
 
 // Sin compilación a medida: zod decide si compilar sus validadores probando `new Function`, y la
@@ -342,6 +343,12 @@ export const BlockOverrideZ = z.object({
   rotation: num(0, -360, 360),
   opacity: num(1, 0, 1),
   hidden: z.boolean().default(false),
+  /** Orden de apilado propio (mayor, más arriba), en lugar del que le da la sección; sin valor, el de siempre. */
+  layer: z.number().meta({ minimum: -1000, maximum: 1000 }).transform(clampTo(-1000, 1000)).nullable().default(null),
+  /** Nombre propio del elemento (en el panel de capas y en las avisos); sin valor, el de la sección. */
+  label: z.string().max(120).nullable().default(null),
+  /** Cómo se fusiona con lo que tiene debajo. */
+  blend: z.enum(BLEND_MODES).default('normal'),
 });
 export type BlockOverride = z.infer<typeof BlockOverrideZ>;
 

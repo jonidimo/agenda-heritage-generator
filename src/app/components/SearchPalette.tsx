@@ -18,6 +18,8 @@ const KIND_KEY: Record<SearchKind, UiKey> = {
   section: 'search.kind.section',
   page: 'search.kind.page',
   element: 'search.kind.element',
+  asset: 'search.kind.asset',
+  font: 'search.kind.font',
 };
 
 export function SearchPalette({ onClose }: { onClose: () => void }) {

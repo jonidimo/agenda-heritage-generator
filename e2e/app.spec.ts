@@ -150,7 +150,7 @@ test('la política de seguridad no bloquea nada de la aplicación', async ({ pag
   const pdf = await PDFDocument.create();
   pdf.addPage([300, 400]).drawText('Hola', { x: 40, y: 300, size: 30 });
   const bytes = Buffer.from(await pdf.save());
-  await page.getByRole('tab', { name: 'Imágenes y fuentes' }).click();
+  await page.getByRole('tab', { name: 'Imágenes', exact: true }).click();
   await page.locator('input[type="file"][accept*="pdf"]').setInputFiles({ name: 'prueba.pdf', mimeType: 'application/pdf', buffer: bytes });
   await expect(page.getByText('prueba.pdf').filter({ visible: true }).first()).toBeVisible();
   // pdf.js dibujó la vista previa (una imagen blob:), así que su Worker funciona con la política.
@@ -1338,7 +1338,11 @@ test.describe('atajos de teclado', () => {
     await page.keyboard.press('Control+3');
     await expect(page.locator('[data-sidebar="methods"]')).toBeVisible();
     await page.keyboard.press('Control+7');
+    await expect(page.locator('[data-sidebar="fonts"]')).toBeVisible();
+    // La impresión es de su propio modo: pedirla desde el diseño lo cambia.
+    await page.keyboard.press('Control+8');
     await expect(page.locator('[data-sidebar="print"]')).toBeVisible();
+    expect(await page.evaluate<string>('globalThis.__agenda.getState().mode')).toBe('print');
 
     const index = () => page.evaluate<number>('globalThis.__agenda.getState().pageIndex');
     await page.keyboard.press('End');
@@ -1551,5 +1555,125 @@ test.describe('elementos compuestos', () => {
       await page.evaluate("globalThis.__agenda.getState().update((d) => { d.customBlocks.pop(); }, 'e2e-pop')");
       await expect(page.locator('[data-block^="custom."]')).toHaveCount(0);
     }
+  });
+});
+
+test.describe('capas y fusión', () => {
+  const overrideOf = (page: Page, id: string) =>
+    page.evaluate<Record<string, unknown> | null>(`(globalThis.__agenda.getState().design.overrides.find((o) => o.blockId === ${JSON.stringify(id)}) ?? null)`);
+
+  test('el panel de capas lista los elementos de arriba hacia abajo y los sube y baja', async ({ page }) => {
+    await openQuiet(page);
+    await toWeek(page);
+    await settled(page);
+    await page.getByRole('button', { name: 'Capas', exact: true }).click();
+    const rows = page.getByTestId('layer-row');
+    await expect(rows.first()).toBeVisible();
+    const order = async () => rows.evaluateAll((els) => els.map((e) => e.getAttribute('data-block-id')));
+    const before = await order();
+    expect(before.length).toBeGreaterThan(4);
+    // Elige el segundo de la lista y lo sube: pasa a ser el primero.
+    const second = before[1]!;
+    await rows.nth(1).getByRole('button', { name: 'Subir una capa' }).click();
+    await expect.poll(order).toEqual([second, before[0], ...before.slice(2)]);
+    expect(await overrideOf(page, second)).toMatchObject({ layer: expect.any(Number) });
+    // «Restablecer el orden» deja todo como lo da la sección.
+    await page.getByRole('button', { name: 'Restablecer el orden' }).click();
+    await expect.poll(order).toEqual(before);
+    expect(await overrideOf(page, second)).toBeNull();
+  });
+
+  test('un renglón del panel elige el elemento, y Ctrl+↑ / Ctrl+↓ lo mueven en el apilado', async ({ page }) => {
+    await openQuiet(page);
+    await toWeek(page);
+    await settled(page);
+    await page.getByRole('button', { name: 'Capas', exact: true }).click();
+    const rows = page.getByTestId('layer-row');
+    const order = async () => rows.evaluateAll((els) => els.map((e) => e.getAttribute('data-block-id')));
+    const before = await order();
+    const target = before[3]!;
+    await page.locator(`[data-testid="layer-row"][data-block-id="${target}"]`).getByRole('button').nth(1).click();
+    await expect.poll(() => page.evaluate<string | undefined>('globalThis.__agenda.getState().selection?.blockId')).toBe(target);
+    await page.keyboard.press('Control+ArrowUp');
+    await expect.poll(async () => (await order()).indexOf(target)).toBe(2);
+    await page.keyboard.press('Control+Shift+ArrowDown');
+    await expect.poll(async () => (await order()).indexOf(target)).toBe(before.length - 1);
+    await page.keyboard.press('Control+Shift+ArrowUp');
+    await expect.poll(async () => (await order()).indexOf(target)).toBe(0);
+  });
+
+  test('un elemento se renombra con doble clic y el nombre se ve en el panel y en su campo', async ({ page }) => {
+    await openQuiet(page);
+    await toWeek(page);
+    await settled(page);
+    await page.getByRole('button', { name: 'Capas', exact: true }).click();
+    // Uno editable (los fijos no se renombran): los que tienen el ojo para ocultarlos lo son.
+    const row = page.getByTestId('layer-row').filter({ has: page.getByRole('button', { name: 'Ocultar en la página' }) }).first();
+    const id = (await row.getAttribute('data-block-id'))!;
+    await row.locator('button[title^="Renombrar"]').dblclick();
+    const field = page.getByTestId('layers-panel').getByRole('textbox', { name: 'Nombre' });
+    await field.fill('Mi nombre');
+    await field.blur();
+    await expect(page.locator(`[data-testid="layer-row"][data-block-id="${id}"]`)).toContainText('Mi nombre');
+    expect(await overrideOf(page, id)).toMatchObject({ label: 'Mi nombre' });
+  });
+
+  test('el modo de fusión se aplica a la página de verdad (el navegador lo dibuja con mix-blend-mode)', async ({ page }) => {
+    await openQuiet(page);
+    await toWeek(page);
+    await settled(page);
+    await selectBlock(page, 'week.notes');
+    await page.getByRole('combobox', { name: 'Fusión con lo de abajo' }).selectOption('multiply');
+    await expect.poll(async () => (await overrideOf(page, 'week.notes'))?.blend).toBe('multiply');
+    // Si la política de seguridad bloqueara el estilo, el modo calculado seguiría siendo «normal».
+    const blendOf = () => page.evaluate<string>(`getComputedStyle(document.querySelector('[data-block="week.notes"]')).mixBlendMode`);
+    await expect.poll(blendOf).toBe('multiply');
+    await page.getByRole('combobox', { name: 'Fusión con lo de abajo' }).selectOption('normal');
+    await expect.poll(blendOf).toBe('normal');
+  });
+});
+
+test.describe('imágenes y fuentes', () => {
+  test('cada imagen dice dónde se usa y al quitarla se va de todo lo que la usaba', async ({ page }) => {
+    await openQuiet(page);
+    await page.evaluate(`globalThis.__agenda.getState().update((d) => {
+      d.assets.push({ id: 'img-e2e', name: 'Imagen de prueba', kind: 'vector', mime: 'image/svg+xml', width: 10, height: 10, builtin: null });
+      d.assets.push({ id: 'img-sola', name: 'Imagen sola', kind: 'vector', mime: 'image/svg+xml', width: 10, height: 10, builtin: null });
+      d.cover.imageAssetId = 'img-e2e';
+      d.customBlocks.push({ id: 'pic', pageType: 'titlePage', pageKey: null, kind: 'image', x: 20, y: 20, w: 30, h: 30, mirror: true, props: { assetId: 'img-e2e', label: 'Mi foto' } });
+    }, 'e2e-asset')`);
+    await page.getByRole('tab', { name: 'Imágenes', exact: true }).click();
+    const uses = page.locator('[data-testid="asset-uses"][data-asset="img-e2e"]');
+    await expect(uses).toContainText('Tapa');
+    await expect(uses).toContainText('Elemento «Mi foto»');
+    await expect(page.locator('[data-testid="asset-uses"][data-asset="img-sola"]')).toContainText('No se usa en ningún lugar');
+    // «Ir» lleva a la página del elemento.
+    await page.evaluate("globalThis.__agenda.getState().goToPage(5)");
+    await uses.getByRole('button', { name: 'Ir' }).click();
+    await expect.poll(() => page.evaluate<number>('globalThis.__agenda.getState().pageIndex')).toBe(0);
+    // Quitarla es un solo paso, y se deshace de una vez.
+    await page.locator('li', { has: page.locator('[data-asset="img-e2e"]') }).getByRole('button', { name: 'Quitar la imagen y todo lo que la usa' }).click();
+    const gone = () => page.evaluate<{ assets: number; cover: string | null; blocks: number }>(`(() => { const d = globalThis.__agenda.getState().design; return { assets: d.assets.filter((a) => a.id === 'img-e2e').length, cover: d.cover.imageAssetId, blocks: d.customBlocks.filter((c) => c.id === 'pic').length }; })()`);
+    expect(await gone()).toEqual({ assets: 0, cover: null, blocks: 0 });
+    await page.keyboard.press('Control+z');
+    await expect.poll(gone).toEqual({ assets: 1, cover: 'img-e2e', blocks: 1 });
+  });
+
+  test('la pestaña de fuentes lista las familias, y el buscador encuentra una fuente', async ({ page }) => {
+    await openQuiet(page);
+    await page.keyboard.press('Control+7');
+    await expect(page.getByRole('tab', { name: 'Fuentes', exact: true })).toHaveAttribute('aria-selected', 'true');
+    const list = page.getByTestId('font-list');
+    await expect(list.locator('[data-font="Manrope"]')).toBeVisible();
+    await expect(list.locator('[data-font="Manrope"]')).toContainText('integrada');
+    // Cada familia dice dónde se usa o si le faltan caracteres.
+    await expect(list.locator('[data-font="Manrope"]')).toContainText(/Se usa en|Tiene todos los caracteres|Le faltan/);
+    // Desde otra pestaña, el buscador lleva a la fuente.
+    await page.getByRole('tab', { name: 'Estilo', exact: true }).click();
+    await page.keyboard.press('Control+f');
+    await page.getByRole('combobox').or(page.getByRole('textbox', { name: /Buscar/ })).first().fill('Manrope');
+    await expect(page.getByText('Fuente', { exact: true }).first()).toBeVisible();
+    await page.keyboard.press('Enter');
+    await expect(page.getByRole('tab', { name: 'Fuentes', exact: true })).toHaveAttribute('aria-selected', 'true');
   });
 });

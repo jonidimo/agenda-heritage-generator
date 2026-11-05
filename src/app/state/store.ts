@@ -38,10 +38,10 @@ export function activeView(s: { mode: Mode; view: View; design: { binding: { tar
 export function viewsOf(mode: Mode, screen: boolean): readonly View[] {
   return MODE_VIEWS[mode].filter((v) => !(v === 'sheet' && screen));
 }
-export type Panel = 'sections' | 'style' | 'methods' | 'persona' | 'calendar' | 'assets' | 'print';
+export type Panel = 'sections' | 'style' | 'methods' | 'persona' | 'calendar' | 'assets' | 'fonts' | 'print';
 
 /** Las pestañas del panel lateral, en el orden en que se muestran (y en el que las eligen Ctrl+1, Ctrl+2…). */
-export const PANEL_ORDER: readonly Panel[] = ['style', 'sections', 'methods', 'persona', 'calendar', 'assets', 'print'];
+export const PANEL_ORDER: readonly Panel[] = ['style', 'sections', 'methods', 'persona', 'calendar', 'assets', 'fonts', 'print'];
 
 /** Límites y paso del zoom del lienzo (el de la página, no el de la interfaz). */
 export const ZOOM = { min: 0.2, max: 6, step: 1.2 } as const;
