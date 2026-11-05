@@ -4,9 +4,11 @@ import type { Design } from '@core/design/schema';
 import { countryName } from '@core/holidays';
 import { monthNames, regionOf, regionWeekInfo } from '@core/calendar/locale';
 import { countryLang, homeCountry, LANGUAGES, langOf, localeFor, type Lang } from '@core/i18n';
-import { Archive, Copy, Download, FileUp, Plus, Trash2, X } from 'lucide-react';
+import { Archive, Copy, Download, Eye, FileUp, Plus, Trash2, X } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { UI_LANG_NAMES, uiText, useT, type UiKey } from '../i18n/ui';
+import { showHiddenElements } from '../state/actions';
+import { currentDocument } from '../state/selectionContext';
 import { chordLabels } from '../state/shortcutHints';
 import { SHORTCUT_GROUPS, SHORTCUTS } from '../state/shortcuts';
 import { deleteDesign, deleteTemplate, exportDesignFile, listDesigns, listTemplates, loadDesign, saveDesign, type DesignMeta, type TemplateRecord } from '../state/persist';
@@ -523,6 +525,59 @@ export function ShortcutsDialog() {
         ))}
       </div>
       <p className="mt-3 text-[11.5px] leading-snug text-ink-soft">{t('sc.browserNote')}</p>
+    </Modal>
+  );
+}
+
+/** Los elementos que se ocultaron en la página actual, para devolverlos de a uno o todos juntos. */
+export function HiddenDialog() {
+  const t = useT();
+  const setShow = useStore((s) => s.setShowHidden);
+  const design = useStore((s) => s.design);
+  const pageIndex = useStore((s) => s.pageIndex);
+  const found = useMemo(() => {
+    const doc = design ? currentDocument() : null;
+    if (!doc) return null;
+    const index = Math.min(pageIndex, doc.pageCount - 1);
+    try {
+      return { page: doc.page(index), items: doc.hidden(index) };
+    } catch {
+      return null;
+    }
+  }, [design, pageIndex]);
+  const items = found?.items ?? [];
+  // Al devolver el último, el diálogo ya no tiene nada que mostrar.
+  useEffect(() => {
+    if (found && items.length === 0) setShow(false);
+  }, [found, items.length, setShow]);
+  if (!found) return null;
+  const where = (scope: 'page' | 'type'): string => (scope === 'page' ? t('hid.page') : t('hid.type'));
+  return (
+    <Modal title={t('hid.title')} onClose={() => setShow(false)}>
+      <ul className="space-y-1.5" data-testid="hidden-list">
+        {items.map((h) => (
+          <li key={`${h.kind}:${h.id}`} className="flex items-center justify-between gap-3 text-[12.5px]">
+            <span className="min-w-0">
+              <b className="break-words">{h.label}</b>
+              <span className="block text-[11.5px] text-ink-soft">
+                {h.kind === 'watermark' ? `${t('hid.watermark')} · ` : ''}
+                {where(h.scope)}
+              </span>
+            </span>
+            <Button onClick={() => showHiddenElements(found.page, [h])}>
+              <Eye size={13} /> {t('hid.show')}
+            </Button>
+          </li>
+        ))}
+      </ul>
+      <div className="mt-3 flex justify-end gap-2">
+        <Button variant="outline" onClick={() => showHiddenElements(found.page, items)}>
+          {t('hid.showAll')}
+        </Button>
+        <Button variant="primary" onClick={() => setShow(false)}>
+          {t('common.close')}
+        </Button>
+      </div>
     </Modal>
   );
 }

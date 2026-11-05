@@ -1393,3 +1393,59 @@ test.describe('atajos de teclado', () => {
     await expect.poll(() => page.evaluate<number>('globalThis.__agenda.getState().pageIndex')).toBe(1);
   });
 });
+
+test.describe('avisos, ocultos y encuadre', () => {
+  test('el pie de la página cuenta sus avisos, lleva a la verificación y la miniatura lleva un punto', async ({ page }) => {
+    await openQuiet(page);
+    await expect(page.getByTestId('page-warnings')).toHaveCount(0);
+    // Un texto con letra enorme en un recuadro chico no entra: avisa.
+    await page.evaluate(`globalThis.__agenda.getState().update((d) => { d.customBlocks.push({ id: 'big', pageType: 'titlePage', pageKey: null, kind: 'text', x: 20, y: 20, w: 30, h: 8, mirror: false, props: { text: 'Un texto muy largo que no puede entrar en un recuadro tan chico', size: 60, fit: false, autoHeight: false } }); }, 'e2e-warn')`);
+    const counter = page.getByTestId('page-warnings');
+    await expect(counter).toBeVisible();
+    await expect(counter).toContainText(/\d+ avisos/);
+    await expect(page.getByTestId('thumb-warning').first()).toBeVisible();
+    await counter.click();
+    // Abre el panel del elemento en la verificación previa y la corre.
+    await expect(page.locator('[data-inspector] [data-reveal="preflight"]')).toBeVisible();
+    await expect(page.locator('[data-inspector] [data-reveal="preflight"]').getByText(/\d+ avisos/)).toBeVisible();
+  });
+
+  test('Edición › Mostrar elementos ocultos lista lo que se ocultó y lo devuelve', async ({ page }) => {
+    await openQuiet(page);
+    await toWeek(page);
+    await settled(page);
+    await page.getByRole('button', { name: 'Edición', exact: true }).click();
+    await expect(page.getByRole('menuitem', { name: /Mostrar elementos ocultos/ })).toBeDisabled();
+    await page.keyboard.press('Escape');
+    await selectBlock(page, 'week.notes');
+    await page.keyboard.press('Control+h');
+    await expect(page.locator('[data-block="week.notes"]')).toHaveCount(0);
+    await page.getByRole('button', { name: 'Edición', exact: true }).click();
+    await page.getByRole('menuitem', { name: /Mostrar elementos ocultos/ }).click();
+    const list = page.getByTestId('hidden-list');
+    await expect(list).toBeVisible();
+    await list.getByRole('button', { name: 'Mostrar', exact: true }).click();
+    // Sin nada más que mostrar, el diálogo se cierra y el elemento vuelve.
+    await expect(page.getByTestId('hidden-list')).toHaveCount(0);
+    await expect(page.locator('[data-block="week.notes"]').first()).toBeVisible();
+    expect(await page.evaluate<number>("globalThis.__agenda.getState().design.overrides.filter((o) => o.blockId === 'week.notes').length")).toBe(0);
+  });
+
+  test('Ctrl+Mayús+2 acerca la vista al elemento elegido y lo deja a la vista', async ({ page }) => {
+    await openQuiet(page);
+    await toWeek(page);
+    await settled(page);
+    await selectBlock(page, 'week.notes');
+    const zoom0 = await page.evaluate<number>('globalThis.__agenda.getState().zoom');
+    await page.keyboard.press('Control+Shift+Digit2');
+    await expect.poll(() => page.evaluate<number>('globalThis.__agenda.getState().zoom')).toBeGreaterThan(zoom0 * 1.2);
+    // El elemento queda dentro del área visible del lienzo.
+    await expect
+      .poll(async () => {
+        const b = await page.locator('[data-block="week.notes"]').first().boundingBox();
+        const area = await page.locator('.desk').boundingBox();
+        return Boolean(b && area && b.x >= area.x - 1 && b.y >= area.y - 1 && b.x + b.width <= area.x + area.width + 1 && b.y + b.height <= area.y + area.height + 1);
+      })
+      .toBe(true);
+  });
+});

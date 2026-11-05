@@ -1,7 +1,7 @@
 /** Los menús «Edición» y «Ver» de la barra superior, con las teclas de cada acción a la derecha. */
-import { Copy, Crosshair, Eye, Link2, MousePointer2, PanelLeft, Redo2, Scissors, SquareDashedMousePointer, Undo2, Type, ZoomIn, ZoomOut, Keyboard } from 'lucide-react';
+import { Copy, Crosshair, Eye, EyeOff, Link2, MousePointer2, PanelLeft, Redo2, Scissors, SquareDashedMousePointer, Undo2, Type, ZoomIn, ZoomOut, Keyboard } from 'lucide-react';
 import { copySelection, cutSelection, duplicateSelection, pasteSelection } from '../state/clipboard';
-import { selectionContext } from '../state/selectionContext';
+import { currentDocument, selectionContext } from '../state/selectionContext';
 import { shortcutHint } from '../state/shortcutHints';
 import { SHORTCUTS } from '../state/shortcuts';
 import { useStore, type View } from '../state/store';
@@ -15,6 +15,17 @@ function run(id: string): void {
   const s = SHORTCUTS.find((x) => x.id === id);
   // Los atajos de menú no usan el evento: algunos (las flechas) sí, pero ninguno de los que se ofrecen acá.
   s?.run?.(new KeyboardEvent('keydown'));
+}
+
+/** Cuántos elementos tiene ocultos la página actual (maqueta solo si hay alguno). */
+function hiddenCount(): number {
+  const doc = currentDocument();
+  if (!doc) return 0;
+  try {
+    return doc.hidden(Math.min(useStore.getState().pageIndex, doc.pageCount - 1)).length;
+  } catch {
+    return 0;
+  }
 }
 
 export function editMenu(t: T): MenuItem[] {
@@ -37,6 +48,7 @@ export function editMenu(t: T): MenuItem[] {
     { separator: true },
     item('edit.editText', 'sc.edit.editText', <Type size={14} />, () => run('edit.editText'), !text),
     item('edit.hide', 'sc.edit.hide', <Eye size={14} />, () => run('edit.hide'), selected.length === 0),
+    { label: t('menu.showHidden'), icon: <EyeOff size={14} />, disabled: hiddenCount() === 0, onSelect: () => st.setShowHidden(true) },
   ];
 }
 
@@ -54,6 +66,7 @@ export function viewMenu(t: T): MenuItem[] {
     { label: t('sc.view.zoomOut'), icon: <ZoomOut size={14} />, hint: shortcutHint('view.zoomOut', t), onSelect: () => st.zoomBy(1 / 1.2) },
     { label: t('sc.view.zoomFit'), icon: <Crosshair size={14} />, hint: shortcutHint('view.zoomFit', t), onSelect: () => st.zoomFit() },
     { label: t('sc.view.zoom100'), hint: shortcutHint('view.zoom100', t), onSelect: () => st.setZoom(1, false) },
+    { label: t('sc.view.zoomSelection'), hint: shortcutHint('view.zoomSelection', t), disabled: !st.selection, onSelect: () => run('view.zoomSelection') },
     { separator: true },
     ...VIEW_LABELS.map(([v, key]): MenuItem => ({ label: t(key), checked: st.view === v, onSelect: () => st.setView(v) })),
     { separator: true },

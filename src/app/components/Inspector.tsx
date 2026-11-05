@@ -3,7 +3,7 @@ import { PROP_DEFAULTS, PROP_RANGES, TEXT_ROLES } from '@core/design/customBlock
 import type { AgendaDocument } from '@core/document';
 import { OVERRIDE_DEFAULTS, WATERMARK_DEFAULTS, type CustomBlock, type WatermarkPlacement } from '@core/design/schema';
 import { getAtPath } from '@core/util/path';
-import type { Block, PageModel, PageWarning, Prim } from '@core/layout/prims';
+import { isProblem, type Block, type PageModel, type PageWarning, type Prim } from '@core/layout/prims';
 import type { AlignMode } from '@core/layout/align';
 import type { WritingStyle } from '@core/design/themes';
 import {
@@ -32,7 +32,7 @@ import {
   Type,
 } from 'lucide-react';
 import { pageLinks, safeUrl } from '@core/document/links';
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { blockLabel, warningText } from '../i18n/messages';
 import { sectionName, uiText, useT } from '../i18n/ui';
 import { IMAGE_ACCEPT, uploadOne } from '../state/uploads';
@@ -820,12 +820,20 @@ function Preflight({ doc }: { doc: AgendaDocument }) {
   const t = useT();
   const [items, setItems] = useState<Array<PageWarning & { page: number }> | null>(null);
   useEffect(() => setItems(null), [doc]);
-  const run = (): void => setItems([...doc.documentWarnings().map((w) => ({ ...w, page: -1 })), ...doc.warnings()]);
+  const run = useCallback((): void => setItems([...doc.documentWarnings().map((w) => ({ ...w, page: -1 })), ...doc.warnings()]), [doc]);
+  // El contador del pie de la página pide la revisión (un número nuevo cada vez).
+  const request = useStore((s) => s.preflightRequest);
+  const handled = useRef(request);
+  useEffect(() => {
+    if (request === handled.current) return;
+    handled.current = request;
+    run();
+  }, [request, run]);
   // Las abreviaturas son informativas (un feriado largo que se puede renombrar), no errores.
-  const warnings = items?.filter((w) => w.code !== 'abbreviated') ?? [];
-  const notes = items?.filter((w) => w.code === 'abbreviated') ?? [];
+  const warnings = items?.filter(isProblem) ?? [];
+  const notes = items?.filter((w) => !isProblem(w)) ?? [];
   return (
-    <div className="mt-4 border-t border-line pt-3">
+    <div className="mt-4 border-t border-line pt-3" data-reveal="preflight">
       <div className="flex items-center justify-between gap-2">
         <h3 className="text-[11px] font-extrabold tracking-[0.08em] uppercase">{t('pre.title')}</h3>
         <Button variant="ghost" onClick={run}>
@@ -857,7 +865,7 @@ function Preflight({ doc }: { doc: AgendaDocument }) {
             </p>
             <ul className="space-y-1">
               {[...warnings, ...notes].slice(0, 80).map((w, i) => (
-                <li key={i} className={`flex items-start justify-between gap-2 text-[11.5px] leading-snug ${w.code === 'abbreviated' ? 'text-ink-soft' : ''}`}>
+                <li key={i} className={`flex items-start justify-between gap-2 text-[11.5px] leading-snug ${isProblem(w) ? '' : 'text-ink-soft'}`}>
                   <span>
                     <b className="tabular-nums">{w.page >= 0 ? w.page + 1 : t('pre.general')}</b> · {warningText(t, w)}
                   </span>

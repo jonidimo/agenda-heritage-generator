@@ -15,6 +15,7 @@ import { openAnyFile, saveCurrent } from './fileActions';
 import { goBack, goForward } from './navigation';
 import { pageStep } from './paging';
 import { currentDocument, selectionContext } from './selectionContext';
+import { scrollRectIntoView, zoomToRect } from './viewport';
 import { PANEL_ORDER, useStore, ZOOM, type View } from './store';
 import { isTyping } from './typing';
 
@@ -94,6 +95,7 @@ function stepSelection(dir: 1 | -1): boolean {
   const cur = state().selection ? list.findIndex((b) => b.id === state().selection!.blockId) : -1;
   const next = list[(cur + dir + list.length) % list.length]!;
   select(next, ctx.page);
+  scrollRectIntoView(ctx.page.index, blockBounds(next));
   return true;
 }
 
@@ -136,6 +138,14 @@ function editText(e: KeyboardEvent): boolean {
   const sel = ctx?.selected;
   if (!ctx || !sel || sel.length !== 1 || !sel[0]!.text) return false;
   state().requestTextEdit({ pageKey: ctx.page.key, blockId: sel[0]!.id });
+  return true;
+}
+
+/** Acerca la vista al elemento elegido (a todos los elegidos, si son varios). */
+function zoomToSelection(): boolean {
+  const ctx = selectionContext();
+  if (!ctx || ctx.selected.length === 0) return false;
+  void zoomToRect(ctx.page.index, unionRect(ctx.selected.map(blockBounds)));
   return true;
 }
 
@@ -212,6 +222,7 @@ export const SHORTCUTS: readonly Shortcut[] = [
   { id: 'view.zoomOut', group: 'view', typing: true, chords: [{ key: '-', mod: true, shift: 'any' }, { key: '_', mod: true, shift: 'any' }], run: () => state().zoomBy(1 / ZOOM.step) },
   { id: 'view.zoomFit', group: 'view', typing: true, chords: [{ key: '0', mod: true }], run: () => state().zoomFit() },
   { id: 'view.zoom100', group: 'view', typing: true, chords: [{ code: 'Digit0', mod: true, shift: true }], run: () => state().setZoom(1, false) },
+  { id: 'view.zoomSelection', group: 'view', typing: true, chords: [{ code: 'Digit2', mod: true, shift: true }], run: zoomToSelection },
   {
     id: 'view.cycle',
     group: 'view',

@@ -1,8 +1,9 @@
 /** Área central: página, pliego, hoja impresa (frente/dorso) o libro completo. */
 import type { AgendaDocument } from '@core/document';
 import { primsToSvg, GlyphSink } from '@core/render/svg';
-import { ChevronLeft, ChevronRight, RefreshCw } from 'lucide-react';
-import { useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { isProblem } from '@core/layout/prims';
+import { AlertTriangle, ChevronLeft, ChevronRight, RefreshCw } from 'lucide-react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { pageTitle, useT } from '../../i18n/ui';
 import { assetHref } from '../../state/assetUrls';
 import { pageStep, spreadOf } from '../../state/paging';
@@ -12,6 +13,8 @@ import { ErrorBoundary, ViewError } from '../ErrorBoundary';
 import { PageView } from './PageView';
 import { Thumb } from './Thumb';
 import { jumpToPage } from '../../state/navigation';
+import { reveal } from '../../state/reveal';
+import { registerViewport } from '../../state/viewport';
 
 function useSize(): [React.RefObject<HTMLDivElement | null>, { w: number; h: number }] {
   const ref = useRef<HTMLDivElement | null>(null);
@@ -49,6 +52,15 @@ export function Canvas({ committed, live }: { committed: AgendaDocument; live: A
   const fitScale = Math.max(0.5, Math.min((size.w - pad) / contentMm.w, (size.h - pad - 40) / contentMm.h));
   const scale = fit ? fitScale : fitScale * zoom;
 
+  // El lienzo le dice a los atajos de encuadre dónde está y a qué escala se dibuja.
+  useEffect(() => {
+    const scroller = ref.current;
+    if (!scroller) return;
+    registerViewport({ scroller, fitScale, pageWidthMm: live.format.w });
+    return () => registerViewport(null);
+  }, [ref, fitScale, live.format.w]);
+
+  const problems = usePageProblems(committed, pageIndex);
   const prev = (): void => goToPage(pageStep(view, pageIndex, live.pageCount, -1));
   const next = (): void => goToPage(pageStep(view, pageIndex, live.pageCount, 1));
 
@@ -84,10 +96,40 @@ export function Canvas({ committed, live }: { committed: AgendaDocument; live: A
           <IconButton label="→" onClick={next} disabled={pageIndex >= live.pageCount - 1}>
             <ChevronRight size={18} />
           </IconButton>
+          {problems > 0 && (
+            <button
+              type="button"
+              data-testid="page-warnings"
+              title={t('foot.warningsHint')}
+              onClick={() => void reveal({ inspector: true, selector: '[data-reveal="preflight"]', focus: false }).then((found) => found && useStore.getState().requestPreflight())}
+              className="ml-2 inline-flex items-center gap-1 rounded-md px-2 py-0.5 font-semibold text-warn hover:bg-warn/10"
+            >
+              <AlertTriangle size={13} /> {t('foot.warnings', { n: problems })}
+            </button>
+          )}
         </div>
       )}
     </div>
   );
+}
+
+/**
+ * Cuántos avisos tiene la página actual (maquetación y verificación). Se mide en reposo y sobre el
+ * documento confirmado: durante un arrastre no se vuelve a verificar en cada cuadro.
+ */
+function usePageProblems(doc: AgendaDocument, index: number): number {
+  const [n, setN] = useState(0);
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      try {
+        setN(doc.pageWarnings(index).filter(isProblem).length);
+      } catch {
+        setN(0);
+      }
+    }, 150);
+    return () => window.clearTimeout(timer);
+  }, [doc, index]);
+  return n;
 }
 
 /** Una página que no se puede dibujar ocupa su lugar con el motivo; la otra del pliego se sigue viendo. */

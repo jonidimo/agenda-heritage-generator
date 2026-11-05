@@ -269,6 +269,9 @@ export interface PageWarning {
   message: string;
 }
 
+/** Los avisos informativos (un texto que se abrevió) no son errores: no cuentan como problemas. */
+export const isProblem = (w: Pick<PageWarning, 'code'>): boolean => w.code !== 'abbreviated';
+
 /* ---------- Constructores breves ---------- */
 
 export const line = (x1: number, y1: number, x2: number, y2: number, stroke: Stroke): LinePrim => ({ t: 'line', x1, y1, x2, y2, stroke });

@@ -130,8 +130,10 @@ const ThumbButton = memo(function ThumbButton({ doc, index, current, width }: { 
       data-thumb={index}
       onClick={() => jumpToPage(index)}
       onContextMenu={(e) => openMenuAt(e, thumbMenu(t, doc, index))}
+      onDoubleClick={() => useStore.getState().zoomFit()}
+      aria-current={current ? 'page' : undefined}
       title={`${index + 1} · ${pageTitle(t, plan)}`}
-      className={`flex shrink-0 flex-col items-center gap-0.5 ${index % 2 === 1 ? 'ml-1.5' : ''}`}
+      className={`flex shrink-0 flex-col items-center gap-0.5 rounded focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent ${index % 2 === 1 ? 'ml-1.5' : ''}`}
     >
       <span className={`block border ${current ? 'border-accent ring-2 ring-accent/40' : 'border-black/10'}`}>
         <Thumb doc={doc} index={index} width={width} />

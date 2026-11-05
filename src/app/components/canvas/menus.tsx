@@ -255,6 +255,7 @@ export function pageMenu(c: MenuContext): MenuItem[] {
   const { t, doc, page, scope, at } = c;
   const labels = labelsFor(t);
   const add = (kind: 'text' | 'lines' | 'dots' | 'rect') => () => void addCustomBlock(page, kind, labels, scope, at);
+  const hidden = doc.hidden(page.index).length;
   return [
     { heading: t('menu.page', { n: page.index + 1, title: pageTitle(t, page) }) },
     { label: t('menu.addTextHere'), icon: <Type size={14} />, onSelect: add('text') },
@@ -277,6 +278,7 @@ export function pageMenu(c: MenuContext): MenuItem[] {
         if (all.length > 0) selectBlocks(page, all, all[all.length - 1]!);
       },
     },
+    ...(hidden > 0 ? [{ label: t('menu.showHiddenN', { n: hidden }), icon: <EyeOff size={14} />, onSelect: () => useStore.getState().setShowHidden(true) }] : []),
     { label: t('export.svg'), onSelect: () => exportPageSvg(doc, page.index, `${fileBase(useStore.getState().design!)}-p${page.index + 1}.svg`) },
   ];
 }

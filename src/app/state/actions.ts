@@ -10,6 +10,7 @@ import { resolveStrings } from '@core/i18n';
 import { withPageStyle } from '@core/design/pageStyles';
 import type { Block, PageModel, TextSource } from '@core/layout/prims';
 import type { Rect } from '@core/util/geometry';
+import type { HiddenElement } from '@core/document/hidden';
 import { blockBounds, findOverride as appliedOverride } from '@core/document/layout';
 import { deformable } from '@core/layout/handles';
 import { axisScales, deformScales, MIN_BOX, naturalBox, storeAdjust, visualToBox, type BoxAdjust } from '@core/layout/box';
@@ -542,6 +543,43 @@ export function hideBlocks(page: PageModel, blocks: Block[], scope: Scope): void
       }
     }
   });
+}
+
+/** ¿Un ajuste sin ningún cambio (solo estaba para ocultar)? */
+function isNeutralOverride(o: BlockOverride): boolean {
+  return o.dx === 0 && o.dy === 0 && o.dw === 0 && o.dh === 0 && o.scale === 1 && o.scaleY === null && !o.deform && o.rotation === 0 && o.opacity === 1;
+}
+
+/**
+ * Receta que devuelve a la página elementos ocultos (los que lista `AgendaDocument.hidden`): el ajuste
+ * «oculto» se quita (y el ajuste entero si no tenía nada más) y las marcas de agua dejan de saltarse la página.
+ */
+export function showHiddenRecipe(page: Pick<PageModel, 'key' | 'type'>, items: readonly HiddenElement[]): Recipe {
+  return (d) => {
+    for (const item of items) {
+      if (item.kind === 'watermark') {
+        const wm = d.watermarks.find((w) => w.id === item.id.slice(3));
+        if (!wm) continue;
+        wm.excludePages = wm.excludePages.filter((k) => k !== page.key);
+        wm.exclude = wm.exclude.filter((t) => t !== page.type);
+        continue;
+      }
+      const byPage = d.overrides.find((o) => o.blockId === item.id && o.pageKey === page.key);
+      const byType = d.overrides.find((o) => o.blockId === item.id && o.pageKey === null && o.pageType === page.type);
+      if (item.scope === 'page' && byPage) {
+        byPage.hidden = false;
+        // Sin nada más que decir se quita, salvo que el del tipo oculte: ese volvería a mandar.
+        if (isNeutralOverride(byPage) && !byType?.hidden) d.overrides = d.overrides.filter((o) => o !== byPage);
+      } else if (byType) {
+        byType.hidden = false;
+        if (isNeutralOverride(byType)) d.overrides = d.overrides.filter((o) => o !== byType);
+      }
+    }
+  };
+}
+
+export function showHiddenElements(page: Pick<PageModel, 'key' | 'type'>, items: readonly HiddenElement[]): void {
+  if (items.length > 0) useStore.getState().update(showHiddenRecipe(page, items));
 }
 
 /* ---------- Copiar y pegar elementos propios ---------- */

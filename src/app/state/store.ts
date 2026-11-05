@@ -85,6 +85,12 @@ interface StoreState {
   setSearchOpen(b: boolean): void;
   showShortcuts: boolean;
   setShowShortcuts(b: boolean): void;
+  /** Diálogo con los elementos ocultos de la página actual. */
+  showHidden: boolean;
+  setShowHidden(b: boolean): void;
+  /** Cada pedido nuevo (número creciente) hace correr la verificación previa del panel del elemento. */
+  preflightRequest: number;
+  requestPreflight(): void;
   /** Pedido de editar el texto de un elemento en su lugar (F2): la página que lo tiene lo atiende y lo limpia. */
   /** Lo último que se guardó como PDF en esta computadora (solo la aplicación de escritorio sabe la ruta). */
   lastExport: { name: string; path: string } | null;
@@ -264,6 +270,8 @@ export const useStore = create<StoreState>((set, get) => ({
   showAbout: false,
   searchOpen: false,
   showShortcuts: false,
+  showHidden: false,
+  preflightRequest: 0,
   textEditRequest: null,
   lastExport: null,
   sidebarOpen: true,
@@ -358,6 +366,8 @@ export const useStore = create<StoreState>((set, get) => ({
   setSearchOpen: (searchOpen) => set({ searchOpen }),
   setLastExport: (lastExport) => set({ lastExport }),
   setShowShortcuts: (showShortcuts) => set({ showShortcuts }),
+  setShowHidden: (showHidden) => set({ showHidden }),
+  requestPreflight: () => set((s) => ({ preflightRequest: s.preflightRequest + 1 })),
   requestTextEdit: (textEditRequest) => set({ textEditRequest }),
   goToPage: (i) => set({ pageIndex: Math.max(0, i), selection: null, selectedIds: [] }),
   setSheetSide: (sheetSide) => set({ sheetSide }),

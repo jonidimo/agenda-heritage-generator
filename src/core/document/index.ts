@@ -16,6 +16,7 @@ import { shapeText } from '../text/shape';
 import { createDocContext, pageFormat, type PageFormat, type Resources } from './context';
 import { dedupeWarnings, layoutPage, pageInputs, pagePrims, samePageInputs, verifyPage, type PageInputs } from './layout';
 import { buildOutline, LinkResolver, pageFullTitle, pageLinks, remapOutline, type ResolvedLink } from './links';
+import { hiddenElements, type HiddenElement } from './hidden';
 import { planDocument, type DocumentPlan, type PlanOptions } from './plan';
 import { samePageDesign, samePlanInputs } from './reuse';
 
@@ -170,6 +171,12 @@ export class AgendaDocument {
   /** Todos los avisos de una página: los de la maquetación y los de la verificación. */
   pageWarnings(index: number): PageWarning[] {
     return dedupeWarnings([...this.page(index).warnings, ...this.verify(index)]);
+  }
+
+  /** Elementos ocultos en una página (para devolverlos a la vista). */
+  hidden(index: number): HiddenElement[] {
+    const plan = this.plan.pages[index];
+    return plan ? hiddenElements(this.ctx, this.design, plan, this.pageCount) : [];
   }
 
   /** Avisos de verificación previa de todas las páginas (maqueta todo). */

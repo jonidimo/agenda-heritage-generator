@@ -4,7 +4,7 @@
  */
 import type { AgendaDocument } from '@core/document';
 import { pagePrims } from '@core/document/layout';
-import type { PageModel } from '@core/layout/prims';
+import { isProblem, type PageModel } from '@core/layout/prims';
 import { memo, useEffect, useRef, useState } from 'react';
 import { paintPrims } from '../../canvas/paint';
 import { onAssetUrlsChange } from '../../state/assetUrls';
@@ -40,6 +40,8 @@ export const Thumb = memo(function Thumb({ doc, index, width }: { doc: AgendaDoc
   const painted = useRef<Painted | null>(null);
   const [visible, setVisible] = useState(false);
   const [tick, setTick] = useState(0);
+  /** Avisos al maquetar la página (los de la verificación se miden aparte, a pedido). */
+  const [warned, setWarned] = useState(false);
   const pw = doc.format.w;
   const ph = doc.format.h;
   const height = Math.round((width * ph) / pw);
@@ -75,6 +77,7 @@ export const Thumb = memo(function Thumb({ doc, index, width }: { doc: AgendaDoc
         console.warn(err);
         return;
       }
+      setWarned(model.warnings.some(isProblem));
       const last = painted.current;
       if (last && last.model === model && last.width === width && last.height === height && last.pageWidth === pw && last.tick === tick) return;
       const dpr = Math.min(2, window.devicePixelRatio || 1);
@@ -100,5 +103,10 @@ export const Thumb = memo(function Thumb({ doc, index, width }: { doc: AgendaDoc
     };
   }, [visible, doc, index, width, height, pw, tick]);
 
-  return <canvas ref={ref} style={{ width, height }} className="block bg-white" aria-hidden="true" />;
+  return (
+    <span className="relative block">
+      <canvas ref={ref} style={{ width, height }} className="block bg-white" aria-hidden="true" />
+      {warned && <span data-testid="thumb-warning" className="absolute top-0.5 right-0.5 h-2 w-2 rounded-full bg-warn ring-1 ring-white" aria-hidden="true" />}
+    </span>
+  );
 });
