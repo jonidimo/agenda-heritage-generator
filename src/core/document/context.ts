@@ -6,7 +6,7 @@ import { buildCalendar, type CalendarOptions } from '../calendar';
 import { currencySymbol, defaultTimeZone, regionWeekInfo } from '../calendar/locale';
 import { moonPhases, seasonDates } from '../calendar/moon';
 import { sheetSize, type Design } from '../design/schema';
-import { resolveTheme } from '../design/themes';
+import { resolveThemeFor } from '../design/themes';
 import { computeHolidays, type HolidayCountryData, type HolidayType } from '../holidays';
 import { langOf, resolveStrings } from '../i18n';
 import type { AssetInfo, DocContext, PageGeometry } from '../layout/context';
@@ -65,9 +65,29 @@ export function calendarOptions(design: Design): CalendarOptions {
   };
 }
 
-export function createDocContext(design: Design, res: Resources): DocContext {
-  const theme = resolveTheme(design.theme.id, design.theme.tokens, design.theme.comfort);
-  const strings = resolveStrings(design.locale, design.persona.labels);
+/**
+ * Un documento anterior de la misma agenda. Mientras las partes del diseño de las que sale algo no
+ * cambien (por identidad: el editor trabaja con diseños inmutables), eso se reutiliza en lugar de
+ * calcularse otra vez: cambiar un color no vuelve a calcular el calendario, los feriados ni las
+ * fases de la luna.
+ */
+export interface ContextSource {
+  readonly design: Design;
+  readonly resources: Resources;
+  readonly ctx: DocContext;
+}
+
+/** ¿Estas partes del diseño son las mismas que las del documento anterior? */
+export function unchanged(prev: ContextSource | undefined, design: Design, keys: ReadonlyArray<keyof Design>): prev is ContextSource {
+  return prev !== undefined && keys.every((k) => prev.design[k] === design[k]);
+}
+
+/** Partes del diseño de las que salen el calendario, el huso horario, la moneda y las estaciones. */
+const CALENDAR_INPUTS = ['locale', 'calendar', 'holidays', 'personalDates', 'astronomy'] as const satisfies ReadonlyArray<keyof Design>;
+
+type Calendrical = Pick<DocContext, 'cal' | 'timeZone' | 'currency' | 'seasons'>;
+
+function buildCalendrical(design: Design, res: Resources): Calendrical {
   const lang = design.holidays.language === 'auto' ? langOf(design.locale) : design.holidays.language;
   const tz =
     design.calendar.timeZone !== 'auto'
@@ -88,22 +108,30 @@ export function createDocContext(design: Design, res: Resources): DocContext {
     personalDates: design.personalDates.map((p) => ({ ...p, year: p.year ?? null })),
     moon: design.astronomy.moonPhases ? (from, to) => moonPhases(from, to, tz) : null,
   });
+  return { cal, timeZone: tz, currency: currencySymbol(design.locale, design.holidays.country), seasons: seasonDates(design.calendar.year, tz) };
+}
+
+export function createDocContext(design: Design, res: Resources, prev?: ContextSource): DocContext {
+  const theme = resolveThemeFor(design.theme);
+  const strings =
+    unchanged(prev, design, ['locale']) && prev.design.persona.labels === design.persona.labels ? prev.ctx.strings : resolveStrings(design.locale, design.persona.labels);
+  const calendrical: Calendrical =
+    unchanged(prev, design, CALENDAR_INPUTS) && prev.resources.holidays === res.holidays
+      ? { cal: prev.ctx.cal, timeZone: prev.ctx.timeZone, currency: prev.ctx.currency, seasons: prev.ctx.seasons }
+      : buildCalendrical(design, res);
+  const methods = unchanged(prev, design, ['methods']) ? prev.ctx.methods : new Set([...design.methods.enabled, ...design.methods.custom.map((m) => m.id)]);
   const fmt = pageFormat(design);
-  const methods = new Set([...design.methods.enabled, ...design.methods.custom.map((m) => m.id)]);
   return {
     design,
     theme,
     fonts: res.fonts,
     strings,
     locale: design.locale,
-    cal,
     methods,
     assets: res.assets,
-    currency: currencySymbol(design.locale, design.holidays.country),
-    timeZone: tz,
-    seasons: seasonDates(design.calendar.year, tz),
     pageW: fmt.w,
     pageH: fmt.h,
+    ...calendrical,
   };
 }
 

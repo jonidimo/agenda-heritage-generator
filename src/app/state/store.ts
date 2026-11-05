@@ -26,8 +26,21 @@ export interface Selection {
   role: string;
 }
 
+/** Receta de immer que cambia un diseño (la usan `update`, `preview` y `commit`). */
+export type Recipe = (draft: Draft<Design>) => void;
+
 interface StoreState {
   design: Design | null;
+  /**
+   * Diseño transitorio mientras se arrastra un control (color, deslizador): lo ve el lienzo y nada
+   * más. No entra al historial ni se guarda; se confirma una vez al soltar (`commit`).
+   */
+  previewDesign: Design | null;
+  /** El diseño confirmado sobre el que se armó la vista previa, y el control que la pidió. */
+  previewBase: Design | null;
+  previewKey: string | null;
+  /** Cambios confirmados desde que se abrió el programa: sube con cada `update`, `commit`, `setDesign`, deshacer y rehacer. */
+  revision: number;
   past: Design[];
   future: Design[];
   coalesce: { key: string; at: number } | null;
@@ -83,7 +96,17 @@ interface StoreState {
   /** Cierra la agenda abierta (p. ej. al borrarla) sin volver a guardarla. */
   closeDesign(): void;
   setNotice(msg: string | null): void;
-  update(recipe: (d: Draft<Design>) => void, coalesceKey?: string): void;
+  update(recipe: Recipe, coalesceKey?: string): void;
+  /** Muestra `recipe` sin confirmarlo (como mucho una vez por cuadro lo llama quien arrastra). */
+  preview(recipe: Recipe, key: string): void;
+  /** Descarta la vista previa (se cancela el arrastre). */
+  clearPreview(): void;
+  /**
+   * Confirma lo que se estaba arrastrando como UN paso de historial. Si la vista previa es de este
+   * mismo control y partió del diseño actual, se adopta tal cual (el documento ya está armado);
+   * si no, se aplica `recipe` como un `update`.
+   */
+  commit(recipe: Recipe, key: string): void;
   undo(): void;
   redo(): void;
   setView(v: View): void;
@@ -164,8 +187,36 @@ if (typeof window !== 'undefined') {
   });
 }
 
+const NO_PREVIEW = { previewDesign: null, previewBase: null, previewKey: null } as const;
+
+/** Estado tras confirmar un diseño: historial (con los cambios seguidos de un mismo control fusionados en un paso) y revisión nueva. */
+function confirmed(s: StoreState, next: Design, coalesceKey?: string): Partial<StoreState> {
+  const design = s.design;
+  if (!design) return {};
+  const now = Date.now();
+  const merge = coalesceKey !== undefined && s.coalesce?.key === coalesceKey && now - s.coalesce.at < COALESCE_MS;
+  return {
+    design: next,
+    ...NO_PREVIEW,
+    revision: s.revision + 1,
+    past: merge ? s.past : [...s.past.slice(-HISTORY_LIMIT + 1), design],
+    future: [],
+    coalesce: coalesceKey !== undefined ? { key: coalesceKey, at: now } : null,
+  };
+}
+
+/** Aplica una receta; devuelve el diseño nuevo, o el mismo si no cambió nada (y entonces no hay paso de historial). */
+export function applyRecipe(design: Design, recipe: Recipe): Design {
+  const changed = produce(design, recipe);
+  return changed === design ? design : produce(changed, (draft) => void (draft.updatedAt = new Date().toISOString()));
+}
+
 export const useStore = create<StoreState>((set, get) => ({
   design: null,
+  previewDesign: null,
+  previewBase: null,
+  previewKey: null,
+  revision: 0,
   past: [],
   future: [],
   coalesce: null,
@@ -205,6 +256,8 @@ export const useStore = create<StoreState>((set, get) => ({
     const d = parseDesign(input);
     set((s) => ({
       design: d,
+      ...NO_PREVIEW,
+      revision: s.revision + 1,
       past: opts?.keepHistory ? s.past : [],
       future: opts?.keepHistory ? s.future : [],
       coalesce: null,
@@ -221,7 +274,7 @@ export const useStore = create<StoreState>((set, get) => ({
   closeDesign() {
     const d = get().design;
     if (d) cancelSave(d.id);
-    set({ design: null, past: [], future: [], coalesce: null, selection: null, selectedIds: [], pageIndex: 0, navBack: [], navForward: [] });
+    set((s) => ({ design: null, ...NO_PREVIEW, revision: s.revision + 1, past: [], future: [], coalesce: null, selection: null, selectedIds: [], pageIndex: 0, navBack: [], navForward: [] }));
   },
 
   setNotice: (notice) => set({ notice }),
@@ -229,29 +282,40 @@ export const useStore = create<StoreState>((set, get) => ({
   setUpdateReady: (updateReady) => set({ updateReady }),
 
   update(recipe, coalesceKey) {
-    const { design, past, coalesce } = get();
+    const { design } = get();
     if (!design) return;
-    const next = produce(design, (draft) => {
-      recipe(draft);
-      draft.updatedAt = new Date().toISOString();
-    });
+    const next = applyRecipe(design, recipe);
     if (next === design) return;
-    const now = Date.now();
-    const merge = coalesceKey !== undefined && coalesce?.key === coalesceKey && now - coalesce.at < COALESCE_MS;
-    set({
-      design: next,
-      past: merge ? past : [...past.slice(-HISTORY_LIMIT + 1), design],
-      future: [],
-      coalesce: coalesceKey !== undefined ? { key: coalesceKey, at: now } : null,
-    });
+    set((s) => confirmed(s, next, coalesceKey));
     scheduleSave(next);
+  },
+
+  preview(recipe, key) {
+    const { design } = get();
+    if (!design) return;
+    const next = applyRecipe(design, recipe);
+    set({ previewDesign: next === design ? null : next, previewBase: design, previewKey: key });
+  },
+
+  clearPreview: () => set(NO_PREVIEW),
+
+  commit(recipe, key) {
+    const { design, previewDesign, previewBase, previewKey } = get();
+    if (!design) return;
+    if (previewDesign && previewBase === design && previewKey === key) {
+      set((s) => confirmed(s, previewDesign, key));
+      scheduleSave(previewDesign);
+    } else {
+      set(NO_PREVIEW);
+      get().update(recipe, key);
+    }
   },
 
   undo() {
     const { design, past, future } = get();
     const prev = past[past.length - 1];
     if (!design || !prev) return;
-    set({ design: prev, past: past.slice(0, -1), future: [design, ...future], coalesce: null });
+    set((s) => ({ design: prev, ...NO_PREVIEW, revision: s.revision + 1, past: past.slice(0, -1), future: [design, ...future], coalesce: null }));
     scheduleSave(prev);
   },
 
@@ -259,7 +323,7 @@ export const useStore = create<StoreState>((set, get) => ({
     const { design, past, future } = get();
     const next = future[0];
     if (!design || !next) return;
-    set({ design: next, past: [...past, design], future: future.slice(1), coalesce: null });
+    set((s) => ({ design: next, ...NO_PREVIEW, revision: s.revision + 1, past: [...past, design], future: future.slice(1), coalesce: null }));
     scheduleSave(next);
   },
 

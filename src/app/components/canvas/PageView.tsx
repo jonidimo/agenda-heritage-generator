@@ -101,11 +101,13 @@ export function PageView({ doc, index, scale, interactive = true }: Props) {
     void assetTick;
     return (key: string, kind: 'image' | 'pdf'): string | undefined => assetHref(key, kind);
   }, [assetTick]);
+  // Depende del modelo de la página y no del documento: si el documento nuevo reutilizó la página, el dibujo es el mismo.
+  const fonts = doc.ctx.fonts;
   const { body, defs } = useMemo(() => {
     const prefix = `g${index}x`;
-    const { body: b, sink } = pageInnerSvg(page, { fonts: doc.ctx.fonts, assetHref: hrefFor, glyphPrefix: prefix, blockAttrs: interactive });
-    return { body: b, defs: sink.defs(doc.ctx.fonts, prefix) };
-  }, [page, doc, index, interactive, hrefFor]);
+    const { body: b, sink } = pageInnerSvg(page, { fonts, assetHref: hrefFor, glyphPrefix: prefix, blockAttrs: interactive });
+    return { body: b, defs: sink.defs(fonts, prefix) };
+  }, [page, fonts, index, interactive, hrefFor]);
 
   const selected = selection && selection.pageKey === page.key ? page.blocks.find((b) => b.id === selection.blockId) : undefined;
   // Selección múltiple de esta página (incluye el principal).

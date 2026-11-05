@@ -2,11 +2,20 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './App';
 import { AppBoundary } from './components/ErrorBoundary';
+import { stats } from './state/stats';
 import { flushSave, useStore } from './state/store';
 import './styles.css';
 
-// Acceso de solo lectura para pruebas automáticas y depuración desde la consola.
-(window as unknown as { __agenda?: typeof useStore }).__agenda = useStore;
+declare global {
+  interface Window {
+    /** El almacén, para pruebas automáticas y depuración desde la consola. */
+    __agenda?: typeof useStore;
+    /** Contadores de trabajo del editor (ver `state/stats`), para las pruebas. */
+    __agendaStats?: typeof stats;
+  }
+}
+window.__agenda = useStore;
+window.__agendaStats = stats;
 
 // Versión nueva instalada mientras la aplicación estaba abierta: los archivos que se cargan bajo
 // demanda (generador de PDF, visor de PDF) ahora son los de la versión nueva, así que conviene

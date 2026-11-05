@@ -1,4 +1,4 @@
-import { devices, expect, test, type Page } from '@playwright/test';
+import { devices, expect, test, type Locator, type Page } from '@playwright/test';
 
 type StoreHandle = {
   getState: () => {
@@ -515,6 +515,75 @@ async function toWeek(page: Page): Promise<void> {
   for (let i = 0; i < 11; i++) await page.keyboard.press('PageDown');
 }
 
+/** Lo que el almacén y los contadores dicen del trabajo del editor (se lee dentro de la página). */
+interface Work {
+  past: number;
+  revision: number;
+  thumbPaints: number;
+  hasPreview: boolean;
+  previewPitch: number | null;
+  committedPitch: number | null;
+  previewInk: string | null;
+  committedInk: string | null;
+}
+
+const WORK = `(() => {
+  const s = globalThis.__agenda.getState();
+  const pitch = (d) => d?.theme.tokens.writing?.pitch ?? null;
+  const ink = (d) => d?.theme.tokens.colors?.roles?.title ?? null;
+  return {
+    past: s.past.length,
+    revision: s.revision,
+    thumbPaints: globalThis.__agendaStats.thumbPaints,
+    hasPreview: s.previewDesign !== null,
+    previewPitch: pitch(s.previewDesign),
+    committedPitch: pitch(s.design),
+    previewInk: ink(s.previewDesign),
+    committedInk: ink(s.design),
+  };
+})()`;
+
+const work = (page: Page): Promise<Work> => page.evaluate<Work>(WORK);
+
+/** Espera a que las miniaturas terminen de dibujarse (el contador deja de moverse). */
+async function settled(page: Page): Promise<void> {
+  let last = -1;
+  for (let i = 0; i < 40; i++) {
+    const now = (await work(page)).thumbPaints;
+    if (now === last) return;
+    last = now;
+    await page.waitForTimeout(500);
+  }
+  throw new Error('Las miniaturas no terminan de dibujarse');
+}
+
+/** Lo mínimo que se usa de un control dentro de la página (este proyecto no incluye los tipos del navegador). */
+interface ControlHandle {
+  value: string;
+  dispatchEvent(event: unknown): boolean;
+}
+
+/** Una ráfaga de eventos `input` sobre un control, como un arrastre (con el valor de cada paso). */
+async function dragThrough(control: Locator, values: string[]): Promise<void> {
+  await control.evaluate((el: ControlHandle, steps: string[]) => {
+    // El setter nativo: así React ve el valor como cambiado, igual que con una persona.
+    const set = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(el), 'value')?.set;
+    if (!set) throw new Error('El control no tiene valor');
+    for (const v of steps) {
+      set.call(el, v);
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+  }, values);
+}
+
+/** Soltar: el evento `change` nativo. */
+async function release(control: Locator): Promise<void> {
+  await control.evaluate((el: ControlHandle) => el.dispatchEvent(new Event('change', { bubbles: true })));
+}
+
+/** Dos cuadros de animación: lo que el limitador entrega en el cuadro siguiente ya llegó. */
+const frames = (page: Page): Promise<void> => page.evaluate('new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())))');
+
 test.describe('interfaz', () => {
   test('el asistente alinea sus campos y recuerda si se muestra al iniciar', async ({ page }) => {
     await page.addInitScript(() => localStorage.setItem('agenda-studio.uiLang', 'es'));
@@ -767,5 +836,78 @@ test.describe('interfaz', () => {
     await expect(page.getByTestId('link-fields').getByRole('combobox').first()).toBeFocused();
     expect((await state(page)).showLinks).toBe(true);
     expect((await state(page)).selectedIds).toEqual(['month.3']);
+  });
+  test('arrastrar un deslizador se ve en el lienzo sin tocar historial ni miniaturas, y se confirma una sola vez al soltar', async ({ page }) => {
+    await openQuiet(page);
+    await page.getByRole('tab', { name: 'Estilo' }).click();
+    const slider = page.getByRole('slider', { name: 'Separación entre renglones (mm)' });
+    await expect(slider).toBeVisible();
+    await settled(page);
+    const before = await work(page);
+    expect(before.committedPitch).toBeNull();
+
+    await dragThrough(slider, ['7', '8', '9', '10']);
+    await frames(page);
+    const during = await work(page);
+    // El lienzo ve el último valor; el diseño confirmado, el historial, la revisión y las miniaturas, nada.
+    expect(during.hasPreview).toBe(true);
+    expect(during.previewPitch).toBe(10);
+    expect(during.committedPitch).toBeNull();
+    expect(during.past).toBe(before.past);
+    expect(during.revision).toBe(before.revision);
+    expect(during.thumbPaints).toBe(before.thumbPaints);
+    // El control muestra lo arrastrado.
+    await expect(page.getByRole('spinbutton', { name: 'Separación entre renglones (mm)' })).toHaveValue('10');
+
+    await release(slider);
+    await expect.poll(async () => (await work(page)).hasPreview).toBe(false);
+    const after = await work(page);
+    expect(after.committedPitch).toBe(10);
+    expect(after.past).toBe(before.past + 1);
+    expect(after.revision).toBe(before.revision + 1);
+
+    // Un solo «Deshacer» lo quita todo.
+    await page.keyboard.press('Control+z');
+    await expect.poll(async () => (await work(page)).committedPitch).toBeNull();
+  });
+
+  test('un selector de color en arrastre también es una vista previa y un solo paso de historial', async ({ page }) => {
+    await openQuiet(page);
+    await page.getByRole('tab', { name: 'Estilo' }).click();
+    const color = page.locator('[data-reveal="role.title"] input[type="color"]');
+    await expect(color).toBeVisible();
+    await settled(page);
+    const before = await work(page);
+
+    await dragThrough(color, ['#112233', '#223344', '#334455']);
+    await frames(page);
+    const during = await work(page);
+    expect(during.previewInk).toBe('#334455');
+    expect(during.committedInk).toBe(before.committedInk);
+    expect(during.past).toBe(before.past);
+    expect(during.thumbPaints).toBe(before.thumbPaints);
+
+    await release(color);
+    await expect.poll(async () => (await work(page)).hasPreview).toBe(false);
+    const after = await work(page);
+    expect(after.committedInk).toBe('#334455');
+    expect(after.past).toBe(before.past + 1);
+  });
+
+  test('un control que desaparece a mitad de un arrastre confirma lo arrastrado', async ({ page }) => {
+    await openQuiet(page);
+    await page.getByRole('tab', { name: 'Estilo' }).click();
+    const slider = page.getByRole('slider', { name: 'Separación entre renglones (mm)' });
+    await settled(page);
+    const before = await work(page);
+    await dragThrough(slider, ['8', '9']);
+    await frames(page);
+    expect((await work(page)).hasPreview).toBe(true);
+    // Cambiar de pestaña desmonta el panel con el control en pleno arrastre.
+    await page.getByRole('tab', { name: 'Secciones' }).click();
+    await expect.poll(async () => (await work(page)).hasPreview).toBe(false);
+    const after = await work(page);
+    expect(after.committedPitch).toBe(9);
+    expect(after.past).toBe(before.past + 1);
   });
 });

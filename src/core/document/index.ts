@@ -14,9 +14,10 @@ import { renderPdf, type PdfPageInput } from '../render/pdf';
 import { SECTION_REGISTRY } from '../sections/registry';
 import { shapeText } from '../text/shape';
 import { createDocContext, pageFormat, type PageFormat, type Resources } from './context';
-import { layoutPage, pagePrims } from './layout';
+import { dedupeWarnings, layoutPage, pageInputs, pagePrims, samePageInputs, verifyPage, type PageInputs } from './layout';
 import { buildOutline, LinkResolver, pageFullTitle, pageLinks, type ResolvedLink } from './links';
 import { planDocument, type DocumentPlan, type PlanOptions } from './plan';
+import { samePageDesign, samePlanInputs } from './reuse';
 
 /** Los PDF que se pueden generar (páginas sueltas, impuesto para imprimir, hojas auxiliares…). */
 export const EXPORT_KINDS = ['pages', 'imposed', 'fronts', 'backs', 'signature', 'calibration', 'sewing', 'cover', 'separate'] as const;
@@ -29,11 +30,30 @@ export interface ExportOptions {
   signature?: number;
 }
 
+export interface DocumentOptions {
+  /**
+   * Documento anterior de la misma agenda y con los mismos recursos: lo que no cambió (calendario,
+   * textos, plan de páginas y las páginas ya maquetadas) se reutiliza en lugar de calcularse otra vez.
+   */
+  reuse?: AgendaDocument;
+}
+
+/** Una página maquetada con las entradas con las que se maquetó (para saber si vale en otro documento). */
+interface CachedPage {
+  readonly model: PageModel;
+  readonly inputs: PageInputs;
+}
+
 export class AgendaDocument {
   readonly ctx: DocContext;
   readonly plan: DocumentPlan;
   readonly format: PageFormat;
-  private readonly cache = new Map<number, PageModel>();
+  /** Cuántas páginas se maquetaron y cuántas se tomaron del documento anterior (pruebas y diagnóstico). */
+  readonly stats = { layouts: 0, reusedPages: 0 };
+  private readonly cache = new Map<number, CachedPage>();
+  /** Páginas del documento anterior que valen aquí mientras sus entradas sigan siendo las mismas. */
+  private readonly inherited: ReadonlyMap<number, CachedPage> | null;
+  private readonly verifications = new Map<number, PageWarning[]>();
   private sidesCache: SheetSide[] | null = null;
   private resolverCache: LinkResolver | null = null;
 
@@ -41,14 +61,27 @@ export class AgendaDocument {
     readonly design: Design,
     readonly resources: Resources,
     readonly planOptions: PlanOptions = {},
+    options: DocumentOptions = {},
   ) {
-    this.ctx = createDocContext(design, resources);
+    // Con otro filtro de secciones (p. ej. «libreta aparte») el plan es otro: no hay qué reutilizar.
+    const prev = options.reuse?.planOptions.only === planOptions.only ? options.reuse : undefined;
+    this.ctx = createDocContext(design, resources, prev);
     this.format = pageFormat(design);
-    this.plan = planDocument(this.ctx, SECTION_REGISTRY, planOptions);
-    (this.ctx as { pages?: DocContext['pages'] }).pages = this.plan.pages.map((p) => ({ key: p.key, type: p.type, group: p.group, index: p.index, title: p.title, section: p.section }));
-    const sides = new Map<string, Set<string>>();
-    for (const p of this.plan.pages) sides.set(p.type, (sides.get(p.type) ?? new Set()).add(p.side));
-    (this.ctx as { mirrorTypes?: ReadonlySet<string> }).mirrorTypes = new Set([...sides.entries()].filter(([, s]) => s.size === 2).map(([t]) => t));
+    const reusePlan = prev !== undefined && samePlanInputs(prev.design, design) && prev.ctx.cal === this.ctx.cal && prev.ctx.strings === this.ctx.strings;
+    if (prev && reusePlan) {
+      this.plan = prev.plan;
+      this.ctx.pages = prev.ctx.pages;
+      this.ctx.mirrorTypes = prev.ctx.mirrorTypes;
+    } else {
+      this.plan = planDocument(this.ctx, SECTION_REGISTRY, planOptions);
+      this.ctx.pages = this.plan.pages.map((p) => ({ key: p.key, type: p.type, group: p.group, index: p.index, title: p.title, section: p.section }));
+      const sides = new Map<string, Set<string>>();
+      for (const p of this.plan.pages) sides.set(p.type, (sides.get(p.type) ?? new Set()).add(p.side));
+      this.ctx.mirrorTypes = new Set([...sides.entries()].filter(([, s]) => s.size === 2).map(([t]) => t));
+    }
+    // Páginas heredadas: mismo plan, mismos recursos y contexto (tema, textos, calendario…), y el
+    // resto del diseño igual salvo lo propio de cada página (se compara al pedirla).
+    this.inherited = prev && reusePlan && sameLayoutContext(prev.ctx, this.ctx) && samePageDesign(prev.design, design) ? prev.cache : null;
   }
 
   get pageCount(): number {
@@ -57,12 +90,38 @@ export class AgendaDocument {
 
   page(index: number): PageModel {
     const hit = this.cache.get(index);
-    if (hit) return hit;
+    if (hit) return hit.model;
     const plan = this.plan.pages[index];
     if (!plan) throw new Error(`Página fuera de rango: ${index}`);
-    const model = layoutPage(this.ctx, plan, SECTION_REGISTRY, this.plan.pages.length);
-    this.cache.set(index, model);
+    const inputs = pageInputs(this.design, plan);
+    const old = this.inherited?.get(index);
+    if (old && samePageInputs(old.inputs, inputs)) {
+      this.cache.set(index, old);
+      this.stats.reusedPages++;
+      return old.model;
+    }
+    const model = layoutPage(this.ctx, plan, SECTION_REGISTRY, this.plan.pages.length, inputs);
+    this.stats.layouts++;
+    this.cache.set(index, { model, inputs });
     return model;
+  }
+
+  /**
+   * Avisos de verificación de una página (fuera de la página, zona no imprimible, textos
+   * superpuestos, poca resolución): se miden la primera vez que se piden. Si la página se reutiliza
+   * de otro documento, su verificación se reutiliza con ella.
+   */
+  verify(index: number): PageWarning[] {
+    const model = this.page(index);
+    const hit = this.verifications.get(index) ?? verified.get(model);
+    if (hit) {
+      this.verifications.set(index, hit);
+      return hit;
+    }
+    const warnings = verifyPage(this.ctx, model);
+    verified.set(model, warnings);
+    this.verifications.set(index, warnings);
+    return warnings;
   }
 
   indexOfKey(key: string): number {
@@ -106,6 +165,11 @@ export class AgendaDocument {
     return this.sides().find((s) => s.slots.some((sl) => sl.page === index));
   }
 
+  /** Todos los avisos de una página: los de la maquetación y los de la verificación. */
+  pageWarnings(index: number): PageWarning[] {
+    return dedupeWarnings([...this.page(index).warnings, ...this.verify(index)]);
+  }
+
   /** Avisos de verificación previa de todas las páginas (maqueta todo). */
   warnings(): Array<PageWarning & { page: number; key: string }> {
     const out: Array<PageWarning & { page: number; key: string }> = [];
@@ -119,7 +183,7 @@ export class AgendaDocument {
         out.push({ code: 'layoutError', params: { error: message }, message: `Error al maquetar: ${message}`, page: i, key: this.plan.pages[i]?.key ?? '' });
         continue;
       }
-      for (const w of p.warnings) out.push({ ...w, page: i, key: p.key });
+      for (const w of this.pageWarnings(i)) out.push({ ...w, page: i, key: p.key });
       for (const b of pageLinks(p, this.linkResolver, this.design.links).broken) {
         const label = p.blocks.find((x) => x.id === b.blockId)?.label ?? b.blockId;
         const message = b.mode === 'url' ? `El enlace de «${label}» no es una dirección web válida (${b.target}).` : `El enlace de «${label}» lleva a una página que ya no existe.`;
@@ -218,6 +282,27 @@ export class AgendaDocument {
         return this.separate().exportPdf('imposed', opts);
     }
   }
+}
+
+/** Verificaciones ya hechas, por modelo de página: una página reutilizada por otro documento no se verifica de nuevo. */
+const verified = new WeakMap<PageModel, PageWarning[]>();
+
+/** ¿El contexto de maquetación es el mismo salvo el diseño? (tema, textos, calendario, recursos y formato.) */
+function sameLayoutContext(a: DocContext, b: DocContext): boolean {
+  return (
+    a.theme === b.theme &&
+    a.strings === b.strings &&
+    a.cal === b.cal &&
+    a.methods === b.methods &&
+    a.currency === b.currency &&
+    a.timeZone === b.timeZone &&
+    a.seasons === b.seasons &&
+    a.locale === b.locale &&
+    a.fonts === b.fonts &&
+    a.assets === b.assets &&
+    a.pageW === b.pageW &&
+    a.pageH === b.pageH
+  );
 }
 
 export function buildDocument(design: Design, resources: Resources, planOptions: PlanOptions = {}): AgendaDocument {

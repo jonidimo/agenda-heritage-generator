@@ -6,7 +6,7 @@
 import { rasterInfo } from './assets/image';
 import { importSvg } from './assets/svg';
 import type { AssetRef, Design } from './design/schema';
-import { themeFaces, resolveTheme } from './design/themes';
+import { themeFaces, resolveThemeFor } from './design/themes';
 import type { HolidayCountryData, HolidayIndex } from './holidays';
 import type { AssetInfo } from './layout/context';
 import { faceKey, FontRegistry, parseFontSpec, type FontSpec } from './text/fonts';
@@ -59,7 +59,7 @@ export async function loadFontManifest(io: ResourceIO): Promise<FontManifest> {
 
 /** Caras necesarias para un diseño: las del tema + Manrope (marcas y hojas auxiliares). */
 export function facesForDesign(design: Design): FontSpec[] {
-  const theme = resolveTheme(design.theme.id, design.theme.tokens, design.theme.comfort);
+  const theme = resolveThemeFor(design.theme);
   const list = [
     ...themeFaces(theme),
     // Textos propios con su propia fuente.

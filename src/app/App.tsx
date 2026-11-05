@@ -75,12 +75,12 @@ function Sidebar() {
 }
 
 /** Vista central: si una página o la hoja no se pueden dibujar, el resto del editor sigue andando. */
-function CanvasArea({ doc }: { doc: AgendaDocument }) {
+function CanvasArea({ doc, live }: { doc: AgendaDocument; live: AgendaDocument }) {
   const pageIndex = useStore((s) => s.pageIndex);
   const view = useStore((s) => s.view);
   return (
-    <ErrorBoundary resetKeys={[doc, pageIndex, view]} fallback={(e) => <ViewError error={e} />}>
-      <Canvas doc={doc} />
+    <ErrorBoundary resetKeys={[live, pageIndex, view]} fallback={(e) => <ViewError error={e} />}>
+      <Canvas committed={doc} live={live} />
     </ErrorBoundary>
   );
 }
@@ -123,6 +123,8 @@ export function App() {
   const sheetOpen = useStore((s) => s.inspectorOpen);
   const setSheetOpen = useStore((s) => s.setInspectorOpen);
   const { doc, error } = useDocument();
+  /** El lienzo muestra la vista previa mientras se arrastra un control; lo demás, el diseño confirmado. */
+  const live = useDocument('editing').doc ?? doc;
 
   /** Muestra los problemas de carga nuevos (fuentes, feriados, imágenes). */
   const reportResourceErrors = useCallback((): void => {
@@ -346,7 +348,7 @@ export function App() {
             <div className="desk flex flex-1 items-center justify-center text-[13px] text-ink-soft">{error ?? t('app.loading')}</div>
           ) : (
             <>
-              <CanvasArea doc={doc} />
+              <CanvasArea doc={doc} live={live ?? doc} />
               <Navigator doc={doc} />
             </>
           )}

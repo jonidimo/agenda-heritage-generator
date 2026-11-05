@@ -12,7 +12,7 @@ import { blockBounds } from '@core/document/layout';
 import { alignDeltas, centerGroupDeltas, distributeDeltas, tidyGridDeltas, unionRect, type AlignMode, type Delta } from '@core/layout/align';
 import { current, type Draft } from 'immer';
 import { documentFor } from './doc';
-import { useStore } from './store';
+import { useStore, type Recipe } from './store';
 
 export type Scope = 'type' | 'page';
 
@@ -216,9 +216,13 @@ export function pageStyleOf(design: Design, page: PageModel, scope: Scope): Reco
  * Cambia un valor del estilo de escritura (p. ej. `['dots', 'pitch']`) para el tipo o la página.
  * Con `undefined` lo quita (el valor vuelve a salir del tema) y descarta lo que quede vacío.
  */
-export function setPageStyle(page: PageModel, scope: Scope, path: string[], value: unknown, coalesce?: string): void {
+export function pageStyleRecipe(page: PageModel, scope: Scope, path: string[], value: unknown): Recipe {
   const key = effectiveScope(page, scope) === 'page' ? page.key : null;
-  useStore.getState().update((d) => void (d.pageStyles = withPageStyle(current(d.pageStyles), { pageType: page.type, pageKey: key }, path, value)), coalesce);
+  return (d) => void (d.pageStyles = withPageStyle(current(d.pageStyles), { pageType: page.type, pageKey: key }, path, value));
+}
+
+export function setPageStyle(page: PageModel, scope: Scope, path: string[], value: unknown, coalesce?: string): void {
+  useStore.getState().update(pageStyleRecipe(page, scope, path, value), coalesce);
 }
 
 export function resetPageStyle(page: PageModel, scope: Scope): void {
@@ -290,11 +294,14 @@ export function scaleBlock(page: PageModel, block: Block, factor: number, scope:
   }, coalesce);
 }
 
-export function patchOverride(page: PageModel, blockId: string, scope: Scope, patch: Partial<BlockOverride>, coalesce?: string): void {
+/** Receta que cambia un ajuste del elemento (la usan `patchOverride` y los deslizadores con vista previa). */
+export function overrideRecipe(page: PageModel, blockId: string, scope: Scope, patch: Partial<BlockOverride>): Recipe {
   const mirrored = typeMirrored(page);
-  useStore.getState().update((d) => {
-    upsertOverride(d, page, blockId, effectiveScope(page, scope), (o) => Object.assign(o, patch), mirrored);
-  }, coalesce);
+  return (d) => upsertOverride(d, page, blockId, effectiveScope(page, scope), (o) => Object.assign(o, patch), mirrored);
+}
+
+export function patchOverride(page: PageModel, blockId: string, scope: Scope, patch: Partial<BlockOverride>, coalesce?: string): void {
+  useStore.getState().update(overrideRecipe(page, blockId, scope, patch), coalesce);
 }
 
 export function resetBlock(page: PageModel, blockId: string, scope: Scope): void {

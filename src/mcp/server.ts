@@ -241,7 +241,7 @@ export function createServer(opts: ServerOptions): McpServer {
         // Cajas como [x, y, ancho, alto] en mm desde la esquina superior izquierda de esta página.
         content: box(model.content),
         blocks: model.blocks.map((b) => ({ id: b.id, label: b.label, box: box(b.bbox) })),
-        warnings: model.warnings.map((w) => w.message),
+        warnings: doc.pageWarnings(page - 1).map((w) => w.message),
       };
       let png: Uint8Array;
       try {

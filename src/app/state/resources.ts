@@ -79,15 +79,27 @@ export class Resources {
     this.bump();
   }
 
+  /** De qué partes del diseño salió lo último que se aseguró: si no cambiaron, no hay nada nuevo que cargar. */
+  private ensured: { theme: Design['theme']; customBlocks: Design['customBlocks']; country: string | null; assets: Design['assets'] } | null = null;
+
   /** Carga lo que necesita un diseño (caras del tema, datos del país, recursos). */
   async ensureFor(design: Design): Promise<void> {
+    // Lo que se necesita depende solo del tema, de los elementos propios (fuentes), del país y de los recursos.
+    // Un cambio de color, de nombre o de un ajuste de página no pide nada nuevo.
+    const prev = this.ensured;
+    const country = design.holidays.country;
+    if (prev && prev.theme === design.theme && prev.customBlocks === design.customBlocks && prev.country === country && prev.assets === design.assets) return;
     let changed = false;
+    // Si algo falla (una descarga, un archivo), no se da por asegurado: el próximo cambio lo reintenta.
+    let failed = false;
     if (this.manifest) {
       const before = this.fonts.list().length;
-      for (const e of await loadBuiltinFonts(io, this.fonts, this.manifest, facesForDesign(design))) this.addError(`Fuente ${e}`);
+      for (const e of await loadBuiltinFonts(io, this.fonts, this.manifest, facesForDesign(design))) {
+        this.addError(`Fuente ${e}`);
+        failed = true;
+      }
       if (this.fonts.list().length !== before) changed = true;
     }
-    const country = design.holidays.country;
     if (country && !this.holidayData.has(country)) {
       const path = `holidays/${country}.json`;
       try {
@@ -97,9 +109,13 @@ export class Resources {
           this.holidayData.set(country, (await res.json()) as HolidayCountryData);
           keepOffline('agenda-holidays', path);
         } else if (res.status === 404) this.holidayData.set(country, null);
-        else this.addError(`Feriados ${country}: HTTP ${res.status}`);
+        else {
+          this.addError(`Feriados ${country}: HTTP ${res.status}`);
+          failed = true;
+        }
       } catch (err) {
         this.addError(`Feriados ${country}: ${(err as Error).message}`);
+        failed = true;
       }
       changed = true;
     }
@@ -117,8 +133,11 @@ export class Resources {
         changed = true;
       } catch (err) {
         this.addError(`Recurso «${ref.name}»: ${(err as Error).message}`);
+        failed = true;
       }
     }
+    // Sin lista de fuentes todavía (el programa está arrancando) no se cargó nada: no cuenta.
+    if (!failed && this.manifest) this.ensured = { theme: design.theme, customBlocks: design.customBlocks, country, assets: design.assets };
     if (changed) this.bump();
   }
 

@@ -2,7 +2,7 @@
 import { PROP_DEFAULTS, PROP_RANGES, TEXT_ROLES } from '@core/design/customBlocks';
 import type { AgendaDocument } from '@core/document';
 import { blockBounds } from '@core/document/layout';
-import { OVERRIDE_DEFAULTS, WATERMARK_DEFAULTS, type CustomBlock } from '@core/design/schema';
+import { OVERRIDE_DEFAULTS, WATERMARK_DEFAULTS, type CustomBlock, type WatermarkPlacement } from '@core/design/schema';
 import { getAtPath } from '@core/util/path';
 import type { Block, PageModel, PageWarning, Prim } from '@core/layout/prims';
 import { unionRect, type AlignMode } from '@core/layout/align';
@@ -49,7 +49,9 @@ import {
   hideBlocks,
   matchScale,
   moveBlocks,
+  overrideRecipe,
   pageStyleOf,
+  pageStyleRecipe,
   patchOverride,
   resetBlock,
   resetBlocks,
@@ -61,7 +63,8 @@ import {
   type AlignRef,
 } from '../state/actions';
 import { useDocument } from '../state/doc';
-import { useStore } from '../state/store';
+import { scrub, type Scrubbing } from '../state/scrub';
+import { useStore, type Recipe } from '../state/store';
 import { Button, ColorInput, Field, NumberInput, Segmented, Select, Slider, TextArea, TextInput, Toggle } from './ui';
 import { jumpToPage } from '../state/navigation';
 import { parseFontSpec } from '@core/text/fonts';
@@ -259,6 +262,8 @@ function WritingFields({ page, scope, setScope }: { page: PageModel; scope: 'typ
   const tokens = pageStyleOf(design, page, scope) as { writing?: { style?: WritingStyle; pitch?: number }; dots?: { pitch?: number; pitchY?: number; radius?: number }; strokes?: { hair?: number } };
   const style = tokens.writing?.style ?? theme?.writing.style ?? 'lines';
   const set = (path: string[], v: unknown): void => setPageStyle(page, scope, path, v, `ps:${page.type}:${path.join('.')}`);
+  /** Un deslizador del estilo de escritura: se ve en el lienzo mientras se arrastra y se confirma una vez al soltar. */
+  const drag = (path: string[]): Scrubbing<number> => scrub<number>((v) => pageStyleRecipe(page, scope, path, v), `ps:${page.type}:${path.join('.')}`);
   // Un valor propio de este tipo (o de esta página) se restablece quitándolo: vuelve a salir del tema.
   const reset = (path: string[]): { modified: boolean; onReset: () => void } => ({ modified: getAtPath(tokens, path) !== undefined, onReset: () => set(path, undefined) });
   return (
@@ -272,11 +277,11 @@ function WritingFields({ page, scope, setScope }: { page: PageModel; scope: 'typ
       <Field label={t('writing.style')} group>
         <Segmented value={style} onChange={(v) => set(['writing', 'style'], v)} options={(['lines', 'dots', 'grid', 'blank'] as const).map((v) => ({ value: v, label: t(`val.${v}`) }))} />
       </Field>
-      {style === 'lines' && <Slider label={t('writing.pitch')} value={tokens.writing?.pitch ?? theme?.writing.pitch ?? 6} min={3} max={15} step={0.1} onChange={(v) => set(['writing', 'pitch'], v)} {...reset(['writing', 'pitch'])} />}
-      {style === 'lines' && <Slider label={t('writing.lineWeight')} value={(tokens.strokes?.hair ?? theme?.strokes.hair ?? 0.3)} min={0.1} max={1.5} step={0.05} onChange={(v) => set(['strokes', 'hair'], v)} {...reset(['strokes', 'hair'])} />}
-      {(style === 'dots' || style === 'grid') && <Slider label={t('writing.dotPitchX')} value={tokens.dots?.pitch ?? theme?.dots.pitch ?? 5} min={2} max={15} step={0.1} onChange={(v) => set(['dots', 'pitch'], v)} {...reset(['dots', 'pitch'])} />}
-      {style === 'dots' && <Slider label={t('writing.dotPitchY')} value={tokens.dots?.pitchY ?? theme?.dots.pitchY ?? 0} min={0} max={15} step={0.1} onChange={(v) => set(['dots', 'pitchY'], v)} {...reset(['dots', 'pitchY'])} />}
-      {style === 'dots' && <Slider label={t('writing.dotSize')} value={tokens.dots?.radius ?? theme?.dots.radius ?? 0.5} min={0.1} max={2.5} step={0.05} onChange={(v) => set(['dots', 'radius'], v)} {...reset(['dots', 'radius'])} />}
+      {style === 'lines' && <Slider label={t('writing.pitch')} value={tokens.writing?.pitch ?? theme?.writing.pitch ?? 6} min={3} max={15} step={0.1} {...drag(['writing', 'pitch'])} {...reset(['writing', 'pitch'])} />}
+      {style === 'lines' && <Slider label={t('writing.lineWeight')} value={(tokens.strokes?.hair ?? theme?.strokes.hair ?? 0.3)} min={0.1} max={1.5} step={0.05} {...drag(['strokes', 'hair'])} {...reset(['strokes', 'hair'])} />}
+      {(style === 'dots' || style === 'grid') && <Slider label={t('writing.dotPitchX')} value={tokens.dots?.pitch ?? theme?.dots.pitch ?? 5} min={2} max={15} step={0.1} {...drag(['dots', 'pitch'])} {...reset(['dots', 'pitch'])} />}
+      {style === 'dots' && <Slider label={t('writing.dotPitchY')} value={tokens.dots?.pitchY ?? theme?.dots.pitchY ?? 0} min={0} max={15} step={0.1} {...drag(['dots', 'pitchY'])} {...reset(['dots', 'pitchY'])} />}
+      {style === 'dots' && <Slider label={t('writing.dotSize')} value={tokens.dots?.radius ?? theme?.dots.radius ?? 0.5} min={0.1} max={2.5} step={0.05} {...drag(['dots', 'radius'])} {...reset(['dots', 'radius'])} />}
       <p className="text-[11px] leading-snug text-ink-soft">{t('writing.hint')}</p>
       <Button variant="ghost" onClick={() => resetPageStyle(page, scope)}>
         <RotateCcw size={14} /> {t('writing.reset')}
@@ -301,6 +306,8 @@ function BlockFields({ page, blockId, scope, setScope }: { page: PageModel; bloc
   const flipOnWrite = mirrored && level === 'type';
   const set = (patch: Partial<typeof v>, key: string): void =>
     patchOverride(page, blockId, scope, patch.dx !== undefined && flipOnWrite ? { ...patch, dx: -patch.dx } : patch, `insp:${blockId}:${key}`);
+  /** Un deslizador del ajuste (escala, giro, opacidad): vista previa mientras se arrastra, una confirmación al soltar. */
+  const drag = (key: 'scale' | 'rotation' | 'opacity'): Scrubbing<number> => scrub<number>((x) => overrideRecipe(page, blockId, scope, { [key]: x }), `insp:${blockId}:${key}`);
   return (
     <div>
       {page.type !== 'custom' && (
@@ -333,11 +340,19 @@ function BlockFields({ page, blockId, scope, setScope }: { page: PageModel; bloc
         </p>
       )}
       {inherited && typeO && <p className="mb-1 text-[11px] leading-snug text-ink-soft">{t('insp.inherits')}</p>}
-      <Slider label={t('insp.scale')} value={v.scale} min={0.2} max={3} step={0.01} onChange={(x) => set({ scale: x }, 'scale')} defaultValue={OVERRIDE_DEFAULTS.scale} />
-      <Slider label={t('insp.rotation')} value={v.rotation} min={-180} max={180} step={1} onChange={(x) => set({ rotation: x }, 'rotation')} defaultValue={OVERRIDE_DEFAULTS.rotation} />
-      <Slider label={t('insp.opacity')} value={v.opacity} min={0} max={1} step={0.05} onChange={(x) => set({ opacity: x }, 'opacity')} defaultValue={OVERRIDE_DEFAULTS.opacity} />
+      <Slider label={t('insp.scale')} value={v.scale} min={0.2} max={3} step={0.01} {...drag('scale')} defaultValue={OVERRIDE_DEFAULTS.scale} />
+      <Slider label={t('insp.rotation')} value={v.rotation} min={-180} max={180} step={1} {...drag('rotation')} defaultValue={OVERRIDE_DEFAULTS.rotation} />
+      <Slider label={t('insp.opacity')} value={v.opacity} min={0} max={1} step={0.05} {...drag('opacity')} defaultValue={OVERRIDE_DEFAULTS.opacity} />
     </div>
   );
+}
+
+/** Receta que cambia un ajuste de una marca de agua. */
+function watermarkRecipe<K extends keyof WatermarkPlacement>(id: string, k: K, v: WatermarkPlacement[K]): Recipe {
+  return (d) => {
+    const w = d.watermarks.find((x) => x.id === id);
+    if (w) w[k] = v;
+  };
 }
 
 export function WatermarkFields({ id }: { id: string }) {
@@ -347,11 +362,9 @@ export function WatermarkFields({ id }: { id: string }) {
   const update = useStore((s) => s.update);
   const select = useStore((s) => s.select);
   if (!wm) return null;
-  const set = <K extends keyof typeof wm>(k: K, v: (typeof wm)[K]): void =>
-    update((d) => {
-      const w = d.watermarks.find((x) => x.id === id);
-      if (w) (w as Record<string, unknown>)[k as string] = v;
-    }, `wm:${id}:${String(k)}`);
+  const set = <K extends keyof typeof wm>(k: K, v: (typeof wm)[K]): void => update(watermarkRecipe(id, k, v), `wm:${id}:${String(k)}`);
+  /** Un deslizador de la marca de agua: vista previa mientras se arrastra, una confirmación al soltar. */
+  const drag = (k: 'width' | 'opacity' | 'rotation' | 'minStrokePt'): Scrubbing<number> => scrub<number>((v) => watermarkRecipe(id, k, v), `wm:${id}:${k}`);
   /** Sube una imagen nueva y la usa en esta marca de agua. */
   const uploadAndUse = async (): Promise<void> => {
     const id = await uploadOne('image/*,.svg', (name) => t('assets.unsupported', { name }));
@@ -402,16 +415,26 @@ export function WatermarkFields({ id }: { id: string }) {
           <NumberInput value={wm.dy} step={0.5} onChange={(v) => set('dy', v)} />
         </Field>
       </div>
-      <Slider label={t('wm.width')} value={wm.width} min={2} max={200} step={0.5} onChange={(v) => set('width', v)} defaultValue={WATERMARK_DEFAULTS.width} />
-      <Slider label={t('wm.opacity')} value={wm.opacity} min={0.05} max={1} step={0.05} onChange={(v) => set('opacity', v)} defaultValue={WATERMARK_DEFAULTS.opacity} />
-      <Slider label={t('wm.rotation')} value={wm.rotation} min={-180} max={180} step={1} onChange={(v) => set('rotation', v)} defaultValue={WATERMARK_DEFAULTS.rotation} />
-      <Slider label={t('wm.minStroke')} value={wm.minStrokePt} min={0} max={1.5} step={0.05} onChange={(v) => set('minStrokePt', v)} defaultValue={WATERMARK_DEFAULTS.minStrokePt} />
+      <Slider label={t('wm.width')} value={wm.width} min={2} max={200} step={0.5} {...drag('width')} defaultValue={WATERMARK_DEFAULTS.width} />
+      <Slider label={t('wm.opacity')} value={wm.opacity} min={0.05} max={1} step={0.05} {...drag('opacity')} defaultValue={WATERMARK_DEFAULTS.opacity} />
+      <Slider label={t('wm.rotation')} value={wm.rotation} min={-180} max={180} step={1} {...drag('rotation')} defaultValue={WATERMARK_DEFAULTS.rotation} />
+      <Slider label={t('wm.minStroke')} value={wm.minStrokePt} min={0} max={1.5} step={0.05} {...drag('minStrokePt')} defaultValue={WATERMARK_DEFAULTS.minStrokePt} />
       <Toggle label={t('wm.mirror')} checked={wm.mirrorOnVerso} onChange={(v) => set('mirrorOnVerso', v)} />
       <Field label={t('wm.layer')}>
         <Select value={wm.layer} onChange={(v) => set('layer', v)} options={[{ value: 'above', label: t('wm.above') }, { value: 'below', label: t('wm.below') }]} />
       </Field>
     </div>
   );
+}
+
+/** Receta que cambia (o quita, con `undefined`) una propiedad de un elemento propio. */
+function propRecipe(id: string, k: string, v: unknown): Recipe {
+  return (d) => {
+    const c = d.customBlocks.find((x) => x.id === id);
+    if (!c) return;
+    const { [k]: _removed, ...rest } = c.props;
+    c.props = v === undefined ? rest : { ...rest, [k]: v };
+  };
 }
 
 function CustomFields({ id, theme }: { id: string; theme: AgendaDocument['ctx']['theme'] }) {
@@ -426,13 +449,9 @@ function CustomFields({ id, theme }: { id: string; theme: AgendaDocument['ctx'][
       if (c) Object.assign(c, patch);
     }, `cb:${id}:${key}`);
   // Con `undefined` la propiedad se quita: el elemento vuelve al valor que le da el tema.
-  const setProp = (k: string, v: unknown): void =>
-    update((d) => {
-      const c = d.customBlocks.find((x) => x.id === id);
-      if (!c) return;
-      const { [k]: _removed, ...rest } = c.props;
-      c.props = v === undefined ? rest : { ...rest, [k]: v };
-    }, `cb:${id}:p:${k}`);
+  const setProp = (k: string, v: unknown): void => update(propRecipe(id, k, v), `cb:${id}:p:${k}`);
+  /** Un deslizador de una propiedad del elemento: vista previa mientras se arrastra, una confirmación al soltar. */
+  const dragProp = <T,>(k: string): Scrubbing<T> => scrub<T>((v) => propRecipe(id, k, v), `cb:${id}:p:${k}`);
   const p = cb.props as Record<string, unknown>;
   // El paso de los renglones, los puntos y la cuadrícula, cuando el elemento no tiene uno propio.
   const pitchDefault = cb.kind === 'dots' ? theme.dots.pitch : cb.kind === 'grid' ? PROP_DEFAULTS.gridPitch : theme.writing.pitch;
@@ -482,7 +501,7 @@ function CustomFields({ id, theme }: { id: string; theme: AgendaDocument['ctx'][
             />
           </Field>
           <Toggle label={t('insp.upper')} checked={Boolean(p.upper)} onChange={(v) => setProp('upper', v)} />
-          <CustomTextStyle p={p} setProp={setProp} />
+          <CustomTextStyle p={p} setProp={setProp} dragColor={dragProp<string>('color')} />
         </>
       )}
       {cb.kind === 'image' && (
@@ -512,11 +531,11 @@ function CustomFields({ id, theme }: { id: string; theme: AgendaDocument['ctx'][
               ]}
             />
           </Field>
-          <Slider label={t('insp.opacity')} value={Number(p.opacity ?? PROP_DEFAULTS.opacity)} min={PROP_RANGES.opacity.min} max={PROP_RANGES.opacity.max} step={0.05} onChange={(v) => setProp('opacity', v)} defaultValue={PROP_DEFAULTS.opacity} />
+          <Slider label={t('insp.opacity')} value={Number(p.opacity ?? PROP_DEFAULTS.opacity)} min={PROP_RANGES.opacity.min} max={PROP_RANGES.opacity.max} step={0.05} {...dragProp('opacity')} defaultValue={PROP_DEFAULTS.opacity} />
         </>
       )}
       {(cb.kind === 'lines' || cb.kind === 'dots' || cb.kind === 'grid') && (
-        <Slider label={t('style.pitch')} value={Number(p.pitch ?? pitchDefault)} min={PROP_RANGES.pitch.min} max={PROP_RANGES.pitch.max} step={0.1} onChange={(v) => setProp('pitch', v)} modified={p.pitch !== undefined} onReset={() => setProp('pitch', undefined)} />
+        <Slider label={t('style.pitch')} value={Number(p.pitch ?? pitchDefault)} min={PROP_RANGES.pitch.min} max={PROP_RANGES.pitch.max} step={0.1} {...dragProp('pitch')} modified={p.pitch !== undefined} onReset={() => setProp('pitch', undefined)} />
       )}
     </div>
   );
@@ -654,7 +673,7 @@ function TextRoleLinks({ block }: { block: Block }) {
 }
 
 /** Letra y color propios de un texto agregado (si no, los de su tipo de texto en el tema). */
-function CustomTextStyle({ p, setProp }: { p: Record<string, unknown>; setProp: (k: string, v: unknown) => void }) {
+function CustomTextStyle({ p, setProp, dragColor }: { p: Record<string, unknown>; setProp: (k: string, v: unknown) => void; dragColor: Scrubbing<string> }) {
   const t = useT();
   const families = useFamilies();
   const { doc } = useDocument();
@@ -678,7 +697,7 @@ function CustomTextStyle({ p, setProp }: { p: Record<string, unknown>; setProp: 
       )}
       <div className="flex items-center gap-1.5">
         <div className="flex-1">
-          <ColorInput label={t('style.color')} value={ownColor ?? theme?.colors.roles[role] ?? '#000000'} onChange={(v) => setProp('color', v)} />
+          <ColorInput label={t('style.color')} value={ownColor ?? theme?.colors.roles[role] ?? '#000000'} {...dragColor} />
         </div>
         {ownColor && (
           <button type="button" className="text-[11px] text-accent underline" onClick={() => setProp('color', undefined)}>
