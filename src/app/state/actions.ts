@@ -3,16 +3,19 @@
  * lienzo: mover, escalar, ocultar o restablecer bloques; mover marcas de agua y
  * elementos propios respetando sus anclajes y su espejado.
  */
-import type { BlockLink, BlockOverride, CustomBlock, Design } from '@core/design/schema';
+import type { BlockLineKey, BlockLineStyle, BlockLink, BlockOverride, BlockStyle, CustomBlock, Design } from '@core/design/schema';
 import { newId } from '@core/util/hash';
+import { readTextSource, writeTextSource } from '@core/design/textSource';
+import { resolveStrings } from '@core/i18n';
 import { withPageStyle } from '@core/design/pageStyles';
-import type { Block, PageModel } from '@core/layout/prims';
+import type { Block, PageModel, TextSource } from '@core/layout/prims';
 import type { Rect } from '@core/util/geometry';
-import { blockBounds } from '@core/document/layout';
+import { blockBounds, findOverride as appliedOverride } from '@core/document/layout';
+import { MIN_BOX, naturalBox, storeAdjust, type BoxAdjust } from '@core/layout/box';
 import { alignDeltas, centerGroupDeltas, distributeDeltas, tidyGridDeltas, unionRect, type AlignMode, type Delta } from '@core/layout/align';
 import { current, type Draft } from 'immer';
 import { documentFor } from './doc';
-import { useStore } from './store';
+import { useStore, type Recipe } from './store';
 
 export type Scope = 'type' | 'page';
 
@@ -46,8 +49,10 @@ function upsertOverride(d: Draft<Design>, page: PageModel, blockId: string, scop
       pageType: page.type,
       pageKey: scope === 'page' ? page.key : null,
       blockId,
-      dx: base ? (mirrored ? -base.dx : base.dx) : 0,
+      dx: base ? (mirrored ? -(base.dx + base.dw) : base.dx) : 0,
       dy: base?.dy ?? 0,
+      dw: base?.dw ?? 0,
+      dh: base?.dh ?? 0,
       scale: base?.scale ?? 1,
       rotation: base?.rotation ?? 0,
       opacity: base?.opacity ?? 1,
@@ -125,7 +130,9 @@ export function moveBlock(page: PageModel, block: Block, dx: number, dy: number,
 
 /** Desplaza varios bloques en un solo paso de la historia (deshacer los vuelve a todos). */
 export function moveBlocks(page: PageModel, moves: Array<{ block: Block; dx: number; dy: number }>, scope: Scope, coalesce?: string): void {
-  const real = moves.filter((m) => Math.abs(m.dx) >= 1e-4 || Math.abs(m.dy) >= 1e-4);
+  // Un elemento maquetado dentro de la caja de otro que también se mueve ya lo sigue: no se mueve de nuevo.
+  const ids = new Set(moves.map((m) => m.block.id));
+  const real = moves.filter((m) => (Math.abs(m.dx) >= 1e-4 || Math.abs(m.dy) >= 1e-4) && !(m.block.parent && ids.has(m.block.parent)));
   if (real.length === 0) return;
   const sc = effectiveScope(page, scope);
   const mirrored = typeMirrored(page);
@@ -216,9 +223,13 @@ export function pageStyleOf(design: Design, page: PageModel, scope: Scope): Reco
  * Cambia un valor del estilo de escritura (p. ej. `['dots', 'pitch']`) para el tipo o la página.
  * Con `undefined` lo quita (el valor vuelve a salir del tema) y descarta lo que quede vacío.
  */
-export function setPageStyle(page: PageModel, scope: Scope, path: string[], value: unknown, coalesce?: string): void {
+export function pageStyleRecipe(page: PageModel, scope: Scope, path: string[], value: unknown): Recipe {
   const key = effectiveScope(page, scope) === 'page' ? page.key : null;
-  useStore.getState().update((d) => void (d.pageStyles = withPageStyle(current(d.pageStyles), { pageType: page.type, pageKey: key }, path, value)), coalesce);
+  return (d) => void (d.pageStyles = withPageStyle(current(d.pageStyles), { pageType: page.type, pageKey: key }, path, value));
+}
+
+export function setPageStyle(page: PageModel, scope: Scope, path: string[], value: unknown, coalesce?: string): void {
+  useStore.getState().update(pageStyleRecipe(page, scope, path, value), coalesce);
 }
 
 export function resetPageStyle(page: PageModel, scope: Scope): void {
@@ -234,17 +245,37 @@ export function resetPageStyle(page: PageModel, scope: Scope): void {
  * Nuevo tamaño y lugar de un elemento propio (la caja tal como se ve en esta página). En una página
  * izquierda, un elemento espejado guarda su posición como la de la página derecha.
  */
-export function resizeCustomBlock(page: PageModel, block: Block, box: Rect, coalesce?: string): void {
-  if (block.role !== 'custom' || !block.id.startsWith('custom.')) return;
-  useStore.getState().update((d) => {
+export function resizeCustomRecipe(page: PageModel, block: Block, box: Rect): Recipe {
+  return (d) => {
+    if (block.role !== 'custom' || !block.id.startsWith('custom.')) return;
     const cb = d.customBlocks.find((c) => c.id === block.id.slice(7));
     if (!cb) return;
-    const w = r2(Math.max(0.5, box.w));
     cb.x = r2(cb.mirror && page.side === 'verso' ? page.w - box.x - box.w : box.x);
     cb.y = r2(box.y);
-    cb.w = w;
+    cb.w = r2(Math.max(0.5, box.w));
+    // Con alto automático, `box.h` es el de los renglones: solo se guarda si el usuario lo cambió
+    // (entonces el alto deja de ser automático).
+    if (cb.props.autoHeight === true) {
+      if (Math.abs(box.h - block.bbox.h) < 0.01) return;
+      cb.props = { ...cb.props, autoHeight: false };
+    }
     cb.h = r2(Math.max(0.5, box.h));
-  }, coalesce);
+  };
+}
+
+export function resizeCustomBlock(page: PageModel, block: Block, box: Rect, coalesce?: string): void {
+  if (block.role !== 'custom' || !block.id.startsWith('custom.')) return;
+  useStore.getState().update(resizeCustomRecipe(page, block, box), coalesce);
+}
+
+/** Receta que pone `value` en la propiedad de la que sale un texto (ver `TextSource`). */
+export function textSourceRecipe(source: TextSource, value: string): Recipe {
+  return (d) => writeTextSource(d, source, value, resolveStrings(d.locale));
+}
+
+/** El texto tal como se edita: el crudo, con variables, sin mayúsculas. */
+export function textSourceValue(design: Design, source: TextSource): string {
+  return readTextSource(design, source, resolveStrings(design.locale));
 }
 
 export function scaleBlock(page: PageModel, block: Block, factor: number, scope: Scope, coalesce?: string): void {
@@ -290,11 +321,143 @@ export function scaleBlock(page: PageModel, block: Block, factor: number, scope:
   }, coalesce);
 }
 
-export function patchOverride(page: PageModel, blockId: string, scope: Scope, patch: Partial<BlockOverride>, coalesce?: string): void {
+/**
+ * ¿Los tiradores de los lados reacomodan este bloque? Sí cuando su sección lo dibuja dentro de una
+ * caja (`LayoutContext.rect`), no va girado ni escalado (entonces lo que se ve no es su caja) y no es
+ * un dibujo rígido. Los demás conservan el tirador de la esquina, que los escala.
+ */
+export function reflowable(block: Block): boolean {
+  if (!block.editable || !block.box || block.rigid || block.role === 'custom' || block.role === 'watermark') return false;
+  const seen = blockBounds(block);
+  const box = block.box;
+  return Math.abs(seen.x - box.x) < 1e-6 && Math.abs(seen.y - box.y) < 1e-6 && Math.abs(seen.w - box.w) < 1e-6 && Math.abs(seen.h - box.h) < 1e-6;
+}
+
+/**
+ * Receta que deja la caja de un bloque del programa en `box` (tal como se ve en esta página). Parte
+ * de la caja natural (la de la sección sin ajustes) y escribe el ajuste que lleva hasta ahí; en una
+ * página izquierda con ajuste «por tipo» el lado se espeja igual que al maquetar. Es la misma receta
+ * para la vista previa mientras se arrastra y para confirmar al soltar.
+ */
+export function resizeBoxRecipe(page: PageModel, block: Block, box: Rect, scope: Scope): Recipe {
+  return (d) => {
+    const seen = block.box;
+    if (!seen) return;
+    const sc = effectiveScope(page, scope);
+    const mirrored = typeMirrored(page);
+    // Lo que se aplicaba cuando se tomó `block`: el de la página si lo hay, si no el del tipo.
+    const before = appliedOverride(d.overrides, page, block.id);
+    const was: BoxAdjust = before
+      ? { dx: before.pageKey === null && mirrored ? -(before.dx + before.dw) : before.dx, dy: before.dy, dw: before.dw, dh: before.dh }
+      : { dx: 0, dy: 0, dw: 0, dh: 0 };
+    const natural = naturalBox(seen, was);
+    const target = { x: box.x, y: box.y, w: Math.max(MIN_BOX, box.w), h: Math.max(MIN_BOX, box.h) };
+    const shown = storeAdjust(natural, target, false);
+    const stored = storeAdjust(natural, target, sc === 'type' && mirrored);
+    upsertOverride(
+      d,
+      page,
+      block.id,
+      sc,
+      (o) => {
+        o.dx = r2(stored.dx);
+        o.dy = r2(stored.dy);
+        o.dw = r2(stored.dw);
+        o.dh = r2(stored.dh);
+      },
+      mirrored,
+    );
+    // «Todas las páginas» desde una página con ajuste propio: ese manda aquí, así que también cambia.
+    const own = sc === 'type' ? findOverride(d, page, block.id, 'page') : undefined;
+    if (own) {
+      own.dx = r2(shown.dx);
+      own.dy = r2(shown.dy);
+      own.dw = r2(shown.dw);
+      own.dh = r2(shown.dh);
+    }
+  };
+}
+
+/** Cambia la caja de un bloque del programa (campos Ancho y Alto del panel: un paso de historial por campo). */
+export function resizeBox(page: PageModel, block: Block, box: Rect, scope: Scope, coalesce?: string): void {
+  useStore.getState().update(resizeBoxRecipe(page, block, box, scope), coalesce);
+}
+
+/* ---------- Estilo propio de un elemento ---------- */
+
+/** El estilo guardado para un elemento en este alcance (sin sumar el del tipo ni el de la página). */
+export function blockStyleOf(design: Design, page: PageModel, blockId: string, scope: Scope): BlockStyle | undefined {
+  const key = effectiveScope(page, scope) === 'page' ? page.key : null;
+  return design.blockStyles.find((s) => s.blockId === blockId && s.pageType === page.type && s.pageKey === key);
+}
+
+const styleIsEmpty = (s: BlockStyle): boolean => Object.keys(s.lines).length === 0 && s.fill === undefined && s.text?.color === undefined && Object.keys(s.text?.roles ?? {}).length === 0;
+
+/** Receta que cambia el estilo de un elemento en el alcance dado; si queda vacío, se borra. */
+export function blockStyleRecipe(page: PageModel, blockId: string, scope: Scope, change: (style: Draft<BlockStyle>) => void): Recipe {
+  return (d) => {
+    const sc = effectiveScope(page, scope);
+    const key = sc === 'page' ? page.key : null;
+    let style = d.blockStyles.find((s) => s.blockId === blockId && s.pageType === page.type && s.pageKey === key);
+    if (!style) {
+      d.blockStyles.push({ pageType: page.type, pageKey: key, blockId, lines: {} });
+      style = d.blockStyles[d.blockStyles.length - 1]!;
+    }
+    change(style);
+    if (styleIsEmpty(style as BlockStyle)) d.blockStyles = d.blockStyles.filter((s) => s !== style);
+  };
+}
+
+/** Cambia campos del estilo de las líneas de un uso (`undefined` quita el campo: vuelve al tema). */
+export function lineStyleRecipe(page: PageModel, blockId: string, scope: Scope, key: BlockLineKey, patch: { [K in keyof BlockLineStyle]?: BlockLineStyle[K] | undefined }): Recipe {
+  return blockStyleRecipe(page, blockId, scope, (s) => {
+    const next: Record<string, unknown> = { ...s.lines[key] };
+    for (const [k, v] of Object.entries(patch)) {
+      if (v === undefined) delete next[k];
+      else next[k] = v;
+    }
+    if (Object.keys(next).length === 0) delete s.lines[key];
+    else s.lines[key] = next as BlockLineStyle;
+  });
+}
+
+/** Relleno de los recuadros del elemento: un color, `null` (sin relleno) o `undefined` (el del programa). */
+export function fillStyleRecipe(page: PageModel, blockId: string, scope: Scope, color: string | null | undefined): Recipe {
+  return blockStyleRecipe(page, blockId, scope, (s) => {
+    if (color === undefined) delete s.fill;
+    else s.fill = { color };
+  });
+}
+
+/** Color de todo el texto del elemento (`undefined` quita el color propio). */
+export function textColorRecipe(page: PageModel, blockId: string, scope: Scope, color: string | undefined): Recipe {
+  return blockStyleRecipe(page, blockId, scope, (s) => {
+    const roles = { ...s.text?.roles };
+    if (color === undefined && Object.keys(roles).length === 0) delete s.text;
+    else s.text = { ...(color ? { color } : {}), roles };
+  });
+}
+
+export function resetBlockStyle(page: PageModel, blockId: string, scope: Scope): void {
+  const key = effectiveScope(page, scope) === 'page' ? page.key : null;
+  useStore.getState().update((d) => void (d.blockStyles = d.blockStyles.filter((s) => !(s.blockId === blockId && s.pageType === page.type && s.pageKey === key))));
+}
+
+/** Receta que cambia el estilo de las líneas de varios usos de una vez (los menús: «líneas a guiones»). */
+export function allLinesRecipe(page: PageModel, blockId: string, scope: Scope, keys: readonly BlockLineKey[], patch: { [K in keyof BlockLineStyle]?: BlockLineStyle[K] | undefined }): Recipe {
+  return (d) => {
+    for (const k of keys) lineStyleRecipe(page, blockId, scope, k, patch)(d);
+  };
+}
+
+/** Receta que cambia un ajuste del elemento (la usan `patchOverride` y los deslizadores con vista previa). */
+export function overrideRecipe(page: PageModel, blockId: string, scope: Scope, patch: Partial<BlockOverride>): Recipe {
   const mirrored = typeMirrored(page);
-  useStore.getState().update((d) => {
-    upsertOverride(d, page, blockId, effectiveScope(page, scope), (o) => Object.assign(o, patch), mirrored);
-  }, coalesce);
+  return (d) => upsertOverride(d, page, blockId, effectiveScope(page, scope), (o) => Object.assign(o, patch), mirrored);
+}
+
+export function patchOverride(page: PageModel, blockId: string, scope: Scope, patch: Partial<BlockOverride>, coalesce?: string): void {
+  useStore.getState().update(overrideRecipe(page, blockId, scope, patch), coalesce);
 }
 
 export function resetBlock(page: PageModel, blockId: string, scope: Scope): void {
@@ -325,8 +488,10 @@ export function hideBlocks(page: PageModel, blocks: Block[], scope: Scope): void
         } else if (!wm.exclude.includes(page.type)) wm.exclude.push(page.type);
       } else if (block.role === 'custom' && block.id.startsWith('custom.')) {
         d.customBlocks = d.customBlocks.filter((c) => c.id !== block.id.slice(7));
-        // Sus enlaces a mano se van con él.
+        // Sus enlaces a mano, su estilo y sus ajustes se van con él.
         d.links.blocks = d.links.blocks.filter((l) => l.blockId !== block.id);
+        d.blockStyles = d.blockStyles.filter((s) => s.blockId !== block.id);
+        d.overrides = d.overrides.filter((o) => o.blockId !== block.id);
       } else {
         upsertOverride(d, page, block.id, sc, (o) => void (o.hidden = true), mirrored);
       }
@@ -334,33 +499,94 @@ export function hideBlocks(page: PageModel, blocks: Block[], scope: Scope): void
   });
 }
 
+/* ---------- Copiar y pegar elementos propios ---------- */
+
+/** Los elementos propios que corresponden a estos bloques (los del programa no se copian). */
+export function customBlocksOf(design: Design, blocks: readonly Pick<Block, 'id' | 'role'>[]): CustomBlock[] {
+  return blocks.flatMap((b) => (b.role === 'custom' && b.id.startsWith('custom.') ? design.customBlocks.filter((c) => c.id === b.id.slice(7)) : []));
+}
+
+/**
+ * Pega copias de elementos propios en una página. Cada uno recibe un id nuevo y es de esta página
+ * (o de todas las de su tipo, según el alcance); si se pega donde estaba, se corre 5 mm para que no
+ * quede encima. Las copias quedan dentro de la página. Devuelve los ids de los bloques nuevos.
+ */
+export function pasteCustomBlocks(page: PageModel, copies: readonly CustomBlock[], scope: Scope): string[] {
+  if (copies.length === 0) return [];
+  const pageKey = effectiveScope(page, scope) === 'page' || page.type === 'custom' ? page.key : null;
+  const made: CustomBlock[] = copies.map((src) => {
+    const same = src.pageType === page.type && src.pageKey === pageKey;
+    const w = Math.min(src.w, page.w);
+    const h = Math.min(src.h, page.h);
+    const x = Math.min(Math.max(0, src.x + (same ? 5 : 0)), page.w - w);
+    const y = Math.min(Math.max(0, src.y + (same ? 5 : 0)), page.h - h);
+    return { ...JSON.parse(JSON.stringify(src)), id: newId('el'), pageType: page.type, pageKey, x: r2(x), y: r2(y), w, h };
+  });
+  useStore.getState().update((d) => {
+    d.customBlocks.push(...made);
+    copies.forEach((src, i) => cloneBlockData(d, src, made[i]!));
+  });
+  const ids = made.map((c) => `custom.${c.id}`);
+  useStore.getState().setSelection({ pageKey: page.key, pageType: page.type, blockId: ids[ids.length - 1]!, role: 'custom' }, ids);
+  return ids;
+}
+
+/** Copia lo propio de un elemento (estilo, ajustes, enlaces a mano) al elemento nuevo que salió de él. */
+function cloneBlockData(d: Draft<Design>, from: CustomBlock, to: CustomBlock): void {
+  const old = `custom.${from.id}`;
+  const fresh = `custom.${to.id}`;
+  const mine = (x: { blockId: string; pageType: string; pageKey: string | null }): boolean => x.blockId === old && x.pageType === from.pageType && x.pageKey === from.pageKey;
+  const copy = <T extends { blockId: string; pageType: string; pageKey: string | null }>(list: Draft<T>[]): void => {
+    for (const x of list.filter((e) => mine(e as T)).map((e) => current(e) as T)) list.push({ ...x, blockId: fresh, pageType: to.pageType, pageKey: to.pageKey } as Draft<T>);
+  };
+  copy(d.blockStyles);
+  copy(d.overrides);
+  copy(d.links.blocks);
+}
+
 /* ---------- Enlaces ---------- */
 
-/** Enlace a mano de un elemento en el alcance elegido (por tipo o en esta página), si lo hay. */
-export function currentBlockLink(design: Design, page: PageModel, blockId: string, scope: Scope): BlockLink | undefined {
+/** Enlace a mano de un elemento (o de una de sus zonas: `area`) en el alcance elegido, si lo hay. */
+export function currentBlockLink(design: Design, page: PageModel, blockId: string, scope: Scope, area = ''): BlockLink | undefined {
   const key = effectiveScope(page, scope) === 'page' ? page.key : null;
-  return design.links.blocks.find((l) => l.blockId === blockId && l.pageType === page.type && l.pageKey === key);
+  return design.links.blocks.find((l) => l.blockId === blockId && l.pageType === page.type && l.pageKey === key && l.area === area);
 }
 
 /**
  * Elige el enlace de un elemento: `auto` vuelve a los automáticos (en una página solo se guarda si
  * su tipo dice otra cosa), `none` se los quita, `page` y `url` ponen uno a mano que cubre el elemento.
  */
-export function setBlockLink(page: PageModel, blockId: string, scope: Scope, link: Pick<BlockLink, 'mode'> & Partial<Pick<BlockLink, 'page' | 'url'>>, coalesce?: string): void {
+export function setBlockLink(page: PageModel, blockId: string, scope: Scope, link: Pick<BlockLink, 'mode'> & Partial<Pick<BlockLink, 'page' | 'url'>>, coalesce?: string, area = ''): void {
   const key = effectiveScope(page, scope) === 'page' ? page.key : null;
   useStore.getState().update((d) => {
     const list = d.links.blocks;
-    const at = list.findIndex((l) => l.blockId === blockId && l.pageType === page.type && l.pageKey === key);
-    const byType = key === null ? undefined : list.find((l) => l.blockId === blockId && l.pageType === page.type && l.pageKey === null);
+    const at = list.findIndex((l) => l.blockId === blockId && l.pageType === page.type && l.pageKey === key && l.area === area);
+    const byType = key === null ? undefined : list.find((l) => l.blockId === blockId && l.pageType === page.type && l.pageKey === null && l.area === area);
     if (link.mode === 'auto' && (key === null || !byType || byType.mode === 'auto')) {
       if (at >= 0) list.splice(at, 1);
       return;
     }
     const prev = at >= 0 ? list[at] : undefined;
-    const entry: BlockLink = { pageType: page.type, pageKey: key, blockId, mode: link.mode, page: link.page ?? prev?.page ?? '', url: link.url ?? prev?.url ?? '' };
+    const entry: BlockLink = { pageType: page.type, pageKey: key, blockId, area, mode: link.mode, page: link.page ?? prev?.page ?? '', url: link.url ?? prev?.url ?? '' };
     if (at >= 0) list[at] = entry;
     else list.push(entry);
   }, coalesce);
+}
+
+/**
+ * Alcance al que vale el enlace de un elemento: una página propia o un elemento propio de una sola
+ * página se enlazan solo en esa página; el resto, según el alcance que elija el usuario.
+ */
+export function linkScope(design: Design, page: PageModel, blockId: string, scope: Scope): Scope {
+  if (page.type === 'custom') return 'page';
+  const custom = design.customBlocks.find((c) => `custom.${c.id}` === blockId);
+  return custom && custom.pageKey !== null ? 'page' : scope;
+}
+
+/** Quita todas las elecciones a mano de un elemento en el alcance (la del elemento entero y las de sus zonas). */
+export function clearBlockLinks(page: PageModel, blockId: string, scope: Scope): void {
+  const key = effectiveScope(page, scope) === 'page' ? page.key : null;
+  useStore.getState().update((d) => void (d.links.blocks = d.links.blocks.filter((l) => !(l.blockId === blockId && l.pageType === page.type && l.pageKey === key))));
 }
 
 export function currentOverride(design: Design, page: PageModel, blockId: string, scope: Scope): BlockOverride | undefined {
@@ -389,7 +615,7 @@ export function addCustomBlock(page: PageModel, kind: CustomBlock['kind'], label
   const x = page.side === 'verso' ? page.w - def.x - w : def.x;
   const props: Record<string, unknown> =
     kind === 'text'
-      ? { text: '{name}', role: 'quote', size: 11, align: 'right', label: labels.text }
+      ? { text: '{name}', role: 'quote', size: 11, align: 'right', autoHeight: true, label: labels.text }
       : kind === 'image'
         ? { assetId: assetId ?? design?.assets.find((a) => a.kind !== 'pdf')?.id ?? '', fit: 'contain', opacity: 1, label: labels.image }
         : { label: labels[kind as 'rect' | 'lines' | 'dots'] ?? kind };
@@ -405,7 +631,11 @@ export function duplicateCustomBlock(page: PageModel, block: Block): void {
   const id = newId('el');
   useStore.getState().update((d) => {
     const src = d.customBlocks.find((c) => c.id === block.id.slice(7));
-    if (src) d.customBlocks.push({ ...JSON.parse(JSON.stringify(src)), id, x: r2(src.x + 5), y: r2(src.y + 5) });
+    if (src) {
+      const copy: CustomBlock = { ...JSON.parse(JSON.stringify(src)), id, x: r2(src.x + 5), y: r2(src.y + 5) };
+      d.customBlocks.push(copy);
+      cloneBlockData(d, current(src) as CustomBlock, copy);
+    }
   });
   useStore.getState().select({ pageKey: page.key, pageType: page.type, blockId: `custom.${id}`, role: 'custom' });
 }

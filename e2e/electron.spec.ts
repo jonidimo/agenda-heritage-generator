@@ -117,3 +117,18 @@ test('como Node puro (ELECTRON_RUN_AS_NODE) también es un servidor MCP: es la f
   expect(report.problems).toEqual([]);
   expect(report.tools).toHaveLength(9);
 });
+
+test('el editor de texto en su lugar abre sin violar la política de seguridad (la letra se carga desde sus bytes)', async () => {
+  const { win } = await launchWithPlanner();
+  await win.evaluate(`globalThis.__csp = [];
+    document.addEventListener('securitypolicyviolation', (e) => globalThis.__csp.push(e.violatedDirective + ' ' + e.blockedURI));
+    globalThis.__agenda.getState().update((d) => { d.persona.name = 'Norma'; }, 'e2e-name');`);
+  await win.locator('[data-block="title.name"]').first().dblclick({ force: true });
+  const editor = win.locator('[data-text-editor]');
+  await expect(editor).toBeFocused();
+  await win.keyboard.type('Ana');
+  await expect.poll(() => win.evaluate<string | null>('globalThis.__agenda.getState().previewDesign?.persona.name ?? null')).toContain('Ana');
+  await win.keyboard.press('Escape');
+  await expect(editor).toHaveCount(0);
+  expect(await win.evaluate<string[]>('globalThis.__csp')).toEqual([]);
+});

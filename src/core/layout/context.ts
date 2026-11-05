@@ -11,6 +11,7 @@ import { langOf } from '../i18n';
 import type { FontFace, FontRegistry } from '../text/fonts';
 import { fitSize, shapeText, wrapText, type ShapedRun } from '../text/shape';
 import { ptToMm, type Rect } from '../util/geometry';
+import { adjustBox, type BoxAdjust } from './box';
 import {
   primsBounds,
   type Block,
@@ -24,6 +25,7 @@ import {
   type Side,
   type Stroke,
   type TextPrim,
+  type TextSource,
   type WarningCode,
 } from './prims';
 
@@ -59,6 +61,15 @@ export interface TextInOpts extends TextAtOpts {
   ellipsis?: boolean;
   /** Solo medir: no avisa si no entra (para probar alternativas de diagramación). */
   silent?: boolean;
+}
+
+/** Lo que devuelve `textIn`: las líneas dibujadas y cómo quedaron. */
+export interface TextInResult {
+  prims: TextPrim[];
+  bbox: Rect;
+  lines: number;
+  sizePt: number;
+  truncated: boolean;
 }
 
 export interface AssetInfo {
@@ -109,9 +120,15 @@ export interface DocContext {
   pages?: ReadonlyArray<{ key: string; type: string; group: string; index: number; title: string; section: string }>;
 }
 
+/** Lo que el editor le cambió a un elemento de esta página (lugar y tamaño de su caja), si le cambió algo. */
+export type BoxAdjuster = (blockId: string) => BoxAdjust | undefined;
+
 export class LayoutContext {
   readonly blocks: Block[] = [];
   readonly warnings: PageWarning[] = [];
+  /** Cajas ya pedidas con `rect`, por elemento: `add` las guarda en el bloque. */
+  private readonly boxes = new Map<string, Rect>();
+  private readonly parents = new Map<string, string>();
 
   constructor(
     readonly doc: DocContext,
@@ -120,7 +137,24 @@ export class LayoutContext {
     private readonly pageTheme?: ThemeTokens,
     /** Estilo de escritura elegido para esta página o su tipo: manda sobre el de cada sección. */
     private readonly pageWriting?: WritingStyle,
+    /** Ajustes de lugar y tamaño que el editor le hizo a los elementos de esta página. */
+    private readonly adjuster?: BoxAdjuster,
   ) {}
+
+  /**
+   * La caja de un elemento con los ajustes del editor (mover y cambiar de tamaño). La sección dibuja
+   * el elemento DENTRO de esta caja: así, al cambiar de tamaño, su contenido se vuelve a acomodar
+   * (el texto reparte sus renglones, las áreas de escritura suman o quitan renglones, las tablas
+   * crecen con lo que llevan) en lugar de deformarse. Sin ajustes devuelve `base`, igual.
+   * El elemento tiene que agregarse después con el mismo `id` (`add`).
+   */
+  rect(id: string, base: Rect, parent?: string): Rect {
+    if (parent) this.parents.set(id, parent);
+    const adjust = this.adjuster?.(id);
+    const box = adjust ? adjustBox(base, adjust) : base;
+    this.boxes.set(id, box);
+    return box;
+  }
 
   get theme(): ThemeTokens {
     return this.pageTheme ?? this.doc.theme;
@@ -160,7 +194,7 @@ export class LayoutContext {
     return shapeText(face, str, this.sizeOf(opts.size), { tracking, ...(opts.features ? { features: opts.features } : {}) });
   }
 
-  private prim(run: ShapedRun, x: number, y: number, opts: TextOpts): TextPrim {
+  private prim(run: ShapedRun, x: number, y: number, opts: TextOpts, align: 'left' | 'center' | 'right' = 'left'): TextPrim {
     if (run.missing.length > 0) {
       const chars = [...new Set(run.missing)].map((c) => String.fromCodePoint(c)).join(' ');
       this.warn('missingGlyphs', `La fuente no tiene los caracteres: ${chars}`, { chars });
@@ -168,7 +202,20 @@ export class LayoutContext {
     const role = opts.role ?? 'body';
     // Sin color propio, el texto toma el de su tipo en el tema (paleta).
     const color = opts.color ?? this.theme.colors.roles?.[role] ?? this.theme.colors.ink;
-    return { t: 'text', run, x, y, color, role, ...(opts.opacity !== undefined ? { opacity: opts.opacity } : {}) };
+    const anchor = align === 'center' ? 'middle' : align === 'right' ? 'end' : 'start';
+    return { t: 'text', run, x, y, color, role, anchor, ...(opts.opacity !== undefined ? { opacity: opts.opacity } : {}) };
+  }
+
+  /**
+   * Texto dentro de la caja de un elemento (con los ajustes del editor: ver `rect`). Además de lo
+   * dibujado devuelve la maquetación `natural`, la de la caja sin ajustes: lo que viene después se
+   * ubica con ella, así moverlo o cambiarlo de tamaño no corre al resto de la página.
+   */
+  textBlock(id: string, base: Rect, text: string, opts: TextInOpts = {}): TextInResult & { natural: TextInResult } {
+    const box = this.rect(id, base);
+    const drawn = this.textIn(text, box, opts);
+    const same = box.x === base.x && box.y === base.y && box.w === base.w && box.h === base.h;
+    return { ...drawn, natural: same ? drawn : this.textIn(text, base, { ...opts, silent: true }) };
   }
 
   /** Una línea con su origen en (x, línea de base). */
@@ -176,12 +223,12 @@ export class LayoutContext {
     const run = this.run(text, opts);
     const align = opts.align ?? 'left';
     const x0 = align === 'left' ? x : align === 'center' ? x - run.width / 2 : x - run.width;
-    const prim = this.prim(run, x0, baseline, opts);
+    const prim = this.prim(run, x0, baseline, opts, align);
     return { prim, width: run.width, bbox: { x: x0, y: baseline - run.capHeight, w: run.width, h: run.capHeight - run.descent * 0.6 } };
   }
 
   /** Texto dentro de una caja con alineación, ajuste de cuerpo y partición en líneas. */
-  textIn(text: string, box: Rect, opts: TextInOpts = {}): { prims: TextPrim[]; bbox: Rect; lines: number; sizePt: number; truncated: boolean } {
+  textIn(text: string, box: Rect, opts: TextInOpts = {}): TextInResult {
     const face = this.faceFor(opts);
     const str = opts.upper ? text.toLocaleUpperCase(this.doc.locale) : text;
     const tracking = opts.tracking === true ? this.theme.tracking.label : opts.tracking === false ? 0 : (opts.tracking ?? 0);
@@ -236,7 +283,7 @@ export class LayoutContext {
     for (const run of runs) {
       const align = opts.align ?? 'left';
       const x0 = align === 'left' ? box.x : align === 'center' ? box.x + (box.w - run.width) / 2 : box.x + box.w - run.width;
-      prims.push(this.prim(run, x0, baseline, opts));
+      prims.push(this.prim(run, x0, baseline, opts, align));
       minX = Math.min(minX, x0);
       maxX = Math.max(maxX, x0 + run.width);
       baseline += lh;
@@ -269,12 +316,18 @@ export class LayoutContext {
 
   /* ---------- Bloques ---------- */
 
-  add(id: string, label: string, prims: Prim[], opts: { role?: BlockRole; editable?: boolean; layer?: number; bbox?: Rect; links?: LinkArea[] } = {}): Block {
+  add(id: string, label: string, prims: Prim[], opts: { role?: BlockRole; editable?: boolean; layer?: number; bbox?: Rect; links?: LinkArea[]; rigid?: boolean; text?: TextSource } = {}): Block {
     const bbox = opts.bbox ?? primsBounds(prims) ?? { x: 0, y: 0, w: 0, h: 0 };
+    const box = this.boxes.get(id);
+    const parent = this.parents.get(id);
     const block: Block = {
       id,
       label,
       bbox,
+      ...(box ? { box } : {}),
+      ...(parent ? { parent } : {}),
+      ...(opts.rigid ? { rigid: true as const } : {}),
+      ...(opts.text ? { text: opts.text } : {}),
       prims,
       role: opts.role ?? 'content',
       editable: opts.editable ?? true,

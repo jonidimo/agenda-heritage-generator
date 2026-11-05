@@ -68,6 +68,20 @@ ficam as suas agendas e como gerar o aplicativo. Para usar no navegador, veja
 - Adicione seus próprios textos, imagens, linhas e molduras a qualquer tipo de página.
 - Redimensione seus elementos por qualquer borda ou canto; com Shift, as proporções se
   mantêm.
+- **Os elementos próprios da agenda também** (o nome de um mês, uma moldura, uma tabela, uma
+  área de escrita) mudam de tamanho por qualquer borda ou canto: o conteúdo é reorganizado
+  dentro da caixa nova em vez de esticado, e o painel tem campos de largura e altura.
+- **Clique duas vezes em qualquer texto** para editá-lo ali mesmo: os seus e os da agenda
+  (nome e título da capa, dedicatória, a frase de cada mês, títulos de página). Enter ou
+  Ctrl+Enter confirma, Esc descarta, e a página é redesenhada enquanto você escreve. Um
+  texto próprio pode acompanhar as suas linhas (altura automática).
+- **Estilo por elemento**: linhas tracejadas, pontilhadas ou duplas, cor e espessura de cada
+  tipo de linha, preenchimento e cor do texto, para um elemento em todas as páginas do seu
+  tipo ou só em uma.
+- **Copiar, recortar, colar e duplicar** os seus elementos (Ctrl+C, X, V e D) dentro de uma
+  página ou entre páginas.
+- Arrastar um controle deslizante ou um seletor de cor é fluido: a página acompanha ao vivo,
+  as miniaturas esperam e todo o arrasto é um único passo de desfazer.
 - Um elemento de imagem aceita qualquer imagem: escolha uma da agenda ou envie um PNG, JPG
   ou SVG.
 - Cada texto pode ter a sua própria fonte e a sua própria cor, ou seguir as do seu tipo de
@@ -175,6 +189,8 @@ ficam as suas agendas e como gerar o aplicativo. Para usar no navegador, veja
   seções. O botão de links da barra de cima os mostra sobre a página e um clique os segue;
   o painel de cada elemento mostra para onde leva e permite tirar os links ou mandá-lo
   para outra página ou um endereço da web. O PDF para imprimir não os leva.
+- Cada zona tocável pode ser mudada separadamente: clique num número de dia ou no nome de um
+  mês na página, ou use o botão direito, para mandar só esse para outro lugar ou removê-lo.
 
 ### Seus arquivos e modelos
 
@@ -198,6 +214,8 @@ ficam as suas agendas e como gerar o aplicativo. Para usar no navegador, veja
 - O formato do arquivo tem um **esquema JSON** e um catálogo gerados a partir do código,
   e `npm run agenda -- check` diz exatamente o que seria ignorado ou corrigido. Leia o
   [guia](docs/llm-templates.md) (em inglês; [en español](docs/plantillas-llm.md)).
+- Cada mudança do modelo volta com os avisos de layout que ela produziu (textos que não
+  cabem, elementos fora da página ou sobrepostos), e ele pode corrigi-los sem ninguém olhar.
 
 ### Feita para durar
 

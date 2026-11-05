@@ -1,8 +1,9 @@
 /** Controles base de la interfaz (accesibles, compactos y consistentes). */
 import clsx from 'clsx';
 import { ChevronDown, ChevronRight, RotateCcw } from 'lucide-react';
-import { useEffect, useId, useRef, useState, type KeyboardEvent, type PointerEvent, type ReactNode } from 'react';
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent, type ReactNode, type RefCallback } from 'react';
 import { useT } from '../i18n/ui';
+import { frameThrottle } from '../state/frame';
 
 export function Button(props: { children: ReactNode; onClick?: () => void; variant?: 'primary' | 'ghost' | 'outline' | 'danger'; disabled?: boolean; title?: string; className?: string; type?: 'button' | 'submit' }) {
   const v = props.variant ?? 'outline';
@@ -144,12 +145,103 @@ interface ResetProps<T> {
   onReset?: () => void;
 }
 
+/**
+ * Arrastre de un control con vista previa (deslizador, selector de color). Mientras se arrastra,
+ * el control muestra su propio valor y `onPreview` recibe el valor como mucho una vez por cuadro de
+ * animación (el lienzo se redibuja sin tocar el historial ni el guardado); al soltar, el evento
+ * `change` nativo confirma UNA vez con `onChange`. Sin `onPreview`, cada cambio se confirma al
+ * instante (el comportamiento de siempre).
+ *
+ * El evento `input` nativo llega decenas de veces por segundo, y `change`, solo al soltar (o en
+ * cada paso del teclado): por eso la confirmación escucha `change` directamente.
+ */
+export function useScrub<T>(opts: { value: T; parse: (el: HTMLInputElement) => T; onPreview?: ((value: T) => void) | undefined; onChange: (value: T) => void }): {
+  /** Lo que muestra el control: el valor que se está arrastrando, o el confirmado. */
+  shown: T;
+  /** Un valor nuevo (evento `input`). */
+  input(value: T): void;
+  /** Ref del `<input>`: confirma al soltar. */
+  commitRef: RefCallback<HTMLInputElement>;
+} {
+  const [dragging, setDragging] = useState<{ value: T } | null>(null);
+  /** El arrastre en curso, también para quien limpia al desmontarse. */
+  const open = useRef<{ value: T } | null>(null);
+  const live = useRef(opts);
+  useLayoutEffect(() => {
+    live.current = opts;
+  });
+  const throttle = useMemo(() => frameThrottle<T>((value) => live.current.onPreview?.(value)), []);
+
+  const input = useCallback(
+    (value: T): void => {
+      if (!live.current.onPreview) {
+        live.current.onChange(value);
+        return;
+      }
+      open.current = { value };
+      setDragging({ value });
+      throttle.push(value);
+    },
+    [throttle],
+  );
+
+  const commitRef = useCallback<RefCallback<HTMLInputElement>>(
+    (el) => {
+      if (!el) return;
+      const onNativeChange = (): void => {
+        // Sin vista previa cada `input` ya confirmó.
+        if (!live.current.onPreview) return;
+        const last = open.current ?? { value: live.current.parse(el) };
+        open.current = null;
+        throttle.flush();
+        setDragging(null);
+        live.current.onChange(last.value);
+      };
+      el.addEventListener('change', onNativeChange);
+      return () => el.removeEventListener('change', onNativeChange);
+    },
+    [throttle],
+  );
+
+  // Si el control desaparece a mitad de un arrastre (otra selección, otra página), lo arrastrado se confirma.
+  useEffect(
+    () => () => {
+      throttle.cancel();
+      const last = open.current;
+      open.current = null;
+      if (last && live.current.onPreview) live.current.onChange(last.value);
+    },
+    [throttle],
+  );
+
+  return { shown: dragging ? dragging.value : opts.value, input, commitRef };
+}
+
+const parseRange = (el: HTMLInputElement): number => Number(el.value);
+const parseColor = (el: HTMLInputElement): string => el.value;
+
 /** Deslizador con valor numérico editable al lado y botón para restablecerlo. */
-export function Slider(props: { label: string; value: number; onChange: (v: number) => void; min: number; max: number; step?: number; unit?: string; integer?: boolean } & ResetProps<number>) {
+export function Slider(
+  props: {
+    label: string;
+    value: number;
+    /** Confirma el valor (al soltar, si hay `onPreview`; si no, en cada cambio). */
+    onChange: (v: number) => void;
+    /** Vista previa mientras se arrastra (ver `useScrub`). */
+    onPreview?: (v: number) => void;
+    min: number;
+    max: number;
+    step?: number;
+    unit?: string;
+    integer?: boolean;
+  } & ResetProps<number>,
+) {
   const id = useId();
   const { defaultValue } = props;
+  const scrubbing = useScrub<number>({ value: props.value, parse: parseRange, onPreview: props.onPreview, onChange: props.onChange });
+  const shown = scrubbing.shown;
   const reset = props.onReset ?? (defaultValue === undefined ? undefined : () => props.onChange(defaultValue));
-  const modified = props.modified ?? (defaultValue !== undefined && Math.abs(props.value - defaultValue) > SAME_VALUE);
+  const modified = props.modified ?? (defaultValue !== undefined && Math.abs(shown - defaultValue) > SAME_VALUE);
   return (
     <div className="py-1">
       <div className="mb-0.5 flex items-center justify-between">
@@ -159,11 +251,21 @@ export function Slider(props: { label: string; value: number; onChange: (v: numb
         <div className="flex items-center gap-1">
           {modified && reset && <ResetButton label={props.label} onClick={reset} />}
           <div className="w-[74px]">
-            <NumberInput value={props.value} onChange={props.onChange} min={props.min} max={props.max} step={props.step} integer={props.integer} ariaLabel={props.label} className="!py-0.5 text-right" />
+            <NumberInput value={shown} onChange={props.onChange} min={props.min} max={props.max} step={props.step} integer={props.integer} ariaLabel={props.label} className="!py-0.5 text-right" />
           </div>
         </div>
       </div>
-      <input id={id} className="w-full" type="range" min={props.min} max={props.max} step={props.step ?? 1} value={props.value} onChange={(e) => props.onChange(props.integer ? Math.round(Number(e.target.value)) : Number(e.target.value))} />
+      <input
+        id={id}
+        ref={scrubbing.commitRef}
+        className="w-full"
+        type="range"
+        min={props.min}
+        max={props.max}
+        step={props.step ?? 1}
+        value={shown}
+        onChange={(e) => scrubbing.input(props.integer ? Math.round(Number(e.target.value)) : Number(e.target.value))}
+      />
     </div>
   );
 }
@@ -192,17 +294,19 @@ export function Select<T extends string>(props: { value: T; onChange: (v: T) => 
   );
 }
 
-export function ColorInput(props: { label: string; value: string; onChange: (v: string) => void } & ResetProps<string>) {
+export function ColorInput(props: { label: string; value: string; onChange: (v: string) => void; onPreview?: (v: string) => void } & ResetProps<string>) {
   const { defaultValue } = props;
+  const scrubbing = useScrub<string>({ value: props.value, parse: parseColor, onPreview: props.onPreview, onChange: props.onChange });
+  const shown = scrubbing.shown;
   const reset = props.onReset ?? (defaultValue === undefined ? undefined : () => props.onChange(defaultValue));
-  const modified = props.modified ?? (defaultValue !== undefined && props.value.toLowerCase() !== defaultValue.toLowerCase());
+  const modified = props.modified ?? (defaultValue !== undefined && shown.toLowerCase() !== defaultValue.toLowerCase());
   return (
     <label className="flex items-center justify-between gap-2 py-1">
       <span className="text-[12px] text-ink">{props.label}</span>
       <span className="flex items-center gap-1.5">
         {modified && reset && <ResetButton label={props.label} onClick={reset} />}
-        <span className="font-mono text-[11px] text-ink-soft">{props.value}</span>
-        <input type="color" className="h-6 w-8 cursor-pointer rounded border border-line bg-white p-0" value={props.value} onChange={(e) => props.onChange(e.target.value)} />
+        <span className="font-mono text-[11px] text-ink-soft">{shown}</span>
+        <input type="color" ref={scrubbing.commitRef} className="h-6 w-8 cursor-pointer rounded border border-line bg-white p-0" value={shown} onChange={(e) => scrubbing.input(e.target.value)} />
       </span>
     </label>
   );

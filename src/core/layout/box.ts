@@ -123,3 +123,41 @@ export function fitRect(box: Rect, aspect: number, mode: 'contain' | 'cover' | '
 export function centerIn(box: Rect, w: number, h: number): Rect {
   return { x: box.x + (box.w - w) / 2, y: box.y + (box.h - h) / 2, w, h };
 }
+
+/** Lo que el editor le cambió a un elemento: lugar y tamaño de su caja, en mm y ya espejados según la página. */
+export interface BoxAdjust {
+  dx: number;
+  dy: number;
+  dw: number;
+  dh: number;
+}
+
+/** Ninguna caja se achica por debajo de esto (si ya era más chica, no cambia). */
+export const MIN_BOX = 2;
+
+/** Un lado de una caja con su cambio, sin bajar de `MIN_BOX` ni agrandar lo que ya era más chico. */
+export function adjustedSize(size: number, delta: number): number {
+  return Math.max(Math.min(size, MIN_BOX), size + delta);
+}
+
+/** La caja de un elemento con los ajustes del editor. */
+export function adjustBox(base: Rect, a: BoxAdjust): Rect {
+  return { x: base.x + a.dx, y: base.y + a.dy, w: adjustedSize(base.w, a.dw), h: adjustedSize(base.h, a.dh) };
+}
+
+/** La caja que dibujaría la sección sin ajustes, a partir de la que se ve y del ajuste que la produjo. */
+export function naturalBox(visible: Rect, applied: BoxAdjust): Rect {
+  return { x: visible.x - applied.dx, y: visible.y - applied.dy, w: visible.w - applied.dw, h: visible.h - applied.dh };
+}
+
+/**
+ * Lo que hay que guardar para que la caja natural `natural` se vea como `target`. `mirror` es el
+ * caso de los ajustes «por tipo» en una página izquierda (ver `adjuster` en `document/layout.ts`):
+ * allí el borde izquierdo se mueve en sentido contrario, y el ancho que se gana sale hacia el otro lado.
+ * Es la inversa de ese cálculo: aplicar el resultado a `natural` da `target`.
+ */
+export function storeAdjust(natural: Rect, target: Rect, mirror: boolean): BoxAdjust {
+  const dw = target.w - natural.w;
+  const shown = target.x - natural.x;
+  return { dx: mirror ? -shown - dw : shown, dy: target.y - natural.y, dw, dh: target.h - natural.h };
+}

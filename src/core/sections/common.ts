@@ -4,13 +4,16 @@ import { dateOrder, formatDayMonth, weekdayNames } from '../calendar/locale';
 import { monthNames } from '../calendar/locale';
 import { takeTop } from '../layout/box';
 import type { LayoutContext } from '../layout/context';
-import type { Prim } from '../layout/prims';
+import type { Prim, TextSource } from '../layout/prims';
 import { line } from '../layout/prims';
 import { checkCircle, pageHeader, ruledLines } from '../layout/widgets';
 import type { Rect } from '../util/geometry';
 import type { PagePlan } from './types';
 
 /** Encabezado estándar y caja restante debajo. */
+/** Origen de un texto fijo del programa: su ruta en las cadenas del idioma (el editor lo cambia en `persona.labels`). */
+export const label = (path: string): TextSource => ({ kind: 'label', path });
+
 export function headed(ctx: LayoutContext, title: string, right: string, opts: Parameters<typeof pageHeader>[4] = {}): Rect {
   const used = pageHeader(ctx, ctx.content, title, right, opts);
   return takeTop(ctx.content, used)[1];
@@ -57,6 +60,16 @@ export function fieldLine(ctx: LayoutContext, x: number, y: number, w: number, l
   const t = ctx.textAt(label, x, y, { role: 'label', size: size ?? ctx.theme.sizes.small });
   const lx = x + t.width + 2;
   return [t.prim, line(lx, y + 0.6, x + w, y + 0.6, ctx.stroke('hair', undefined, { use: 'writing' }))];
+}
+
+/**
+ * Renglones con rótulo («Nombre: ____»), repartidos en la caja del elemento (`id`): una fila por
+ * rótulo (uno vacío deja el renglón sin rótulo). La caja natural mide `pitch` mm por fila.
+ */
+export function fieldRows(ctx: LayoutContext, id: string, at: { x: number; y: number; w: number }, labels: readonly string[], pitch: number): Prim[] {
+  const box = ctx.rect(id, { x: at.x, y: at.y, w: at.w, h: labels.length * pitch });
+  const step = box.h / Math.max(1, labels.length);
+  return labels.flatMap((f, i) => fieldLine(ctx, box.x, box.y + (i + 1) * step, box.w, f ? `${f}:` : ''));
 }
 
 /** Aviso informativo: un feriado o una fecha propia se abrevió con «…» para entrar en su lugar. */

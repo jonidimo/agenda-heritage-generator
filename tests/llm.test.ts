@@ -282,6 +282,19 @@ describe('servidor MCP', () => {
     expect(parseThemeFile(JSON.parse(await readFile(join(dir, 'azul.tema.json'), 'utf8'))).name).toBe('Tinta azul');
   });
 
+  it('devuelve los avisos de maquetación que produjo el cambio, y no repite los que ya había', async () => {
+    await call('create_design', { template: 'heritage', year: 2027, locale: 'en-US', out: 'fuera.agenda.json' });
+    const element = { id: 'sale', pageType: 'weekLeft', pageKey: null, kind: 'text', mirror: false, x: 120, y: 10, w: 60, h: 10, props: { text: 'Hola', align: 'right' } };
+    const first = json(await call('update_design', { path: 'fuera.agenda.json', patch: [{ op: 'add', path: '/customBlocks/-', value: element }] }));
+    expect(first.written).toBe(true);
+    // El editor no deja armarlo así; el archivo sí: se avisa en la revisión y en la maquetación.
+    expect(first.issues).toEqual(expect.arrayContaining([expect.objectContaining({ path: '/customBlocks/0', severity: 'adjusted', message: expect.stringContaining('sale de la página') as string })]));
+    expect(first.warnings).toEqual(expect.arrayContaining([expect.objectContaining({ code: 'offPage', page: expect.any(Number) as number })]));
+    // Un cambio que no agrega problemas nuevos no los repite.
+    const second = json(await call('update_design', { path: 'fuera.agenda.json', patch: [{ op: 'replace', path: '/calendar/weekStart', value: 'sunday' }] }));
+    expect(second.warnings).toEqual([]);
+  });
+
   it('acepta la agenda escrita en el pedido', async () => {
     const r = json(await call('check_design', { design: { calendar: { year: 2028, startMonth: 3, monthCount: 6 } } }));
     expect(r.summary).toMatchObject({ year: 2028, startMonth: 3, monthCount: 6 });

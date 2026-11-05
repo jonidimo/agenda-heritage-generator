@@ -65,6 +65,21 @@ Para usarla en el navegador, mirá [Cómo usarla](#cómo-usarla).
 - Textos, imágenes, renglones y marcos propios en cualquier tipo de página.
 - Cambiá el tamaño de tus elementos desde cualquier borde o esquina; con Mayús se
   mantienen las proporciones.
+- **También los elementos propios de la agenda** (el nombre de un mes, un marco, una tabla,
+  un área de escritura) se agrandan o achican desde cualquier borde o esquina: su contenido
+  se vuelve a acomodar dentro de la caja nueva en lugar de estirarse, y el panel tiene
+  campos de ancho y alto.
+- **Doble clic en cualquier texto** para editarlo ahí mismo: los tuyos y los de la agenda
+  (nombre y título de la portada, dedicatoria, la frase de cada mes, títulos de página).
+  Enter o Ctrl+Enter confirma, Esc descarta, y la página se redibuja mientras escribís. Un
+  texto propio puede seguir a sus renglones (alto automático).
+- **Estilo por elemento**: líneas a guiones, de puntos o dobles, color y grosor de cada
+  clase de línea, relleno y color del texto, para un elemento en todas las páginas de su
+  tipo o solo en una.
+- **Copiar, cortar, pegar y duplicar** tus elementos (Ctrl+C, X, V y D) dentro de una página
+  o entre páginas.
+- Arrastrar un deslizador o un selector de color es fluido: la página acompaña en vivo, las
+  miniaturas esperan y todo el arrastre es un solo paso de deshacer.
 - Un elemento de imagen acepta cualquier imagen: elegí una de la agenda o subí un PNG, JPG
   o SVG.
 - Cada texto puede tener su propia letra y su propio color, o seguir los de su tipo de
@@ -173,6 +188,8 @@ Para usarla en el navegador, mirá [Cómo usarla](#cómo-usarla).
   y un clic los sigue; el panel de cada elemento muestra adónde lleva y permite quitarle
   los enlaces o mandarlo a otra página o a una dirección web. El PDF para imprimir no los
   lleva.
+- Cada zona tocable se puede cambiar por separado: tocá un número de día o un nombre de mes
+  en la página, o hacé clic derecho, para mandar solo ese a otro lado o quitarlo.
 
 ### Tus archivos y plantillas
 
@@ -196,6 +213,8 @@ Para usarla en el navegador, mirá [Cómo usarla](#cómo-usarla).
 - El formato del archivo tiene un **esquema JSON** y un catálogo que salen del código, y
   `npm run agenda -- check` dice exactamente qué se ignoraría o corregiría. Leé la
   [guía](docs/plantillas-llm.md) ([in English](docs/llm-templates.md)).
+- Cada cambio del modelo vuelve con los avisos de maquetación que produjo (textos que no
+  entran, elementos fuera de la página o superpuestos), así puede corregirlos sin que nadie mire.
 
 ### Hecha para durar
 

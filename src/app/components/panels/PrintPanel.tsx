@@ -5,6 +5,7 @@ import { useState } from 'react';
 import { uiText, useT, type UiKey } from '../../i18n/ui';
 import { useDocument } from '../../state/doc';
 import { download, exportPageSvg, exportPdf, fileBase } from '../../state/exporter';
+import { scrub } from '../../state/scrub';
 import { useStore } from '../../state/store';
 import { Button, Field, Group, NumberInput, Segmented, Select, Slider, TextInput, Toggle } from '../ui';
 
@@ -186,7 +187,7 @@ export function PrintPanel() {
             </Field>
             {b.signature.mode !== 'custom' ? (
               <>
-                <Slider label={t('print.sheets')} value={b.signature.sheets} min={1} max={16} step={1} integer onChange={(v) => update((d) => void (d.binding.signature.sheets = v), 'sig:sheets')} defaultValue={designDefaults().binding.signature.sheets} />
+                <Slider label={t('print.sheets')} value={b.signature.sheets} min={1} max={16} step={1} integer {...scrub<number>((v) => (d) => void (d.binding.signature.sheets = v), 'sig:sheets')} defaultValue={designDefaults().binding.signature.sheets} />
                 <p className="text-[11.5px] text-ink-soft">{t('print.pagesPer', { n: b.signature.sheets * 4 })}</p>
               </>
             ) : (
@@ -273,7 +274,7 @@ export function PrintPanel() {
 
       {b.method === 'sewn' && (
         <Group title={t('print.sewing')} defaultOpen={false}>
-          <Slider label={t('print.stations')} value={b.sewing.stations} min={2} max={12} step={1} integer onChange={(v) => update((d) => void (d.binding.sewing.stations = v), 'sew:n')} defaultValue={designDefaults().binding.sewing.stations} />
+          <Slider label={t('print.stations')} value={b.sewing.stations} min={2} max={12} step={1} integer {...scrub<number>((v) => (d) => void (d.binding.sewing.stations = v), 'sew:n')} defaultValue={designDefaults().binding.sewing.stations} />
           <Toggle label={t('print.pairs')} checked={b.sewing.pairs} onChange={(v) => update((d) => void (d.binding.sewing.pairs = v))} />
         </Group>
       )}

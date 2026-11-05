@@ -82,6 +82,11 @@ export interface TextPrim {
   opacity?: number;
   /** Tipo de texto (título, rótulo…): el editor lo usa para llevar a su estilo. */
   role?: string;
+  /**
+   * De qué punto del texto está anclada su posición (según su alineación): al estirar un bloque, el
+   * texto sigue a su ancla sin cambiar de tamaño. Sin indicar, el inicio.
+   */
+  anchor?: 'start' | 'middle' | 'end';
 }
 
 export interface ImagePrim {
@@ -146,6 +151,25 @@ export interface LinkArea {
   cat: LinkCategory;
 }
 
+/**
+ * De dónde sale el texto de un bloque, para poder editarlo en su lugar: la propiedad del diseño que
+ * hay que cambiar. Los nombres de mes, las fechas y los números no tienen origen (los calcula el
+ * programa).
+ */
+export type TextSource =
+  /** Texto de un elemento propio. */
+  | { kind: 'custom'; id: string }
+  /** Campo de la persona: portada y dedicatoria. */
+  | { kind: 'persona'; field: 'name' | 'title' | 'subtitle' | 'dedicationTitle' | 'dedication' }
+  /** Frase de un mes (la `index`-ésima de las doce). */
+  | { kind: 'phrase'; index: number }
+  /** Texto fijo del programa (títulos, rótulos), por su ruta en las cadenas del idioma. */
+  | { kind: 'label'; path: string }
+  /** Título o texto de una página propia. */
+  | { kind: 'page'; id: string; field: 'title' | 'text' }
+  /** Título o texto de una plantilla de página. */
+  | { kind: 'template'; id: string; field: 'title' | 'text' };
+
 /** Unidad editable de una página: se puede seleccionar, mover, escalar u ocultar. */
 export interface Block {
   /** Identificador estable dentro del tipo de página (p. ej. `header.title`, `day.3.label`). */
@@ -153,6 +177,21 @@ export interface Block {
   label: string;
   /** Caja sin transformar, en mm de página. */
   bbox: Rect;
+  /**
+   * La caja en la que se dibujó el elemento (ya con sus ajustes de tamaño y lugar), si la sección
+   * lo vuelve a maquetar dentro de ella (`LayoutContext.rect`). Es la que se ve al seleccionarlo.
+   * Sin ella, el elemento se estira al cambiar de tamaño (ver `stretch.ts`).
+   */
+  box?: Rect;
+  /** No admite cambiar su ancho y su alto por los lados (p. ej. dibujado girado): solo se escala. */
+  rigid?: true;
+  /**
+   * Id del elemento dentro de cuya caja se maquetó este (su base sale de la caja ya ajustada del
+   * otro). Cuando los dos se mueven juntos, el de adentro ya sigue al de afuera: no se mueve de nuevo.
+   */
+  parent?: string;
+  /** De dónde sale su texto principal, si se puede editar en su lugar. */
+  text?: TextSource;
   prims: Prim[];
   role: BlockRole;
   editable: boolean;

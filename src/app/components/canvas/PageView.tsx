@@ -4,18 +4,22 @@
  */
 import { blockBounds } from '@core/document/layout';
 import type { AgendaDocument } from '@core/document';
-import type { Block } from '@core/layout/prims';
+import type { Block, PageModel } from '@core/layout/prims';
 import { pageInnerSvg } from '@core/render/svg';
 import { fmt, type Rect } from '@core/util/geometry';
 import { useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { unionRect } from '@core/layout/align';
-import { clampMoveDelta, moveBlocks, resizeCustomBlock, scaleBlock } from '../../state/actions';
+import type { Scope } from '../../state/actions';
+import { clampMoveDelta, moveBlocks, reflowable, resizeBoxRecipe, resizeCustomRecipe, scaleBlock } from '../../state/actions';
+import { frameThrottle, type FrameThrottle } from '../../state/frame';
+import { MIN_BOX } from '@core/layout/box';
 import { HANDLES, resizeRect, type Handle } from '@core/layout/resize';
 import { openMenuAt } from '../ContextMenu';
-import { blockMenu, multiMenu, pageMenu } from './menus';
+import { blockMenu, multiMenu, pageMenu, zoneMenu } from './menus';
+import { editableInPlace, TextEditor } from './TextEditor';
 import { assetHref, onAssetUrlsChange } from '../../state/assetUrls';
 import { useT } from '../../i18n/ui';
-import { useStore, type Selection } from '../../state/store';
+import { useStore, type Recipe, type Selection } from '../../state/store';
 import { jumpToPage } from '../../state/navigation';
 import { currentUiZoom } from '../../state/uiScale';
 
@@ -47,9 +51,20 @@ interface Drag {
   handle: Handle;
   box: Rect | null;
   moved: boolean;
+  /** Bloque del programa que se reacomoda en su caja nueva: la vista previa sale del documento, no de una transformación. */
+  reflow: boolean;
+  /** Entrega la caja a la vista previa a lo sumo una vez por cuadro. */
+  push: FrameThrottle<Rect> | null;
 }
 
 const SNAP_PX = 7;
+/** Alto o ancho (px) por debajo del cual los tiradores de los lados se corren hacia afuera, y cuánto. */
+const SIDE_ROOM_PX = 44;
+const SIDE_OUTSET_PX = 12;
+/** Clave que liga la vista previa de un redimensionado con su confirmación. */
+const reflowKey = (page: { key: string }, block: Block): string => `box:${page.key}:${block.id}`;
+/** Cambio de caja de un bloque: los elementos propios guardan su caja; los del programa, un ajuste sobre la suya. */
+const resizeRecipe = (page: PageModel, block: Block, box: Rect, scope: Scope): Recipe => (block.role === 'custom' ? resizeCustomRecipe(page, block, box) : resizeBoxRecipe(page, block, box, scope));
 const RESIZE_CURSOR: Record<Handle, string> = { n: 'ns-resize', s: 'ns-resize', e: 'ew-resize', w: 'ew-resize', ne: 'nesw-resize', sw: 'nesw-resize', nw: 'nwse-resize', se: 'nwse-resize' };
 /** Movimiento mínimo (px de pantalla) para que un clic se convierta en arrastre. */
 const DRAG_START_PX = 3;
@@ -65,10 +80,13 @@ export function PageView({ doc, index, scale, interactive = true }: Props) {
   const [live, setLive] = useState<Rect | null>(null);
   const [liveDelta, setLiveDelta] = useState<{ dx: number; dy: number } | null>(null);
   const [marquee, setMarquee] = useState<Rect | null>(null);
+  /** Elemento cuyo texto se edita en su lugar. */
+  const [editing, setEditing] = useState<string | null>(null);
   const selection = useStore((s) => s.selection);
   const selectedIds = useStore((s) => s.selectedIds);
   const select = useStore((s) => s.select);
   const setSelection = useStore((s) => s.setSelection);
+  const setLinkArea = useStore((s) => s.setLinkArea);
   const scope = useStore((s) => s.scope);
   const showGuides = useStore((s) => s.guides);
   const snapOn = useStore((s) => s.snap);
@@ -87,13 +105,22 @@ export function PageView({ doc, index, scale, interactive = true }: Props) {
    * acá y no en cada zona: un elemento ya elegido tiene encima su capa de arrastre y el segundo clic
    * no llegaría al botón del enlace.
    */
-  const followLinkAt = (e: React.MouseEvent): void => {
-    if (links.length === 0) return;
+  const followLinkAt = (e: React.MouseEvent): boolean => {
+    if (links.length === 0) return false;
     const p = toMm(e);
     const hit = links
       .filter((l) => p.x >= l.rect.x && p.x <= l.rect.x + l.rect.w && p.y >= l.rect.y && p.y <= l.rect.y + l.rect.h)
       .sort((a, b) => a.rect.w * a.rect.h - b.rect.w * b.rect.h)[0];
     if (hit) followLink(hit);
+    return Boolean(hit);
+  };
+  /** Doble clic: el enlace que hay bajo el puntero y, si no hay, edita el texto del elemento en su lugar. */
+  const onDoubleClick = (e: React.MouseEvent): void => {
+    if (followLinkAt(e) || !interactive) return;
+    const block = blockAt(e);
+    if (!block || !editableInPlace(block)) return;
+    select(selOf(block));
+    setEditing(block.id);
   };
 
   // Cambia de identidad cuando llega una vista previa de imagen/PDF: así se vuelve a dibujar la página.
@@ -101,11 +128,13 @@ export function PageView({ doc, index, scale, interactive = true }: Props) {
     void assetTick;
     return (key: string, kind: 'image' | 'pdf'): string | undefined => assetHref(key, kind);
   }, [assetTick]);
+  // Depende del modelo de la página y no del documento: si el documento nuevo reutilizó la página, el dibujo es el mismo.
+  const fonts = doc.ctx.fonts;
   const { body, defs } = useMemo(() => {
     const prefix = `g${index}x`;
-    const { body: b, sink } = pageInnerSvg(page, { fonts: doc.ctx.fonts, assetHref: hrefFor, glyphPrefix: prefix, blockAttrs: interactive });
-    return { body: b, defs: sink.defs(doc.ctx.fonts, prefix) };
-  }, [page, doc, index, interactive, hrefFor]);
+    const { body: b, sink } = pageInnerSvg(page, { fonts, assetHref: hrefFor, glyphPrefix: prefix, blockAttrs: interactive });
+    return { body: b, defs: sink.defs(fonts, prefix) };
+  }, [page, fonts, index, interactive, hrefFor]);
 
   const selected = selection && selection.pageKey === page.key ? page.blocks.find((b) => b.id === selection.blockId) : undefined;
   // Selección múltiple de esta página (incluye el principal).
@@ -188,6 +217,7 @@ export function PageView({ doc, index, scale, interactive = true }: Props) {
         const el = svgRef.current?.querySelector<SVGGElement>(`[data-block="${CSS.escape(b.id)}"]`) ?? null;
         return { block: b, el, base: el?.getAttribute('transform') ?? null, origin: blockBounds(b) };
       });
+    const reflow = mode === 'resize' && (block.role === 'custom' || reflowable(block));
     drag.current = {
       block,
       mode,
@@ -205,6 +235,8 @@ export function PageView({ doc, index, scale, interactive = true }: Props) {
       box: null,
       moved: false,
       additive: false,
+      reflow,
+      push: reflow ? frameThrottle((r: Rect) => useStore.getState().preview(resizeRecipe(page, block, r, scope), reflowKey(page, block))) : null,
     };
     wrapRef.current?.setPointerCapture?.(e.pointerId);
     e.preventDefault();
@@ -229,7 +261,7 @@ export function PageView({ doc, index, scale, interactive = true }: Props) {
       }
       // Recuadro de selección desde un lugar vacío.
       const p = toMm(e);
-      drag.current = { block: page.blocks[0]!, mode: 'marquee', pointerId: e.pointerId, startClientX: e.clientX, startClientY: e.clientY, startX: p.x, startY: p.y, origin: { x: p.x, y: p.y, w: 0, h: 0 }, parts: [], dx: 0, dy: 0, factor: 1, handle: 'se', box: null, moved: false, additive };
+      drag.current = { block: page.blocks[0]!, mode: 'marquee', pointerId: e.pointerId, startClientX: e.clientX, startClientY: e.clientY, startX: p.x, startY: p.y, origin: { x: p.x, y: p.y, w: 0, h: 0 }, parts: [], dx: 0, dy: 0, factor: 1, handle: 'se', box: null, moved: false, additive, reflow: false, push: null };
       wrapRef.current?.setPointerCapture?.(e.pointerId);
       e.preventDefault();
       return;
@@ -289,9 +321,15 @@ export function PageView({ doc, index, scale, interactive = true }: Props) {
       const pageBox = { x: 0, y: 0, w: page.w, h: page.h };
       // Un elemento propio cambia de ancho y alto por separado; los demás (composiciones del diseño)
       // solo en proporción. Mayús mantiene la proporción también en los propios.
-      const free = d.block.role === 'custom';
-      const r = resizeRect(o, free ? d.handle : 'se', p.x - d.startX, p.y - d.startY, { keepAspect: !free || e.shiftKey, min: 2, bounds: pageBox });
+      const free = d.block.role === 'custom' || d.reflow;
+      const r = resizeRect(o, free ? d.handle : 'se', p.x - d.startX, p.y - d.startY, { keepAspect: !free || e.shiftKey, min: MIN_BOX, bounds: pageBox });
       d.box = r;
+      if (d.reflow) {
+        // El contenido se reacomoda en la caja nueva: la vista previa es la página maquetada otra vez.
+        d.push?.push(r);
+        setLive(r);
+        return;
+      }
       d.factor = r.w / Math.max(0.01, o.w);
       const sx = r.w / Math.max(0.01, o.w);
       const sy = r.h / Math.max(0.01, o.h);
@@ -304,6 +342,19 @@ export function PageView({ doc, index, scale, interactive = true }: Props) {
     const d = drag.current;
     if (!d || e.pointerId !== d.pointerId) return;
     drag.current = null;
+    if (d.reflow) {
+      setLive(null);
+      setGuides({ x: [], y: [] });
+      if (commit && d.moved && d.box) {
+        // Lo último que se movió llega a la vista previa antes de confirmarla (la confirmación la adopta).
+        d.push?.flush();
+        useStore.getState().commit(resizeRecipe(page, d.block, d.box, scope), reflowKey(page, d.block));
+      } else {
+        d.push?.cancel();
+        useStore.getState().clearPreview();
+      }
+      return;
+    }
     if (d.mode === 'marquee') {
       setMarquee(null);
       if (!commit) return;
@@ -337,7 +388,6 @@ export function PageView({ doc, index, scale, interactive = true }: Props) {
     setLiveDelta(null);
     if (!commit || !d.moved) return;
     if (d.mode === 'move') moveBlocks(page, d.parts.map((m) => ({ block: m.block, dx: d.dx, dy: d.dy })), scope);
-    else if (d.block.role === 'custom' && d.box) resizeCustomBlock(page, d.block, d.box);
     else scaleBlock(page, d.block, d.factor, scope);
   };
 
@@ -374,7 +424,7 @@ export function PageView({ doc, index, scale, interactive = true }: Props) {
       onPointerUp={(e) => finish(e, true)}
       onPointerCancel={(e) => finish(e, false)}
       onContextMenu={onContextMenu}
-      onDoubleClick={followLinkAt}
+      onDoubleClick={onDoubleClick}
       tabIndex={interactive ? 0 : undefined}
       aria-label={interactive ? t('page.keys', { n: index + 1 }) : undefined}
       onKeyDown={(e) => {
@@ -447,22 +497,44 @@ export function PageView({ doc, index, scale, interactive = true }: Props) {
                 const owner = page.blocks.find((b) => b.id === l.blockId);
                 if (!owner) return;
                 if (e.ctrlKey || e.metaKey || e.shiftKey) toggle(owner);
-                else select(selOf(owner));
+                else {
+                  // Elige el elemento y esa zona: el panel de enlaces muestra y cambia solo su destino.
+                  select(selOf(owner));
+                  setLinkArea(l.area);
+                }
+              }}
+              onContextMenu={(e) => {
+                const owner = page.blocks.find((b) => b.id === l.blockId);
+                if (!owner) return;
+                e.preventDefault();
+                e.stopPropagation();
+                select(selOf(owner));
+                setLinkArea(l.area);
+                openMenuAt(e, zoneMenu({ t, doc, page, scope, at: toMm(e) }, l, () => followLink(l)));
               }}
 
             />
           ))}
         </div>
       )}
-      {interactive && single && selBounds && selected?.editable && (
+      {interactive && editing && (() => {
+        const target = page.blocks.find((b) => b.id === editing);
+        return target?.text ? <TextEditor key={`${page.key}:${editing}`} doc={doc} page={page} blockId={editing} source={target.text} scale={scale} onDone={() => setEditing(null)} /> : null;
+      })()}
+      {interactive && single && selBounds && selected?.editable && !editing && (
         <>
           {/* Capa del elemento seleccionado: con el dedo se arrastra desde acá sin desplazar la página. */}
           <div data-sel-surface="" className="absolute cursor-move" style={{ left: selBounds.x * scale, top: selBounds.y * scale, width: selBounds.w * scale, height: selBounds.h * scale, touchAction: 'none' }} />
-          {(selected.role === 'custom' ? HANDLES : (['se'] as const)).map((h) => {
+          {(selected.role === 'custom' || reflowable(selected) ? HANDLES : (['se'] as const)).map((h) => {
             // Esquinas: cuadrados; lados: barras sobre el borde. Grandes para el dedo.
             const corner = h.length === 2;
-            const cx = (h.includes('w') ? selBounds.x : h.includes('e') ? selBounds.x + selBounds.w : selBounds.x + selBounds.w / 2) * scale;
-            const cy = (h.includes('n') ? selBounds.y : h.includes('s') ? selBounds.y + selBounds.h : selBounds.y + selBounds.h / 2) * scale;
+            // En una caja chica (un renglón de texto) las barras de los lados quedarían debajo de las esquinas:
+            // se corren hacia afuera para que cada tirador se pueda tomar.
+            const tightV = selBounds.h * scale < SIDE_ROOM_PX;
+            const tightH = selBounds.w * scale < SIDE_ROOM_PX;
+            const out = SIDE_OUTSET_PX;
+            const cx = (h.includes('w') ? selBounds.x : h.includes('e') ? selBounds.x + selBounds.w : selBounds.x + selBounds.w / 2) * scale + (tightV && h === 'e' ? out : tightV && h === 'w' ? -out : 0);
+            const cy = (h.includes('n') ? selBounds.y : h.includes('s') ? selBounds.y + selBounds.h : selBounds.y + selBounds.h / 2) * scale + (tightH && h === 's' ? out : tightH && h === 'n' ? -out : 0);
             const [w, hh] = corner ? [14, 14] : h === 'n' || h === 's' ? [22, 8] : [8, 22];
             return (
               <div

@@ -14,11 +14,13 @@ import type { Design } from '../core/design/schema';
 import { themeFile, themeFromDesign } from '../core/design/themeFile';
 import { EXPORT_KINDS } from '../core/document';
 import { documentSummary } from '../core/document/summary';
+import { blockBounds } from '../core/document/layout';
 import { pageToSvg } from '../core/render/svg';
 import { toBase64 } from '../core/resources';
 import type { FontRegistry } from '../core/text/fonts';
 import { applyJsonPatch, type JsonPatchOp } from '../core/util/jsonPatch';
-import { checkDesignData, type CheckResult } from '../node/check';
+import { checkDesignData, checkDesignJson, type CheckResult } from '../node/check';
+import { newLayoutWarnings } from './feedback';
 import { fullCatalogue, loadFonts, openNodeDocument } from '../node/env';
 import type { Rasterizer } from './resvg';
 import { Workspace } from './workspace';
@@ -165,7 +167,7 @@ export function createServer(opts: ServerOptions): McpServer {
     {
       title: 'Cambiar agenda',
       description:
-        'Cambia un archivo .agenda.json con operaciones JSON Patch (RFC 6902: add, remove, replace, move, copy, test; rutas como "/calendar/weekStart" o "/sections/-"). Se aplica todo o nada; si después la agenda no abre, el archivo no se toca. Devuelve los problemas que quedan.',
+        'Cambia un archivo .agenda.json con operaciones JSON Patch (RFC 6902: add, remove, replace, move, copy, test; rutas como "/calendar/weekStart" o "/sections/-"). Se aplica todo o nada; si después la agenda no abre, el archivo no se toca. Devuelve los problemas que quedan y los avisos de maquetación que el cambio produjo («warnings»: texto que no entra, elementos que salen de la página o se superponen, con su página): revisalos antes de seguir.',
       inputSchema: { path: z.string().describe('Archivo .agenda.json'), patch: z.array(patchOp).min(1).max(500) },
     },
     async ({ path, patch }) => {
@@ -174,7 +176,9 @@ export function createServer(opts: ServerOptions): McpServer {
       const check = checkDesignData(next);
       if (!check.design) return { ...text({ written: false, issues: check.issues }), isError: true };
       await ws.write(full, `${JSON.stringify(next, null, 2)}\n`, { extensions: DESIGN_EXT, overwrite: true });
-      return text({ written: true, path: ws.show(full), issues: check.issues });
+      // Los avisos de maquetación que el cambio produjo (texto que no entra, fuera de la página…).
+      const layout = await newLayoutWarnings(open, checkDesignJson(body).design, check.design);
+      return text({ written: true, path: ws.show(full), issues: check.issues, warnings: layout.notes, ...(layout.omitted > 0 ? { omittedWarnings: layout.omitted } : {}) });
     },
   );
 
@@ -240,8 +244,8 @@ export function createServer(opts: ServerOptions): McpServer {
         size: { w: model.w, h: model.h },
         // Cajas como [x, y, ancho, alto] en mm desde la esquina superior izquierda de esta página.
         content: box(model.content),
-        blocks: model.blocks.map((b) => ({ id: b.id, label: b.label, box: box(b.bbox) })),
-        warnings: model.warnings.map((w) => w.message),
+        blocks: model.blocks.map((b) => ({ id: b.id, label: b.label, box: box(blockBounds(b)) })),
+        warnings: doc.pageWarnings(page - 1).map((w) => w.message),
       };
       let png: Uint8Array;
       try {

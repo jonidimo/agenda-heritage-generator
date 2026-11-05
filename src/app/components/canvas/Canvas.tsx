@@ -33,10 +33,14 @@ export function spreadOf(index: number, count: number): [number | null, number |
   return [left, right];
 }
 
-export function Canvas({ doc }: { doc: AgendaDocument }) {
+/**
+ * `live` es el documento que se ve (con la vista previa de lo que se está arrastrando); `committed`,
+ * el confirmado, para el libro de miniaturas, que no se redibuja en cada cuadro del arrastre.
+ */
+export function Canvas({ committed, live }: { committed: AgendaDocument; live: AgendaDocument }) {
   const t = useT();
   const view = useStore((s) => s.view);
-  const pageIndex = useStore((s) => Math.min(s.pageIndex, doc.pageCount - 1));
+  const pageIndex = useStore((s) => Math.min(s.pageIndex, live.pageCount - 1));
   const goToPage = useStore((s) => s.goToPage);
   const zoom = useStore((s) => s.zoom);
   const fit = useStore((s) => s.fit);
@@ -44,16 +48,16 @@ export function Canvas({ doc }: { doc: AgendaDocument }) {
   const pad = 48;
 
   // Un pliego con una sola página (la primera o la última) se muestra como página suelta, centrada.
-  const [spreadL, spreadR] = spreadOf(pageIndex, doc.pageCount);
+  const [spreadL, spreadR] = spreadOf(pageIndex, live.pageCount);
   const singleSpread = view === 'spread' && (spreadL === null || spreadR === null);
   const contentMm =
-    view === 'page' || singleSpread ? { w: doc.format.w, h: doc.format.h } : view === 'spread' ? { w: doc.format.w * 2, h: doc.format.h } : { w: doc.format.sheetW, h: doc.format.sheetH };
+    view === 'page' || singleSpread ? { w: live.format.w, h: live.format.h } : view === 'spread' ? { w: live.format.w * 2, h: live.format.h } : { w: live.format.sheetW, h: live.format.sheetH };
   const fitScale = Math.max(0.5, Math.min((size.w - pad) / contentMm.w, (size.h - pad - 40) / contentMm.h));
   const scale = fit ? fitScale : fitScale * zoom;
 
   const step = view === 'spread' ? 2 : 1;
-  const prev = (): void => goToPage(Math.max(0, view === 'spread' ? (spreadOf(pageIndex, doc.pageCount)[0] ?? 0) - 1 : pageIndex - 1));
-  const next = (): void => goToPage(Math.min(doc.pageCount - 1, view === 'spread' ? (spreadOf(pageIndex, doc.pageCount)[1] ?? pageIndex) + 1 : pageIndex + step));
+  const prev = (): void => goToPage(Math.max(0, view === 'spread' ? (spreadOf(pageIndex, live.pageCount)[0] ?? 0) - 1 : pageIndex - 1));
+  const next = (): void => goToPage(Math.min(live.pageCount - 1, view === 'spread' ? (spreadOf(pageIndex, live.pageCount)[1] ?? pageIndex) + 1 : pageIndex + step));
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
@@ -73,24 +77,24 @@ export function Canvas({ doc }: { doc: AgendaDocument }) {
     return () => window.removeEventListener('keydown', onKey);
   });
 
-  const plan = doc.plan.pages[pageIndex];
+  const plan = live.plan.pages[pageIndex];
   return (
     <div className="relative flex min-h-0 flex-1 flex-col">
       {/* Centrado con márgenes automáticos: al acercar, todo el contenido sigue alcanzable con el desplazamiento. */}
       <div ref={ref} className="desk scroll-thin relative flex min-h-0 flex-1 overflow-auto">
         {view === 'book' ? (
-          <BookView doc={doc} />
+          <BookView doc={committed} />
         ) : view === 'sheet' ? (
           <div className="m-auto">
-            <SheetView doc={doc} index={pageIndex} scale={scale} />
+            <SheetView doc={live} index={pageIndex} scale={scale} />
           </div>
         ) : view === 'page' ? (
           <div className="m-auto p-6">
-            <SafePage doc={doc} index={pageIndex} scale={scale} />
+            <SafePage doc={live} index={pageIndex} scale={scale} />
           </div>
         ) : (
           <div className="m-auto">
-            <SpreadView doc={doc} index={pageIndex} scale={scale} />
+            <SpreadView doc={live} index={pageIndex} scale={scale} />
           </div>
         )}
       </div>
@@ -100,9 +104,9 @@ export function Canvas({ doc }: { doc: AgendaDocument }) {
             <ChevronLeft size={18} />
           </IconButton>
           <span className="min-w-[220px] text-center text-ink-soft tabular-nums">
-            {t('nav.page', { n: pageIndex + 1 })} / {doc.pageCount} · {plan ? pageTitle(t, plan) : ''}
+            {t('nav.page', { n: pageIndex + 1 })} / {live.pageCount} · {plan ? pageTitle(t, plan) : ''}
           </span>
-          <IconButton label="→" onClick={next} disabled={pageIndex >= doc.pageCount - 1}>
+          <IconButton label="→" onClick={next} disabled={pageIndex >= live.pageCount - 1}>
             <ChevronRight size={18} />
           </IconButton>
         </div>

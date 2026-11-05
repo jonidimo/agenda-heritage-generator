@@ -9,8 +9,24 @@ import type { WritingStyle } from '../design/themes';
 import { TABULAR_FEATURES } from '../text/shape';
 import { ptToMm, type Rect } from '../util/geometry';
 import { cols, rows } from './box';
-import type { LayoutContext, SizeKey } from './context';
-import { circle, line, type DotsPrim, type Prim, type Stroke } from './prims';
+import type { LayoutContext, SizeKey, TextAtOpts } from './context';
+import { circle, line, type DotsPrim, type Prim, type Stroke, type TextPrim, type TextSource } from './prims';
+
+/* ---------- Texto de una línea ---------- */
+
+/**
+ * Una línea de texto en una caja a su medida. Es la caja que se ve al seleccionarla, y cambiarla de
+ * tamaño la ajusta: si se angosta, el cuerpo se achica hasta que entre. Sin ajustes del editor,
+ * el texto sale exactamente donde lo pondría `textAt`.
+ */
+export function textLine(ctx: LayoutContext, id: string, text: string, at: { x: number; baseline: number }, opts: TextAtOpts = {}): { prim: TextPrim; width: number; bbox: Rect } {
+  const natural = ctx.textAt(text, at.x, at.baseline, opts);
+  const box = ctx.rect(id, natural.bbox);
+  if (box.x === natural.bbox.x && box.y === natural.bbox.y && box.w === natural.bbox.w && box.h === natural.bbox.h) return natural;
+  const placed = ctx.textIn(text, box, { ...opts, fit: true, valign: 'top' });
+  // Lo que se devuelve para seguir maquetando (ancho, caja) es el natural: lo que viene después no se corre porque este elemento cambió.
+  return { prim: placed.prims[0] ?? natural.prim, width: natural.width, bbox: natural.bbox };
+}
 
 /* ---------- Áreas de escritura ---------- */
 
@@ -74,29 +90,30 @@ export function pageHeader(
   r: Rect,
   title: string,
   right: string,
-  opts: { titleSize?: SizeKey | number; rightSize?: SizeKey | number; rule?: 'rule' | 'strong' | 'heavy' | 'none'; idPrefix?: string; gap?: number } = {},
+  opts: { titleSize?: SizeKey | number; rightSize?: SizeKey | number; rule?: 'rule' | 'strong' | 'heavy' | 'none'; idPrefix?: string; gap?: number; titleSource?: TextSource } = {},
 ): number {
   const titleRun = ctx.run(title, { role: 'title', size: opts.titleSize ?? 'title' });
   const baseline = r.y + titleRun.ascent * 0.92;
-  const t = ctx.textAt(title, r.x, baseline, { role: 'title', size: opts.titleSize ?? 'title' });
   const prefix = opts.idPrefix ?? 'header';
-  ctx.add(`${prefix}.title`, 'Título', [t.prim]);
+  const t = textLine(ctx, `${prefix}.title`, title, { x: r.x, baseline }, { role: 'title', size: opts.titleSize ?? 'title' });
+  ctx.add(`${prefix}.title`, 'Título', [t.prim], opts.titleSource ? { text: opts.titleSource } : {});
   let extra = 0;
   if (right) {
     const free = r.w - t.width - 4;
     const style = { role: 'heading' as const, size: opts.rightSize ?? 'label', upper: true, tracking: true };
     const natural = ctx.run(right, style);
+    const rightId = `${prefix}.right`;
     if (natural.width <= free) {
-      ctx.add(`${prefix}.right`, 'Rótulo del encabezado', [ctx.textAt(right, r.x + r.w, baseline, { ...style, align: 'right' }).prim]);
+      ctx.add(rightId, 'Rótulo del encabezado', [textLine(ctx, rightId, right, { x: r.x + r.w, baseline }, { ...style, align: 'right' }).prim]);
     } else if (free > 20 && ctx.textIn(right, { x: 0, y: 0, w: free, h: 10 }, { ...style, fit: true, silent: true }).sizePt > ctx.theme.minTextPt + 0.4) {
       // Se achica para entrar al lado del título.
-      const fitted = ctx.textIn(right, { x: r.x + r.w - free, y: baseline - natural.capHeight, w: free, h: natural.capHeight + 1 }, { ...style, fit: true, align: 'right' });
-      ctx.add(`${prefix}.right`, 'Rótulo del encabezado', fitted.prims);
+      const box = ctx.rect(rightId, { x: r.x + r.w - free, y: baseline - natural.capHeight, w: free, h: natural.capHeight + 1 });
+      ctx.add(rightId, 'Rótulo del encabezado', ctx.textIn(right, box, { ...style, fit: true, align: 'right' }).prims);
     } else {
       // No entra: baja a una línea propia, alineado a la derecha, debajo del título.
       const y2 = baseline - titleRun.descent + natural.capHeight + 1.5;
-      const below = ctx.textIn(right, { x: r.x, y: y2 - natural.capHeight, w: r.w, h: natural.capHeight + 1 }, { ...style, fit: true, align: 'right' });
-      ctx.add(`${prefix}.right`, 'Rótulo del encabezado', below.prims);
+      const box = ctx.rect(rightId, { x: r.x, y: y2 - natural.capHeight, w: r.w, h: natural.capHeight + 1 });
+      ctx.add(rightId, 'Rótulo del encabezado', ctx.textIn(right, box, { ...style, fit: true, align: 'right' }).prims);
       extra = natural.capHeight + 2;
     }
   }
@@ -106,16 +123,19 @@ export function pageHeader(
 }
 
 /** Rótulo de sección en mayúsculas con filete debajo (se achica para entrar en el ancho). Devuelve el alto usado. */
-export function sectionHeader(ctx: LayoutContext, r: Rect, text: string, id: string, opts: { size?: SizeKey | number; rule?: 'rule' | 'hair' | 'none'; gap?: number } = {}): number {
+export function sectionHeader(ctx: LayoutContext, r: Rect, text: string, id: string, opts: { size?: SizeKey | number; rule?: 'rule' | 'hair' | 'none'; gap?: number; parent?: string } = {}): number {
   const size = opts.size ?? 'heading';
   const run = ctx.run(text, { role: 'heading', size, upper: true, tracking: ctx.theme.tracking.heading });
-  const t = ctx.textIn(text, { x: r.x, y: r.y, w: r.w, h: run.capHeight + 1 }, { role: 'heading', size, upper: true, tracking: ctx.theme.tracking.heading, fit: true, ellipsis: true });
-  const baseline = r.y + run.capHeight;
+  // La caja llega hasta el filete: cambiarla de tamaño ajusta el texto (de ancho) y baja o sube el filete.
+  const ruleBase = run.capHeight + 1.2;
+  const box = ctx.rect(id, { x: r.x, y: r.y, w: r.w, h: ruleBase }, opts.parent);
+  const t = ctx.textIn(text, { x: box.x, y: box.y, w: box.w, h: run.capHeight + 1 }, { role: 'heading', size, upper: true, tracking: ctx.theme.tracking.heading, fit: true, ellipsis: true });
   const prims: Prim[] = [...t.prims];
-  const ruleY = baseline + 1.2;
-  if (opts.rule !== 'none') prims.push(line(r.x, ruleY, r.x + r.w, ruleY, opts.rule === 'hair' ? ctx.stroke('hair', undefined, { use: 'separator' }) : ctx.stroke('rule', undefined, { use: 'separator' })));
+  const ruleY = box.y + box.h;
+  if (opts.rule !== 'none') prims.push(line(box.x, ruleY, box.x + box.w, ruleY, opts.rule === 'hair' ? ctx.stroke('hair', undefined, { use: 'separator' }) : ctx.stroke('rule', undefined, { use: 'separator' })));
   ctx.add(id, text, prims);
-  return ruleY - r.y + (opts.gap ?? 2.5);
+  // Lo que viene después se ubica con la caja natural: no se corre porque este elemento cambió.
+  return ruleBase - 0 + (opts.gap ?? 2.5);
 }
 
 /* ---------- Minicalendario ---------- */

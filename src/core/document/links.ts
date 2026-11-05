@@ -18,6 +18,8 @@ export type LinkSettings = Design['links'];
 export interface ResolvedLink {
   /** Zona tocable en mm de página, con la transformación del bloque y recortada a la página. */
   rect: Rect;
+  /** Qué zona del elemento es (ver `areaKey`); vacía si es el elemento entero. */
+  area: string;
   /** Página de destino (0 = la primera) o dirección web. */
   page?: number;
   url?: string;
@@ -30,6 +32,7 @@ export interface ResolvedLink {
 /** Enlace a mano que no lleva a ningún lado (la página elegida ya no existe o la dirección no es válida). */
 export interface BrokenLink {
   blockId: string;
+  area: string;
   mode: 'page' | 'url';
   target: string;
 }
@@ -43,12 +46,46 @@ export function safeUrl(href: string): string | null {
   return /^(https?:\/\/[^\s]+|mailto:[^\s]+|tel:[+\d][\d\s().-]*)$/i.test(v) ? v : null;
 }
 
-/** El enlace a mano de un elemento: el de la página manda sobre el de su tipo. */
-export function findBlockLink(list: readonly BlockLink[], page: { key: string; type: string }, blockId: string): BlockLink | undefined {
-  return (
-    list.find((l) => l.blockId === blockId && l.pageType === page.type && l.pageKey === page.key) ??
-    list.find((l) => l.blockId === blockId && l.pageType === page.type && l.pageKey === null)
-  );
+/**
+ * Clave de una zona tocable de un elemento: lo que identifica a qué lleva, no dónde cae. Así una
+ * elección a mano sigue valiendo si el elemento se mueve o cambia de tamaño. Los destinos con sentido
+ * (un día, un mes) se nombran por él; los demás, por su lugar en la lista del elemento.
+ */
+export function areaKey(to: LinkTarget, index: number): string {
+  switch (to.kind) {
+    case 'date':
+      return `date:${to.iso}`;
+    case 'month':
+      return `month:${monthKey(to.y, to.m)}`;
+    case 'year':
+      return `year:${to.y}${to.m === undefined ? '' : `:${to.m}`}`;
+    case 'toc':
+      return 'toc';
+    case 'page':
+      return `page:${to.key}`;
+    case 'url':
+      return `#${index}`;
+  }
+}
+
+/** Las elecciones a mano de un elemento en una página: la del elemento entero y la de cada zona. */
+export interface BlockLinkChoices {
+  whole: BlockLink | undefined;
+  zones: ReadonlyMap<string, BlockLink>;
+}
+
+/** Las elecciones a mano de un elemento: la de la página manda sobre la de su tipo, zona por zona. */
+export function findBlockLinks(list: readonly BlockLink[], page: { key: string; type: string }, blockId: string): BlockLinkChoices {
+  const zones = new Map<string, BlockLink>();
+  let whole: BlockLink | undefined;
+  const take = (l: BlockLink): void => {
+    if (l.area === '') whole = l;
+    else zones.set(l.area, l);
+  };
+  // Primero las del tipo y encima las de la página.
+  for (const l of list) if (l.blockId === blockId && l.pageType === page.type && l.pageKey === null) take(l);
+  for (const l of list) if (l.blockId === blockId && l.pageType === page.type && l.pageKey === page.key) take(l);
+  return { whole, zones };
 }
 
 export function categoryOn(s: LinkSettings, cat: LinkCategory): boolean {
@@ -161,7 +198,7 @@ export function pageLinks(page: PageModel, resolver: LinkResolver, settings: Lin
   if (!settings.enabled) return { links, broken };
   const box = { x: 0, y: 0, w: page.w, h: page.h };
   const seen = new Set<string>();
-  const push = (b: Block, area: Rect, target: LinkTarget, cat: ResolvedLink['cat']): boolean => {
+  const push = (b: Block, area: Rect, target: LinkTarget, cat: ResolvedLink['cat'], key: string): boolean => {
     const r = resolver.resolve(target);
     if (r === null) return false;
     // Un enlace a la misma página no lleva a ningún lado: no se agrega (pero tampoco está roto).
@@ -171,18 +208,30 @@ export function pageLinks(page: PageModel, resolver: LinkResolver, settings: Lin
     const id = `${rect.x.toFixed(2)},${rect.y.toFixed(2)},${rect.w.toFixed(2)},${rect.h.toFixed(2)}>${r}`;
     if (seen.has(id)) return true;
     seen.add(id);
-    links.push({ rect, ...(typeof r === 'number' ? { page: r } : { url: r }), blockId: b.id, cat, target });
+    links.push({ rect, area: key, ...(typeof r === 'number' ? { page: r } : { url: r }), blockId: b.id, cat, target });
     return true;
   };
+  const manualTarget = (m: BlockLink): LinkTarget => (m.mode === 'url' ? { kind: 'url', href: m.url } : { kind: 'page', key: m.page });
   for (const b of page.blocks) {
-    const manual = findBlockLink(settings.blocks, page, b.id);
-    if (manual && manual.mode !== 'auto') {
-      if (manual.mode === 'none') continue;
-      const target: LinkTarget = manual.mode === 'url' ? { kind: 'url', href: manual.url } : { kind: 'page', key: manual.page };
-      if (!push(b, b.bbox, target, 'manual')) broken.push({ blockId: b.id, mode: manual.mode, target: manual.mode === 'url' ? manual.url : manual.page });
-      continue;
+    const { whole, zones } = findBlockLinks(settings.blocks, page, b.id);
+    const wholeManual = whole && whole.mode !== 'auto' ? whole : undefined;
+    // El elemento entero, elegido a mano: una zona que cubre todo; las zonas con elección propia van encima.
+    if (wholeManual && wholeManual.mode !== 'none') {
+      if (!push(b, b.bbox, manualTarget(wholeManual), 'manual', '')) broken.push({ blockId: b.id, area: '', mode: wholeManual.mode as 'page' | 'url', target: wholeManual.mode === 'url' ? wholeManual.url : wholeManual.page });
     }
-    for (const l of b.links ?? []) if (categoryOn(settings, l.cat)) push(b, l, l.to, l.cat);
+    (b.links ?? []).forEach((l, i) => {
+      const area = areaKey(l.to, i);
+      const own = zones.get(area);
+      if (own && own.mode !== 'auto') {
+        if (own.mode === 'none') return;
+        if (!push(b, l, manualTarget(own), 'manual', area)) broken.push({ blockId: b.id, area, mode: own.mode, target: own.mode === 'url' ? own.url : own.page });
+        return;
+      }
+      // Sin elección propia, la del elemento entero manda (su zona ya está puesta, o quita todas).
+      if (wholeManual) return;
+      if (categoryOn(settings, l.cat)) push(b, l, l.to, l.cat, area);
+    });
+    // Un elemento sin zonas automáticas sigue pudiendo llevar el enlace de elemento entero (arriba).
   }
   return { links, broken };
 }

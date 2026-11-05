@@ -73,7 +73,7 @@ same reference for clients that read resources.
 
 1. `create_design` from the closest template, with `out`.
 2. Small `update_design` patches, one idea at a time.
-3. `check_design` after each change, until `issues` is empty and there are no warnings.
+3. Read `warnings` in every `update_design` answer: they are the layout problems that change just produced (text that does not fit, elements off the page or overlapping, with their page). Fix them before going on. `check_design` then, until `issues` is empty and there are no warnings.
 4. `render_page` on the pages you touched (the first week, a month page, the cover) and look.
 5. `export_pdf` with `pages` to read it on a tablet, or `imposed` to print it.
 
@@ -110,11 +110,12 @@ sizes in **points**, colours are `#rrggbb`.
 | `sections` | The planner's pages, in order (see section 4). |
 | `pageTemplates` | Pages you design once and repeat (see section 5). |
 | `customPages` | One-off pages: an image, a PDF page, a text or a writing background. |
-| `customBlocks` | Your own elements on a page type or on one page: text, image, lines, dots, grid, frame, line. |
+| `customBlocks` | Your own elements on a page type or on one page: text, image, lines, dots, grid, frame, line. A text element with `props.autoHeight: true` takes its height from its lines (`h` is ignored). Keep every box inside the page: `check_design` reports the ones that are not. |
 | `watermarks` | Images on many pages (where, size, opacity, mirrored on left pages). |
-| `overrides` | Moves, scales, rotates or hides a built-in block on a page type or one page. |
+| `overrides` | Moves, scales, rotates or hides a built-in block on a page type or one page. `dw` and `dh` (mm) change the width and height of its box and the content is laid out again inside it (text wraps, writing areas gain or lose lines). |
+| `blockStyles` | Own style for a built-in block: `lines` (per use: `writing`, `separator`, `table`, `frame`, `other`) with `pattern`, `color`, `widthPt`; `fill.color` (`null` for none); `text.color` and `text.roles`. The page entry wins over the page-type entry field by field. |
 | `pageStyles` | Theme tokens for one page type or one page only. |
-| `links` | Links and bookmarks of the PDF for tablets and e-readers. |
+| `links` | Links and bookmarks of the PDF for tablets and e-readers. In `links.blocks`, `area` picks one tappable spot of a block (`date:2027-01-05`, `month:2027-03`, `toc`…); empty means the whole block. |
 | `assets` | Images and PDFs, as built-in paths (`watermarks/colibri.svg`) or base64 data. |
 
 **Page types and keys.** Every page has a *type* (`weekLeft`, `monthLog`, `notes`… listed as

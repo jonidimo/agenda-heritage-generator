@@ -1,7 +1,7 @@
 /** Tira de miniaturas agrupadas (inicio, cada mes, final) con navegación rápida. */
 import type { AgendaDocument } from '@core/document';
 import { monthNames } from '@core/calendar/locale';
-import { useEffect, useMemo, useRef } from 'react';
+import { memo, useEffect, useMemo, useRef } from 'react';
 import { pageTitle, useT } from '../i18n/ui';
 import { PANEL_LIMITS } from '../state/prefs';
 import { useStore } from '../state/store';
@@ -66,22 +66,30 @@ export function Navigator({ doc }: { doc: AgendaDocument }) {
       </div>
       <div ref={stripRef} className="scroll-thin flex gap-1.5 overflow-x-auto px-2 py-2">
         {doc.plan.pages.map((p, i) => (
-          <button
-            key={p.key}
-            type="button"
-            data-thumb={i}
-            onClick={() => jumpToPage(i)}
-            onContextMenu={(e) => openMenuAt(e, thumbMenu(t, doc, i))}
-            title={`${i + 1} · ${pageTitle(t, p)}`}
-            className={`flex shrink-0 flex-col items-center gap-0.5 ${i % 2 === 1 ? 'ml-1.5' : ''}`}
-          >
-            <span className={`block border ${current === i ? 'border-accent ring-2 ring-accent/40' : 'border-black/10'}`}>
-              <Thumb doc={doc} index={i} width={Math.round(thumbWidth)} />
-            </span>
-            <span className="text-[9.5px] text-ink-soft tabular-nums">{i + 1}</span>
-          </button>
+          <ThumbButton key={p.key} doc={doc} index={i} current={current === i} width={Math.round(thumbWidth)} />
         ))}
       </div>
     </div>
   );
 }
+
+/** Una miniatura de la tira. Solo se vuelve a dibujar cuando cambia el documento, la página actual o el ancho. */
+const ThumbButton = memo(function ThumbButton({ doc, index, current, width }: { doc: AgendaDocument; index: number; current: boolean; width: number }) {
+  const t = useT();
+  const plan = doc.plan.pages[index]!;
+  return (
+    <button
+      type="button"
+      data-thumb={index}
+      onClick={() => jumpToPage(index)}
+      onContextMenu={(e) => openMenuAt(e, thumbMenu(t, doc, index))}
+      title={`${index + 1} · ${pageTitle(t, plan)}`}
+      className={`flex shrink-0 flex-col items-center gap-0.5 ${index % 2 === 1 ? 'ml-1.5' : ''}`}
+    >
+      <span className={`block border ${current ? 'border-accent ring-2 ring-accent/40' : 'border-black/10'}`}>
+        <Thumb doc={doc} index={index} width={width} />
+      </span>
+      <span className="text-[9.5px] text-ink-soft tabular-nums">{index + 1}</span>
+    </button>
+  );
+});

@@ -440,6 +440,31 @@ export function resolveTheme(id: string, tokens: Record<string, unknown>, comfor
   };
 }
 
+/** La referencia al tema de un diseño: base, comodidad y los ajustes del usuario. */
+export interface ThemeRef {
+  readonly id: string;
+  readonly comfort: 'compact' | 'normal' | 'wide';
+  readonly tokens: Record<string, unknown>;
+}
+
+/** Temas ya resueltos: por los ajustes (inmutables en el editor) y, dentro, por tema base y comodidad. */
+const resolvedThemes = new WeakMap<object, Map<string, ThemeTokens>>();
+
+/**
+ * Tema efectivo de un diseño, memorizado: mientras los ajustes (`tokens`) sean el mismo objeto,
+ * el tema es el mismo objeto. Así dos documentos del mismo diseño comparten tema y se puede saber
+ * por identidad si un cambio lo tocó. Los diseños del editor son inmutables (immer): un ajuste
+ * nuevo es siempre un objeto nuevo.
+ */
+export function resolveThemeFor(theme: ThemeRef): ThemeTokens {
+  let byBase = resolvedThemes.get(theme.tokens);
+  if (!byBase) resolvedThemes.set(theme.tokens, (byBase = new Map()));
+  const key = `${theme.id}|${theme.comfort}`;
+  let resolved = byBase.get(key);
+  if (!resolved) byBase.set(key, (resolved = resolveTheme(theme.id, theme.tokens, theme.comfort)));
+  return resolved;
+}
+
 /** Todas las caras tipográficas que el tema necesita (para precargarlas). */
 export function themeFaces(theme: ThemeTokens): FontSpec[] {
   const list = Object.values(theme.fonts);

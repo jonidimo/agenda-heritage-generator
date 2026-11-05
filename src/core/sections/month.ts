@@ -8,10 +8,10 @@ import { fmt } from '../i18n';
 import { centerIn, cols, flex, grid, hsplit, inset, rows, takeBottom, takeTop, vsplit } from '../layout/box';
 import type { LayoutContext } from '../layout/context';
 import { circle, line, rect, type LinkArea, type Prim } from '../layout/prims';
-import { heartIcon, isSouthern, moonIcon, ruledLines, sectionHeader, writingArea } from '../layout/widgets';
+import { heartIcon, isSouthern, moonIcon, ruledLines, sectionHeader, textLine, writingArea } from '../layout/widgets';
 import { TABULAR_FEATURES } from '../text/shape';
 import { ptToMm, type Rect } from '../util/geometry';
-import { abbreviated, checklist, headed, monthTitle, nextMonthName, order } from './common';
+import { abbreviated, checklist, headed, label, monthTitle, nextMonthName, order } from './common';
 import { opt, param, type PagePlan, type PagePlanDraft, type SectionModule } from './types';
 
 function monthOf(ctx: LayoutContext, page: PagePlan): MonthInfo {
@@ -49,7 +49,7 @@ export const monthCover: SectionModule = {
     const scaleK = ctx.page.w / 148.5;
     const nameRun = ctx.run(month.name, { role: 'display', size: 'monthHero' });
     const nameBase = c.y + 6 + nameRun.capHeight;
-    const name = ctx.textAt(month.name, c.x, nameBase, { role: 'display', size: 'monthHero' });
+    const name = textLine(ctx, 'cover.month', month.name, { x: c.x, baseline: nameBase }, { role: 'display', size: 'monthHero' });
     ctx.add('cover.month', 'Nombre del mes', [name.prim]);
     let y = nameBase + 8;
     const woopOpt = param<string | boolean>(page, 'woop', 'auto');
@@ -65,20 +65,23 @@ export const monthCover: SectionModule = {
     if (param(page, 'sticker', true)) {
       const avail = c.y + c.h - bottomReserve - woopH - fieldsH - y - 4;
       const size = Math.max(30, Math.min(70 * scaleK, c.w * 0.62, avail));
-      const box = centerIn({ x: c.x, y, w: c.w, h: size }, size, size);
+      const natural = centerIn({ x: c.x, y, w: c.w, h: size }, size, size);
+      const box = ctx.rect('cover.sticker', natural);
       const p: Prim[] = [rect(box, { stroke: ctx.stroke('hair', 'rule', { use: 'frame', dash: [1.2, 1] }) })];
       p.push(...ctx.textIn(ctx.s.monthCover.sticker, inset(box, 2), { role: 'label', size: 'labelSmall', upper: true, tracking: true, align: 'center', valign: 'middle', color: '#e2e2e2', fit: true }).prims);
       ctx.add('cover.sticker', 'Espacio para sticker', p);
-      y = box.y + box.h + 6;
+      y = natural.y + natural.h + 6;
     }
     if (fieldsOn) {
       const pitch = Math.max(9, ctx.theme.writing.pitch * 1.4);
       const p: Prim[] = [];
       const labels = [param(page, 'intention', false) ? ctx.s.monthCover.intention : null, param(page, 'focusHabit', false) ? ctx.s.monthCover.focusHabit : null].filter(Boolean) as string[];
+      const fbox = ctx.rect('cover.fields', { x: c.x, y, w: c.w, h: labels.length * pitch });
+      const step = fbox.h / Math.max(1, labels.length);
       labels.forEach((l, i) => {
-        const by = y + (i + 1) * pitch;
-        const t = ctx.textAt(l, c.x, by, { role: 'heading', size: 'labelSmall', upper: true, tracking: true });
-        p.push(t.prim, line(c.x + t.width + 2, by + 0.6, c.x + c.w, by + 0.6, ctx.stroke('hair', undefined, { use: 'writing' })));
+        const by = fbox.y + (i + 1) * step;
+        const t = ctx.textAt(l, fbox.x, by, { role: 'heading', size: 'labelSmall', upper: true, tracking: true });
+        p.push(t.prim, line(fbox.x + t.width + 2, by + 0.6, fbox.x + fbox.w, by + 0.6, ctx.stroke('hair', undefined, { use: 'writing' })));
       });
       ctx.add('cover.fields', 'Intención y hábito foco', p);
       y += labels.length * pitch + 4;
@@ -88,7 +91,7 @@ export const monthCover: SectionModule = {
       if (box.h > 20) {
         const s = ctx.s.pages.woop;
         const head = sectionHeader(ctx, box, s.title, 'cover.woopTitle', { gap: 1.5 });
-        const cells = grid({ x: box.x, y: box.y + head, w: box.w, h: box.h - head }, 2, 2, 3, 2).flat();
+        const cells = grid(ctx.rect('cover.woop', { x: box.x, y: box.y + head, w: box.w, h: box.h - head }), 2, 2, 3, 2).flat();
         const p: Prim[] = [];
         [s.wish, s.outcome, s.obstacle, s.plan].forEach((label, i) => {
           const cell = cells[i]!;
@@ -100,8 +103,8 @@ export const monthCover: SectionModule = {
     }
     if (phraseOn && phrase) {
       const box = { x: c.x + c.w - Math.min(95 * scaleK, c.w), y: c.y + c.h - bottomReserve, w: Math.min(95 * scaleK, c.w), h: bottomReserve };
-      const t = ctx.textIn(`“${phrase}”`, box, { role: 'quote', size: 13, align: 'right', valign: 'bottom', wrap: true, fit: true });
-      ctx.add('cover.phrase', 'Frase del mes', t.prims);
+      const t = ctx.textBlock('cover.phrase', box, `“${phrase}”`, { role: 'quote', size: 13, align: 'right', valign: 'bottom', wrap: true, fit: true });
+      ctx.add('cover.phrase', 'Frase del mes', t.prims, { text: { kind: 'phrase', index: phraseIdx } });
     }
   },
 };
@@ -140,7 +143,7 @@ export const monthLog: SectionModule = {
     const rowH = Math.min(r.h / n, 7.5);
     const moon = showMoon(ctx, 'monthLog');
     month.days.forEach((day, i) => {
-      const row = { x: r.x, y: r.y + i * rowH, w: r.w, h: rowH };
+      const row = ctx.rect(`day.${day.d}`, { x: r.x, y: r.y + i * rowH, w: r.w, h: rowH });
       const p: Prim[] = [];
       if (day.isWeekend && ctx.theme.weekendShading) p.push(rect(row, { fill: ctx.fill('weekend') }));
       p.push(line(row.x, row.y + row.h, row.x + row.w, row.y + row.h, ctx.stroke('hair', undefined, { use: 'table' })));
@@ -195,7 +198,8 @@ export const monthGrid: SectionModule = {
     const r = headed(ctx, part === 1 ? '' : month.name, part === 0 ? '' : String(month.y), { titleSize: 'title' });
     const colIdx = part === -1 ? [0, 1, 2, 3, 4, 5, 6] : part === 0 ? [0, 1, 2, 3] : [4, 5, 6];
     const notesCol = part === 1;
-    const [head, body] = takeTop(r, 5);
+    const [headBase, body] = takeTop(r, 5);
+    const head = ctx.rect('grid.head', headBase);
     const tracks = [...colIdx.map(() => flex()), ...(notesCol ? [flex(1)] : [])];
     const headCols = hsplit(head, tracks);
     const p: Prim[] = [];
@@ -208,7 +212,7 @@ export const monthGrid: SectionModule = {
     const weeks = month.grid;
     const rowRects = rows(body, weeks.length);
     weeks.forEach((week, wi) => {
-      const row = rowRects[wi]!;
+      const row = ctx.rect(`grid.week.${wi}`, rowRects[wi]!);
       const cells = hsplit(row, tracks);
       const wp: Prim[] = [line(row.x, row.y, row.x + row.w, row.y, ctx.stroke('rule', 'ink', { use: 'table' }))];
       const links: LinkArea[] = [];
@@ -335,7 +339,8 @@ export const habits: SectionModule = {
     const ft = ctx.textIn(footText, foot, { role: showFootnote ? 'body' : 'quote', size: showFootnote ? ctx.theme.sizes.tiny + 0.5 : ctx.theme.sizes.small + 1, wrap: true, fit: true, align: showFootnote ? 'left' : 'right', valign: 'bottom', color: showFootnote ? ctx.theme.colors.ink : '#7a7a7a' });
     inner.push('habits.footer', 'Pie', ft.prims);
     void local;
-    for (const b of inner.blocks) ctx.add(b.id, b.label, [{ t: 'group', m, children: b.prims }]);
+    // Dibujada girada: se mueve y se escala, pero no cambia de ancho ni de alto por los lados.
+    for (const b of inner.blocks) ctx.add(b.id, b.label, [{ t: 'group', m, children: b.prims }], { rigid: true });
   },
 };
 
@@ -356,7 +361,7 @@ export const balance: SectionModule = {
   layout(ctx, page) {
     const month = monthOf(ctx, page);
     const s = ctx.s.balance;
-    const r = headed(ctx, s.title, monthTitle(ctx, month), { titleSize: 'titleSmall' });
+    const r = headed(ctx, s.title, monthTitle(ctx, month), { titleSize: 'titleSmall', titleSource: label('balance.title') });
     const shopping = param(page, 'shopping', true);
     const [money, rest] = vsplit(r, [flex(shopping ? 1.15 : 2), flex(shopping ? 1 : 0.35)], 5);
     const [colA, colB] = hsplit(money!, [flex(), flex()], 6);
@@ -364,7 +369,7 @@ export const balance: SectionModule = {
     [colA!, colB!].forEach((col, i) => {
       const label = i === 0 ? s.income : s.variable;
       const h = sectionHeader(ctx, col, label, `balance.col${i}.head`);
-      const area = { x: col.x, y: col.y + h, w: col.w, h: col.h - h };
+      const area = ctx.rect(`balance.col${i}`, { x: col.x, y: col.y + h, w: col.w, h: col.h - h });
       const p: Prim[] = [];
       const n = Math.floor(area.h / pitch);
       for (let k = 1; k <= n; k++) {
@@ -375,7 +380,8 @@ export const balance: SectionModule = {
       }
       ctx.add(`balance.col${i}`, label, p);
     });
-    const totalBox = { x: rest!.x, y: rest!.y, w: rest!.w, h: 11 };
+    const totalBase = { x: rest!.x, y: rest!.y, w: rest!.w, h: 11 };
+    const totalBox = ctx.rect('balance.total', totalBase);
     const tp: Prim[] = [rect(totalBox, { stroke: ctx.stroke('rule', 'ink', { use: 'frame' }) })];
     const tl = ctx.textIn(s.total, inset(totalBox, 0, 3), { role: 'heading', size: 'labelSmall', upper: true, tracking: true, valign: 'middle' });
     tp.push(...tl.prims);
@@ -383,9 +389,9 @@ export const balance: SectionModule = {
     tp.push(cur.prim, line(cur.bbox.x + cur.width + 2, totalBox.y + totalBox.h / 2 + 2.4, totalBox.x + totalBox.w - 3, totalBox.y + totalBox.h / 2 + 2.4, ctx.stroke('hair', 'ink', { use: 'writing' })));
     ctx.add('balance.total', 'Total', tp);
     if (shopping) {
-      const sh = { x: rest!.x, y: totalBox.y + totalBox.h + 5, w: rest!.w, h: rest!.h - totalBox.h - 5 };
+      const sh = { x: rest!.x, y: totalBase.y + totalBase.h + 5, w: rest!.w, h: rest!.h - totalBase.h - 5 };
       const hh = sectionHeader(ctx, sh, s.shopping, 'balance.shopping.head');
-      const area = { x: sh.x, y: sh.y + hh, w: sh.w, h: sh.h - hh };
+      const area = ctx.rect('balance.shopping', { x: sh.x, y: sh.y + hh, w: sh.w, h: sh.h - hh });
       const [a, b] = hsplit(area, [flex(), flex()], 6);
       ctx.add('balance.shopping', s.shopping, [...checklist(ctx, a!, pitch), ...checklist(ctx, b!, pitch)]);
     }
@@ -404,26 +410,26 @@ export const review: SectionModule = {
     const s = ctx.s.review;
     const variantOpt = param(page, 'variant', 'auto');
     const reflective = variantOpt === 'reflective' || (variantOpt === 'auto' && ctx.has('daily-reflection'));
-    const r = headed(ctx, s.title, monthTitle(ctx, month), { titleSize: 'title' });
+    const r = headed(ctx, s.title, monthTitle(ctx, month), { titleSize: 'title', titleSource: label('review.title') });
     const pitch = Math.max(5.5, ctx.theme.writing.pitch * 1.05);
     const [top, memory, bottom] = vsplit(r, [flex(reflective ? 1.5 : 1.1), flex(reflective ? 0.75 : 1), flex(1)], 5);
     // Logros (y, en la variante reflexiva, aprendizajes y lo que dejo ir).
     if (reflective) {
       const [a, b] = hsplit(top!, [flex(1.2), flex(1)], 5);
       const ha = sectionHeader(ctx, a!, s.achievements, 'review.achievements.head');
-      ctx.add('review.achievements', s.achievements, ruledLines({ x: a!.x, y: a!.y + ha, w: a!.w, h: a!.h - ha }, pitch, ctx.stroke('hair')));
+      ctx.add('review.achievements', s.achievements, ruledLines(ctx.rect('review.achievements', { x: a!.x, y: a!.y + ha, w: a!.w, h: a!.h - ha }), pitch, ctx.stroke('hair')));
       const [b1, b2] = vsplit(b!, [flex(), flex()], 3);
       const hb1 = sectionHeader(ctx, b1!, s.learned, 'review.learned.head');
-      ctx.add('review.learned', s.learned, ruledLines({ x: b1!.x, y: b1!.y + hb1, w: b1!.w, h: b1!.h - hb1 }, pitch, ctx.stroke('hair')));
+      ctx.add('review.learned', s.learned, ruledLines(ctx.rect('review.learned', { x: b1!.x, y: b1!.y + hb1, w: b1!.w, h: b1!.h - hb1 }), pitch, ctx.stroke('hair')));
       const hb2 = sectionHeader(ctx, b2!, s.letGo, 'review.letGo.head');
-      ctx.add('review.letGo', s.letGo, ruledLines({ x: b2!.x, y: b2!.y + hb2, w: b2!.w, h: b2!.h - hb2 }, pitch, ctx.stroke('hair')));
+      ctx.add('review.letGo', s.letGo, ruledLines(ctx.rect('review.letGo', { x: b2!.x, y: b2!.y + hb2, w: b2!.w, h: b2!.h - hb2 }), pitch, ctx.stroke('hair')));
     } else {
       const h = sectionHeader(ctx, top!, s.achievements, 'review.achievements.head');
-      ctx.add('review.achievements', s.achievements, ruledLines({ x: top!.x, y: top!.y + h, w: top!.w, h: top!.h - h }, pitch, ctx.stroke('hair')));
+      ctx.add('review.achievements', s.achievements, ruledLines(ctx.rect('review.achievements', { x: top!.x, y: top!.y + h, w: top!.w, h: top!.h - h }), pitch, ctx.stroke('hair')));
     }
     // Recuerdo del mes.
     const hm = sectionHeader(ctx, memory!, s.memory, 'review.memory.head', { rule: 'none' });
-    const mbox = { x: memory!.x, y: memory!.y + hm, w: memory!.w, h: memory!.h - hm };
+    const mbox = ctx.rect('review.memory', { x: memory!.x, y: memory!.y + hm, w: memory!.w, h: memory!.h - hm });
     ctx.add('review.memory', s.memory, [
       rect(mbox, { stroke: ctx.stroke('hair', 'rule', { use: 'frame', dash: [1.2, 1] }) }),
       ...ctx.textIn(s.memoryHint, mbox, { role: 'quote', size: ctx.theme.sizes.body, align: 'center', valign: 'middle', color: '#b5b5b5' }).prims,
@@ -431,7 +437,7 @@ export const review: SectionModule = {
     // Pendientes y estado de ánimo.
     const [pend, mood] = hsplit(bottom!, [flex(1.35), flex(1)], 6);
     const hp = sectionHeader(ctx, pend!, fmt(s.pending, { month: nextMonthName(ctx, month).toLocaleUpperCase(ctx.doc.locale) }), 'review.pending.head');
-    let area = { x: pend!.x, y: pend!.y + hp, w: pend!.w, h: pend!.h - hp };
+    let area = ctx.rect('review.pending', { x: pend!.x, y: pend!.y + hp, w: pend!.w, h: pend!.h - hp });
     const pp: Prim[] = [];
     if (ctx.has('bullet-journal')) {
       const m = ctx.s.pages.migration;
@@ -444,14 +450,15 @@ export const review: SectionModule = {
     const hmood = sectionHeader(ctx, mood!, s.mood, 'review.mood.head');
     const moods = s.moods;
     const mp: Prim[] = [];
-    const mc = cols({ x: mood!.x, y: mood!.y + hmood + 2, w: mood!.w, h: mood!.h - hmood - 2 }, moods.length);
+    const moodBox = ctx.rect('review.mood', { x: mood!.x, y: mood!.y + hmood + 2, w: mood!.w, h: mood!.h - hmood - 2 });
+    const mc = cols(moodBox, moods.length);
     moods.forEach((label, i) => {
       const c = mc[i]!;
       const rr = Math.min(4.5, c.w * 0.32);
       mp.push(circle(c.x + c.w / 2, c.y + rr + 1, rr, { stroke: ctx.stroke('rule', 'ink') }));
       mp.push(...ctx.textIn(label, { x: c.x, y: c.y + 2 * rr + 3, w: c.w, h: 6 }, { role: 'label', size: 'tiny', upper: true, align: 'center', wrap: true, fit: true }).prims);
     });
-    if (ctx.has('mood-log')) mp.push(...ctx.textIn(ctx.s.pages.mood.influence, { x: mood!.x, y: mood!.y + mood!.h - 7, w: mood!.w, h: 7 }, { role: 'body', size: 'tiny', wrap: true, fit: true, color: '#6a6a6a' }).prims);
+    if (ctx.has('mood-log')) mp.push(...ctx.textIn(ctx.s.pages.mood.influence, { x: moodBox.x, y: moodBox.y + moodBox.h - 7, w: moodBox.w, h: 7 }, { role: 'body', size: 'tiny', wrap: true, fit: true, color: '#6a6a6a' }).prims);
     ctx.add('review.mood', s.mood, mp);
   },
 };
@@ -469,7 +476,7 @@ export const monthNotes: SectionModule = {
   },
   layout(ctx, page) {
     const style = param<string>(page, 'style', 'auto');
-    ctx.add('notes.area', 'Área de notas', writingArea(ctx, ctx.content, style === 'auto' ? 'dots' : (style as 'dots')), { role: 'writing' });
+    ctx.add('notes.area', 'Área de notas', writingArea(ctx, ctx.rect('notes.area', ctx.content), style === 'auto' ? 'dots' : (style as 'dots')), { role: 'writing' });
   },
 };
 

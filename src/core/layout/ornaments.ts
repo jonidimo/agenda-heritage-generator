@@ -54,6 +54,11 @@ function mirror(cmds: Array<[string, ...number[]]>): Array<[string, ...number[]]
   return cmds.map(([c, ...uv]) => [c, ...uv.map((v, i) => (i % 2 === 0 ? 1 - v : v))] as [string, ...number[]]);
 }
 
+const fleuronCurl: Array<[string, ...number[]]> = [
+  ['M', 0.5, 0.86],
+  ['C', 0.5, 0.98, 0.6, 1, 0.68, 0.93],
+];
+
 const scrollHalf: Array<[string, ...number[]]> = [
   ['M', 0.56, 0.5],
   ['C', 0.66, 0.1, 0.76, 0.1, 0.8, 0.5],
@@ -90,7 +95,8 @@ export const BUILTIN_ORNAMENTS: readonly BuiltinOrnament[] = [
           mode: 'fill',
           d: f.path([['M', 0.5, 0.86], ['C', 0.22, 0.7, 0.04, 0.44, 0.2, 0.2], ['C', 0.32, 0.03, 0.5, 0.16, 0.5, 0.36], ['C', 0.5, 0.16, 0.68, 0.03, 0.8, 0.2], ['C', 0.96, 0.44, 0.78, 0.7, 0.5, 0.86], ['Z']]),
         },
-        { mode: 'stroke', d: f.path([['M', 0.5, 0.86], ['C', 0.5, 0.98, 0.6, 1, 0.68, 0.93]]) },
+        // Tallo con un rulo a cada lado: el ornamento es simétrico respecto de su centro.
+        { mode: 'stroke', d: [fleuronCurl, mirror(fleuronCurl)].map((c) => f.path(c)).join(' ') },
       ];
     },
   },

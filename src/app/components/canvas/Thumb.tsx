@@ -1,9 +1,14 @@
-/** Miniatura de página dibujada en Canvas, perezosa (solo cuando es visible). */
+/**
+ * Miniatura de página dibujada en Canvas, perezosa (solo cuando es visible) y sin repintar de más:
+ * si el documento nuevo reutilizó la página (el mismo modelo), el lienzo ya tiene el dibujo correcto.
+ */
 import type { AgendaDocument } from '@core/document';
 import { pagePrims } from '@core/document/layout';
-import { useEffect, useRef, useState } from 'react';
+import type { PageModel } from '@core/layout/prims';
+import { memo, useEffect, useRef, useState } from 'react';
 import { paintPrims } from '../../canvas/paint';
 import { onAssetUrlsChange } from '../../state/assetUrls';
+import { stats } from '../../state/stats';
 
 const queue: Array<() => void> = [];
 let running = false;
@@ -21,8 +26,18 @@ function schedule(job: () => void): void {
   requestAnimationFrame(tick);
 }
 
-export function Thumb({ doc, index, width }: { doc: AgendaDocument; index: number; width: number }) {
+/** Lo último que se dibujó en un lienzo: con lo mismo, no hay nada que repintar. */
+interface Painted {
+  model: PageModel;
+  width: number;
+  height: number;
+  pageWidth: number;
+  tick: number;
+}
+
+export const Thumb = memo(function Thumb({ doc, index, width }: { doc: AgendaDocument; index: number; width: number }) {
   const ref = useRef<HTMLCanvasElement | null>(null);
+  const painted = useRef<Painted | null>(null);
   const [visible, setVisible] = useState(false);
   const [tick, setTick] = useState(0);
   const pw = doc.format.w;
@@ -34,9 +49,14 @@ export function Thumb({ doc, index, width }: { doc: AgendaDocument; index: numbe
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
-    const io = new IntersectionObserver((entries) => {
-      for (const e of entries) if (e.isIntersecting) setVisible(true);
-    }, { rootMargin: '200px' });
+    // Visible o no: fuera de la vista no se maqueta ni se dibuja nada.
+    const io = new IntersectionObserver(
+      (entries) => {
+        const last = entries[entries.length - 1];
+        if (last) setVisible(last.isIntersecting);
+      },
+      { rootMargin: '200px' },
+    );
     io.observe(el);
     return () => io.disconnect();
   }, []);
@@ -47,6 +67,16 @@ export function Thumb({ doc, index, width }: { doc: AgendaDocument; index: numbe
     schedule(() => {
       const canvas = ref.current;
       if (cancelled || !canvas) return;
+      let model: PageModel;
+      try {
+        // En el turno de dibujo (no al renderizar): maquetar varias páginas no traba la interfaz.
+        model = doc.page(index);
+      } catch (err) {
+        console.warn(err);
+        return;
+      }
+      const last = painted.current;
+      if (last && last.model === model && last.width === width && last.height === height && last.pageWidth === pw && last.tick === tick) return;
       const dpr = Math.min(2, window.devicePixelRatio || 1);
       canvas.width = Math.round(width * dpr);
       canvas.height = Math.round(height * dpr);
@@ -58,10 +88,12 @@ export function Thumb({ doc, index, width }: { doc: AgendaDocument; index: numbe
       const k = (width * dpr) / pw;
       ctx.scale(k, k);
       try {
-        paintPrims(ctx, pagePrims(doc.page(index)), doc.ctx.fonts, () => setTick((t) => t + 1));
+        paintPrims(ctx, pagePrims(model), doc.ctx.fonts, () => setTick((t) => t + 1));
       } catch (err) {
         console.warn(err);
       }
+      painted.current = { model, width, height, pageWidth: pw, tick };
+      stats.thumbPaints++;
     });
     return () => {
       cancelled = true;
@@ -69,4 +101,4 @@ export function Thumb({ doc, index, width }: { doc: AgendaDocument; index: numbe
   }, [visible, doc, index, width, height, pw, tick]);
 
   return <canvas ref={ref} style={{ width, height }} className="block bg-white" aria-hidden="true" />;
-}
+});

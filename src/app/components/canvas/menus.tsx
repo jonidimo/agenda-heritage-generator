@@ -4,7 +4,9 @@
  */
 import type { AgendaDocument } from '@core/document';
 import type { WritingStyle } from '@core/design/themes';
-import type { Block, PageModel } from '@core/layout/prims';
+import type { BlockLineKey } from '@core/design/schema';
+import type { ResolvedLink } from '@core/document/links';
+import type { Block, PageModel, Prim } from '@core/layout/prims';
 import {
   AlignCenterHorizontal,
   AlignCenterVertical,
@@ -14,6 +16,7 @@ import {
   AlignStartHorizontal,
   AlignStartVertical,
   AlignVerticalDistributeCenter,
+  ClipboardPaste,
   Copy,
   Crosshair,
   EyeOff,
@@ -26,6 +29,7 @@ import {
   MousePointerClick,
   RotateCcw,
   Scaling,
+  Scissors,
   SlidersHorizontal,
   Square,
   SquareDashedMousePointer,
@@ -38,6 +42,10 @@ import { pageTitle, sectionName, type UiKey } from '../../i18n/ui';
 import {
   addCustomBlock,
   alignBlocks,
+  allLinesRecipe,
+  clearBlockLinks,
+  linkScope,
+  setBlockLink,
   centerBlocks,
   distributeBlocks,
   duplicateCustomBlock,
@@ -50,6 +58,7 @@ import {
   tidyBlocks,
   type Scope,
 } from '../../state/actions';
+import { copySelection, cutSelection, pasteSelection } from '../../state/clipboard';
 import { customPageHere } from '../../state/customPages';
 import { reveal } from '../../state/reveal';
 import { exportPageSvg, fileBase } from '../../state/exporter';
@@ -72,6 +81,19 @@ export interface MenuContext {
 const labelsFor = (t: T) => ({ text: t('insp.addText'), image: t('insp.addImage'), rect: t('insp.addRect'), lines: t('insp.addLines'), dots: t('insp.addDots') });
 
 const openProperties = (): void => useStore.getState().setInspectorOpen(true);
+
+/** Clases de línea con dibujo propio (renglones, separadores, tablas, marcos) que usa un elemento. */
+function lineUsesOf(prims: readonly Prim[]): BlockLineKey[] {
+  const found = new Set<BlockLineKey>();
+  const walk = (ps: readonly Prim[]): void => {
+    for (const p of ps) {
+      if (p.t === 'group') walk(p.children);
+      else if ((p.t === 'line' || p.t === 'rect') && p.stroke?.use) found.add(p.stroke.use);
+    }
+  };
+  walk(prims);
+  return [...found];
+}
 
 /** Elige el elemento, muestra sus zonas tocables y lleva a la sección «Enlaces» de su panel. */
 function editLinks(page: PageModel, block: Block): void {
@@ -174,6 +196,8 @@ export function blockMenu(c: MenuContext, block: Block): MenuItem[] {
     items.push({ label: t('writing.more'), icon: <SlidersHorizontal size={14} />, onSelect: openProperties }, { separator: true }, hideHere, hideType);
   } else if (block.role === 'custom') {
     items.push(
+      { label: t('menu.copy'), icon: <Copy size={14} />, onSelect: () => void copySelection() },
+      { label: t('menu.cut'), icon: <Scissors size={14} />, onSelect: () => void cutSelection() },
       { label: t('menu.duplicate'), icon: <Copy size={14} />, onSelect: () => duplicateCustomBlock(page, block) },
       {
         label: t('insp.delete'),
@@ -192,9 +216,15 @@ export function blockMenu(c: MenuContext, block: Block): MenuItem[] {
       { label: t('align.centerMargins'), icon: <Crosshair size={14} />, onSelect: () => centerBlocks(page, [block], 'margins', 'x', scope) },
       { label: t('insp.reset'), icon: <RotateCcw size={14} />, onSelect: () => resetBlocks(page, [block.id], scope) },
       { separator: true },
-      hideHere,
-      hideType,
     );
+    // Dibujo de todas las líneas del elemento de una vez (el detalle por clase de línea está en el panel).
+    const uses = lineUsesOf(block.prims);
+    if (uses.length > 0) {
+      items.push({ heading: t('bstyle.linesMenu') });
+      for (const p of ['solid', 'dashed', 'dotted', 'double'] as const)
+        items.push({ label: t(`bstyle.pattern.${p}`), onSelect: () => update(allLinesRecipe(page, block.id, scope, uses, { pattern: p }), `bstyle:${block.id}:all:pattern`) });
+    }
+    items.push({ label: t('bstyle.open'), icon: <SlidersHorizontal size={14} />, onSelect: () => void reveal({ inspector: true, selector: '[data-reveal="blockstyle"]' }) }, { separator: true }, hideHere, hideType);
   } else items.push({ label: t('insp.locked'), disabled: true });
   items.push(
     { separator: true },
@@ -202,6 +232,23 @@ export function blockMenu(c: MenuContext, block: Block): MenuItem[] {
     { label: t('menu.properties'), icon: <SlidersHorizontal size={14} />, onSelect: openProperties },
   );
   return items;
+}
+
+/** Opciones sobre una zona tocable del PDF (un día, un mes…) de un elemento. */
+export function zoneMenu(c: MenuContext, link: ResolvedLink, follow: () => void): MenuItem[] {
+  const { t, page, scope } = c;
+  const design = useStore.getState().design!;
+  const level = linkScope(design, page, link.blockId, scope);
+  const set = (mode: 'none' | 'auto', area: string): void => setBlockLink(page, link.blockId, level, { mode }, `link:${link.blockId}:${area}:${mode}`, area);
+  return [
+    { heading: t('link.zone') },
+    { label: t('link.zoneGo'), icon: <MousePointerClick size={14} />, onSelect: follow },
+    { label: t('link.zoneChange'), icon: <Link2 size={14} />, onSelect: () => void reveal({ inspector: true, selector: '[data-reveal="links"] select' }) },
+    { separator: true },
+    { label: t('link.zoneRemove'), icon: <Trash2 size={14} />, onSelect: () => set('none', link.area) },
+    { label: t('link.zoneAuto'), icon: <RotateCcw size={14} />, disabled: link.cat !== 'manual', onSelect: () => set('auto', link.area) },
+    { label: t('link.zoneRemoveAll'), icon: <Trash2 size={14} />, danger: true, onSelect: () => (clearBlockLinks(page, link.blockId, level), set('none', '')) },
+  ];
 }
 
 /** Opciones sobre un lugar vacío de la página. */
@@ -220,6 +267,7 @@ export function pageMenu(c: MenuContext): MenuItem[] {
     { label: t('menu.addLinesHere'), icon: <StretchHorizontal size={14} />, onSelect: add('lines') },
     { label: t('menu.addDotsHere'), icon: <Grip size={14} />, onSelect: add('dots') },
     { label: t('menu.addFrameHere'), icon: <Square size={14} />, onSelect: add('rect') },
+    { label: t('menu.paste'), icon: <ClipboardPaste size={14} />, onSelect: () => void pasteSelection() },
     { separator: true },
     { label: t('menu.insertPage'), icon: <FilePlus2 size={14} />, onSelect: () => insertPageAfter(doc, page.index) },
     {

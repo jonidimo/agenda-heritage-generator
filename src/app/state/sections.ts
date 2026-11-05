@@ -120,6 +120,7 @@ export function deleteTemplate(id: string): void {
     d.customBlocks = d.customBlocks.filter((c) => c.pageType !== type);
     d.overrides = d.overrides.filter((o) => o.pageType !== type);
     d.pageStyles = d.pageStyles.filter((o) => o.pageType !== type);
+    d.blockStyles = d.blockStyles.filter((o) => o.pageType !== type);
     d.links.blocks = d.links.blocks.filter((o) => o.pageType !== type);
     for (const w of d.watermarks) w.scope = w.scope.filter((x) => x !== type);
   });

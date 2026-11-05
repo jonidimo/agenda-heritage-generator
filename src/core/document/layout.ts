@@ -4,14 +4,16 @@
  * (mover, escalar, rotar, opacidad, ocultar) con verificación de límites.
  */
 import { enumProp, IMAGE_FITS, numProp, PROP_DEFAULTS, PROP_RANGES, TEXT_ALIGNS, TEXT_ROLES, TEXT_VALIGNS } from '../design/customBlocks';
-import type { BlockOverride, CustomBlock, Design, WatermarkPlacement } from '../design/schema';
+import type { BlockOverride, BlockStyle, CustomBlock, Design, PageStyle, WatermarkPlacement } from '../design/schema';
 import { fmt as fmtStr } from '../i18n';
 import { inset } from '../layout/box';
-import { LayoutContext, type DocContext } from '../layout/context';
-import { primsBounds, type Block, type LinkArea, type LinkTarget, type PageModel, type Prim } from '../layout/prims';
+import { adjustedSize, type BoxAdjust } from '../layout/box';
+import { LayoutContext, type BoxAdjuster, type DocContext } from '../layout/context';
+import { stretchPrims, stretchRect } from '../layout/stretch';
+import { primsBounds, type Block, type LinkArea, type LinkTarget, type PageModel, type PageWarning, type Prim } from '../layout/prims';
 import { dotField, ruledLines, squareGrid } from '../layout/widgets';
 import type { PagePlan, SectionModule } from '../sections/types';
-import { compose, composeAll, IDENTITY, rectContains, rotateAround, scale, transformRect, translate, type Matrix, type Rect } from '../util/geometry';
+import { compose, composeAll, IDENTITY, ptToMm, rectContains, rotateAround, scale, transformRect, translate, type Matrix, type Rect } from '../util/geometry';
 import { inkBounds } from '../text/shape';
 import { mergeTokens, type ThemeTokens, type WritingStyle } from '../design/themes';
 import { normalizeColor } from '../util/color';
@@ -19,9 +21,10 @@ import { parseFontSpec, type FontRegistry } from '../text/fonts';
 import { assetPrims } from './assets';
 import { pageGeometry } from './context';
 import { pageTextVars } from '../sections/common';
+import { applyBlockStyle, blockStyleMap, mergeLineTable } from './blockstyle';
 import { applyLineStyles, hasLineStyles } from './linestyle';
 
-export function findOverride(overrides: BlockOverride[], page: { key: string; type: string }, blockId: string): BlockOverride | undefined {
+export function findOverride(overrides: readonly BlockOverride[], page: { key: string; type: string }, blockId: string): BlockOverride | undefined {
   return (
     overrides.find((o) => o.blockId === blockId && o.pageKey === page.key) ??
     overrides.find((o) => o.blockId === blockId && o.pageKey === null && o.pageType === page.type)
@@ -39,21 +42,32 @@ export function overrideMatrix(bbox: Rect, o: Pick<BlockOverride, 'dx' | 'dy' | 
   );
 }
 
-/** Caja final de un bloque (con su transformación). */
+/** Caja final de un bloque (con su transformación): la que se ve al seleccionarlo. */
 export function blockBounds(b: Block): Rect {
-  return b.m ? transformRect(b.m, b.bbox) : b.bbox;
+  const box = b.box ?? b.bbox;
+  return b.m ? transformRect(b.m, box) : box;
+}
+
+/**
+ * Estira un bloque a la caja que le dio el editor (ver `stretch.ts`). Solo cambia el tamaño: el
+ * lugar lo pone después la matriz del bloque. Un lado sin tamaño (una línea horizontal) no se estira.
+ */
+function stretchBlock(b: Block, a: BoxAdjust): void {
+  const from = b.bbox;
+  const to = { x: from.x, y: from.y, w: from.w > 1e-6 ? adjustedSize(from.w, a.dw) : from.w, h: from.h > 1e-6 ? adjustedSize(from.h, a.dh) : from.h };
+  b.prims = stretchPrims(b.prims, from, to);
+  if (b.links) b.links = b.links.map((l) => ({ ...l, ...stretchRect(l, from, to) }));
+  b.bbox = to;
 }
 
 /** Estilo de escritura elegido explícitamente para la página (o su tipo), si lo hay. */
-function pageWritingStyle(doc: DocContext, plan: PagePlan): WritingStyle | undefined {
+function pageWritingStyle(styles: readonly PageStyle[], plan: PagePlan): WritingStyle | undefined {
   const pick = (s: { tokens: Record<string, unknown> } | undefined): WritingStyle | undefined => (s?.tokens.writing as { style?: WritingStyle } | undefined)?.style;
-  const styles = doc.design.pageStyles.filter((s) => s.pageType === plan.type);
   return pick(styles.find((s) => s.pageKey === plan.key)) ?? pick(styles.find((s) => s.pageKey === null));
 }
 
 /** Tema de una página: el del documento más el estilo de escritura de su tipo y, encima, el de la página. */
-function pageTheme(doc: DocContext, plan: PagePlan): ThemeTokens | undefined {
-  const styles = doc.design.pageStyles.filter((s) => s.pageType === plan.type && (s.pageKey === null || s.pageKey === plan.key));
+function pageTheme(doc: DocContext, styles: readonly PageStyle[], plan: PagePlan): ThemeTokens | undefined {
   if (styles.length === 0) return undefined;
   const byType = styles.find((s) => s.pageKey === null);
   const byPage = styles.find((s) => s.pageKey === plan.key);
@@ -61,6 +75,44 @@ function pageTheme(doc: DocContext, plan: PagePlan): ThemeTokens | undefined {
   if (byType) theme = mergeTokens(theme, byType.tokens);
   if (byPage) theme = mergeTokens(theme, byPage.tokens);
   return theme;
+}
+
+/**
+ * Todo lo que la maquetación de UNA página lee del diseño y que es propio de esa página: los
+ * elementos propios, las marcas de agua, los ajustes del editor y los estilos de página que le
+ * tocan. `layoutPage` solo lee estos datos (nunca `design.overrides`, `design.customBlocks`…
+ * directamente), así que dos documentos con las mismas entradas y el mismo contexto dan la misma
+ * página: se reutiliza el modelo ya maquetado en lugar de volver a calcularlo.
+ */
+export interface PageInputs {
+  readonly blocks: readonly CustomBlock[];
+  readonly watermarks: readonly WatermarkPlacement[];
+  readonly overrides: readonly BlockOverride[];
+  /** Estilo propio de los elementos (líneas, relleno, color del texto). */
+  readonly blockStyles: readonly BlockStyle[];
+  readonly styles: readonly PageStyle[];
+  /** Adónde lleva el número de página (el único dato de «Enlaces» que cambia lo maquetado). */
+  readonly pageNumberLink: Design['links']['pageNumber'];
+}
+
+export function pageInputs(design: Design, plan: PagePlan): PageInputs {
+  const onPage = (o: { pageType: string; pageKey: string | null }): boolean => o.pageType === plan.type && (o.pageKey === null || o.pageKey === plan.key);
+  return {
+    blocks: design.customBlocks.filter(onPage),
+    watermarks: design.watermarks.filter((wm) => watermarkApplies(wm, plan.type, plan.key)),
+    // Un ajuste atado a la clave de la página vale aunque su tipo haya cambiado (ver `findOverride`).
+    overrides: design.overrides.filter((o) => o.pageKey === plan.key || (o.pageKey === null && o.pageType === plan.type)),
+    blockStyles: design.blockStyles.filter(onPage),
+    styles: design.pageStyles.filter(onPage),
+    pageNumberLink: design.links.pageNumber,
+  };
+}
+
+const sameList = <T>(a: readonly T[], b: readonly T[]): boolean => a.length === b.length && a.every((x, i) => x === b[i]);
+
+/** ¿Las mismas entradas? Por identidad, elemento por elemento (el editor no muta: lo que no se tocó es el mismo objeto). */
+export function samePageInputs(a: PageInputs, b: PageInputs): boolean {
+  return a.pageNumberLink === b.pageNumberLink && sameList(a.blocks, b.blocks) && sameList(a.watermarks, b.watermarks) && sameList(a.overrides, b.overrides) && sameList(a.blockStyles, b.blockStyles) && sameList(a.styles, b.styles);
 }
 
 function watermarkApplies(wm: WatermarkPlacement, type: string, key: string): boolean {
@@ -134,16 +186,19 @@ function substitute(text: string, ctx: LayoutContext, page: PagePlan): string {
 
 function placeCustomBlock(ctx: LayoutContext, cb: CustomBlock, page: PagePlan): void {
   const x = cb.mirror && ctx.page.side === 'verso' ? ctx.page.w - cb.x - cb.w : cb.x;
-  const box = { x, y: cb.y, w: cb.w, h: cb.h };
+  let box = { x, y: cb.y, w: cb.w, h: cb.h };
   const p = cb.props as Record<string, unknown>;
   let prims: Prim[] = [];
   switch (cb.kind) {
     case 'text': {
-      const t = ctx.textIn(substitute(String(p.text ?? ''), ctx, page), box, {
+      // Con alto automático el texto se maqueta sin límite de alto y la caja se ajusta a sus renglones.
+      const auto = p.autoHeight === true && p.wrap !== false;
+      const t = ctx.textIn(substitute(String(p.text ?? ''), ctx, page), auto ? { ...box, h: AUTO_HEIGHT_PROBE } : box, {
         role: enumProp(p.role, TEXT_ROLES, 'body'),
         size: numProp(p.size, PROP_RANGES.textSize, ctx.theme.sizes.body),
         align: enumProp(p.align, TEXT_ALIGNS, 'left'),
-        valign: enumProp(p.valign, TEXT_VALIGNS, 'top'),
+        // Con alto automático la caja se ajusta a los renglones: arriba, o el texto caería en la caja de prueba.
+        valign: auto ? 'top' : enumProp(p.valign, TEXT_VALIGNS, 'top'),
         upper: Boolean(p.upper),
         tracking: numProp(p.tracking, PROP_RANGES.tracking, PROP_DEFAULTS.tracking),
         wrap: p.wrap !== false,
@@ -153,6 +208,7 @@ function placeCustomBlock(ctx: LayoutContext, cb: CustomBlock, page: PagePlan): 
         ...(parseFontSpec(p.font) ? { font: parseFontSpec(p.font)! } : {}),
       });
       prims = t.prims;
+      if (auto) box = { ...box, h: autoTextHeight(t.lines, t.sizePt) };
       break;
     }
     case 'image':
@@ -179,7 +235,15 @@ function placeCustomBlock(ctx: LayoutContext, cb: CustomBlock, page: PagePlan): 
       prims = [{ t: 'line', x1: box.x, y1: box.y + box.h / 2, x2: box.x + box.w, y2: box.y + box.h / 2, stroke: ctx.stroke('rule', 'ink', { use: 'separator' }) }];
       break;
   }
-  ctx.add(`custom.${cb.id}`, String(p.label ?? 'Elemento propio'), prims, { role: 'custom', layer: 15, bbox: box });
+  ctx.add(`custom.${cb.id}`, String(p.label ?? 'Elemento propio'), prims, { role: 'custom', layer: 15, bbox: box, ...(cb.kind === 'text' ? { text: { kind: 'custom' as const, id: cb.id } } : {}) });
+}
+
+/** Alto con el que se maqueta un texto de alto automático (en la práctica, sin límite). */
+const AUTO_HEIGHT_PROBE = 10_000;
+
+/** Alto de `lines` renglones: el interlineado por defecto de `textIn` (1,3 veces el cuerpo). */
+export function autoTextHeight(lines: number, sizePt: number): number {
+  return Math.max(1, lines) * ptToMm(sizePt) * 1.3;
 }
 
 /** Caja agrandada para que sea fácil de tocar (se recorta a la página al resolver el enlace). */
@@ -221,9 +285,9 @@ function addUpLinks(ctx: LayoutContext, plan: PagePlan): void {
 }
 
 /** Adónde lleva el número de página según los ajustes de enlaces. */
-function pageNumberTarget(design: Design, plan: PagePlan): LinkTarget | null {
+function pageNumberTarget(design: Design, plan: PagePlan, link: Design['links']['pageNumber']): LinkTarget | null {
   const month = plan.params?.month as { y: number; m: number } | undefined;
-  switch (design.links.pageNumber) {
+  switch (link) {
     case 'toc':
       return { kind: 'toc' };
     case 'year':
@@ -235,7 +299,7 @@ function pageNumberTarget(design: Design, plan: PagePlan): LinkTarget | null {
   }
 }
 
-function addChrome(ctx: LayoutContext, page: PagePlan, totalPages: number): void {
+function addChrome(ctx: LayoutContext, page: PagePlan, totalPages: number, pageNumberLink: Design['links']['pageNumber']): void {
   const d = ctx.doc.design;
   const pn = d.binding.pageNumbers;
   const noChrome = new Set(['titlePage', 'monthCover', 'custom', 'cover']);
@@ -258,7 +322,7 @@ function addChrome(ctx: LayoutContext, page: PagePlan, totalPages: number): void
         t = ctx.textAt(String(page.index + 1), nx, y, { role: 'number', size: 'labelSmall', align });
       }
     }
-    const back = pageNumberTarget(d, page);
+    const back = pageNumberTarget(d, page, pageNumberLink);
     ctx.add('chrome.pageNumber', 'Número de página', [t.prim], { role: 'chrome', layer: 18, ...(back ? { links: [{ ...pad(t.bbox, 1.5), to: back, cat: 'pageNumber' }] } : {}) });
   }
   const ti = d.binding.thumbIndex;
@@ -294,14 +358,35 @@ function addChrome(ctx: LayoutContext, page: PagePlan, totalPages: number): void
   }
 }
 
-export interface LayoutResult {
-  page: PageModel;
+/** Un aviso por mensaje (la misma advertencia repetida en varios bloques se muestra una vez). */
+export function dedupeWarnings(list: readonly PageWarning[]): PageWarning[] {
+  return [...new Map(list.map((w) => [w.message, w])).values()];
 }
 
-export function layoutPage(doc: DocContext, plan: PagePlan, registry: ReadonlyMap<string, SectionModule>, totalPages: number): PageModel {
+/**
+ * Maqueta una página: contenido de la sección, elementos propios, marcas de agua, numeración y
+ * pestañas, y los ajustes del editor. Los avisos del resultado son los que salen al maquetar
+ * (texto que no entra, ajustes que se acomodaron…); la verificación del contenido terminado
+ * (fuera de la página, textos que se pisan, poca resolución) es `verifyPage`, que se pide aparte.
+ */
+export function layoutPage(
+  doc: DocContext,
+  plan: PagePlan,
+  registry: ReadonlyMap<string, SectionModule>,
+  totalPages: number,
+  inputs: PageInputs = pageInputs(doc.design, plan),
+): PageModel {
   const geom = pageGeometry(doc, plan.side);
-  const ctx = new LayoutContext(doc, geom, pageTheme(doc, plan), pageWritingStyle(doc, plan));
-  const design: Design = doc.design;
+  // Ajustes del editor por elemento. «Por tipo» en tipos que caen a ambos lados: X se espeja en las
+  // páginas izquierdas (mover o ensanchar «hacia afuera» en una derecha es hacerlo hacia afuera
+  // también en una izquierda: ahí crece hacia el otro lado, así que su borde izquierdo se corre).
+  const adjuster: BoxAdjuster = (id) => {
+    const o = findOverride(inputs.overrides, plan, id);
+    if (!o || o.hidden) return undefined;
+    const mirror = o.pageKey === null && plan.side === 'verso' && (doc.mirrorTypes?.has(plan.type) ?? false);
+    return { dx: mirror ? -(o.dx + o.dw) : o.dx, dy: o.dy, dw: o.dw, dh: o.dh };
+  };
+  const ctx = new LayoutContext(doc, geom, pageTheme(doc, inputs.styles, plan), pageWritingStyle(inputs.styles, plan), adjuster);
   const mod = registry.get(plan.module);
   if (mod) {
     try {
@@ -311,26 +396,37 @@ export function layoutPage(doc: DocContext, plan: PagePlan, registry: ReadonlyMa
     }
   }
   addUpLinks(ctx, plan);
-  for (const cb of design.customBlocks) {
-    if (cb.pageType === plan.type && (cb.pageKey === null || cb.pageKey === plan.key)) placeCustomBlock(ctx, cb, plan);
+  for (const cb of inputs.blocks) placeCustomBlock(ctx, cb, plan);
+  for (const wm of inputs.watermarks) placeWatermark(ctx, wm);
+  addChrome(ctx, plan, totalPages, inputs.pageNumberLink);
+  // Los elementos que su sección no vuelve a maquetar en su caja se estiran al tamaño que les dio el
+  // editor. Va antes del estilo de líneas: así los ornamentos se arman con el largo final de cada línea.
+  for (const b of ctx.blocks) {
+    if (b.box) continue;
+    const a = adjuster(b.id);
+    if (a && (a.dw !== 0 || a.dh !== 0)) stretchBlock(b, a);
   }
-  for (const wm of design.watermarks) if (watermarkApplies(wm, plan.type, plan.key)) placeWatermark(ctx, wm);
-  addChrome(ctx, plan, totalPages);
-  // Estilo de líneas y ornamentos del tema (renglones, separadores, tablas, marcos).
-  if (hasLineStyles(ctx.theme.lines)) for (const b of ctx.blocks) b.prims = applyLineStyles(b.prims, ctx.theme.lines, doc.assets);
+  // Estilo propio de cada elemento y, encima, el de líneas y ornamentos del tema (renglones,
+  // separadores, tablas, marcos): el del elemento primero, así las guardas usan su grosor y su color.
+  const styleOf = blockStyleMap(inputs.blockStyles, plan);
+  for (const b of ctx.blocks) {
+    const st = styleOf.get(b.id);
+    if (st) b.prims = applyBlockStyle(b.prims, st);
+    const lines = st ? mergeLineTable(ctx.theme.lines, st.lines) : ctx.theme.lines;
+    if (hasLineStyles(lines)) b.prims = applyLineStyles(b.prims, lines, doc.assets);
+  }
 
   // Ajustes del editor.
-  const pageBox = { x: 0, y: 0, w: geom.w, h: geom.h };
   const blocks: Block[] = [];
   for (const b of ctx.blocks) {
-    const o = findOverride(design.overrides, plan, b.id);
+    const o = findOverride(inputs.overrides, plan, b.id);
     if (o) {
       if (o.hidden) continue;
-      // Ajustes «por tipo» en tipos que caen a ambos lados: X se espeja en las páginas izquierdas
-      // (mover «hacia afuera» en una derecha es mover hacia afuera también en una izquierda).
-      const mirror = o.pageKey === null && plan.side === 'verso' && (doc.mirrorTypes?.has(plan.type) ?? false);
-      let m = overrideMatrix(b.bbox, o, mirror);
-      const bounds = transformRect(m, b.bbox);
+      const a = adjuster(b.id)!;
+      // Con caja, el lugar ya está en el dibujo (la sección lo dibujó adentro): la matriz solo escala y gira.
+      const pivot = b.box ?? b.bbox;
+      let m = overrideMatrix(pivot, { dx: b.box ? 0 : a.dx, dy: b.box ? 0 : a.dy, scale: o.scale, rotation: o.rotation });
+      const bounds = transformRect(m, pivot);
       // Mantener dentro de la página.
       const dx = bounds.x < 0 ? -bounds.x : bounds.x + bounds.w > geom.w ? geom.w - bounds.x - bounds.w : 0;
       const dy = bounds.y < 0 ? -bounds.y : bounds.y + bounds.h > geom.h ? geom.h - bounds.y - bounds.h : 0;
@@ -345,39 +441,6 @@ export function layoutPage(doc: DocContext, plan: PagePlan, registry: ReadonlyMa
   }
   blocks.sort((a, b) => a.layer - b.layer);
 
-  // Verificación: contenido real dentro de la página, fuera de la zona no imprimible y sin textos superpuestos.
-  const np = design.binding.nonPrintable;
-  const allEdges = design.binding.method === 'single' || design.binding.method === 'cut-stack';
-  const safe = allEdges ? inset(pageBox, np) : inset(pageBox, np, geom.side === 'recto' ? np : 0, np, geom.side === 'recto' ? 0 : np);
-  const texts: Array<{ r: Rect; label: string; block: string }> = [];
-  for (const b of blocks) {
-    if (b.role === 'watermark' || b.role === 'chrome' || b.role === 'artwork') continue;
-    const own = primsBounds(b.prims);
-    const bounds = own ? (b.m ? transformRect(b.m, own) : own) : null;
-    if (!bounds || (bounds.w === 0 && bounds.h === 0)) continue;
-    if (!rectContains(pageBox, bounds, 0.05)) ctx.warn('offPage', `«${b.label}» sale de la página.`, { block: b.id, label: b.label });
-    else if (!rectContains(safe, bounds, 0.05)) ctx.warn('nonPrintable', `«${b.label}» entra en la zona que la impresora no imprime (${np} mm del borde).`, { block: b.id, label: b.label, mm: np });
-    collectTextBoxes(b.prims, b.m ?? IDENTITY, b.label, b.id, texts, doc.fonts);
-  }
-  for (let i = 0; i < texts.length; i++) {
-    for (let j = i + 1; j < texts.length; j++) {
-      const a = texts[i]!;
-      const c = texts[j]!;
-      const ix = Math.min(a.r.x + a.r.w, c.r.x + c.r.w) - Math.max(a.r.x, c.r.x);
-      const iy = Math.min(a.r.y + a.r.h, c.r.y + c.r.h) - Math.max(a.r.y, c.r.y);
-      if (ix > 0.2 && iy > 0.2) ctx.warn('overlap', `Textos superpuestos: «${a.label}» y «${c.label}».`, { a: a.label, b: c.label });
-    }
-  }
-  // Imágenes con poca resolución para el tamaño impreso.
-  for (const b of blocks) {
-    for (const im of findImages(b.prims)) {
-      const info = doc.assets.get(im.asset);
-      if (info?.pxWidth && im.w > 0) {
-        const dpi = Math.round(info.pxWidth / (im.w / 25.4));
-        if (dpi < 200) ctx.warn('lowDpi', `La imagen se imprime a ${dpi} ppp (se recomiendan 300 o más): se verá pixelada.`, { dpi });
-      }
-    }
-  }
   return {
     key: plan.key,
     type: plan.type,
@@ -389,8 +452,53 @@ export function layoutPage(doc: DocContext, plan: PagePlan, registry: ReadonlyMa
     title: plan.title,
     group: plan.group,
     blocks,
-    warnings: [...new Map(ctx.warnings.map((w) => [w.message, w])).values()],
+    warnings: dedupeWarnings(ctx.warnings),
   };
+}
+
+/**
+ * Verificación del contenido ya maquetado: dentro de la página, fuera de la zona que la impresora
+ * no imprime, sin textos superpuestos y con imágenes de resolución suficiente. Mide la tinta de
+ * cada glifo y compara los textos de a pares, por eso no corre en cada maquetación sino cuando
+ * alguien la pide (verificación previa, exportación, servidor MCP, línea de comandos).
+ */
+export function verifyPage(doc: Pick<DocContext, 'design' | 'fonts' | 'assets'>, page: PageModel): PageWarning[] {
+  const out: PageWarning[] = [];
+  const warn = (code: PageWarning['code'], message: string, params: PageWarning['params'] = {}): void => void out.push({ code, params, message });
+  const pageBox = { x: 0, y: 0, w: page.w, h: page.h };
+  const np = doc.design.binding.nonPrintable;
+  const allEdges = doc.design.binding.method === 'single' || doc.design.binding.method === 'cut-stack';
+  const safe = allEdges ? inset(pageBox, np) : inset(pageBox, np, page.side === 'recto' ? np : 0, np, page.side === 'recto' ? 0 : np);
+  const texts: Array<{ r: Rect; label: string; block: string }> = [];
+  for (const b of page.blocks) {
+    if (b.role === 'watermark' || b.role === 'chrome' || b.role === 'artwork') continue;
+    const own = primsBounds(b.prims);
+    const bounds = own ? (b.m ? transformRect(b.m, own) : own) : null;
+    if (!bounds || (bounds.w === 0 && bounds.h === 0)) continue;
+    if (!rectContains(pageBox, bounds, 0.05)) warn('offPage', `«${b.label}» sale de la página.`, { block: b.id, label: b.label });
+    else if (!rectContains(safe, bounds, 0.05)) warn('nonPrintable', `«${b.label}» entra en la zona que la impresora no imprime (${np} mm del borde).`, { block: b.id, label: b.label, mm: np });
+    collectTextBoxes(b.prims, b.m ?? IDENTITY, b.label, b.id, texts, doc.fonts);
+  }
+  for (let i = 0; i < texts.length; i++) {
+    for (let j = i + 1; j < texts.length; j++) {
+      const a = texts[i]!;
+      const c = texts[j]!;
+      const ix = Math.min(a.r.x + a.r.w, c.r.x + c.r.w) - Math.max(a.r.x, c.r.x);
+      const iy = Math.min(a.r.y + a.r.h, c.r.y + c.r.h) - Math.max(a.r.y, c.r.y);
+      if (ix > 0.2 && iy > 0.2) warn('overlap', `Textos superpuestos: «${a.label}» y «${c.label}».`, { a: a.label, b: c.label });
+    }
+  }
+  // Imágenes con poca resolución para el tamaño impreso.
+  for (const b of page.blocks) {
+    for (const im of findImages(b.prims)) {
+      const info = doc.assets.get(im.asset);
+      if (info?.pxWidth && im.w > 0) {
+        const dpi = Math.round(info.pxWidth / (im.w / 25.4));
+        if (dpi < 200) warn('lowDpi', `La imagen se imprime a ${dpi} ppp (se recomiendan 300 o más): se verá pixelada.`, { dpi });
+      }
+    }
+  }
+  return dedupeWarnings(out);
 }
 
 /** Aplana una página en primitivas (bloques ordenados con sus transformaciones). */

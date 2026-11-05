@@ -64,6 +64,19 @@ instead, see [Run it](#run-it).
   around them.
 - Your own text, images, lines and frames on any page type.
 - Resize your elements from any edge or corner; hold Shift to keep their proportions.
+- **Resize the planner's own elements too** (a month name, a frame, a table, a writing area)
+  from any edge or corner: their content is laid out again inside the new box instead of
+  being stretched, and the panel has width and height fields.
+- **Double-click any text** to edit it where it is: yours, or the planner's own (cover name
+  and title, dedication, the phrase of each month, page titles). Enter or Ctrl+Enter confirms,
+  Esc discards, and the page redraws as you type. A text element can follow its lines
+  (automatic height).
+- **Style per element**: dashed, dotted or double lines, colour and weight of each kind of
+  line, fill and text colour, for one element on every page of its type or on one page only.
+- **Copy, cut, paste and duplicate** your elements (Ctrl+C, X, V and D) within a page or
+  between pages.
+- Dragging a slider or a colour picker is smooth: the page follows live, thumbnails wait,
+  and the whole drag is one undo step.
 - An image element takes any picture: choose one from the planner or upload a PNG, JPG or
   SVG.
 - Each text element can have its own font and colour, or follow its type of text.
@@ -167,6 +180,8 @@ instead, see [Run it](#run-it).
   The links button in the top bar shows them on the page, and a click follows them; each
   element's panel shows where it goes and lets you remove its links or send it to another
   page or a web address. The PDF for printing does not include them.
+- Each tappable spot can be changed on its own: click a day number or a month name on the
+  page, or right-click it, to send just that one somewhere else or remove it.
 
 ### Your files and templates
 
@@ -188,6 +203,8 @@ instead, see [Run it](#run-it).
 - The file format comes with a **JSON Schema** and a catalogue generated from the code,
   and `npm run agenda -- check` says exactly what would be ignored or corrected. Read the
   [guide](docs/llm-templates.md) ([en español](docs/plantillas-llm.md)).
+- Every change the model makes comes back with the layout warnings it caused (text that does
+  not fit, elements off the page or overlapping), so it can fix them without anyone looking.
 
 ### Made to last
 

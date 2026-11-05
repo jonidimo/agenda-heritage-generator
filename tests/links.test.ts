@@ -179,7 +179,7 @@ describe('enlaces automáticos', () => {
     const base = await openDocument(norma());
     const yp = base.doc.plan.pages.find((p) => p.type === 'yearOverview')!;
     const before = base.doc.links(yp.index).find((l) => l.blockId === 'month.3' && l.target.kind === 'date')!;
-    const moved = await openDocument(norma((d) => void d.overrides.push({ pageType: 'yearOverview', pageKey: null, blockId: 'month.3', dx: 4, dy: -3, scale: 1, rotation: 0, opacity: 1, hidden: false })));
+    const moved = await openDocument(norma((d) => void d.overrides.push({ pageType: 'yearOverview', pageKey: null, blockId: 'month.3', dx: 4, dy: -3, dw: 0, dh: 0, scale: 1, rotation: 0, opacity: 1, hidden: false })));
     const after = moved.doc.links(yp.index).find((l) => l.blockId === 'month.3' && l.target.kind === 'date')!;
     // El calendario cae a ambos lados: en esta página izquierda el ajuste «por tipo» se espeja en X.
     const block = (doc: AgendaDocument) => blockBounds(doc.page(yp.index).blocks.find((b) => b.id === 'month.3')!);
@@ -187,7 +187,7 @@ describe('enlaces automáticos', () => {
     expect(Math.abs(dx)).toBeCloseTo(4, 5);
     expect(after.rect.x - before.rect.x).toBeCloseTo(dx, 5);
     expect(after.rect.y - before.rect.y).toBeCloseTo(-3, 5);
-    const hidden = await openDocument(norma((d) => void d.overrides.push({ pageType: 'yearOverview', pageKey: null, blockId: 'month.3', dx: 0, dy: 0, scale: 1, rotation: 0, opacity: 1, hidden: true })));
+    const hidden = await openDocument(norma((d) => void d.overrides.push({ pageType: 'yearOverview', pageKey: null, blockId: 'month.3', dx: 0, dy: 0, dw: 0, dh: 0, scale: 1, rotation: 0, opacity: 1, hidden: true })));
     expect(hidden.doc.links(yp.index).some((l) => l.blockId === 'month.3')).toBe(false);
   });
 
@@ -215,9 +215,9 @@ describe('enlaces a mano', () => {
     const contacts = base.plan.pages.find((p) => p.type === 'contacts')!;
     const { doc } = await openDocument(
       norma((d) => {
-        d.links.blocks.push({ pageType: 'yearOverview', pageKey: null, blockId: 'month.1', mode: 'none', page: '', url: '' });
-        d.links.blocks.push({ pageType: 'yearOverview', pageKey: yp.key, blockId: 'month.2', mode: 'page', page: contacts.key, url: '' });
-        d.links.blocks.push({ pageType: 'yearOverview', pageKey: null, blockId: 'month.4', mode: 'url', page: '', url: 'https://example.org/agenda' });
+        d.links.blocks.push({ pageType: 'yearOverview', pageKey: null, blockId: 'month.1', area: '', mode: 'none', page: '', url: '' });
+        d.links.blocks.push({ pageType: 'yearOverview', pageKey: yp.key, blockId: 'month.2', area: '', mode: 'page', page: contacts.key, url: '' });
+        d.links.blocks.push({ pageType: 'yearOverview', pageKey: null, blockId: 'month.4', area: '', mode: 'url', page: '', url: 'https://example.org/agenda' });
       }),
     );
     const links = doc.links(yp.index);
@@ -232,11 +232,42 @@ describe('enlaces a mano', () => {
     expect(doc.links(yp.index + 1).filter((l) => l.blockId === 'month.8').length).toBeGreaterThan(1);
   });
 
+  it('por zona: una zona cambia sin tocar las demás, la página gana al tipo y el elemento entero vale para el resto', async () => {
+    const { doc: base } = await openDocument(norma());
+    const yp = base.plan.pages.find((p) => p.type === 'yearOverview')!;
+    const contacts = base.plan.pages.find((p) => p.type === 'contacts')!;
+    const auto = base.links(yp.index).filter((l) => l.blockId === 'month.1');
+    const day = auto.find((l) => l.target.kind === 'date' && l.target.iso === '2027-01-05')!;
+    expect(day.area).toBe('date:2027-01-05');
+    const zone = (extra: Partial<Design['links']['blocks'][number]>): Design['links']['blocks'][number] => ({ pageType: 'yearOverview', pageKey: null, blockId: 'month.1', area: 'date:2027-01-05', mode: 'page', page: contacts.key, url: '', ...extra });
+
+    // Solo ese día cambia: el resto de los días de enero conserva su enlace automático.
+    const { doc } = await openDocument(norma((d) => void d.links.blocks.push(zone({}))));
+    const after = doc.links(yp.index).filter((l) => l.blockId === 'month.1');
+    expect(after).toHaveLength(auto.length);
+    expect(after.find((l) => l.area === 'date:2027-01-05')).toMatchObject({ page: contacts.index, cat: 'manual' });
+    for (const l of after.filter((x) => x.area !== 'date:2027-01-05')) expect(l.cat).not.toBe('manual');
+
+    // La de la página gana a la del tipo, solo en esa zona.
+    const { doc: win } = await openDocument(norma((d) => void d.links.blocks.push(zone({}), zone({ pageKey: yp.key, mode: 'none' }))));
+    expect(win.links(yp.index).some((l) => l.area === 'date:2027-01-05')).toBe(false);
+    expect(win.links(yp.index).filter((l) => l.blockId === 'month.1')).toHaveLength(auto.length - 1);
+
+    // «Ninguno» en el elemento entero quita todo, salvo las zonas con elección propia.
+    const { doc: none } = await openDocument(norma((d) => void d.links.blocks.push({ ...zone({}), area: '', mode: 'none' }, zone({}))));
+    expect(none.links(yp.index).filter((l) => l.blockId === 'month.1').map((l) => l.area)).toEqual(['date:2027-01-05']);
+
+    // El enlace de una zona sale en el PDF.
+    const { doc: pdfDoc, bytes } = await openDocument(norma((d) => void d.links.blocks.push(zone({}))));
+    const { links } = await pdfLinks(await pdfDoc.exportPdf('pages', { assetBytes: (id) => bytes.get(id) }));
+    expect(links.some((l) => l.from === yp.index && l.to === contacts.index)).toBe(true);
+  });
+
   it('un enlace a una página que no existe o a una dirección peligrosa se avisa y no se agrega', async () => {
     const { doc } = await openDocument(
       norma((d) => {
-        d.links.blocks.push({ pageType: 'yearOverview', pageKey: null, blockId: 'month.1', mode: 'page', page: 'no-existe', url: '' });
-        d.links.blocks.push({ pageType: 'yearOverview', pageKey: null, blockId: 'month.2', mode: 'url', page: '', url: 'javascript:alert(1)' });
+        d.links.blocks.push({ pageType: 'yearOverview', pageKey: null, blockId: 'month.1', area: '', mode: 'page', page: 'no-existe', url: '' });
+        d.links.blocks.push({ pageType: 'yearOverview', pageKey: null, blockId: 'month.2', area: '', mode: 'url', page: '', url: 'javascript:alert(1)' });
       }),
     );
     const yp = doc.plan.pages.find((p) => p.type === 'yearOverview')!;
@@ -257,7 +288,7 @@ describe('enlaces a mano', () => {
 
   it('al duplicar la agenda para otro año, los enlaces a mano pasan al año nuevo', () => {
     const d = norma((x) => {
-      x.links.blocks.push({ pageType: 'weekLeft', pageKey: 'week:2027-W10:left', blockId: 'week.title', mode: 'page', page: 'month:2027-03:log', url: '' });
+      x.links.blocks.push({ pageType: 'weekLeft', pageKey: 'week:2027-W10:left', blockId: 'week.title', area: '', mode: 'page', page: 'month:2027-03:log', url: '' });
     });
     const next = duplicateForYear(d, 2028);
     expect(next.links.blocks[0]).toMatchObject({ pageKey: 'week:2028-W10:left', page: 'month:2028-03:log' });
@@ -299,7 +330,7 @@ describe('PDF de páginas', () => {
   it('lleva los enlaces con destino explícito, marcadores e idioma; el impuesto no lleva enlaces', async () => {
     const { doc, bytes } = await openDocument(
       norma((d) => {
-        d.links.blocks.push({ pageType: 'contacts', pageKey: null, blockId: 'header.title', mode: 'url', page: '', url: 'https://example.org/contactos' });
+        d.links.blocks.push({ pageType: 'contacts', pageKey: null, blockId: 'header.title', area: '', mode: 'url', page: '', url: 'https://example.org/contactos' });
       }),
     );
     const pdfBytes = await doc.exportPdf('pages', { assetBytes: (id) => bytes.get(id) });
@@ -411,7 +442,7 @@ describe('arreglos de la revisión', () => {
   });
 
   it('una dirección larguísima se recorta en lugar de dejar la agenda sin abrir', () => {
-    const d = norma((x) => void x.links.blocks.push({ pageType: 'contacts', pageKey: null, blockId: 'header.title', mode: 'url', page: '', url: `https://example.org/${'a'.repeat(3000)}` }));
+    const d = norma((x) => void x.links.blocks.push({ pageType: 'contacts', pageKey: null, blockId: 'header.title', area: '', mode: 'url', page: '', url: `https://example.org/${'a'.repeat(3000)}` }));
     expect(parseDesign(JSON.parse(JSON.stringify(d))).links.blocks[0]!.url.length).toBe(2000);
   });
 
