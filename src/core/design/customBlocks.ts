@@ -80,6 +80,13 @@ export function customBlockPropsSchema(kind: string): Json {
     grid: pitch,
     rect: { radius: range(PROP_RANGES.radius, 'Radio de las esquinas, en mm'), fill: color('Relleno (por defecto, ninguno)') },
     line: {},
+    drawing: {
+      w0: { type: 'number', minimum: 0.1, maximum: 2000, description: 'Ancho del dibujo al copiarlo, en mm' },
+      h0: { type: 'number', minimum: 0.1, maximum: 2000, description: 'Alto del dibujo al copiarlo, en mm' },
+      mode: { enum: ['stretch', 'scale'], default: 'stretch', description: 'Al cambiar de tamaño: «stretch» estira líneas y recuadros sin cambiar su grosor; «scale» lo escala entero' },
+      prims: { type: 'array', maxItems: 2000, description: 'Primitivas ya dibujadas. Solo se crea copiando un elemento de la agenda: no se escribe a mano', items: { type: 'object', required: ['t'], properties: { t: { enum: ['line', 'rect', 'circle', 'path', 'dots', 'image', 'group'] } } } },
+      opacity: range(PROP_RANGES.opacity, 'Opacidad'),
+    },
   };
   return { type: 'object', additionalProperties: false, properties: { ...common, ...(byKind[kind] ?? {}) } };
 }

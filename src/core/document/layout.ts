@@ -10,6 +10,7 @@ import { inset } from '../layout/box';
 import { adjustedSize, type BoxAdjust } from '../layout/box';
 import { LayoutContext, type BoxAdjuster, type DocContext } from '../layout/context';
 import { stretchPrims, stretchRect } from '../layout/stretch';
+import { parseDrawing, type DrawingProps } from '../design/drawing';
 import { primsBounds, strokeUses, type Block, type LinkArea, type LinkTarget, type PageModel, type PageWarning, type Prim } from '../layout/prims';
 import { dotField, ruledLines, squareGrid } from '../layout/widgets';
 import type { PagePlan, SectionModule } from '../sections/types';
@@ -234,11 +235,45 @@ function placeCustomBlock(ctx: LayoutContext, cb: CustomBlock, page: PagePlan): 
     case 'rect':
       prims = [{ t: 'rect', ...box, r: numProp(p.radius, PROP_RANGES.radius, PROP_DEFAULTS.radius), stroke: ctx.stroke('rule', 'ink', { use: 'frame' }), ...(normalizeColor(p.fill) ? { fill: { color: normalizeColor(p.fill)! } } : {}) }];
       break;
+    case 'drawing': {
+      const drawing = parseDrawing(p);
+      if (!drawing) {
+        ctx.warn('layoutError', `El dibujo «${String(p.label ?? cb.id)}» no es válido y no se dibuja.`, { id: cb.id });
+        break;
+      }
+      prims = drawingPrims(drawing, box);
+      for (const asset of new Set(imageAssets(drawing.prims))) {
+        if (!ctx.doc.assets.has(asset)) ctx.warn('missingAsset', `El dibujo «${String(p.label ?? cb.id)}» usa una imagen que no está en esta agenda: se deja un recuadro vacío.`, { name: asset });
+      }
+      break;
+    }
     case 'line':
       prims = [{ t: 'line', x1: box.x, y1: box.y + box.h / 2, x2: box.x + box.w, y2: box.y + box.h / 2, stroke: ctx.stroke('rule', 'ink', { use: 'separator' }) }];
       break;
   }
   ctx.add(`custom.${cb.id}`, String(p.label ?? 'Elemento propio'), prims, { role: 'custom', layer: 15, bbox: box, ...(cb.kind === 'text' ? { text: { kind: 'custom' as const, id: cb.id } } : {}) });
+}
+
+/**
+ * Las primitivas de un dibujo en la caja del elemento. Está guardado con su esquina en el origen y su
+ * tamaño de cuando se copió (`w0` × `h0`): `stretch` lo estira a la caja como a un bloque del programa
+ * (las líneas y los recuadros se estiran sin cambiar de grosor; lo que tiene tamaño propio se mueve) y
+ * `scale` lo escala entero. Una imagen que ya no está en la agenda se avisa.
+ */
+function drawingPrims(drawing: DrawingProps, box: Rect): Prim[] {
+  const from = { x: 0, y: 0, w: drawing.w0, h: drawing.h0 };
+  const prims = drawing.prims as Prim[];
+  const out: Prim[] =
+    drawing.mode === 'scale'
+      ? [{ t: 'group', m: composeAll(translate(box.x, box.y), scale(box.w / drawing.w0, box.h / drawing.h0)), children: prims }]
+      : stretchPrims(prims, from, box);
+  if (drawing.opacity === undefined || drawing.opacity >= 1) return out;
+  return [{ t: 'group', opacity: drawing.opacity, children: out }];
+}
+
+/** Los recursos (imágenes) que usan unas primitivas, entrando en los grupos. */
+function imageAssets(prims: readonly Prim[]): string[] {
+  return prims.flatMap((p) => (p.t === 'image' ? [p.asset] : p.t === 'group' ? imageAssets(p.children) : []));
 }
 
 /** Alto con el que se maqueta un texto de alto automático (en la práctica, sin límite). */

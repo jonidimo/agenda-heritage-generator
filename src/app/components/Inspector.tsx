@@ -555,6 +555,31 @@ function CustomFields({ id, theme, block }: { id: string; theme: AgendaDocument[
           <CustomTextStyle p={p} setProp={setProp} dragColor={dragProp<string>('color')} />
         </>
       )}
+      {cb.kind === 'drawing' && (
+        <>
+          <p className="mb-1 text-[11.5px] leading-snug text-ink-soft">
+            {(() => {
+              const from = p.source as { block?: string; label?: string } | undefined;
+              return from?.block ? `${t('insp.drawingFrom', { name: blockLabel(t, from.block, from.label ?? from.block) })} · ` : '';
+            })()}
+            {t('insp.drawingHint')}
+          </p>
+          <Slider label={t('insp.opacity')} value={Number(p.opacity ?? 1)} min={0.05} max={1} step={0.05} {...dragProp<number>('opacity')} defaultValue={1} />
+          <Toggle label={t('insp.drawingScale')} checked={p.mode === 'scale'} onChange={(v) => setProp('mode', v ? 'scale' : 'stretch')} />
+          <div className="mb-1">
+            <Button
+              variant="outline"
+              onClick={() => {
+                const w0 = Number(p.w0);
+                const h0 = Number(p.h0);
+                if (w0 > 0 && h0 > 0) set({ h: Math.round((cb.w * h0) / w0 * 100) / 100 }, 'aspect');
+              }}
+            >
+              {t('insp.keepAspect')}
+            </Button>
+          </div>
+        </>
+      )}
       {cb.kind === 'image' && (
         <>
           <Field label={t('cover.image')}>

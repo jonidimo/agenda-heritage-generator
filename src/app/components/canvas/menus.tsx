@@ -58,7 +58,7 @@ import {
   tidyBlocks,
   type Scope,
 } from '../../state/actions';
-import { copySelection, cutSelection, pasteSelection } from '../../state/clipboard';
+import { copySelection, cutSelection, duplicateSelection, pasteSelection } from '../../state/clipboard';
 import { customPageHere } from '../../state/customPages';
 import { exportRange } from '../../state/exportFlow';
 import { canHideMonth, hideMonth, trimMonth, visibleMonths } from '../../state/months';
@@ -204,6 +204,9 @@ export function blockMenu(c: MenuContext, block: Block): MenuItem[] {
     const similar = similarBlocks(page, block);
     if (similar.length > 1) items.push({ label: t('menu.selectSimilar', { n: similar.length }), icon: <SquareDashedMousePointer size={14} />, onSelect: () => selectBlocks(page, similar, block) });
     items.push(
+      { label: t('menu.copyAsOwn'), icon: <Copy size={14} />, onSelect: () => void copySelection() },
+      { label: t('menu.duplicateAsOwn'), icon: <Copy size={14} />, onSelect: () => void duplicateSelection() },
+      { separator: true },
       { label: t('align.centerMargins'), icon: <Crosshair size={14} />, onSelect: () => centerBlocks(page, [block], 'margins', 'x', scope) },
       { label: t('insp.reset'), icon: <RotateCcw size={14} />, onSelect: () => resetBlocks(page, [block.id], scope) },
       { separator: true },

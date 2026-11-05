@@ -275,7 +275,7 @@ export const CustomBlockZ = z.object({
   id: z.string(),
   pageType: z.string(),
   pageKey: z.string().nullable().default(null),
-  kind: z.enum(['text', 'image', 'lines', 'dots', 'grid', 'rect', 'line']),
+  kind: z.enum(['text', 'image', 'lines', 'dots', 'grid', 'rect', 'line', 'drawing']),
   x: z.number().transform(clampTo(BLOCK_BOUNDS.pos.min, BLOCK_BOUNDS.pos.max)),
   y: z.number().transform(clampTo(BLOCK_BOUNDS.pos.min, BLOCK_BOUNDS.pos.max)),
   w: z.number().transform(clampTo(BLOCK_BOUNDS.size.min, BLOCK_BOUNDS.size.max)),

@@ -1294,3 +1294,35 @@ test.describe('tiradores con escala y deformación', () => {
     expect((await prop()).fit).toBeUndefined();
   });
 });
+
+test.describe('copiar elementos del programa', () => {
+  test('Ctrl+C / Ctrl+V sobre un texto del programa pega un texto propio editable; sobre un marco, un dibujo', async ({ page }) => {
+    await openQuiet(page);
+    await toWeek(page);
+    await settled(page);
+    const owned = () => page.evaluate<Array<{ kind: string; text?: string }>>(`globalThis.__agenda.getState().design.customBlocks.map((c) => ({ kind: c.kind, text: c.props.text }))`);
+
+    await selectBlock(page, 'week.title');
+    await page.keyboard.press('Control+c');
+    await page.keyboard.press('Control+v');
+    await expect.poll(async () => (await owned()).length).toBe(1);
+    const text = (await owned())[0]!;
+    expect(text.kind).toBe('text');
+    expect(String(text.text).toUpperCase()).toContain('SEMANA');
+
+    // La copia es un texto propio: se edita con doble clic como cualquier otro.
+    const copy = page.locator('[data-block^="custom."]').first();
+    await expect(copy).toBeVisible();
+    await copy.dblclick({ force: true });
+    await expect(page.locator('[data-text-editor]')).toBeFocused();
+    await page.keyboard.press('Escape');
+
+    await selectBlock(page, 'week.minical');
+    await page.keyboard.press('Control+c');
+    await page.keyboard.press('Control+v');
+    await expect.poll(async () => (await owned()).length).toBe(2);
+    expect((await owned())[1]!.kind).toBe('drawing');
+    // El original sigue donde estaba.
+    await expect(page.locator('[data-block="week.minical"]').first()).toBeVisible();
+  });
+});
