@@ -13,7 +13,7 @@ import { stretchPrims, stretchRect } from '../layout/stretch';
 import { primsBounds, type Block, type LinkArea, type LinkTarget, type PageModel, type PageWarning, type Prim } from '../layout/prims';
 import { dotField, ruledLines, squareGrid } from '../layout/widgets';
 import type { PagePlan, SectionModule } from '../sections/types';
-import { compose, composeAll, IDENTITY, rectContains, rotateAround, scale, transformRect, translate, type Matrix, type Rect } from '../util/geometry';
+import { compose, composeAll, IDENTITY, ptToMm, rectContains, rotateAround, scale, transformRect, translate, type Matrix, type Rect } from '../util/geometry';
 import { inkBounds } from '../text/shape';
 import { mergeTokens, type ThemeTokens, type WritingStyle } from '../design/themes';
 import { normalizeColor } from '../util/color';
@@ -182,12 +182,14 @@ function substitute(text: string, ctx: LayoutContext, page: PagePlan): string {
 
 function placeCustomBlock(ctx: LayoutContext, cb: CustomBlock, page: PagePlan): void {
   const x = cb.mirror && ctx.page.side === 'verso' ? ctx.page.w - cb.x - cb.w : cb.x;
-  const box = { x, y: cb.y, w: cb.w, h: cb.h };
+  let box = { x, y: cb.y, w: cb.w, h: cb.h };
   const p = cb.props as Record<string, unknown>;
   let prims: Prim[] = [];
   switch (cb.kind) {
     case 'text': {
-      const t = ctx.textIn(substitute(String(p.text ?? ''), ctx, page), box, {
+      // Con alto automático el texto se maqueta sin límite de alto y la caja se ajusta a sus renglones.
+      const auto = p.autoHeight === true && p.wrap !== false;
+      const t = ctx.textIn(substitute(String(p.text ?? ''), ctx, page), auto ? { ...box, h: AUTO_HEIGHT_PROBE } : box, {
         role: enumProp(p.role, TEXT_ROLES, 'body'),
         size: numProp(p.size, PROP_RANGES.textSize, ctx.theme.sizes.body),
         align: enumProp(p.align, TEXT_ALIGNS, 'left'),
@@ -201,6 +203,7 @@ function placeCustomBlock(ctx: LayoutContext, cb: CustomBlock, page: PagePlan): 
         ...(parseFontSpec(p.font) ? { font: parseFontSpec(p.font)! } : {}),
       });
       prims = t.prims;
+      if (auto) box = { ...box, h: autoTextHeight(t.lines, t.sizePt) };
       break;
     }
     case 'image':
@@ -227,7 +230,15 @@ function placeCustomBlock(ctx: LayoutContext, cb: CustomBlock, page: PagePlan): 
       prims = [{ t: 'line', x1: box.x, y1: box.y + box.h / 2, x2: box.x + box.w, y2: box.y + box.h / 2, stroke: ctx.stroke('rule', 'ink', { use: 'separator' }) }];
       break;
   }
-  ctx.add(`custom.${cb.id}`, String(p.label ?? 'Elemento propio'), prims, { role: 'custom', layer: 15, bbox: box });
+  ctx.add(`custom.${cb.id}`, String(p.label ?? 'Elemento propio'), prims, { role: 'custom', layer: 15, bbox: box, ...(cb.kind === 'text' ? { text: { kind: 'custom' as const, id: cb.id } } : {}) });
+}
+
+/** Alto con el que se maqueta un texto de alto automático (en la práctica, sin límite). */
+const AUTO_HEIGHT_PROBE = 10_000;
+
+/** Alto de `lines` renglones: el interlineado por defecto de `textIn` (1,3 veces el cuerpo). */
+export function autoTextHeight(lines: number, sizePt: number): number {
+  return Math.max(1, lines) * ptToMm(sizePt) * 1.3;
 }
 
 /** Caja agrandada para que sea fácil de tocar (se recorta a la página al resolver el enlace). */

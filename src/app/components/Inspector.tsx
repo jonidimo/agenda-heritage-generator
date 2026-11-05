@@ -483,9 +483,11 @@ function CustomFields({ id, theme }: { id: string; theme: AgendaDocument['ctx'][
         <Field label="W (mm)">
           <NumberInput value={cb.w} step={0.5} min={1} onChange={(v) => set({ w: v }, 'w')} />
         </Field>
-        <Field label="H (mm)">
-          <NumberInput value={cb.h} step={0.5} min={1} onChange={(v) => set({ h: v }, 'h')} />
-        </Field>
+        {!(cb.kind === 'text' && p.autoHeight === true) && (
+          <Field label="H (mm)">
+            <NumberInput value={cb.h} step={0.5} min={1} onChange={(v) => set({ h: v }, 'h')} />
+          </Field>
+        )}
       </div>
       <Toggle label={t('wm.mirror')} checked={cb.mirror} onChange={(v) => set({ mirror: v }, 'mirror')} />
       {cb.kind === 'text' && (
@@ -517,6 +519,7 @@ function CustomFields({ id, theme }: { id: string; theme: AgendaDocument['ctx'][
             />
           </Field>
           <Toggle label={t('insp.upper')} checked={Boolean(p.upper)} onChange={(v) => setProp('upper', v)} />
+          <Toggle label={t('insp.autoHeight')} checked={p.autoHeight === true} onChange={(v) => setProp('autoHeight', v ? true : undefined)} />
           <CustomTextStyle p={p} setProp={setProp} dragColor={dragProp<string>('color')} />
         </>
       )}

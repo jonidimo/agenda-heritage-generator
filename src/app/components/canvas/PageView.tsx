@@ -4,20 +4,22 @@
  */
 import { blockBounds } from '@core/document/layout';
 import type { AgendaDocument } from '@core/document';
-import type { Block } from '@core/layout/prims';
+import type { Block, PageModel } from '@core/layout/prims';
 import { pageInnerSvg } from '@core/render/svg';
 import { fmt, type Rect } from '@core/util/geometry';
 import { useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { unionRect } from '@core/layout/align';
-import { clampMoveDelta, moveBlocks, reflowable, resizeBoxRecipe, resizeCustomBlock, scaleBlock } from '../../state/actions';
+import type { Scope } from '../../state/actions';
+import { clampMoveDelta, moveBlocks, reflowable, resizeBoxRecipe, resizeCustomRecipe, scaleBlock } from '../../state/actions';
 import { frameThrottle, type FrameThrottle } from '../../state/frame';
 import { MIN_BOX } from '@core/layout/box';
 import { HANDLES, resizeRect, type Handle } from '@core/layout/resize';
 import { openMenuAt } from '../ContextMenu';
 import { blockMenu, multiMenu, pageMenu } from './menus';
+import { editableInPlace, TextEditor } from './TextEditor';
 import { assetHref, onAssetUrlsChange } from '../../state/assetUrls';
 import { useT } from '../../i18n/ui';
-import { useStore, type Selection } from '../../state/store';
+import { useStore, type Recipe, type Selection } from '../../state/store';
 import { jumpToPage } from '../../state/navigation';
 import { currentUiZoom } from '../../state/uiScale';
 
@@ -56,8 +58,13 @@ interface Drag {
 }
 
 const SNAP_PX = 7;
+/** Alto o ancho (px) por debajo del cual los tiradores de los lados se corren hacia afuera, y cuánto. */
+const SIDE_ROOM_PX = 44;
+const SIDE_OUTSET_PX = 12;
 /** Clave que liga la vista previa de un redimensionado con su confirmación. */
 const reflowKey = (page: { key: string }, block: Block): string => `box:${page.key}:${block.id}`;
+/** Cambio de caja de un bloque: los elementos propios guardan su caja; los del programa, un ajuste sobre la suya. */
+const resizeRecipe = (page: PageModel, block: Block, box: Rect, scope: Scope): Recipe => (block.role === 'custom' ? resizeCustomRecipe(page, block, box) : resizeBoxRecipe(page, block, box, scope));
 const RESIZE_CURSOR: Record<Handle, string> = { n: 'ns-resize', s: 'ns-resize', e: 'ew-resize', w: 'ew-resize', ne: 'nesw-resize', sw: 'nesw-resize', nw: 'nwse-resize', se: 'nwse-resize' };
 /** Movimiento mínimo (px de pantalla) para que un clic se convierta en arrastre. */
 const DRAG_START_PX = 3;
@@ -73,6 +80,8 @@ export function PageView({ doc, index, scale, interactive = true }: Props) {
   const [live, setLive] = useState<Rect | null>(null);
   const [liveDelta, setLiveDelta] = useState<{ dx: number; dy: number } | null>(null);
   const [marquee, setMarquee] = useState<Rect | null>(null);
+  /** Elemento cuyo texto se edita en su lugar. */
+  const [editing, setEditing] = useState<string | null>(null);
   const selection = useStore((s) => s.selection);
   const selectedIds = useStore((s) => s.selectedIds);
   const select = useStore((s) => s.select);
@@ -95,13 +104,22 @@ export function PageView({ doc, index, scale, interactive = true }: Props) {
    * acá y no en cada zona: un elemento ya elegido tiene encima su capa de arrastre y el segundo clic
    * no llegaría al botón del enlace.
    */
-  const followLinkAt = (e: React.MouseEvent): void => {
-    if (links.length === 0) return;
+  const followLinkAt = (e: React.MouseEvent): boolean => {
+    if (links.length === 0) return false;
     const p = toMm(e);
     const hit = links
       .filter((l) => p.x >= l.rect.x && p.x <= l.rect.x + l.rect.w && p.y >= l.rect.y && p.y <= l.rect.y + l.rect.h)
       .sort((a, b) => a.rect.w * a.rect.h - b.rect.w * b.rect.h)[0];
     if (hit) followLink(hit);
+    return Boolean(hit);
+  };
+  /** Doble clic: el enlace que hay bajo el puntero y, si no hay, edita el texto del elemento en su lugar. */
+  const onDoubleClick = (e: React.MouseEvent): void => {
+    if (followLinkAt(e) || !interactive) return;
+    const block = blockAt(e);
+    if (!block || !editableInPlace(block)) return;
+    select(selOf(block));
+    setEditing(block.id);
   };
 
   // Cambia de identidad cuando llega una vista previa de imagen/PDF: así se vuelve a dibujar la página.
@@ -198,7 +216,7 @@ export function PageView({ doc, index, scale, interactive = true }: Props) {
         const el = svgRef.current?.querySelector<SVGGElement>(`[data-block="${CSS.escape(b.id)}"]`) ?? null;
         return { block: b, el, base: el?.getAttribute('transform') ?? null, origin: blockBounds(b) };
       });
-    const reflow = mode === 'resize' && reflowable(block);
+    const reflow = mode === 'resize' && (block.role === 'custom' || reflowable(block));
     drag.current = {
       block,
       mode,
@@ -217,7 +235,7 @@ export function PageView({ doc, index, scale, interactive = true }: Props) {
       moved: false,
       additive: false,
       reflow,
-      push: reflow ? frameThrottle((r: Rect) => useStore.getState().preview(resizeBoxRecipe(page, block, r, scope), reflowKey(page, block))) : null,
+      push: reflow ? frameThrottle((r: Rect) => useStore.getState().preview(resizeRecipe(page, block, r, scope), reflowKey(page, block))) : null,
     };
     wrapRef.current?.setPointerCapture?.(e.pointerId);
     e.preventDefault();
@@ -329,7 +347,7 @@ export function PageView({ doc, index, scale, interactive = true }: Props) {
       if (commit && d.moved && d.box) {
         // Lo último que se movió llega a la vista previa antes de confirmarla (la confirmación la adopta).
         d.push?.flush();
-        useStore.getState().commit(resizeBoxRecipe(page, d.block, d.box, scope), reflowKey(page, d.block));
+        useStore.getState().commit(resizeRecipe(page, d.block, d.box, scope), reflowKey(page, d.block));
       } else {
         d.push?.cancel();
         useStore.getState().clearPreview();
@@ -369,7 +387,6 @@ export function PageView({ doc, index, scale, interactive = true }: Props) {
     setLiveDelta(null);
     if (!commit || !d.moved) return;
     if (d.mode === 'move') moveBlocks(page, d.parts.map((m) => ({ block: m.block, dx: d.dx, dy: d.dy })), scope);
-    else if (d.block.role === 'custom' && d.box) resizeCustomBlock(page, d.block, d.box);
     else scaleBlock(page, d.block, d.factor, scope);
   };
 
@@ -406,7 +423,7 @@ export function PageView({ doc, index, scale, interactive = true }: Props) {
       onPointerUp={(e) => finish(e, true)}
       onPointerCancel={(e) => finish(e, false)}
       onContextMenu={onContextMenu}
-      onDoubleClick={followLinkAt}
+      onDoubleClick={onDoubleClick}
       tabIndex={interactive ? 0 : undefined}
       aria-label={interactive ? t('page.keys', { n: index + 1 }) : undefined}
       onKeyDown={(e) => {
@@ -486,15 +503,24 @@ export function PageView({ doc, index, scale, interactive = true }: Props) {
           ))}
         </div>
       )}
-      {interactive && single && selBounds && selected?.editable && (
+      {interactive && editing && (() => {
+        const target = page.blocks.find((b) => b.id === editing);
+        return target?.text ? <TextEditor key={`${page.key}:${editing}`} doc={doc} page={page} blockId={editing} source={target.text} scale={scale} onDone={() => setEditing(null)} /> : null;
+      })()}
+      {interactive && single && selBounds && selected?.editable && !editing && (
         <>
           {/* Capa del elemento seleccionado: con el dedo se arrastra desde acá sin desplazar la página. */}
           <div data-sel-surface="" className="absolute cursor-move" style={{ left: selBounds.x * scale, top: selBounds.y * scale, width: selBounds.w * scale, height: selBounds.h * scale, touchAction: 'none' }} />
           {(selected.role === 'custom' || reflowable(selected) ? HANDLES : (['se'] as const)).map((h) => {
             // Esquinas: cuadrados; lados: barras sobre el borde. Grandes para el dedo.
             const corner = h.length === 2;
-            const cx = (h.includes('w') ? selBounds.x : h.includes('e') ? selBounds.x + selBounds.w : selBounds.x + selBounds.w / 2) * scale;
-            const cy = (h.includes('n') ? selBounds.y : h.includes('s') ? selBounds.y + selBounds.h : selBounds.y + selBounds.h / 2) * scale;
+            // En una caja chica (un renglón de texto) las barras de los lados quedarían debajo de las esquinas:
+            // se corren hacia afuera para que cada tirador se pueda tomar.
+            const tightV = selBounds.h * scale < SIDE_ROOM_PX;
+            const tightH = selBounds.w * scale < SIDE_ROOM_PX;
+            const out = SIDE_OUTSET_PX;
+            const cx = (h.includes('w') ? selBounds.x : h.includes('e') ? selBounds.x + selBounds.w : selBounds.x + selBounds.w / 2) * scale + (tightV && h === 'e' ? out : tightV && h === 'w' ? -out : 0);
+            const cy = (h.includes('n') ? selBounds.y : h.includes('s') ? selBounds.y + selBounds.h : selBounds.y + selBounds.h / 2) * scale + (tightH && h === 's' ? out : tightH && h === 'n' ? -out : 0);
             const [w, hh] = corner ? [14, 14] : h === 'n' || h === 's' ? [22, 8] : [8, 22];
             return (
               <div

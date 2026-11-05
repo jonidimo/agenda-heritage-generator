@@ -151,6 +151,25 @@ export interface LinkArea {
   cat: LinkCategory;
 }
 
+/**
+ * De dónde sale el texto de un bloque, para poder editarlo en su lugar: la propiedad del diseño que
+ * hay que cambiar. Los nombres de mes, las fechas y los números no tienen origen (los calcula el
+ * programa).
+ */
+export type TextSource =
+  /** Texto de un elemento propio. */
+  | { kind: 'custom'; id: string }
+  /** Campo de la persona: portada y dedicatoria. */
+  | { kind: 'persona'; field: 'name' | 'title' | 'subtitle' | 'dedicationTitle' | 'dedication' }
+  /** Frase de un mes (la `index`-ésima de las doce). */
+  | { kind: 'phrase'; index: number }
+  /** Texto fijo del programa (títulos, rótulos), por su ruta en las cadenas del idioma. */
+  | { kind: 'label'; path: string }
+  /** Título o texto de una página propia. */
+  | { kind: 'page'; id: string; field: 'title' | 'text' }
+  /** Título o texto de una plantilla de página. */
+  | { kind: 'template'; id: string; field: 'title' | 'text' };
+
 /** Unidad editable de una página: se puede seleccionar, mover, escalar u ocultar. */
 export interface Block {
   /** Identificador estable dentro del tipo de página (p. ej. `header.title`, `day.3.label`). */
@@ -166,6 +185,8 @@ export interface Block {
   box?: Rect;
   /** No admite cambiar su ancho y su alto por los lados (p. ej. dibujado girado): solo se escala. */
   rigid?: true;
+  /** De dónde sale su texto principal, si se puede editar en su lugar. */
+  text?: TextSource;
   prims: Prim[];
   role: BlockRole;
   editable: boolean;

@@ -123,3 +123,9 @@ input[type='checkbox'] {
   outline-offset: 2px;
   animation: reveal-flash 1.8s ease-out;
 }
+
+/* Editor de texto en su lugar: el texto del cuadro es transparente (se ve el dibujo de la página), así que la selección es un velo. */
+.text-editor::selection {
+  background: rgb(37 99 235 / 0.28);
+  color: transparent;
+}

@@ -10,7 +10,7 @@ import { TABULAR_FEATURES } from '../text/shape';
 import { ptToMm, type Rect } from '../util/geometry';
 import { cols, rows } from './box';
 import type { LayoutContext, SizeKey, TextAtOpts } from './context';
-import { circle, line, type DotsPrim, type Prim, type Stroke, type TextPrim } from './prims';
+import { circle, line, type DotsPrim, type Prim, type Stroke, type TextPrim, type TextSource } from './prims';
 
 /* ---------- Texto de una línea ---------- */
 
@@ -90,13 +90,13 @@ export function pageHeader(
   r: Rect,
   title: string,
   right: string,
-  opts: { titleSize?: SizeKey | number; rightSize?: SizeKey | number; rule?: 'rule' | 'strong' | 'heavy' | 'none'; idPrefix?: string; gap?: number } = {},
+  opts: { titleSize?: SizeKey | number; rightSize?: SizeKey | number; rule?: 'rule' | 'strong' | 'heavy' | 'none'; idPrefix?: string; gap?: number; titleSource?: TextSource } = {},
 ): number {
   const titleRun = ctx.run(title, { role: 'title', size: opts.titleSize ?? 'title' });
   const baseline = r.y + titleRun.ascent * 0.92;
   const prefix = opts.idPrefix ?? 'header';
   const t = textLine(ctx, `${prefix}.title`, title, { x: r.x, baseline }, { role: 'title', size: opts.titleSize ?? 'title' });
-  ctx.add(`${prefix}.title`, 'Título', [t.prim]);
+  ctx.add(`${prefix}.title`, 'Título', [t.prim], opts.titleSource ? { text: opts.titleSource } : {});
   let extra = 0;
   if (right) {
     const free = r.w - t.width - 4;

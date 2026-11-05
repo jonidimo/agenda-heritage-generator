@@ -25,6 +25,7 @@ import {
   type Side,
   type Stroke,
   type TextPrim,
+  type TextSource,
   type WarningCode,
 } from './prims';
 
@@ -313,7 +314,7 @@ export class LayoutContext {
 
   /* ---------- Bloques ---------- */
 
-  add(id: string, label: string, prims: Prim[], opts: { role?: BlockRole; editable?: boolean; layer?: number; bbox?: Rect; links?: LinkArea[]; rigid?: boolean } = {}): Block {
+  add(id: string, label: string, prims: Prim[], opts: { role?: BlockRole; editable?: boolean; layer?: number; bbox?: Rect; links?: LinkArea[]; rigid?: boolean; text?: TextSource } = {}): Block {
     const bbox = opts.bbox ?? primsBounds(prims) ?? { x: 0, y: 0, w: 0, h: 0 };
     const box = this.boxes.get(id);
     const block: Block = {
@@ -322,6 +323,7 @@ export class LayoutContext {
       bbox,
       ...(box ? { box } : {}),
       ...(opts.rigid ? { rigid: true as const } : {}),
+      ...(opts.text ? { text: opts.text } : {}),
       prims,
       role: opts.role ?? 'content',
       editable: opts.editable ?? true,

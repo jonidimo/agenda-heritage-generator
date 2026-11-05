@@ -12,7 +12,7 @@ import { line, rect, type LinkArea, type Prim } from '../layout/prims';
 import { heartIcon, miniCalendar, ruledLines, sectionHeader, textLine, writingArea } from '../layout/widgets';
 import { inkBounds, TABULAR_FEATURES } from '../text/shape';
 import { ptToMm } from '../util/geometry';
-import { checklist, fieldRows, headed, order } from './common';
+import { checklist, fieldRows, headed, label, order } from './common';
 import { opt, param, type SectionModule } from './types';
 
 /* ---------- Portada interior ---------- */
@@ -47,19 +47,19 @@ export const titlePage: SectionModule = {
     if (showName) {
       baseline = clear(d.persona.name, 'title', 'title', baseline);
       const n = textLine(ctx, 'title.name', d.persona.name, { x: c.x + c.w / 2, baseline }, { role: 'title', size: 'title', align: 'center' });
-      ctx.add('title.name', 'Nombre', [n.prim]);
+      ctx.add('title.name', 'Nombre', [n.prim], { text: { kind: 'persona', field: 'name' } });
       baseline += ptToMm(ctx.theme.sizes.title) * 1.3;
       titleBaseline = baseline - ptToMm(ctx.theme.sizes.titleSmall) + titleCap;
     } else titleBaseline = clear(title, 'title', 'titleSmall', baseline - ptToMm(ctx.theme.sizes.titleSmall) + titleCap);
     const t = ctx.textBlock('title.title', { x: c.x, y: titleBaseline - titleCap, w: c.w, h: 30 }, title, { role: 'title', size: 'titleSmall', align: 'center', wrap: true, fit: true });
-    ctx.add('title.title', 'Título', t.prims);
+    ctx.add('title.title', 'Título', t.prims, { text: { kind: 'persona', field: 'title' } });
     if (d.persona.subtitle) {
       const st = ctx.textBlock('title.subtitle', { x: c.x, y: t.natural.bbox.y + t.natural.bbox.h + 4, w: c.w, h: 12 }, d.persona.subtitle, { role: 'label', size: 'label', upper: true, tracking: true, align: 'center', wrap: true });
-      ctx.add('title.subtitle', 'Subtítulo', st.prims);
+      ctx.add('title.subtitle', 'Subtítulo', st.prims, { text: { kind: 'persona', field: 'subtitle' } });
     }
     if (param(page, 'showKicker', true)) {
       const k = textLine(ctx, 'title.kicker', ctx.s.titlePage.kicker, { x: c.x + c.w / 2, baseline: c.y + c.h }, { role: 'label', size: 'labelSmall', upper: true, tracking: 0.2, align: 'center' });
-      ctx.add('title.kicker', 'Rótulo inferior', [k.prim]);
+      ctx.add('title.kicker', 'Rótulo inferior', [k.prim], { text: label('titlePage.kicker') });
     }
   },
 };
@@ -85,10 +85,10 @@ export const dedication: SectionModule = {
     const top = c.y + Math.max(0, (c.h - titleH - bodyH) / 2);
     if (titleText) {
       const t = ctx.textBlock('dedication.title', { x: c.x, y: top, w: c.w, h: titleH }, titleText, { role: 'title', size: 'title', wrap: true, fit: true });
-      ctx.add('dedication.title', 'Título de la dedicatoria', t.prims);
+      ctx.add('dedication.title', 'Título de la dedicatoria', t.prims, { text: { kind: 'persona', field: 'dedicationTitle' } });
     }
     const b = ctx.textBlock('dedication.body', { x: c.x, y: top + titleH, w: c.w, h: c.y + c.h - top - titleH }, body, { role: 'quote', size: measured.sizePt, wrap: true, leading: 1.6 });
-    ctx.add('dedication.body', 'Texto de la dedicatoria', b.prims);
+    ctx.add('dedication.body', 'Texto de la dedicatoria', b.prims, { text: { kind: 'persona', field: 'dedication' } });
   },
 };
 
@@ -101,7 +101,7 @@ export const personalInfo: SectionModule = {
   plan: (_doc, item) => [{ key: 'front:personal', type: 'personalInfo', section: item.id, title: 'Datos personales', group: 'front', params: { ...item.options } }],
   layout(ctx, page) {
     const s = ctx.s.personal;
-    let r = headed(ctx, s.title, '');
+    let r = headed(ctx, s.title, '', { titleSource: label('personal.title') });
     const pitch = Math.max(8, ctx.theme.writing.pitch * 1.35);
     const h1 = sectionHeader(ctx, r, s.belongsTo, 'personal.owner');
     r = takeTop(r, h1)[1];
@@ -183,7 +183,7 @@ export const toc: SectionModule = {
     const part = param(page, 'part', 0);
     const per = Math.ceil(entries.length / parts);
     const mine = entries.slice(part * per, (part + 1) * per);
-    const area = headed(ctx, ctx.s.toc.title, '');
+    const area = headed(ctx, ctx.s.toc.title, '', { titleSource: label('toc.title') });
     // Las entradas se reparten en la caja del elemento (sin ajustes, es el área de la página).
     const r = ctx.rect('toc.entries', area);
     const pitch = Math.min(7, r.h / Math.max(1, mine.length));
@@ -299,7 +299,7 @@ export const birthdays: SectionModule = {
   layout(ctx, page) {
     const parts = param(page, 'parts', 1);
     const part = param(page, 'part', 0);
-    const r = headed(ctx, ctx.s.birthdays.title, parts === 2 ? `${part === 0 ? '1–6' : '7–12'}` : '', { titleSize: 'titleSmall' });
+    const r = headed(ctx, ctx.s.birthdays.title, parts === 2 ? `${part === 0 ? '1–6' : '7–12'}` : '', { titleSize: 'titleSmall', titleSource: label('birthdays.title') });
     const months = parts === 2 ? 6 : 12;
     const cells = grid(r, parts === 2 ? 1 : 2, parts === 2 ? 6 : 6, 6, 3).flat();
     const names = monthNames(ctx.doc.locale);
@@ -332,7 +332,7 @@ export const bestSelf: SectionModule = {
   plan: (_doc, item) => [{ key: 'front:bestSelf', type: 'bestSelf', section: item.id, title: 'Mejor versión posible', group: 'front' }],
   layout(ctx) {
     const s = ctx.s.pages.bestSelf;
-    let r = headed(ctx, s.title, s.horizon, { titleSize: 'titleSmall' });
+    let r = headed(ctx, s.title, s.horizon, { titleSize: 'titleSmall', titleSource: label('pages.bestSelf.title') });
     const prompt = ctx.textBlock('bestSelf.prompt', { ...r, h: 18 }, s.prompt, { role: 'quote', size: ctx.theme.sizes.body + 1, wrap: true, fit: true });
     ctx.add('bestSelf.prompt', 'Consigna', prompt.prims);
     r = takeTop(r, prompt.natural.bbox.h + 4)[1];
@@ -369,7 +369,7 @@ export const vision: SectionModule = {
     const s = ctx.s.vision;
     const cats = param<string[]>(page, 'cats', []);
     const part = param(page, 'part', 0);
-    const area = headed(ctx, part === 0 ? s.title : String(ctx.doc.design.calendar.year), s.subtitle, { titleSize: 'title' });
+    const area = headed(ctx, part === 0 ? s.title : String(ctx.doc.design.calendar.year), s.subtitle, { titleSize: 'title', ...(part === 0 ? { titleSource: label('vision.title') } : {}) });
     // El marco es el contenedor de la tabla: el encabezado y las filas se reparten dentro de él, así
     // al cambiarlo de tamaño la tabla entera se vuelve a repartir. Cada fila y el encabezado se
     // ajustan además por su cuenta.
@@ -421,7 +421,7 @@ export const actionPlan: SectionModule = {
     const part = param(page, 'part', 0);
     const goals = param(page, 'goals', 3);
     const mantra = param(page, 'mantra', true);
-    const r = headed(ctx, s.title, part === 0 ? s.subtitle : s.subtitleEnd, { titleSize: 'title' });
+    const r = headed(ctx, s.title, part === 0 ? s.subtitle : s.subtitleEnd, { titleSize: 'title', titleSource: label('actionPlan.title') });
     const slots = rows(r, 2, 6);
     for (let k = 0; k < 2; k++) {
       const n = part * 2 + k + 1;
@@ -497,7 +497,7 @@ export const moodYear: SectionModule = {
   plan: (doc, item) => [{ key: `front:mood:${doc.design.calendar.year}`, type: 'moodYear', section: item.id, title: 'Año en píxeles', group: 'front' }],
   layout(ctx) {
     const s = ctx.s.moodYear;
-    let r = headed(ctx, s.title, String(ctx.doc.design.calendar.year), { titleSize: 'titleSmall' });
+    let r = headed(ctx, s.title, String(ctx.doc.design.calendar.year), { titleSize: 'titleSmall', titleSource: label('moodYear.title') });
     const hint = ctx.textBlock('mood.hint', { ...r, h: 9 }, `${s.hint} ${ctx.s.pages.mood.scale}`, { role: 'body', size: 'small', wrap: true, fit: true });
     ctx.add('mood.hint', 'Consigna', hint.prims);
     r = takeTop(r, hint.natural.bbox.h + 3)[1];

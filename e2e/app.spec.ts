@@ -431,6 +431,8 @@ test('un texto propio se estira solo a lo ancho con el tirador del lado, y en pr
   await open(page);
   await page.getByRole('button', { name: 'Texto', exact: true }).first().click();
   const custom = () => page.evaluate(() => (globalThis as unknown as { __agenda: { getState: () => { design: { customBlocks: Array<{ w: number; h: number }> } } } }).__agenda.getState().design.customBlocks.at(-1)!);
+  // Un texto nuevo sigue a sus renglones (alto automático); acá se prueba el de alto fijo.
+  await page.evaluate(`globalThis.__agenda.getState().update((d) => { const c = d.customBlocks.at(-1); c.props = { ...c.props, autoHeight: false }; }, 'e2e-fixed')`);
   const before = await custom();
   const side = (await page.locator('[data-handle="e"]').boundingBox())!;
   await page.mouse.move(side.x + side.width / 2, side.y + side.height / 2);
@@ -980,5 +982,106 @@ test.describe('tiradores con reflujo en bloques del programa', () => {
 
     await page.keyboard.press('Control+z');
     await expect.poll(async () => (await boxState(page, 'week.notes')).committedDw).toBeNull();
+  });
+});
+
+/** Lo que el almacén guarda de un texto de la persona, en vista previa y confirmado. */
+interface PersonaState {
+  previewName: string | null;
+  committedName: string;
+  past: number;
+  hasPreview: boolean;
+  editors: number;
+}
+const personaState = (page: Page): Promise<PersonaState> =>
+  page.evaluate<PersonaState>(`(() => {
+    const s = globalThis.__agenda.getState();
+    return {
+      previewName: s.previewDesign?.persona.name ?? null,
+      committedName: s.design.persona.name,
+      past: s.past.length,
+      hasPreview: s.previewDesign !== null,
+      editors: document.querySelectorAll('[data-text-editor]').length,
+    };
+  })()`);
+
+test.describe('texto en su lugar', () => {
+  test('doble clic edita un texto del programa: vista previa al escribir y un solo paso al confirmar', async ({ page }) => {
+    await openQuiet(page);
+    // La portada muestra el nombre solo si la persona tiene uno.
+    await page.evaluate(`globalThis.__agenda.getState().update((d) => { d.persona.name = 'Norma'; }, 'e2e-name')`);
+    const name = page.locator('[data-block="title.name"]').first();
+    await expect(name).toBeVisible();
+    const before = await personaState(page);
+    await name.dblclick({ force: true });
+    const editor = page.locator('[data-text-editor]');
+    await expect(editor).toBeVisible();
+    await expect(editor).toBeFocused();
+    await page.keyboard.press('Control+a');
+    await page.keyboard.type('Ana María');
+    await frames(page);
+
+    const during = await personaState(page);
+    expect(during.previewName).toBe('Ana María');
+    expect(during.committedName).toBe(before.committedName);
+    expect(during.past).toBe(before.past);
+    expect(during.editors).toBe(1);
+
+    // En un texto de un renglón, Enter confirma.
+    await page.keyboard.press('Enter');
+    await expect(editor).toHaveCount(0);
+    const after = await personaState(page);
+    expect(after.committedName).toBe('Ana María');
+    expect(after.hasPreview).toBe(false);
+    expect(after.past).toBe(before.past + 1);
+
+    await page.keyboard.press('Control+z');
+    await expect.poll(async () => (await personaState(page)).committedName).toBe(before.committedName);
+  });
+
+  test('Esc descarta lo escrito y no deja vista previa', async ({ page }) => {
+    await openQuiet(page);
+    // La portada muestra el nombre solo si la persona tiene uno.
+    await page.evaluate(`globalThis.__agenda.getState().update((d) => { d.persona.name = 'Norma'; }, 'e2e-name')`);
+    const name = page.locator('[data-block="title.name"]').first();
+    await name.dblclick({ force: true });
+    const editor = page.locator('[data-text-editor]');
+    await expect(editor).toBeFocused();
+    await page.keyboard.press('Control+a');
+    await page.keyboard.type('Otro nombre');
+    await frames(page);
+    expect((await personaState(page)).previewName).toBe('Otro nombre');
+    const before = await personaState(page);
+    await page.keyboard.press('Escape');
+    await expect(editor).toHaveCount(0);
+    const after = await personaState(page);
+    expect(after.hasPreview).toBe(false);
+    expect(after.committedName).toBe(before.committedName);
+    expect(after.past).toBe(before.past);
+  });
+
+  test('un texto propio crece con sus renglones si tiene alto automático', async ({ page }) => {
+    await openQuiet(page);
+    await page.evaluate(`globalThis.__agenda.getState().update((d) => {
+      d.customBlocks.push({ id: 'e2e', pageType: 'titlePage', pageKey: null, kind: 'text', x: 20, y: 20, w: 40, h: 30, mirror: false, props: { text: 'Hola', size: 10, autoHeight: true } });
+    }, 'e2e')`);
+    const block = page.locator('[data-block="custom.e2e"]').first();
+    await expect(block).toBeVisible();
+    const h1 = (await block.boundingBox())!.height;
+    await block.dblclick({ force: true });
+    const editor = page.locator('[data-text-editor]');
+    await expect(editor).toBeFocused();
+    await page.keyboard.press('Control+a');
+    await page.keyboard.type('Primer renglón');
+    await page.keyboard.press('Enter');
+    await page.keyboard.type('Segundo renglón');
+    await page.keyboard.press('Enter');
+    await page.keyboard.type('Tercero');
+    await frames(page);
+    await page.keyboard.press('Control+Enter');
+    await expect(editor).toHaveCount(0);
+    const saved = await page.evaluate<string>(`globalThis.__agenda.getState().design.customBlocks.find((c) => c.id === 'e2e').props.text`);
+    expect(saved).toBe('Primer renglón\nSegundo renglón\nTercero');
+    await expect.poll(async () => (await page.locator('[data-block="custom.e2e"]').first().boundingBox())!.height).toBeGreaterThan(h1 * 2);
   });
 });

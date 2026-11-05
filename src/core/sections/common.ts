@@ -4,13 +4,16 @@ import { dateOrder, formatDayMonth, weekdayNames } from '../calendar/locale';
 import { monthNames } from '../calendar/locale';
 import { takeTop } from '../layout/box';
 import type { LayoutContext } from '../layout/context';
-import type { Prim } from '../layout/prims';
+import type { Prim, TextSource } from '../layout/prims';
 import { line } from '../layout/prims';
 import { checkCircle, pageHeader, ruledLines } from '../layout/widgets';
 import type { Rect } from '../util/geometry';
 import type { PagePlan } from './types';
 
 /** Encabezado estándar y caja restante debajo. */
+/** Origen de un texto fijo del programa: su ruta en las cadenas del idioma (el editor lo cambia en `persona.labels`). */
+export const label = (path: string): TextSource => ({ kind: 'label', path });
+
 export function headed(ctx: LayoutContext, title: string, right: string, opts: Parameters<typeof pageHeader>[4] = {}): Rect {
   const used = pageHeader(ctx, ctx.content, title, right, opts);
   return takeTop(ctx.content, used)[1];

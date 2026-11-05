@@ -5,8 +5,10 @@
  */
 import type { BlockLink, BlockOverride, CustomBlock, Design } from '@core/design/schema';
 import { newId } from '@core/util/hash';
+import { readTextSource, writeTextSource } from '@core/design/textSource';
+import { resolveStrings } from '@core/i18n';
 import { withPageStyle } from '@core/design/pageStyles';
-import type { Block, PageModel } from '@core/layout/prims';
+import type { Block, PageModel, TextSource } from '@core/layout/prims';
 import type { Rect } from '@core/util/geometry';
 import { blockBounds, findOverride as appliedOverride } from '@core/document/layout';
 import { MIN_BOX, naturalBox, storeAdjust, type BoxAdjust } from '@core/layout/box';
@@ -241,17 +243,37 @@ export function resetPageStyle(page: PageModel, scope: Scope): void {
  * Nuevo tamaño y lugar de un elemento propio (la caja tal como se ve en esta página). En una página
  * izquierda, un elemento espejado guarda su posición como la de la página derecha.
  */
-export function resizeCustomBlock(page: PageModel, block: Block, box: Rect, coalesce?: string): void {
-  if (block.role !== 'custom' || !block.id.startsWith('custom.')) return;
-  useStore.getState().update((d) => {
+export function resizeCustomRecipe(page: PageModel, block: Block, box: Rect): Recipe {
+  return (d) => {
+    if (block.role !== 'custom' || !block.id.startsWith('custom.')) return;
     const cb = d.customBlocks.find((c) => c.id === block.id.slice(7));
     if (!cb) return;
-    const w = r2(Math.max(0.5, box.w));
     cb.x = r2(cb.mirror && page.side === 'verso' ? page.w - box.x - box.w : box.x);
     cb.y = r2(box.y);
-    cb.w = w;
+    cb.w = r2(Math.max(0.5, box.w));
+    // Con alto automático, `box.h` es el de los renglones: solo se guarda si el usuario lo cambió
+    // (entonces el alto deja de ser automático).
+    if (cb.props.autoHeight === true) {
+      if (Math.abs(box.h - block.bbox.h) < 0.01) return;
+      cb.props = { ...cb.props, autoHeight: false };
+    }
     cb.h = r2(Math.max(0.5, box.h));
-  }, coalesce);
+  };
+}
+
+export function resizeCustomBlock(page: PageModel, block: Block, box: Rect, coalesce?: string): void {
+  if (block.role !== 'custom' || !block.id.startsWith('custom.')) return;
+  useStore.getState().update(resizeCustomRecipe(page, block, box), coalesce);
+}
+
+/** Receta que pone `value` en la propiedad de la que sale un texto (ver `TextSource`). */
+export function textSourceRecipe(source: TextSource, value: string): Recipe {
+  return (d) => writeTextSource(d, source, value, resolveStrings(d.locale));
+}
+
+/** El texto tal como se edita: el crudo, con variables, sin mayúsculas. */
+export function textSourceValue(design: Design, source: TextSource): string {
+  return readTextSource(design, source, resolveStrings(design.locale));
 }
 
 export function scaleBlock(page: PageModel, block: Block, factor: number, scope: Scope, coalesce?: string): void {
@@ -461,7 +483,7 @@ export function addCustomBlock(page: PageModel, kind: CustomBlock['kind'], label
   const x = page.side === 'verso' ? page.w - def.x - w : def.x;
   const props: Record<string, unknown> =
     kind === 'text'
-      ? { text: '{name}', role: 'quote', size: 11, align: 'right', label: labels.text }
+      ? { text: '{name}', role: 'quote', size: 11, align: 'right', autoHeight: true, label: labels.text }
       : kind === 'image'
         ? { assetId: assetId ?? design?.assets.find((a) => a.kind !== 'pdf')?.id ?? '', fit: 'contain', opacity: 1, label: labels.image }
         : { label: labels[kind as 'rect' | 'lines' | 'dots'] ?? kind };

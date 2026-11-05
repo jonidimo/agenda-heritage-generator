@@ -8,10 +8,10 @@ import { fmt } from '../i18n';
 import { assetPrims } from '../document/assets';
 import { inset, rows, takeBottom, takeTop } from '../layout/box';
 import type { LayoutContext } from '../layout/context';
-import { line, rect, type Prim } from '../layout/prims';
+import { line, rect, type Prim, type TextSource } from '../layout/prims';
 import { ruledLines, sectionHeader, textLine, writingArea } from '../layout/widgets';
 import type { Rect } from '../util/geometry';
-import { fieldLine, headed, pageTextVars } from './common';
+import { fieldLine, headed, label, pageTextVars } from './common';
 import { opt, param, type PagePlan, type SectionModule } from './types';
 
 function pagesDraft(item: { id: string; options: Record<string, unknown> }, prefix: string, type: string, title: string, count: number) {
@@ -83,7 +83,7 @@ export const passwords: SectionModule = {
     const part = param(page, 'part', 0);
     const detailedOpt = param<string | boolean>(page, 'detailed', 'auto');
     const detailed = detailedOpt === true || (detailedOpt === 'auto' && ctx.has('password-log'));
-    let r = headed(ctx, s.title, '', { titleSize: 'title' });
+    let r = headed(ctx, s.title, '', { titleSize: 'title', titleSource: label('passwords.title') });
     if (part === 0) {
       const note = ctx.textBlock('passwords.note', { ...r, h: 9 }, s.note, { role: 'quote', size: ctx.theme.sizes.small + 0.5, wrap: true, fit: true, color: '#555555' });
       ctx.add('passwords.note', 'Consejo de seguridad', note.prims);
@@ -116,7 +116,7 @@ export const contacts: SectionModule = {
   layout(ctx, page) {
     const s = ctx.s.contacts;
     const cats = (param<string[] | null>(page, 'categories', null) ?? s.categories) as string[];
-    const r = headed(ctx, s.title, '', { titleSize: 'title' });
+    const r = headed(ctx, s.title, '', { titleSize: 'title', titleSource: label('contacts.title') });
     const parts = rows(r, cats.length, 4);
     const pitch = Math.max(7.5, ctx.theme.writing.pitch * 1.35);
     cats.forEach((cat, i) => {
@@ -137,7 +137,7 @@ export const health: SectionModule = {
   layout(ctx, page) {
     const s = ctx.s.health;
     const part = param(page, 'part', 0);
-    let r = headed(ctx, s.title, '', { titleSize: 'title' });
+    let r = headed(ctx, s.title, '', { titleSize: 'title', titleSource: label('health.title') });
     if (part === 0) {
       const pitch = Math.max(7.5, ctx.theme.writing.pitch * 1.25);
       const p: Prim[] = [];
@@ -163,7 +163,7 @@ export const sleepDiary: SectionModule = {
   plan: (_doc, item) => pagesDraft(item, 'sleep', 'sleepDiary', 'Diario de sueño', Number(opt(item, 'pages', 2))),
   layout(ctx) {
     const s = ctx.s.pages.sleep;
-    let r = headed(ctx, s.title, '', { titleSize: 'titleSmall' });
+    let r = headed(ctx, s.title, '', { titleSize: 'titleSmall', titleSource: label('pages.sleep.title') });
     const hint = ctx.textBlock('sleep.hint', { ...r, h: 9 }, s.hint, { role: 'body', size: 'small', wrap: true, fit: true });
     ctx.add('sleep.hint', 'Consigna', hint.prims);
     r = takeTop(r, hint.natural.bbox.h + 3)[1];
@@ -180,7 +180,7 @@ export const unstuck: SectionModule = {
   plan: (_doc, item) => pagesDraft(item, 'unstuck', 'unstuck', 'Destrabar', Number(opt(item, 'pages', 1))),
   layout(ctx) {
     const s = ctx.s.pages.unstuck;
-    const r = headed(ctx, s.title, '', { titleSize: 'titleSmall' });
+    const r = headed(ctx, s.title, '', { titleSize: 'titleSmall', titleSource: label('pages.unstuck.title') });
     const halves = rows(r, 2, 6);
     halves.forEach((base, k) => {
       const box = ctx.rect(`unstuck.${k}`, base);
@@ -208,7 +208,7 @@ export const estimates: SectionModule = {
   plan: (_doc, item) => pagesDraft(item, 'estimates', 'estimates', 'Estimaciones', Number(opt(item, 'pages', 1))),
   layout(ctx) {
     const s = ctx.s.pages.estimates;
-    const r = headed(ctx, s.title, '', { titleSize: 'titleSmall' });
+    const r = headed(ctx, s.title, '', { titleSize: 'titleSmall', titleSource: label('pages.estimates.title') });
     table(ctx, r, [s.task, s.steps, s.estimated, s.actual], [4, 1.2, 1.4, 1.4], Math.max(7, ctx.theme.writing.pitch * 1.15), 'estimates.table', s.title);
   },
 };
@@ -249,7 +249,7 @@ export const filler: SectionModule = {
  * Contenido de una página propia o de una plantilla: fondo para escribir (en `backdrop`), imagen
  * o página de un PDF, o texto con las variables de la página (debajo de `textTop` mm del título).
  */
-function drawPageContent(ctx: LayoutContext, page: PagePlan, c: CustomPage['content'], backdrop: Rect, textTop: number): void {
+function drawPageContent(ctx: LayoutContext, page: PagePlan, c: CustomPage['content'], backdrop: Rect, textTop: number, source: TextSource): void {
   const area: Rect = c.area === 'page' ? { x: 0, y: 0, w: ctx.page.w, h: ctx.page.h } : ctx.content;
   const below = inset(ctx.content, textTop, 0, 0, 0);
   if (c.background !== 'blank') ctx.add('custom.background', 'Fondo', writingArea(ctx, ctx.rect('custom.background', backdrop), c.background), { role: 'writing', layer: 0 });
@@ -270,7 +270,7 @@ function drawPageContent(ctx: LayoutContext, page: PagePlan, c: CustomPage['cont
     ctx.add('custom.artwork', 'Ilustración', prims, { role: 'artwork', layer: 5, bbox: box });
   } else if (c.kind === 'text' && c.text) {
     const t = ctx.textBlock('custom.text', below, fmt(c.text, pageTextVars(ctx, page)), { role: 'body', size: 'body', wrap: true, fit: true, leading: 1.45 });
-    ctx.add('custom.text', 'Texto', t.prims);
+    ctx.add('custom.text', 'Texto', t.prims, { text: source });
   }
 }
 
@@ -286,10 +286,10 @@ export const custom: SectionModule = {
     const withTitle = Boolean(cp.title) && cp.content.kind !== 'artwork';
     if (withTitle) {
       const t = textLine(ctx, 'custom.title', cp.title, { x: ctx.content.x, baseline: ctx.content.y + 8 }, { role: 'title', size: 'titleSmall' });
-      ctx.add('custom.title', 'Título', [t.prim]);
+      ctx.add('custom.title', 'Título', [t.prim], { text: { kind: 'page', id: cp.id, field: 'title' } });
     }
     // El fondo ocupa todo el contenido (el título va encima); el texto empieza debajo del título.
-    drawPageContent(ctx, page, cp.content, ctx.content, withTitle ? 14 : 0);
+    drawPageContent(ctx, page, cp.content, ctx.content, withTitle ? 14 : 0, { kind: 'page', id: cp.id, field: 'text' });
   },
 };
 
@@ -317,9 +317,9 @@ export const pageTemplate: SectionModule = {
       const v = pageTextVars(ctx, page);
       // A la derecha, lo que identifica la copia: el día, la semana o el mes.
       const right = v.date ? `${v.weekday} ${v.date}` : v.week ? fmt(ctx.s.week.label, { n: v.week }) : String(v.month);
-      top = headed(ctx, fmt(tp.title, v), right).y - ctx.content.y;
+      top = headed(ctx, fmt(tp.title, v), right, { titleSource: { kind: 'template', id: tp.id, field: 'title' } }).y - ctx.content.y;
     }
-    drawPageContent(ctx, page, tp.content, inset(ctx.content, top, 0, 0, 0), top);
+    drawPageContent(ctx, page, tp.content, inset(ctx.content, top, 0, 0, 0), top, { kind: 'template', id: tp.id, field: 'text' });
   },
 };
 

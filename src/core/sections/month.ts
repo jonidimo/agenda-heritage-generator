@@ -11,7 +11,7 @@ import { circle, line, rect, type LinkArea, type Prim } from '../layout/prims';
 import { heartIcon, isSouthern, moonIcon, ruledLines, sectionHeader, textLine, writingArea } from '../layout/widgets';
 import { TABULAR_FEATURES } from '../text/shape';
 import { ptToMm, type Rect } from '../util/geometry';
-import { abbreviated, checklist, headed, monthTitle, nextMonthName, order } from './common';
+import { abbreviated, checklist, headed, label, monthTitle, nextMonthName, order } from './common';
 import { opt, param, type PagePlan, type PagePlanDraft, type SectionModule } from './types';
 
 function monthOf(ctx: LayoutContext, page: PagePlan): MonthInfo {
@@ -104,7 +104,7 @@ export const monthCover: SectionModule = {
     if (phraseOn && phrase) {
       const box = { x: c.x + c.w - Math.min(95 * scaleK, c.w), y: c.y + c.h - bottomReserve, w: Math.min(95 * scaleK, c.w), h: bottomReserve };
       const t = ctx.textBlock('cover.phrase', box, `“${phrase}”`, { role: 'quote', size: 13, align: 'right', valign: 'bottom', wrap: true, fit: true });
-      ctx.add('cover.phrase', 'Frase del mes', t.prims);
+      ctx.add('cover.phrase', 'Frase del mes', t.prims, { text: { kind: 'phrase', index: phraseIdx } });
     }
   },
 };
@@ -361,7 +361,7 @@ export const balance: SectionModule = {
   layout(ctx, page) {
     const month = monthOf(ctx, page);
     const s = ctx.s.balance;
-    const r = headed(ctx, s.title, monthTitle(ctx, month), { titleSize: 'titleSmall' });
+    const r = headed(ctx, s.title, monthTitle(ctx, month), { titleSize: 'titleSmall', titleSource: label('balance.title') });
     const shopping = param(page, 'shopping', true);
     const [money, rest] = vsplit(r, [flex(shopping ? 1.15 : 2), flex(shopping ? 1 : 0.35)], 5);
     const [colA, colB] = hsplit(money!, [flex(), flex()], 6);
@@ -410,7 +410,7 @@ export const review: SectionModule = {
     const s = ctx.s.review;
     const variantOpt = param(page, 'variant', 'auto');
     const reflective = variantOpt === 'reflective' || (variantOpt === 'auto' && ctx.has('daily-reflection'));
-    const r = headed(ctx, s.title, monthTitle(ctx, month), { titleSize: 'title' });
+    const r = headed(ctx, s.title, monthTitle(ctx, month), { titleSize: 'title', titleSource: label('review.title') });
     const pitch = Math.max(5.5, ctx.theme.writing.pitch * 1.05);
     const [top, memory, bottom] = vsplit(r, [flex(reflective ? 1.5 : 1.1), flex(reflective ? 0.75 : 1), flex(1)], 5);
     // Logros (y, en la variante reflexiva, aprendizajes y lo que dejo ir).
