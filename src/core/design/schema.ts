@@ -300,6 +300,14 @@ export const BlockOverrideZ = z.object({
   blockId: z.string(),
   dx: num(0),
   dy: num(0),
+  /**
+   * Cambio del ancho y del alto del elemento respecto de su caja (mm). El contenido se vuelve a
+   * acomodar en la caja nueva: el texto reparte sus renglones, las áreas de escritura suman o quitan
+   * renglones, las tablas crecen con lo que llevan. En un ajuste «por tipo», una página izquierda lo
+   * muestra espejado (el elemento crece hacia afuera igual que en la derecha).
+   */
+  dw: num(0, -1000, 1000),
+  dh: num(0, -1000, 1000),
   scale: num(1, 0.05, 20),
   rotation: num(0, -360, 360),
   opacity: num(1, 0, 1),

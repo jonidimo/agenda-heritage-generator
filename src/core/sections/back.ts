@@ -9,7 +9,7 @@ import { assetPrims } from '../document/assets';
 import { inset, rows, takeBottom, takeTop } from '../layout/box';
 import type { LayoutContext } from '../layout/context';
 import { line, rect, type Prim } from '../layout/prims';
-import { ruledLines, sectionHeader, writingArea } from '../layout/widgets';
+import { ruledLines, sectionHeader, textLine, writingArea } from '../layout/widgets';
 import type { Rect } from '../util/geometry';
 import { fieldLine, headed, pageTextVars } from './common';
 import { opt, param, type PagePlan, type SectionModule } from './types';
@@ -47,7 +47,8 @@ export function fitColumns(total: number, weights: number[], mins: number[]): nu
   return out;
 }
 
-function table(ctx: LayoutContext, r: Rect, headers: string[], weights: number[], pitch: number, id: string, label: string): void {
+function table(ctx: LayoutContext, base: Rect, headers: string[], weights: number[], pitch: number, id: string, label: string): void {
+  const r = ctx.rect(id, base);
   const [head, body] = takeTop(r, 6);
   const style = { role: 'heading' as const, size: 'labelSmall' as const, upper: true, tracking: true };
   // Mínimo de cada columna: su rótulo al cuerpo mínimo legible del tema, más aire a los lados.
@@ -84,12 +85,13 @@ export const passwords: SectionModule = {
     const detailed = detailedOpt === true || (detailedOpt === 'auto' && ctx.has('password-log'));
     let r = headed(ctx, s.title, '', { titleSize: 'title' });
     if (part === 0) {
-      const note = ctx.textIn(s.note, { ...r, h: 9 }, { role: 'quote', size: ctx.theme.sizes.small + 0.5, wrap: true, fit: true, color: '#555555' });
+      const note = ctx.textBlock('passwords.note', { ...r, h: 9 }, s.note, { role: 'quote', size: ctx.theme.sizes.small + 0.5, wrap: true, fit: true, color: '#555555' });
       ctx.add('passwords.note', 'Consejo de seguridad', note.prims);
-      r = takeTop(r, note.bbox.h + 3)[1];
+      r = takeTop(r, note.natural.bbox.h + 3)[1];
       if (detailed) {
         const ex = ctx.s.pages.passwords;
-        const p: Prim[] = [...fieldLine(ctx, r.x, r.y + 6, r.w, `${ex.mainEmail}:`, ctx.theme.sizes.labelSmall), ...fieldLine(ctx, r.x, r.y + 13, r.w, `${ex.manager}:`, ctx.theme.sizes.labelSmall)];
+        const mb = ctx.rect('passwords.main', { x: r.x, y: r.y, w: r.w, h: 15 });
+        const p: Prim[] = [...fieldLine(ctx, mb.x, mb.y + 6, mb.w, `${ex.mainEmail}:`, ctx.theme.sizes.labelSmall), ...fieldLine(ctx, mb.x, mb.y + 13, mb.w, `${ex.manager}:`, ctx.theme.sizes.labelSmall)];
         ctx.add('passwords.main', ex.mainEmail, p);
         r = takeTop(r, 17)[1];
       }
@@ -118,7 +120,7 @@ export const contacts: SectionModule = {
     const parts = rows(r, cats.length, 4);
     const pitch = Math.max(7.5, ctx.theme.writing.pitch * 1.35);
     cats.forEach((cat, i) => {
-      const box = parts[i]!;
+      const box = ctx.rect(`contacts.${i}`, parts[i]!);
       const h = sectionHeader(ctx, box, cat, `contacts.${i}.head`);
       ctx.add(`contacts.${i}`, cat, ruledLines({ x: box.x, y: box.y + h, w: box.w, h: box.h - h }, pitch, ctx.stroke('hair')));
     });
@@ -139,7 +141,8 @@ export const health: SectionModule = {
     if (part === 0) {
       const pitch = Math.max(7.5, ctx.theme.writing.pitch * 1.25);
       const p: Prim[] = [];
-      [s.bloodType, s.allergies, s.insurance, s.memberNumber, s.doctor].forEach((f, i) => p.push(...fieldLine(ctx, r.x, r.y + (i + 1) * pitch, r.w, `${f}:`)));
+      const fb = ctx.rect('health.fields', { x: r.x, y: r.y, w: r.w, h: 5 * pitch + 1 });
+      [s.bloodType, s.allergies, s.insurance, s.memberNumber, s.doctor].forEach((f, i) => p.push(...fieldLine(ctx, fb.x, fb.y + (i + 1) * pitch, fb.w, `${f}:`)));
       ctx.add('health.fields', s.title, p);
       r = takeTop(r, 5 * pitch + 5)[1];
     }
@@ -161,9 +164,9 @@ export const sleepDiary: SectionModule = {
   layout(ctx) {
     const s = ctx.s.pages.sleep;
     let r = headed(ctx, s.title, '', { titleSize: 'titleSmall' });
-    const hint = ctx.textIn(s.hint, { ...r, h: 9 }, { role: 'body', size: 'small', wrap: true, fit: true });
+    const hint = ctx.textBlock('sleep.hint', { ...r, h: 9 }, s.hint, { role: 'body', size: 'small', wrap: true, fit: true });
     ctx.add('sleep.hint', 'Consigna', hint.prims);
-    r = takeTop(r, hint.bbox.h + 3)[1];
+    r = takeTop(r, hint.natural.bbox.h + 3)[1];
     table(ctx, r, [ctx.s.common.date, s.bed, s.latency, s.awakenings, s.up, s.quality], [1.3, 1.4, 1.7, 1.4, 1.4, 1.4], (r.h - 6) / 14, 'sleep.table', s.title);
   },
 };
@@ -179,7 +182,8 @@ export const unstuck: SectionModule = {
     const s = ctx.s.pages.unstuck;
     const r = headed(ctx, s.title, '', { titleSize: 'titleSmall' });
     const halves = rows(r, 2, 6);
-    halves.forEach((box, k) => {
+    halves.forEach((base, k) => {
+      const box = ctx.rect(`unstuck.${k}`, base);
       const p: Prim[] = [rect(box, { stroke: ctx.stroke('hair', 'rule', { use: 'frame' }) })];
       const inner = inset(box, 3);
       const steps = [s.avoiding, s.feeling, s.firstStep];
@@ -221,7 +225,7 @@ export const notes: SectionModule = {
   },
   layout(ctx, page) {
     const style = param<string>(page, 'style', 'auto');
-    ctx.add('notes.area', 'Área de notas', writingArea(ctx, ctx.content, style === 'auto' ? 'dots' : (style as 'dots')), { role: 'writing' });
+    ctx.add('notes.area', 'Área de notas', writingArea(ctx, ctx.rect('notes.area', ctx.content), style === 'auto' ? 'dots' : (style as 'dots')), { role: 'writing' });
   },
 };
 
@@ -235,7 +239,7 @@ export const filler: SectionModule = {
   layout(ctx, page: PagePlan) {
     const style = param<string>(page, 'style', 'dots');
     if (style === 'blank') return;
-    ctx.add('notes.area', 'Área de notas', writingArea(ctx, ctx.content, style as 'dots'), { role: 'writing' });
+    ctx.add('notes.area', 'Área de notas', writingArea(ctx, ctx.rect('notes.area', ctx.content), style as 'dots'), { role: 'writing' });
   },
 };
 
@@ -248,7 +252,7 @@ export const filler: SectionModule = {
 function drawPageContent(ctx: LayoutContext, page: PagePlan, c: CustomPage['content'], backdrop: Rect, textTop: number): void {
   const area: Rect = c.area === 'page' ? { x: 0, y: 0, w: ctx.page.w, h: ctx.page.h } : ctx.content;
   const below = inset(ctx.content, textTop, 0, 0, 0);
-  if (c.background !== 'blank') ctx.add('custom.background', 'Fondo', writingArea(ctx, backdrop, c.background), { role: 'writing', layer: 0 });
+  if (c.background !== 'blank') ctx.add('custom.background', 'Fondo', writingArea(ctx, ctx.rect('custom.background', backdrop), c.background), { role: 'writing', layer: 0 });
   if (c.kind === 'artwork' && c.assetId) {
     const info = ctx.doc.assets.get(c.assetId);
     const name = ctx.doc.design.assets.find((a) => a.id === c.assetId)?.name ?? c.assetId;
@@ -265,7 +269,7 @@ function drawPageContent(ctx: LayoutContext, page: PagePlan, c: CustomPage['cont
     }
     ctx.add('custom.artwork', 'Ilustración', prims, { role: 'artwork', layer: 5, bbox: box });
   } else if (c.kind === 'text' && c.text) {
-    const t = ctx.textIn(fmt(c.text, pageTextVars(ctx, page)), below, { role: 'body', size: 'body', wrap: true, fit: true, leading: 1.45 });
+    const t = ctx.textBlock('custom.text', below, fmt(c.text, pageTextVars(ctx, page)), { role: 'body', size: 'body', wrap: true, fit: true, leading: 1.45 });
     ctx.add('custom.text', 'Texto', t.prims);
   }
 }
@@ -281,7 +285,7 @@ export const custom: SectionModule = {
     if (!cp) return;
     const withTitle = Boolean(cp.title) && cp.content.kind !== 'artwork';
     if (withTitle) {
-      const t = ctx.textAt(cp.title, ctx.content.x, ctx.content.y + 8, { role: 'title', size: 'titleSmall' });
+      const t = textLine(ctx, 'custom.title', cp.title, { x: ctx.content.x, baseline: ctx.content.y + 8 }, { role: 'title', size: 'titleSmall' });
       ctx.add('custom.title', 'Título', [t.prim]);
     }
     // El fondo ocupa todo el contenido (el título va encima); el texto empieza debajo del título.

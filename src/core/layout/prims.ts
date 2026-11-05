@@ -82,6 +82,11 @@ export interface TextPrim {
   opacity?: number;
   /** Tipo de texto (título, rótulo…): el editor lo usa para llevar a su estilo. */
   role?: string;
+  /**
+   * De qué punto del texto está anclada su posición (según su alineación): al estirar un bloque, el
+   * texto sigue a su ancla sin cambiar de tamaño. Sin indicar, el inicio.
+   */
+  anchor?: 'start' | 'middle' | 'end';
 }
 
 export interface ImagePrim {
@@ -153,6 +158,14 @@ export interface Block {
   label: string;
   /** Caja sin transformar, en mm de página. */
   bbox: Rect;
+  /**
+   * La caja en la que se dibujó el elemento (ya con sus ajustes de tamaño y lugar), si la sección
+   * lo vuelve a maquetar dentro de ella (`LayoutContext.rect`). Es la que se ve al seleccionarlo.
+   * Sin ella, el elemento se estira al cambiar de tamaño (ver `stretch.ts`).
+   */
+  box?: Rect;
+  /** No admite cambiar su ancho y su alto por los lados (p. ej. dibujado girado): solo se escala. */
+  rigid?: true;
   prims: Prim[];
   role: BlockRole;
   editable: boolean;

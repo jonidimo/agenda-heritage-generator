@@ -7,7 +7,9 @@ import { enumProp, IMAGE_FITS, numProp, PROP_DEFAULTS, PROP_RANGES, TEXT_ALIGNS,
 import type { BlockOverride, CustomBlock, Design, PageStyle, WatermarkPlacement } from '../design/schema';
 import { fmt as fmtStr } from '../i18n';
 import { inset } from '../layout/box';
-import { LayoutContext, type DocContext } from '../layout/context';
+import { adjustedSize, type BoxAdjust } from '../layout/box';
+import { LayoutContext, type BoxAdjuster, type DocContext } from '../layout/context';
+import { stretchPrims, stretchRect } from '../layout/stretch';
 import { primsBounds, type Block, type LinkArea, type LinkTarget, type PageModel, type PageWarning, type Prim } from '../layout/prims';
 import { dotField, ruledLines, squareGrid } from '../layout/widgets';
 import type { PagePlan, SectionModule } from '../sections/types';
@@ -39,9 +41,22 @@ export function overrideMatrix(bbox: Rect, o: Pick<BlockOverride, 'dx' | 'dy' | 
   );
 }
 
-/** Caja final de un bloque (con su transformación). */
+/** Caja final de un bloque (con su transformación): la que se ve al seleccionarlo. */
 export function blockBounds(b: Block): Rect {
-  return b.m ? transformRect(b.m, b.bbox) : b.bbox;
+  const box = b.box ?? b.bbox;
+  return b.m ? transformRect(b.m, box) : box;
+}
+
+/**
+ * Estira un bloque a la caja que le dio el editor (ver `stretch.ts`). Solo cambia el tamaño: el
+ * lugar lo pone después la matriz del bloque. Un lado sin tamaño (una línea horizontal) no se estira.
+ */
+function stretchBlock(b: Block, a: BoxAdjust): void {
+  const from = b.bbox;
+  const to = { x: from.x, y: from.y, w: from.w > 1e-6 ? adjustedSize(from.w, a.dw) : from.w, h: from.h > 1e-6 ? adjustedSize(from.h, a.dh) : from.h };
+  b.prims = stretchPrims(b.prims, from, to);
+  if (b.links) b.links = b.links.map((l) => ({ ...l, ...stretchRect(l, from, to) }));
+  b.bbox = to;
 }
 
 /** Estilo de escritura elegido explícitamente para la página (o su tipo), si lo hay. */
@@ -346,7 +361,16 @@ export function layoutPage(
   inputs: PageInputs = pageInputs(doc.design, plan),
 ): PageModel {
   const geom = pageGeometry(doc, plan.side);
-  const ctx = new LayoutContext(doc, geom, pageTheme(doc, inputs.styles, plan), pageWritingStyle(inputs.styles, plan));
+  // Ajustes del editor por elemento. «Por tipo» en tipos que caen a ambos lados: X se espeja en las
+  // páginas izquierdas (mover o ensanchar «hacia afuera» en una derecha es hacerlo hacia afuera
+  // también en una izquierda: ahí crece hacia el otro lado, así que su borde izquierdo se corre).
+  const adjuster: BoxAdjuster = (id) => {
+    const o = findOverride(inputs.overrides, plan, id);
+    if (!o || o.hidden) return undefined;
+    const mirror = o.pageKey === null && plan.side === 'verso' && (doc.mirrorTypes?.has(plan.type) ?? false);
+    return { dx: mirror ? -(o.dx + o.dw) : o.dx, dy: o.dy, dw: o.dw, dh: o.dh };
+  };
+  const ctx = new LayoutContext(doc, geom, pageTheme(doc, inputs.styles, plan), pageWritingStyle(inputs.styles, plan), adjuster);
   const mod = registry.get(plan.module);
   if (mod) {
     try {
@@ -359,6 +383,13 @@ export function layoutPage(
   for (const cb of inputs.blocks) placeCustomBlock(ctx, cb, plan);
   for (const wm of inputs.watermarks) placeWatermark(ctx, wm);
   addChrome(ctx, plan, totalPages, inputs.pageNumberLink);
+  // Los elementos que su sección no vuelve a maquetar en su caja se estiran al tamaño que les dio el
+  // editor. Va antes del estilo de líneas: así los ornamentos se arman con el largo final de cada línea.
+  for (const b of ctx.blocks) {
+    if (b.box) continue;
+    const a = adjuster(b.id);
+    if (a && (a.dw !== 0 || a.dh !== 0)) stretchBlock(b, a);
+  }
   // Estilo de líneas y ornamentos del tema (renglones, separadores, tablas, marcos).
   if (hasLineStyles(ctx.theme.lines)) for (const b of ctx.blocks) b.prims = applyLineStyles(b.prims, ctx.theme.lines, doc.assets);
 
@@ -368,11 +399,11 @@ export function layoutPage(
     const o = findOverride(inputs.overrides, plan, b.id);
     if (o) {
       if (o.hidden) continue;
-      // Ajustes «por tipo» en tipos que caen a ambos lados: X se espeja en las páginas izquierdas
-      // (mover «hacia afuera» en una derecha es mover hacia afuera también en una izquierda).
-      const mirror = o.pageKey === null && plan.side === 'verso' && (doc.mirrorTypes?.has(plan.type) ?? false);
-      let m = overrideMatrix(b.bbox, o, mirror);
-      const bounds = transformRect(m, b.bbox);
+      const a = adjuster(b.id)!;
+      // Con caja, el lugar ya está en el dibujo (la sección lo dibujó adentro): la matriz solo escala y gira.
+      const pivot = b.box ?? b.bbox;
+      let m = overrideMatrix(pivot, { dx: b.box ? 0 : a.dx, dy: b.box ? 0 : a.dy, scale: o.scale, rotation: o.rotation });
+      const bounds = transformRect(m, pivot);
       // Mantener dentro de la página.
       const dx = bounds.x < 0 ? -bounds.x : bounds.x + bounds.w > geom.w ? geom.w - bounds.x - bounds.w : 0;
       const dy = bounds.y < 0 ? -bounds.y : bounds.y + bounds.h > geom.h ? geom.h - bounds.y - bounds.h : 0;

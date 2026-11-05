@@ -59,6 +59,16 @@ export function fieldLine(ctx: LayoutContext, x: number, y: number, w: number, l
   return [t.prim, line(lx, y + 0.6, x + w, y + 0.6, ctx.stroke('hair', undefined, { use: 'writing' }))];
 }
 
+/**
+ * Renglones con rótulo («Nombre: ____»), repartidos en la caja del elemento (`id`): una fila por
+ * rótulo (uno vacío deja el renglón sin rótulo). La caja natural mide `pitch` mm por fila.
+ */
+export function fieldRows(ctx: LayoutContext, id: string, at: { x: number; y: number; w: number }, labels: readonly string[], pitch: number): Prim[] {
+  const box = ctx.rect(id, { x: at.x, y: at.y, w: at.w, h: labels.length * pitch });
+  const step = box.h / Math.max(1, labels.length);
+  return labels.flatMap((f, i) => fieldLine(ctx, box.x, box.y + (i + 1) * step, box.w, f ? `${f}:` : ''));
+}
+
 /** Aviso informativo: un feriado o una fecha propia se abrevió con «…» para entrar en su lugar. */
 export function abbreviated(ctx: LayoutContext, text: string, kind: 'holiday' | 'event'): void {
   const where = kind === 'holiday' ? 'podés darle un nombre más corto en Calendario → Feriados' : 'podés acortarlo en Persona → Cumpleaños y fechas importantes';

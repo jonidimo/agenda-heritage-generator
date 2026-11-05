@@ -4,6 +4,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { createDesign } from '../src/core/design/defaults';
+import { blockBounds } from '../src/core/document/layout';
 import { parseDesign, type Design } from '../src/core/design/schema';
 import { pageToSvg } from '../src/core/render/svg';
 import { openDocument } from './helpers/node-env';
@@ -89,8 +90,9 @@ describe('ajustes del editor', () => {
     }
     expect(found).not.toBeNull();
     const { type, recto, verso, blockId } = found!;
-    const moved = await openDocument(norma((d) => void d.overrides.push({ pageType: type, pageKey: null, blockId, dx: 3, dy: 0, scale: 1, rotation: 0, opacity: 1, hidden: false })));
-    const x = (doc: typeof plain.doc, i: number): number => doc.page(i).blocks.find((b) => b.id === blockId)!.m?.[4] ?? 0;
+    const moved = await openDocument(norma((d) => void d.overrides.push({ pageType: type, pageKey: null, blockId, dx: 3, dy: 0, dw: 0, dh: 0, scale: 1, rotation: 0, opacity: 1, hidden: false })));
+    // La posición que se ve (no la de la matriz: un bloque con caja ya trae su lugar en el dibujo).
+    const x = (doc: typeof plain.doc, i: number): number => blockBounds(doc.page(i).blocks.find((b) => b.id === blockId)!).x;
     expect(x(moved.doc, recto) - x(plain.doc, recto)).toBeCloseTo(3, 6);
     expect(x(moved.doc, verso) - x(plain.doc, verso)).toBeCloseTo(-3, 6);
   });

@@ -123,3 +123,24 @@ export function fitRect(box: Rect, aspect: number, mode: 'contain' | 'cover' | '
 export function centerIn(box: Rect, w: number, h: number): Rect {
   return { x: box.x + (box.w - w) / 2, y: box.y + (box.h - h) / 2, w, h };
 }
+
+/** Lo que el editor le cambió a un elemento: lugar y tamaño de su caja, en mm y ya espejados según la página. */
+export interface BoxAdjust {
+  dx: number;
+  dy: number;
+  dw: number;
+  dh: number;
+}
+
+/** Ninguna caja se achica por debajo de esto (si ya era más chica, no cambia). */
+export const MIN_BOX = 2;
+
+/** Un lado de una caja con su cambio, sin bajar de `MIN_BOX` ni agrandar lo que ya era más chico. */
+export function adjustedSize(size: number, delta: number): number {
+  return Math.max(Math.min(size, MIN_BOX), size + delta);
+}
+
+/** La caja de un elemento con los ajustes del editor. */
+export function adjustBox(base: Rect, a: BoxAdjust): Rect {
+  return { x: base.x + a.dx, y: base.y + a.dy, w: adjustedSize(base.w, a.dw), h: adjustedSize(base.h, a.dh) };
+}

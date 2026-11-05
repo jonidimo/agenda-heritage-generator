@@ -9,7 +9,7 @@ import { fmt } from '../i18n';
 import { flex, hsplit, rows, takeBottom, takeTop } from '../layout/box';
 import type { LayoutContext } from '../layout/context';
 import { circle, line, rect, type LinkArea, type Prim } from '../layout/prims';
-import { checkCircle, heartIcon, isSouthern, miniCalendar, moonIcon, ruledLines, signifierIcon, writingArea, type Signifier } from '../layout/widgets';
+import { checkCircle, heartIcon, isSouthern, miniCalendar, moonIcon, ruledLines, signifierIcon, textLine, writingArea, type Signifier } from '../layout/widgets';
 import { TABULAR_FEATURES } from '../text/shape';
 import { ptToMm, type Rect } from '../util/geometry';
 import { abbreviated, checklist, order } from './common';
@@ -114,7 +114,7 @@ function weekHeader(ctx: LayoutContext, week: WeekInfo, page: PagePlan, withMini
       }
     }
     const w = Math.min(46, c.w * 0.42);
-    const box = { x: head.x + head.w - w, y: head.y, w, h: headH - 2.5 };
+    const box = ctx.rect('week.minical', { x: head.x + head.w - w, y: head.y, w, h: headH - 2.5 });
     const links: LinkArea[] = [];
     const prims = miniCalendar(ctx, box, rowsData, {
       onCell: (day, cell) => links.push({ ...cell, to: { kind: 'date', iso: day.iso }, cat: 'days' }),
@@ -178,10 +178,11 @@ function alastairLeft(ctx: LayoutContext, page: PagePlan, week: WeekInfo): void 
   const priorities = prioritiesOpt === true || (prioritiesOpt === 'auto' && ctx.has('top-priorities'));
   const openLoops = ctx.has('open-loops');
   const notesH = Math.max(24, 4 + 3 * Math.max(6, ctx.theme.writing.pitch));
-  const [daysArea, notes] = takeBottom(r, notesH, 4);
+  const [daysArea, notesBase] = takeBottom(r, notesH, 4);
+  const notes = ctx.rect('week.notes', notesBase);
   const dayRows = rows(daysArea, 7);
   week.days.forEach((day, i) => {
-    const row = dayRows[i]!;
+    const row = ctx.rect(`day.${i}`, dayRows[i]!);
     const p: Prim[] = [];
     if (day.isWeekend && ctx.theme.weekendShading) p.push(rect(row, { fill: ctx.fill('weekend') }));
     p.push(line(row.x, row.y, row.x + row.w, row.y, ctx.stroke('rule', 'ink', { use: 'table' })));
@@ -231,7 +232,8 @@ function alastairRight(ctx: LayoutContext, page: PagePlan, week: WeekInfo): void
   const oneRow = legendWidths.reduce((a, b) => a + b, 0) + legendGap * (legendItems.length - 1) <= c.w;
   const legendRowH = 5;
   const legendH = legendOn ? (oneRow ? 6 : 2 * legendRowH + 1) : 0;
-  const [gridArea, bottom] = takeBottom(c, footerH + legendH, footerH + legendH > 0 ? 4 : 0);
+  const [gridBase, bottom] = takeBottom(c, footerH + legendH, footerH + legendH > 0 ? 4 : 0);
+  const gridArea = ctx.rect('tasks.grid', gridBase);
   const undated = param(page, 'undated', false);
   const dayW = Math.max(6.5, ctx.theme.writing.pitch * 1.05);
   const ncols = 7 + (undated ? 1 : 0);
@@ -286,14 +288,14 @@ function alastairRight(ctx: LayoutContext, page: PagePlan, week: WeekInfo): void
     y += legendH;
   }
   if (footer === 'expenses') {
-    const f = { x: bottom.x, y: y + 1, w: bottom.w, h: footerH - 1 };
+    const f = ctx.rect('tasks.expenses', { x: bottom.x, y: y + 1, w: bottom.w, h: footerH - 1 });
     const p: Prim[] = [line(f.x, f.y, f.x + f.w, f.y, ctx.stroke('rule', 'ink', { use: 'separator' }))];
     p.push(...ctx.textIn(s.week.expenses, { x: f.x, y: f.y + 2, w: f.w, h: 3 }, { role: 'label', size: ctx.theme.sizes.label, upper: true, tracking: true }).prims);
     const t = ctx.textAt(s.week.expensesTotal, f.x, f.y + f.h - 1.5, { role: 'body', size: 'body', upper: true });
     p.push(t.prim, line(f.x + t.width + 3, f.y + f.h - 1.1, f.x + f.w, f.y + f.h - 1.1, ctx.stroke('strong', 'ink', { use: 'writing' })));
     ctx.add('tasks.expenses', s.week.expenses, p);
   } else if (footer === 'review') {
-    const f = { x: bottom.x, y: y + 1, w: bottom.w, h: footerH - 1 };
+    const f = ctx.rect('tasks.review', { x: bottom.x, y: y + 1, w: bottom.w, h: footerH - 1 });
     const p: Prim[] = [line(f.x, f.y, f.x + f.w, f.y, ctx.stroke('rule', 'ink', { use: 'separator' }))];
     p.push(...ctx.textIn(s.week.review, { x: f.x, y: f.y + 2, w: f.w, h: 3 }, { role: 'label', size: ctx.theme.sizes.label, upper: true, tracking: true }).prims);
     const steps = s.pages.weekly.reviewSteps;
@@ -318,7 +320,7 @@ function horizontalWeek(ctx: LayoutContext, page: PagePlan, week: WeekInfo, left
   const slots = left ? 4 : 4;
   const parts = rows(r, slots, 2);
   days.forEach((day, i) => {
-    const row = parts[i]!;
+    const row = ctx.rect(`day.${left ? i : i + 3}`, parts[i]!);
     const p: Prim[] = [];
     if (day.isWeekend && ctx.theme.weekendShading) p.push(rect(row, { fill: ctx.fill('weekend') }));
     p.push(line(row.x, row.y, row.x + row.w, row.y, ctx.stroke('rule', 'ink', { use: 'table' })));
@@ -327,7 +329,7 @@ function horizontalWeek(ctx: LayoutContext, page: PagePlan, week: WeekInfo, left
     ctx.add(`day.${left ? i : i + 3}`, `${day.d}`, p, { bbox: row });
   });
   if (left) {
-    const nrow = parts[3]!;
+    const nrow = ctx.rect('week.notes', parts[3]!);
     const p: Prim[] = [line(nrow.x, nrow.y, nrow.x + nrow.w, nrow.y, ctx.stroke('heavy', 'ink', { use: 'separator' }))];
     const pr = ctx.has('top-priorities');
     p.push(...ctx.textIn(pr ? ctx.s.week.priorities : ctx.s.week.notes, { x: nrow.x, y: nrow.y + 2, w: nrow.w, h: 3 }, { role: 'label', size: 'label', upper: true, tracking: true }).prims);
@@ -343,7 +345,7 @@ function verticalWeek(ctx: LayoutContext, page: PagePlan, week: WeekInfo, left: 
   const days = week.days.slice(...weekSplit('vertical', left));
   const colRects = hsplit(r, [...days.map(() => flex()), ...(left ? [] : [flex()])], 2);
   days.forEach((day, i) => {
-    const col = colRects[i]!;
+    const col = ctx.rect(`day.${left ? i : i + 4}`, colRects[i]!);
     const p: Prim[] = [];
     if (day.isWeekend && ctx.theme.weekendShading) p.push(rect(col, { fill: ctx.fill('weekend') }));
     p.push(line(col.x, col.y, col.x + col.w, col.y, ctx.stroke('rule', 'ink', { use: 'table' })));
@@ -360,7 +362,7 @@ function verticalWeek(ctx: LayoutContext, page: PagePlan, week: WeekInfo, left: 
     ctx.add(`day.${left ? i : i + 4}`, `${day.d}`, p, { bbox: col });
   });
   if (!left) {
-    const nc = colRects[days.length]!;
+    const nc = ctx.rect('week.notes', colRects[days.length]!);
     const p: Prim[] = [line(nc.x, nc.y, nc.x + nc.w, nc.y, ctx.stroke('heavy', 'ink', { use: 'separator' }))];
     p.push(...ctx.textIn(ctx.s.common.notes, { x: nc.x, y: nc.y + 1.5, w: nc.w, h: 3 }, { role: 'label', size: 'label', upper: true, tracking: true, align: 'center' }).prims);
     p.push(...writingArea(ctx, { x: nc.x, y: nc.y + 6, w: nc.w, h: nc.h - 6 }, 'auto'));
@@ -370,7 +372,7 @@ function verticalWeek(ctx: LayoutContext, page: PagePlan, week: WeekInfo, left: 
 
 function weekHeaderRight(ctx: LayoutContext, week: WeekInfo): Rect {
   const [head, rest] = takeTop(ctx.content, 12, 5);
-  const t = ctx.textAt(fmt(ctx.s.week.label, { n: week.number }), head.x + head.w, head.y + 4, { role: 'label', size: ctx.theme.sizes.label + 1, upper: true, tracking: true, align: 'right' });
+  const t = textLine(ctx, 'week.title', fmt(ctx.s.week.label, { n: week.number }), { x: head.x + head.w, baseline: head.y + 4 }, { role: 'label', size: ctx.theme.sizes.label + 1, upper: true, tracking: true, align: 'right' });
   ctx.add('week.title', 'Semana', [t.prim]);
   return rest;
 }
@@ -386,7 +388,8 @@ function dailyPage(ctx: LayoutContext, page: PagePlan): void {
   days.forEach((day, i) => {
     const area = parts[i]!;
     const single = days.length === 1;
-    const [head, body] = takeTop(area, single ? 16 : 10, 2);
+    const [headBase, body] = takeTop(area, single ? 16 : 10, 2);
+    const head = ctx.rect(`daily.${i}.head`, headBase);
     const hp: Prim[] = [];
     const num = ctx.textAt(String(day.d), head.x, head.y + (single ? 11 : 7), { role: 'display', size: single ? ctx.theme.sizes.monthHero * 0.62 : ctx.theme.sizes.title, features: TABULAR_FEATURES });
     hp.push(num.prim);
@@ -405,7 +408,7 @@ function dailyPage(ctx: LayoutContext, page: PagePlan): void {
     hp.push(line(head.x, head.y + head.h, head.x + head.w, head.y + head.h, ctx.stroke('rule', 'ink', { use: 'separator' })));
     ctx.add(`daily.${i}.head`, day.iso, hp);
     if (!single) {
-      ctx.add(`daily.${i}.notes`, day.iso, writingArea(ctx, body, 'auto'), { role: 'writing' });
+      ctx.add(`daily.${i}.notes`, day.iso, writingArea(ctx, ctx.rect(`daily.${i}.notes`, body), 'auto'), { role: 'writing' });
       return;
     }
     // Página completa: recordatorios, 3 importantes, notas libres y cierre del día.
@@ -417,10 +420,11 @@ function dailyPage(ctx: LayoutContext, page: PagePlan): void {
     let y = body.y;
     for (const b of blocks) {
       if (!b.on) continue;
-      const lab = ctx.textIn(b.label, { x: body.x, y, w: body.w, h: 3 }, { role: 'label', size: 'labelSmall', upper: true, tracking: true });
-      const area = { x: body.x, y: y + 2.5, w: body.w, h: b.lines * pitch };
+      const box = ctx.rect(`daily.${b.id}`, { x: body.x, y, w: body.w, h: 2.5 + b.lines * pitch });
+      const lab = ctx.textIn(b.label, { x: box.x, y: box.y, w: box.w, h: 3 }, { role: 'label', size: 'labelSmall', upper: true, tracking: true });
+      const area = { x: box.x, y: box.y + 2.5, w: box.w, h: box.h - 2.5 };
       ctx.add(`daily.${b.id}`, b.label, [...lab.prims, ...(b.circles ? checklist(ctx, area, pitch, { circles: true }) : ruledLines(area, pitch, ctx.stroke('hair')))]);
-      y = area.y + area.h + 3;
+      y += 2.5 + b.lines * pitch + 3;
     }
     const closing: Array<{ id: string; label: string; on: boolean; lines: number }> = [
       { id: 'progress', label: s.progress, on: ctx.has('done-list'), lines: 2 },
@@ -430,7 +434,7 @@ function dailyPage(ctx: LayoutContext, page: PagePlan): void {
     ].filter((x) => x.on);
     const closingH = closing.reduce((sum, x) => sum + 3 + x.lines * pitch + 2, 0) + (ctx.has('mood-log') ? 7 : 0) + (ctx.has('focus-breaks') ? 7 : 0);
     const notesArea = { x: body.x, y, w: body.w, h: Math.max(10, body.y + body.h - y - closingH) };
-    ctx.add('daily.notes', s.top3, writingArea(ctx, notesArea, 'auto'), { role: 'writing' });
+    ctx.add('daily.notes', s.top3, writingArea(ctx, ctx.rect('daily.notes', notesArea), 'auto'), { role: 'writing' });
     y = notesArea.y + notesArea.h + 2;
     if (ctx.has('focus-breaks')) {
       const lab = ctx.textAt(s.focus, body.x, y + 3, { role: 'label', size: 'labelSmall', upper: true, tracking: true });
@@ -440,10 +444,11 @@ function dailyPage(ctx: LayoutContext, page: PagePlan): void {
       y += 7;
     }
     for (const b of closing) {
-      const lab = ctx.textIn(b.label, { x: body.x, y, w: body.w, h: 3 }, { role: 'label', size: 'labelSmall', upper: true, tracking: true });
-      const area = { x: body.x, y: y + 2.5, w: body.w, h: b.lines * pitch };
+      const box = ctx.rect(`daily.${b.id}`, { x: body.x, y, w: body.w, h: 2.5 + b.lines * pitch });
+      const lab = ctx.textIn(b.label, { x: box.x, y: box.y, w: box.w, h: 3 }, { role: 'label', size: 'labelSmall', upper: true, tracking: true });
+      const area = { x: box.x, y: box.y + 2.5, w: box.w, h: box.h - 2.5 };
       ctx.add(`daily.${b.id}`, b.label, [...lab.prims, ...ruledLines(area, pitch, ctx.stroke('hair'))]);
-      y = area.y + area.h + 2;
+      y += 2.5 + b.lines * pitch + 2;
     }
     if (ctx.has('mood-log')) {
       const lab = ctx.textAt(s.mood, body.x, y + 3, { role: 'label', size: 'labelSmall', upper: true, tracking: true });

@@ -9,10 +9,10 @@ import { fmt, type AgendaStrings } from '../i18n';
 import { centerIn, cols, flex, grid, hsplit, inset, rows, takeBottom, takeTop } from '../layout/box';
 import type { LayoutContext, SizeKey, TextRole } from '../layout/context';
 import { line, rect, type LinkArea, type Prim } from '../layout/prims';
-import { heartIcon, miniCalendar, ruledLines, sectionHeader, writingArea } from '../layout/widgets';
+import { heartIcon, miniCalendar, ruledLines, sectionHeader, textLine, writingArea } from '../layout/widgets';
 import { inkBounds, TABULAR_FEATURES } from '../text/shape';
 import { ptToMm } from '../util/geometry';
-import { checklist, fieldLine, headed, order } from './common';
+import { checklist, fieldRows, headed, order } from './common';
 import { opt, param, type SectionModule } from './types';
 
 /* ---------- Portada interior ---------- */
@@ -30,7 +30,7 @@ export const titlePage: SectionModule = {
     const showName = param(page, 'showName', true) && d.persona.name.trim().length > 0;
     const yearRun = ctx.run(year, { role: 'display', size: 'hero', features: TABULAR_FEATURES });
     const cy = c.y + c.h * 0.42;
-    const y = ctx.textAt(year, c.x + c.w / 2, cy, { role: 'display', size: 'hero', align: 'center', features: TABULAR_FEATURES });
+    const y = textLine(ctx, 'title.year', year, { x: c.x + c.w / 2, baseline: cy }, { role: 'display', size: 'hero', align: 'center', features: TABULAR_FEATURES });
     ctx.add('title.year', 'Año', [y.prim]);
     // Las cifras de estilo antiguo bajan de la línea de base (el 7 y el 9 de Cormorant Garamond):
     // la línea siguiente se ubica por debajo de la tinta real del año, nunca encima.
@@ -46,19 +46,19 @@ export const titlePage: SectionModule = {
     let titleBaseline: number;
     if (showName) {
       baseline = clear(d.persona.name, 'title', 'title', baseline);
-      const n = ctx.textAt(d.persona.name, c.x + c.w / 2, baseline, { role: 'title', size: 'title', align: 'center' });
+      const n = textLine(ctx, 'title.name', d.persona.name, { x: c.x + c.w / 2, baseline }, { role: 'title', size: 'title', align: 'center' });
       ctx.add('title.name', 'Nombre', [n.prim]);
       baseline += ptToMm(ctx.theme.sizes.title) * 1.3;
       titleBaseline = baseline - ptToMm(ctx.theme.sizes.titleSmall) + titleCap;
     } else titleBaseline = clear(title, 'title', 'titleSmall', baseline - ptToMm(ctx.theme.sizes.titleSmall) + titleCap);
-    const t = ctx.textIn(title, { x: c.x, y: titleBaseline - titleCap, w: c.w, h: 30 }, { role: 'title', size: 'titleSmall', align: 'center', wrap: true, fit: true });
+    const t = ctx.textBlock('title.title', { x: c.x, y: titleBaseline - titleCap, w: c.w, h: 30 }, title, { role: 'title', size: 'titleSmall', align: 'center', wrap: true, fit: true });
     ctx.add('title.title', 'Título', t.prims);
     if (d.persona.subtitle) {
-      const st = ctx.textIn(d.persona.subtitle, { x: c.x, y: t.bbox.y + t.bbox.h + 4, w: c.w, h: 12 }, { role: 'label', size: 'label', upper: true, tracking: true, align: 'center', wrap: true });
+      const st = ctx.textBlock('title.subtitle', { x: c.x, y: t.natural.bbox.y + t.natural.bbox.h + 4, w: c.w, h: 12 }, d.persona.subtitle, { role: 'label', size: 'label', upper: true, tracking: true, align: 'center', wrap: true });
       ctx.add('title.subtitle', 'Subtítulo', st.prims);
     }
     if (param(page, 'showKicker', true)) {
-      const k = ctx.textAt(ctx.s.titlePage.kicker, c.x + c.w / 2, c.y + c.h, { role: 'label', size: 'labelSmall', upper: true, tracking: 0.2, align: 'center' });
+      const k = textLine(ctx, 'title.kicker', ctx.s.titlePage.kicker, { x: c.x + c.w / 2, baseline: c.y + c.h }, { role: 'label', size: 'labelSmall', upper: true, tracking: 0.2, align: 'center' });
       ctx.add('title.kicker', 'Rótulo inferior', [k.prim]);
     }
   },
@@ -84,10 +84,10 @@ export const dedication: SectionModule = {
     const bodyH = measured.lines * ptToMm(measured.sizePt) * 1.6;
     const top = c.y + Math.max(0, (c.h - titleH - bodyH) / 2);
     if (titleText) {
-      const t = ctx.textIn(titleText, { x: c.x, y: top, w: c.w, h: titleH }, { role: 'title', size: 'title', wrap: true, fit: true });
+      const t = ctx.textBlock('dedication.title', { x: c.x, y: top, w: c.w, h: titleH }, titleText, { role: 'title', size: 'title', wrap: true, fit: true });
       ctx.add('dedication.title', 'Título de la dedicatoria', t.prims);
     }
-    const b = ctx.textIn(body, { x: c.x, y: top + titleH, w: c.w, h: c.y + c.h - top - titleH }, { role: 'quote', size: measured.sizePt, wrap: true, leading: 1.6 });
+    const b = ctx.textBlock('dedication.body', { x: c.x, y: top + titleH, w: c.w, h: c.y + c.h - top - titleH }, body, { role: 'quote', size: measured.sizePt, wrap: true, leading: 1.6 });
     ctx.add('dedication.body', 'Texto de la dedicatoria', b.prims);
   },
 };
@@ -106,25 +106,19 @@ export const personalInfo: SectionModule = {
     const h1 = sectionHeader(ctx, r, s.belongsTo, 'personal.owner');
     r = takeTop(r, h1)[1];
     const fields = [s.name, s.phone, s.email, s.address, ''];
-    const prims: Prim[] = [];
-    fields.forEach((f, i) => prims.push(...fieldLine(ctx, r.x, r.y + (i + 1) * pitch, r.w, f ? `${f}:` : '')));
-    ctx.add('personal.fields', 'Campos', prims);
+    ctx.add('personal.fields', 'Campos', fieldRows(ctx, 'personal.fields', r, fields, pitch));
     r = takeTop(r, fields.length * pitch + 4)[1];
-    const reward = ctx.textIn(s.reward, { ...r, h: 10 }, { role: 'quote', size: ctx.theme.sizes.body + 1, wrap: true });
+    const reward = ctx.textBlock('personal.reward', { ...r, h: 10 }, s.reward, { role: 'quote', size: ctx.theme.sizes.body + 1, wrap: true });
     ctx.add('personal.reward', 'Aviso de devolución', reward.prims);
-    r = takeTop(r, reward.bbox.h + 8)[1];
+    r = takeTop(r, reward.natural.bbox.h + 8)[1];
     if (param(page, 'emergency', true)) {
       const h2 = sectionHeader(ctx, r, s.emergency, 'personal.emergency');
       r = takeTop(r, h2)[1];
-      const ef: Prim[] = [];
-      [s.contactName, s.relation, s.phone].forEach((f, i) => ef.push(...fieldLine(ctx, r.x, r.y + (i + 1) * pitch, r.w, `${f}:`)));
-      ctx.add('personal.emergencyFields', 'Contacto de emergencia', ef);
+      ctx.add('personal.emergencyFields', 'Contacto de emergencia', fieldRows(ctx, 'personal.emergencyFields', r, [s.contactName, s.relation, s.phone], pitch));
       r = takeTop(r, 3 * pitch + 6)[1];
     }
     if (param(page, 'medical', true) && r.h > pitch * 3) {
-      const mf: Prim[] = [];
-      [s.bloodType, s.allergies, s.insurance].forEach((f, i) => mf.push(...fieldLine(ctx, r.x, r.y + (i + 1) * pitch, r.w, `${f}:`)));
-      ctx.add('personal.medical', 'Datos médicos', mf);
+      ctx.add('personal.medical', 'Datos médicos', fieldRows(ctx, 'personal.medical', r, [s.bloodType, s.allergies, s.insurance], pitch));
     }
   },
 };
@@ -189,7 +183,9 @@ export const toc: SectionModule = {
     const part = param(page, 'part', 0);
     const per = Math.ceil(entries.length / parts);
     const mine = entries.slice(part * per, (part + 1) * per);
-    const r = headed(ctx, ctx.s.toc.title, '');
+    const area = headed(ctx, ctx.s.toc.title, '');
+    // Las entradas se reparten en la caja del elemento (sin ajustes, es el área de la página).
+    const r = ctx.rect('toc.entries', area);
     const pitch = Math.min(7, r.h / Math.max(1, mine.length));
     const prims: Prim[] = [];
     const links: LinkArea[] = [];
@@ -246,9 +242,10 @@ export const yearOverview: SectionModule = {
     const cells = grid(r, nCols, nRows, 6, 5).flat();
     const names = monthNames(ctx.doc.locale);
     const showMoon = ctx.doc.design.astronomy.moonPhases && ctx.doc.design.astronomy.showIn.includes('yearOverview');
-    cells.forEach((cell, i) => {
+    cells.forEach((baseCell, i) => {
       const m = part * perPage + i + 1;
       if (m > 12) return;
+      const cell = ctx.rect(`month.${m}`, baseCell);
       const weeks = ctx.doc.cal.monthGrid(y, m);
       while (weeks.length < 6) weeks.push([]);
       const head = ctx.textIn((names[m - 1] ?? '').toLocaleUpperCase(ctx.doc.locale), { ...cell, h: 5 }, { role: 'labelStrong', size: perPage === 12 ? 'label' : ctx.theme.sizes.heading + 1.5, align: 'center', tracking: 0.08 });
@@ -307,9 +304,10 @@ export const birthdays: SectionModule = {
     const cells = grid(r, parts === 2 ? 1 : 2, parts === 2 ? 6 : 6, 6, 3).flat();
     const names = monthNames(ctx.doc.locale);
     const pitch = Math.max(5, ctx.theme.writing.pitch * 0.95);
-    cells.forEach((cell, i) => {
+    cells.forEach((baseCell, i) => {
       const m = part * months + i + 1;
       if (m > 12) return;
+      const cell = ctx.rect(`birthdays.${m}`, baseCell);
       const prims: Prim[] = [];
       const head = ctx.textIn((names[m - 1] ?? '').toLocaleUpperCase(ctx.doc.locale), { ...cell, h: 4 }, { role: 'heading', size: 'heading', tracking: ctx.theme.tracking.heading });
       prims.push(...head.prims, line(cell.x, cell.y + 4.6, cell.x + cell.w, cell.y + 4.6, ctx.stroke('rule', 'ink', { use: 'separator' })));
@@ -335,17 +333,17 @@ export const bestSelf: SectionModule = {
   layout(ctx) {
     const s = ctx.s.pages.bestSelf;
     let r = headed(ctx, s.title, s.horizon, { titleSize: 'titleSmall' });
-    const prompt = ctx.textIn(s.prompt, { ...r, h: 18 }, { role: 'quote', size: ctx.theme.sizes.body + 1, wrap: true, fit: true });
+    const prompt = ctx.textBlock('bestSelf.prompt', { ...r, h: 18 }, s.prompt, { role: 'quote', size: ctx.theme.sizes.body + 1, wrap: true, fit: true });
     ctx.add('bestSelf.prompt', 'Consigna', prompt.prims);
-    r = takeTop(r, prompt.bbox.h + 4)[1];
+    r = takeTop(r, prompt.natural.bbox.h + 4)[1];
     const [main, bottom] = takeBottom(r, 52, 4);
-    ctx.add('bestSelf.writing', 'Espacio para escribir', writingArea(ctx, main), { role: 'writing' });
+    ctx.add('bestSelf.writing', 'Espacio para escribir', writingArea(ctx, ctx.rect('bestSelf.writing', main)), { role: 'writing' });
     const vh = sectionHeader(ctx, bottom, s.values, 'bestSelf.valuesHeader');
     const vals = { x: bottom.x, y: bottom.y + vh, w: bottom.w, h: 3 * ctx.theme.writing.pitch };
-    ctx.add('bestSelf.values', 'Valores', checklist(ctx, vals, ctx.theme.writing.pitch, { circles: true }));
+    ctx.add('bestSelf.values', 'Valores', checklist(ctx, ctx.rect('bestSelf.values', vals), ctx.theme.writing.pitch, { circles: true }));
     const gTop = { x: bottom.x, y: vals.y + vals.h + 3, w: bottom.w, h: bottom.h - vh - vals.h - 3 };
     const gh = sectionHeader(ctx, gTop, fmt(s.goal, { year: ctx.doc.design.calendar.year }), 'bestSelf.goalHeader');
-    const gl = { x: gTop.x, y: gTop.y + gh, w: gTop.w, h: Math.max(0, gTop.h - gh) };
+    const gl = ctx.rect('bestSelf.goal', { x: gTop.x, y: gTop.y + gh, w: gTop.w, h: Math.max(0, gTop.h - gh) });
     const prims: Prim[] = ruledLines(gl, ctx.theme.writing.pitch, ctx.stroke('hair'));
     if (ctx.has('implementation-intentions')) {
       const t = ctx.textAt(ctx.s.pages.ifThen.when, gl.x, gl.y + gl.h - 1, { role: 'label', size: 'labelSmall', tracking: true });
@@ -371,8 +369,13 @@ export const vision: SectionModule = {
     const s = ctx.s.vision;
     const cats = param<string[]>(page, 'cats', []);
     const part = param(page, 'part', 0);
-    const r = headed(ctx, part === 0 ? s.title : String(ctx.doc.design.calendar.year), s.subtitle, { titleSize: 'title' });
-    const [headRow, body] = takeTop(r, 10);
+    const area = headed(ctx, part === 0 ? s.title : String(ctx.doc.design.calendar.year), s.subtitle, { titleSize: 'title' });
+    // El marco es el contenedor de la tabla: el encabezado y las filas se reparten dentro de él, así
+    // al cambiarlo de tamaño la tabla entera se vuelve a repartir. Cada fila y el encabezado se
+    // ajustan además por su cuenta.
+    const r = ctx.rect('vision.frame', area);
+    const [headBase, body] = takeTop(r, 10);
+    const headRow = ctx.rect('vision.head', headBase);
     const colsR = hsplit(headRow, [24, flex(), flex(), flex()]);
     const ink = ctx.theme.colors.ink;
     const prims: Prim[] = [rect(headRow, { fill: { color: ink } })];
@@ -383,7 +386,8 @@ export const vision: SectionModule = {
     });
     ctx.add('vision.head', 'Encabezado de la matriz', prims);
     const rowRects = rows(body, Math.max(1, cats.length));
-    rowRects.forEach((row, i) => {
+    rowRects.forEach((baseRow, i) => {
+      const row = ctx.rect(`vision.row.${i}`, baseRow);
       const c = hsplit(row, [24, flex(), flex(), flex()]);
       const p: Prim[] = [line(row.x, row.y + row.h, row.x + row.w, row.y + row.h, ctx.stroke('rule', 'ink', { use: 'table' }))];
       const label = ctx.textIn(cats[i] ?? '', inset(c[0]!, 2, 1.5), { role: 'heading', size: 'labelSmall', upper: true, tracking: 0.06, wrap: true, valign: 'middle', align: 'center' });
@@ -395,7 +399,7 @@ export const vision: SectionModule = {
       }
       ctx.add(`vision.row.${i}`, cats[i] ?? '', p);
     });
-    ctx.add('vision.frame', 'Marco', [rect(r, { stroke: ctx.stroke('rule', 'ink', { use: 'frame' }) })], { editable: false });
+    ctx.add('vision.frame', 'Marco', [rect(r, { stroke: ctx.stroke('rule', 'ink', { use: 'frame' }) })]);
   },
 };
 
@@ -428,8 +432,9 @@ export const actionPlan: SectionModule = {
   },
 };
 
-function goalBlock(ctx: LayoutContext, box: { x: number; y: number; w: number; h: number }, n: number): void {
+function goalBlock(ctx: LayoutContext, base: { x: number; y: number; w: number; h: number }, n: number): void {
   const s = ctx.s.actionPlan;
+  const box = ctx.rect(`goal.${n}`, base);
   const p: Prim[] = [rect(box, { stroke: ctx.stroke('rule', 'ink', { use: 'frame' }) })];
   const inner = inset(box, 4);
   const title = ctx.textAt(fmt(s.goal, { n }), inner.x, inner.y + 2.5, { role: 'heading', size: 'label', upper: true, tracking: true });
@@ -475,7 +480,7 @@ function goalBlock(ctx: LayoutContext, box: { x: number; y: number; w: number; h
 
 function mantraBlock(ctx: LayoutContext, box: { x: number; y: number; w: number; h: number }): void {
   const s = ctx.s.actionPlan;
-  const b = { x: box.x, y: box.y + box.h * 0.25, w: box.w, h: box.h * 0.75 };
+  const b = ctx.rect('mantra.box', { x: box.x, y: box.y + box.h * 0.25, w: box.w, h: box.h * 0.75 });
   const head = sectionHeader(ctx, { ...box, h: 8 }, fmt(s.mantra, { year: ctx.doc.design.calendar.year }), 'mantra.title', { rule: 'none' });
   void head;
   const p: Prim[] = [rect(b, { stroke: ctx.stroke('hair', 'ruleSoft', { use: 'frame', dash: [1.2, 1] }) })];
@@ -493,10 +498,12 @@ export const moodYear: SectionModule = {
   layout(ctx) {
     const s = ctx.s.moodYear;
     let r = headed(ctx, s.title, String(ctx.doc.design.calendar.year), { titleSize: 'titleSmall' });
-    const hint = ctx.textIn(`${s.hint} ${ctx.s.pages.mood.scale}`, { ...r, h: 9 }, { role: 'body', size: 'small', wrap: true, fit: true });
+    const hint = ctx.textBlock('mood.hint', { ...r, h: 9 }, `${s.hint} ${ctx.s.pages.mood.scale}`, { role: 'body', size: 'small', wrap: true, fit: true });
     ctx.add('mood.hint', 'Consigna', hint.prims);
-    r = takeTop(r, hint.bbox.h + 3)[1];
-    const [gridArea, legend] = takeBottom(r, 16, 3);
+    r = takeTop(r, hint.natural.bbox.h + 3)[1];
+    const [gridBase, legendBase] = takeBottom(r, 16, 3);
+    const gridArea = ctx.rect('mood.grid', gridBase);
+    const legend = ctx.rect('mood.legend', legendBase);
     const [dayCol, months] = hsplit(gridArea, [5, flex()]);
     const names = monthNames(ctx.doc.locale, 'short');
     const colRects = cols({ ...months!, h: 4 }, 12);
