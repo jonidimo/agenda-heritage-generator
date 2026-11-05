@@ -10,6 +10,7 @@ import { join } from 'node:path';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { smokeMcp } from '../scripts/mcp-smoke';
+import { connectLive, findLiveApp, LIVE_ERRORS } from '../electron/lib/live.mjs';
 import { DATA_FOLDERS, type DesktopPlatform } from '../src/app/state/platform';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
@@ -108,14 +109,14 @@ test('con --mcp es un servidor MCP: sin ventana, la salida estándar es solo del
     env: { XDG_CONFIG_HOME: profile, APPDATA: profile },
   });
   expect(report.problems).toEqual([]);
-  expect(report.tools).toHaveLength(9);
+  expect(report.tools).toHaveLength(13);
 });
 
 test('como Node puro (ELECTRON_RUN_AS_NODE) también es un servidor MCP: es la forma que funciona en Windows', async () => {
   // Sin AGENDA_PUBLIC_DIR: el paquete encuentra la carpeta dist/ que lo acompaña.
   const report = await smokeMcp({ command: ELECTRON, args: [join(ROOT, 'dist-mcp', 'main.mjs')], env: { ELECTRON_RUN_AS_NODE: '1' } });
   expect(report.problems).toEqual([]);
-  expect(report.tools).toHaveLength(9);
+  expect(report.tools).toHaveLength(13);
 });
 
 test('el editor de texto en su lugar abre sin violar la política de seguridad (la letra se carga desde sus bytes)', async () => {
@@ -189,4 +190,106 @@ test('cerrar la ventana espera a que termine el guardado pendiente', async () =>
   await w2.evaluate("localStorage.setItem('agenda-studio.uiLang', 'es')");
   await w2.reload();
   await expect.poll(() => w2.evaluate<string | null>('globalThis.__agenda?.getState().design?.name ?? null'), { timeout: 60_000 }).toBe('Último cambio');
+});
+
+test.describe('puente en vivo con un modelo de IA', () => {
+  /** Se conecta al socket de la aplicación como lo haría el servidor MCP (por su `live.json`). */
+  async function connectToApp() {
+    // La aplicación escribe `live.json` al arrancar: se espera a que aparezca.
+    await expect.poll(() => findLiveApp({ env: { XDG_CONFIG_HOME: profile, APPDATA: profile }, platform: process.platform, home: profile }), { timeout: 30_000 }).not.toBeNull();
+    const found = (await findLiveApp({ env: { XDG_CONFIG_HOME: profile, APPDATA: profile }, platform: process.platform, home: profile }))!;
+    return { found, link: await connectLive({ endpoint: found.endpoint, token: found.token }) };
+  }
+
+  test('lee la agenda abierta, la cambia como un paso que se deshace y rechaza lo que pisaría un cambio de la persona', async () => {
+    const { win } = await launchWithPlanner();
+    const { link } = await connectToApp();
+    try {
+      const info = (await link.request('design.info')) as { open: boolean; enabled: boolean; revision: number; name: string };
+      expect(info).toMatchObject({ open: true, enabled: true });
+      const got = (await link.request('design.get', {})) as { revision: number; design: { name: string; persona: { name: string } } };
+      expect(got.revision).toBe(info.revision);
+
+      // Un cambio del modelo: se ve en la página, queda avisado y se puede deshacer.
+      const applied = await link.request('design.patch', { patch: [{ op: 'replace', path: '/persona/name', value: 'Escrito por un modelo' }], baseRevision: got.revision });
+      expect(applied).toMatchObject({ applied: true, revision: got.revision + 1 });
+      await expect.poll(() => win.evaluate<string>('globalThis.__agenda.getState().design.persona.name')).toBe('Escrito por un modelo');
+      await expect(win.getByTestId('ai-notice')).toContainText('Un modelo de IA cambió la agenda');
+      await win.getByTestId('ai-notice').getByRole('button', { name: 'Deshacer' }).click();
+      await expect.poll(() => win.evaluate<string>('globalThis.__agenda.getState().design.persona.name')).toBe(got.design.persona.name);
+
+      // La persona cambia algo: un parche con la revisión vieja ya no se aplica.
+      const stale = (await link.request('design.info')) as { revision: number };
+      await win.evaluate(`globalThis.__agenda.getState().update((d) => { d.persona.name = 'Lo puso la persona'; }, 'e2e-person')`);
+      await expect(link.request('design.patch', { patch: [{ op: 'replace', path: '/persona/name', value: 'Pisado' }], baseRevision: stale.revision })).rejects.toMatchObject({ code: -32012 });
+      expect(await win.evaluate<string>('globalThis.__agenda.getState().design.persona.name')).toBe('Lo puso la persona');
+
+      // Mostrar algo en la aplicación.
+      const shown = (await link.request('view.reveal', { page: 5 })) as { page: number };
+      expect(shown.page).toBe(5);
+      await expect.poll(() => win.evaluate<number>('globalThis.__agenda.getState().pageIndex')).toBe(4);
+    } finally {
+      link.close();
+    }
+  });
+
+  test('si la persona desactiva el permiso, solo se puede preguntar; con un token equivocado ni eso', async () => {
+    const { win } = await launchWithPlanner();
+    const { found, link } = await connectToApp();
+    try {
+      await win.getByRole('button', { name: 'Archivo' }).click();
+      await win.getByRole('menuitem', { name: /Permitir que un modelo de IA edite la agenda abierta/ }).click();
+      await expect.poll(() => win.evaluate<boolean>('globalThis.__agenda.getState().liveLink')).toBe(false);
+      expect(await link.request('design.info')).toMatchObject({ enabled: false, open: true });
+      await expect(link.request('design.get', {})).rejects.toMatchObject({ code: -32010 });
+      await expect(link.request('design.patch', { patch: [{ op: 'replace', path: '/name', value: 'x' }] })).rejects.toMatchObject({ code: -32010 });
+    } finally {
+      link.close();
+    }
+    await expect(connectLive({ endpoint: found.endpoint, token: 'token-equivocado' })).rejects.toMatchObject({ code: LIVE_ERRORS.unauthorized });
+    // El permiso no corta el enlace: con el token correcto se sigue pudiendo preguntar.
+    const again = await connectLive({ endpoint: found.endpoint, token: found.token });
+    expect(await again.request('design.info')).toMatchObject({ enabled: false });
+    again.close();
+  });
+
+  test('el servidor MCP del paquete encuentra la aplicación abierta (AGENDA_APP_LINK) y trabaja sobre su agenda', async () => {
+    await launchWithPlanner();
+    await expect.poll(() => findLiveApp({ env: { XDG_CONFIG_HOME: profile, APPDATA: profile }, platform: process.platform, home: profile }), { timeout: 30_000 }).not.toBeNull();
+    const work = await mkdtemp(join(tmpdir(), 'heritage-mcp-live-'));
+    try {
+      const { spawn } = await import('node:child_process');
+      const child = spawn(ELECTRON, [join(ROOT, 'dist-mcp', 'main.mjs')], {
+        env: { ...process.env, ELECTRON_RUN_AS_NODE: '1', AGENDA_MCP_ROOT: work, AGENDA_APP_LINK: join(profile, 'Heritage Studio (dev)', 'live.json') },
+        stdio: ['pipe', 'pipe', 'ignore'],
+      });
+      let out = '';
+      child.stdout.setEncoding('utf8').on('data', (chunk: string) => (out += chunk));
+      const send = (message: object): void => void child.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', ...message })}\n`);
+      const reply = async (id: number): Promise<Record<string, unknown>> => {
+        const until = Date.now() + 60_000;
+        while (Date.now() < until) {
+          const line = out.split('\n').find((l) => l.includes(`"id":${id}`) && l.includes('"result"'));
+          if (line) return JSON.parse(line) as Record<string, unknown>;
+          await new Promise((r) => setTimeout(r, 100));
+        }
+        throw new Error(`sin respuesta al pedido ${id}: ${out.slice(0, 400)}`);
+      };
+      send({ id: 1, method: 'initialize', params: { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'e2e', version: '1' } } });
+      await reply(1);
+      send({ method: 'notifications/initialized' });
+      send({ id: 2, method: 'tools/call', params: { name: 'app_status', arguments: {} } });
+      const status = JSON.parse(((await reply(2)).result as { content: Array<{ text: string }> }).content[0]!.text) as { running: boolean; open: boolean; pageCount: number };
+      expect(status).toMatchObject({ running: true, open: true });
+      expect(status.pageCount).toBeGreaterThan(50);
+      send({ id: 3, method: 'tools/call', params: { name: 'update_design', arguments: { app: true, patch: [{ op: 'replace', path: '/persona/name', value: 'Desde el servidor MCP' }] } } });
+      const updated = JSON.parse(((await reply(3)).result as { content: Array<{ text: string }> }).content[0]!.text) as { applied: boolean };
+      expect(updated.applied).toBe(true);
+      child.stdin.end();
+    } finally {
+      await rm(work, { recursive: true, force: true });
+    }
+    const win = app ? await app.firstWindow() : null;
+    await expect.poll(() => win!.evaluate<string>('globalThis.__agenda.getState().design.persona.name')).toBe('Desde el servidor MCP');
+  });
 });

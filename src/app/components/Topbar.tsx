@@ -10,7 +10,7 @@ import { activeView, useStore, viewsOf, ZOOM, type Mode, type View } from '../st
 import { supportsUiScale } from '../state/uiScale';
 import { IconButton, Segmented } from './ui';
 import { goBack, goForward } from '../state/navigation';
-import { revealFile } from '../state/desktopBridge';
+import { isDesktopShell, revealFile } from '../state/desktopBridge';
 import { SearchPalette } from './SearchPalette';
 
 /** Un botón de la barra que abre un menú justo debajo; el menú se arma al abrirlo, con lo que haya en ese momento. */
@@ -63,6 +63,8 @@ export function Topbar() {
   const lastExport = useStore((s) => s.lastExport);
   const setShowShortcuts = useStore((s) => s.setShowShortcuts);
   const setAutoReveal = useStore((s) => s.setAutoReveal);
+  const liveLink = useStore((s) => s.liveLink);
+  const setLiveLink = useStore((s) => s.setLiveLink);
   const setShowAbout = useStore((s) => s.setShowAbout);
   const setShowLibrary = useStore((s) => s.setShowLibrary);
   const setShowSaveTemplate = useStore((s) => s.setShowSaveTemplate);
@@ -116,6 +118,8 @@ export function Topbar() {
               : []),
             ...(lastExport ? [{ label: t('file.openLastFolder'), onSelect: () => void revealFile(lastExport.path) }, { separator: true as const }] : [{ separator: true as const }]),
             { label: t('file.autoReveal'), checked: autoReveal, onSelect: () => setAutoReveal(!autoReveal) },
+            // El puente con un modelo de IA existe solo en la aplicación de escritorio.
+            ...(isDesktopShell() ? [{ label: t('file.liveLink'), checked: liveLink, onSelect: () => setLiveLink(!liveLink) }] : []),
             { label: t('file.shortcuts'), icon: <Keyboard size={14} />, hint: shortcutHint('help.shortcuts', t), onSelect: () => setShowShortcuts(true) },
             { label: t('file.about'), icon: <Info size={14} />, onSelect: () => setShowAbout(true) },
           ]} />

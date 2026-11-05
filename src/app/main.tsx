@@ -4,6 +4,7 @@ import { App } from './App';
 import { AppBoundary } from './components/ErrorBoundary';
 import { stats } from './state/stats';
 import { openFromText } from './state/fileActions';
+import { installLive } from './state/live';
 import { flushSave, useStore } from './state/store';
 import './styles.css';
 
@@ -15,6 +16,7 @@ declare global {
     __agendaStats?: typeof stats;
     __heritageFlush?: () => Promise<void>;
     __heritageOpen?: (text: string, name: string) => Promise<void>;
+    __heritageLive?: (request: unknown) => Promise<unknown>;
   }
 }
 window.__agenda = useStore;
@@ -22,6 +24,8 @@ window.__agenda = useStore;
 window.__heritageFlush = flushSave;
 // Lo usa la aplicación de escritorio cuando el sistema le pide abrir un archivo de agenda (doble clic, «Abrir con…»).
 window.__heritageOpen = (text) => openFromText(text);
+// El puente en vivo con un modelo de IA (servidor MCP) lo usa el proceso principal de la aplicación de escritorio.
+installLive();
 window.__agendaStats = stats;
 
 // Versión nueva instalada mientras la aplicación estaba abierta: los archivos que se cargan bajo

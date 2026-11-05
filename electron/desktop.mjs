@@ -6,6 +6,7 @@
  * behave as on the website and saved planners persist across launches. The page runs in a fully
  * sandboxed renderer, without a preload script or Node.js.
  */
+import { rmSync } from 'node:fs';
 import { readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -13,6 +14,7 @@ import { app, BrowserWindow, dialog, Menu, net, protocol, screen, session, shell
 import { agendaFileFromArgv, MAX_OPEN_BYTES } from './lib/args.mjs';
 import { createCloseGuard } from './lib/closing.mjs';
 import { DownloadLog, sysRequestAllowed, sysRoute } from './lib/downloads.mjs';
+import { createLiveBroker, LIVE_ERRORS, LIVE_INFO_FILE, LIVE_PROTOCOL, liveEndpoint, newToken, writeLiveInfo } from './lib/live.mjs';
 import { createRevealer, gpuCrashAction, gpuFallbackRelaunch } from './lib/reveal.mjs';
 
 const APP_NAME = 'Heritage Studio';
@@ -176,6 +178,51 @@ app.on('open-file', (event, file) => {
   void openPlannerFile(file);
 });
 
+/**
+ * The live link with an AI client (see lib/live.mjs): the MCP server connects to a local socket and its
+ * requests are answered by the page, which owns the open planner and the user's permission.
+ * @param {string} method
+ * @param {unknown} params
+ */
+async function liveHandler(method, params) {
+  const win = mainWindow;
+  const unavailable = () => Object.assign(new Error('The app window is not ready.'), { code: LIVE_ERRORS.unavailable });
+  if (!win || win.isDestroyed() || win.webContents.isDestroyed() || !loaded) throw unavailable();
+  // The request travels as a JSON string literal: nothing in it can run as code.
+  const answer = await win.webContents.executeJavaScript(`window.__heritageLive ? window.__heritageLive(${JSON.stringify({ method, params })}) : null`);
+  if (!answer || typeof answer !== 'object') throw unavailable();
+  if (answer.ok) return answer.result;
+  throw Object.assign(new Error(String(answer.message)), { code: typeof answer.code === 'number' ? answer.code : LIVE_ERRORS.app });
+}
+
+/** @type {{ close: () => Promise<void> } | null} */
+let liveBroker = null;
+const liveEndpointPath = () => liveEndpoint(app.getPath('userData'), process.platform);
+
+async function startLive() {
+  const dataDir = app.getPath('userData');
+  const endpoint = liveEndpointPath();
+  const token = newToken();
+  try {
+    liveBroker = await createLiveBroker({ endpoint, token, handler: liveHandler });
+    await writeLiveInfo(dataDir, { protocol: LIVE_PROTOCOL, endpoint, token, pid: process.pid, version: app.getVersion() });
+  } catch (err) {
+    // The link is an extra: the app works without it.
+    console.error(`Live link unavailable: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
+app.on('will-quit', () => {
+  void liveBroker?.close();
+  // Synchronous too, since the process may exit before the asynchronous close finishes.
+  try {
+    rmSync(path.join(app.getPath('userData'), LIVE_INFO_FILE), { force: true });
+    if (!liveEndpointPath().startsWith('\\\\')) rmSync(liveEndpointPath(), { force: true });
+  } catch {
+    /* already gone */
+  }
+});
+
 /** The app is quitting (not just one window closing). */
 let quitting = false;
 app.on('before-quit', () => {
@@ -324,6 +371,7 @@ if (!app.requestSingleInstanceLock()) {
     });
     buildMenu();
     createWindow();
+    void startLive();
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow();
     });

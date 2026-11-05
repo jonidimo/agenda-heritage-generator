@@ -115,6 +115,12 @@ interface StoreState {
   /** Diálogo con los elementos ocultos de la página actual. */
   showHidden: boolean;
   setShowHidden(b: boolean): void;
+  /** ¿Se permite que un modelo de IA lea y edite la agenda abierta (puente en vivo de la aplicación de escritorio)? */
+  liveLink: boolean;
+  setLiveLink(on: boolean): void;
+  /** Aviso del último cambio hecho por un modelo de IA: con «Deshacer» mientras nada más haya cambiado (`revision`). */
+  aiNotice: { text: string; revision: number } | null;
+  setAiNotice(n: { text: string; revision: number } | null): void;
   /** Cada pedido nuevo (número creciente) hace correr la verificación previa del panel del elemento. */
   preflightRequest: number;
   requestPreflight(): void;
@@ -303,6 +309,8 @@ export const useStore = create<StoreState>((set, get) => ({
   showShortcuts: false,
   showHidden: false,
   preflightRequest: 0,
+  liveLink: prefs.liveLink.read(),
+  aiNotice: null,
   textEditRequest: null,
   lastExport: null,
   sidebarOpen: true,
@@ -409,6 +417,11 @@ export const useStore = create<StoreState>((set, get) => ({
   setLastExport: (lastExport) => set({ lastExport }),
   setShowShortcuts: (showShortcuts) => set({ showShortcuts }),
   setShowHidden: (showHidden) => set({ showHidden }),
+  setLiveLink(liveLink) {
+    prefs.liveLink.write(liveLink);
+    set({ liveLink });
+  },
+  setAiNotice: (aiNotice) => set({ aiNotice }),
   requestPreflight: () => set((s) => ({ preflightRequest: s.preflightRequest + 1 })),
   requestTextEdit: (textEditRequest) => set({ textEditRequest }),
   goToPage: (i) => set({ pageIndex: Math.max(0, i), selection: null, selectedIds: [] }),

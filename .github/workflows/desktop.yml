@@ -74,6 +74,16 @@ jobs:
       - name: MCP server works inside the package (as Node)
         shell: bash
         run: npx tsx scripts/mcp-smoke.ts --env ELECTRON_RUN_AS_NODE=1 -- "${{ matrix.app }}" "${{ matrix.bundle }}"
+      # The live link: the packaged app, started with an empty profile, answers an AI client on its
+      # local socket (the page replies and reports the version). Linux needs a display server.
+      - name: Live link works inside the package
+        shell: bash
+        run: |
+          if [ "${{ matrix.name }}" = linux ]; then
+            xvfb-run -a npx tsx scripts/live-smoke.ts -- "${{ matrix.app }}" --no-sandbox
+          else
+            npx tsx scripts/live-smoke.ts -- "${{ matrix.app }}" --no-sandbox
+          fi
       # The AppImage as documented for MCP: extracted once, then its AppRun is the command. (Its
       # --appimage-extract-and-run mode prints the extracted files on stdout, so it is not usable.)
       - name: MCP server works from the extracted AppImage

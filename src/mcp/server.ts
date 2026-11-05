@@ -14,6 +14,7 @@ import type { Design } from '../core/design/schema';
 import { themeFile, themeFromDesign } from '../core/design/themeFile';
 import { EXPORT_KINDS } from '../core/document';
 import { documentSummary } from '../core/document/summary';
+import type { LiveDesign, LiveInfo, LiveLibraryItem, LiveOpened, LivePatchResult, LiveReveal } from '../core/live/protocol';
 import { blockBounds } from '../core/document/layout';
 import { pageToSvg } from '../core/render/svg';
 import { toBase64 } from '../core/resources';
@@ -23,6 +24,7 @@ import { checkDesignData, checkDesignJson, type CheckResult } from '../node/chec
 import { newLayoutWarnings } from './feedback';
 import { fullCatalogue, loadFonts, openNodeDocument } from '../node/env';
 import type { Rasterizer } from './resvg';
+import { AppLink } from './live';
 import { Workspace } from './workspace';
 
 const DESIGN_EXT = ['.agenda.json'] as const;
@@ -45,6 +47,7 @@ function parseJson(body: string, path: string): unknown {
 const INSTRUCTIONS = `Diseño de agendas imprimibles (Agenda Heritage Studio). Una agenda es un archivo JSON (.agenda.json).
 Flujo: create_design (desde una plantilla) → update_design (JSON Patch) → check_design hasta que no queden problemas → render_page para ver páginas → export_pdf / export_theme.
 Referencia: list_catalogue (secciones con sus opciones, temas, ornamentos, variables de texto) y get_schema (con «part» para leer solo una parte, p. ej. "theme.tokens.lines").
+Con la aplicación de escritorio abierta: app_status dice qué agenda tiene; con «app: true» check_design, render_page, update_design y las demás trabajan sobre ESA agenda (los cambios son un paso que la persona puede deshacer; si ella la tocó mientras tanto, volvé a leerla), app_reveal le muestra una página y app_library/app_open cambian de agenda.
 Medidas en milímetros; colores #rrggbb; las rutas de archivo son relativas a la carpeta de trabajo. La guía completa está en el recurso agenda://guide.`;
 
 type ToolResult = { content: Array<{ type: 'text'; text: string } | { type: 'image'; data: string; mimeType: string }>; isError?: boolean };
@@ -55,6 +58,7 @@ const text = (value: unknown): ToolResult => ({ content: [{ type: 'text', text: 
 const source = {
   path: z.string().optional().describe('Archivo .agenda.json, relativo a la carpeta de trabajo'),
   design: z.record(z.string(), z.unknown()).optional().describe('La agenda escrita directamente (en lugar de path)'),
+  app: z.boolean().optional().describe('La agenda que está abierta ahora en la aplicación de escritorio (en lugar de path o design). Ver app_status'),
 };
 
 const patchOp = z.union([
@@ -75,11 +79,20 @@ export interface ServerResources {
 export interface ServerOptions extends ServerResources {
   /** Carpeta de trabajo (los archivos se leen y escriben solo adentro). */
   root: string;
+  /** El enlace con la aplicación de escritorio abierta (en las pruebas, uno falso). */
+  appLink?: AppLink;
 }
 
 export function createServer(opts: ServerOptions): McpServer {
   const ws = new Workspace(opts.root);
   const server = new McpServer({ name: 'agenda-heritage-studio', version: opts.version }, { instructions: INSTRUCTIONS });
+  // El enlace con la aplicación abierta se conecta al primer uso; al cerrarse el servidor se suelta.
+  const appLink = opts.appLink ?? new AppLink();
+  const closed = server.server.onclose;
+  server.server.onclose = () => {
+    closed?.();
+    appLink.close();
+  };
 
   // Un solo registro con todas las fuentes integradas para todas las agendas (se carga al primer uso).
   let fonts: Promise<FontRegistry> | null = null;
@@ -92,16 +105,24 @@ export function createServer(opts: ServerOptions): McpServer {
   };
 
   /** Lee y revisa la agenda pedida; si no abre, el error lista los problemas. */
-  async function load(input: { path?: string | undefined; design?: Record<string, unknown> | undefined }): Promise<{ check: CheckResult; design: Design }> {
-    if ((input.path === undefined) === (input.design === undefined)) throw new Error('Indicá la agenda con «path» (un archivo) o con «design» (el JSON), una de las dos.');
+  async function load(input: { path?: string | undefined; design?: Record<string, unknown> | undefined; app?: boolean | undefined }): Promise<{ check: CheckResult; design: Design; revision?: number }> {
+    const given = [input.path !== undefined, input.design !== undefined, input.app === true].filter(Boolean).length;
+    if (given !== 1) throw new Error('Indicá la agenda con «path» (un archivo), con «design» (el JSON) o con «app: true» (la abierta en la aplicación): una sola.');
     let raw: unknown = input.design;
+    let revision: number | undefined;
+    if (input.app === true) {
+      // Con las imágenes propias adentro, para que las páginas se vean como en la aplicación.
+      const got = await appLink.request<LiveDesign>('design.get', { assets: true });
+      raw = got.design;
+      revision = got.revision;
+    }
     if (input.path !== undefined) raw = parseJson((await ws.read(input.path, JSON_EXT)).text, input.path);
     // Una plantilla guardada desde la aplicación trae la agenda adentro.
     const wrapped = raw as { kind?: unknown; design?: unknown } | null;
     if (wrapped?.kind === 'heritage-template' && wrapped.design) raw = wrapped.design;
     const check = checkDesignData(raw);
     if (!check.design) throw new Error(`La agenda no se puede abrir:\n${check.issues.map((i) => `${i.path}: ${i.message}`).join('\n')}`);
-    return { check, design: check.design };
+    return { check, design: check.design, ...(revision !== undefined ? { revision } : {}) };
   }
 
   const open = async (design: Design) => openNodeDocument(design, await sharedFonts());
@@ -142,7 +163,7 @@ export function createServer(opts: ServerOptions): McpServer {
     'create_design',
     {
       title: 'Crear agenda',
-      description: 'Crea una agenda desde una plantilla. Con «out» la guarda en un archivo .agenda.json y devuelve su resumen; sin «out», devuelve el JSON.',
+      description: 'Crea una agenda desde una plantilla. Con «out» la guarda en un archivo .agenda.json y devuelve su resumen; con «app: true» la abre en la aplicación de escritorio (como una agenda nueva de su biblioteca: la que estaba abierta queda guardada); sin ninguna, devuelve el JSON.',
       inputSchema: {
         template: z.enum(TEMPLATES.map((t) => t.id) as [TemplateId, ...TemplateId[]]).describe(TEMPLATES.map((t) => `${t.id}: ${t.description}`).join(' | ')),
         year: z.number().int().min(1900).max(2200).optional(),
@@ -151,10 +172,17 @@ export function createServer(opts: ServerOptions): McpServer {
         name: z.string().max(120).optional().describe('Nombre de la persona (portada, dedicatoria)'),
         out: z.string().optional().describe('Archivo a crear (.agenda.json)'),
         overwrite: z.boolean().optional(),
+        app: z.boolean().optional().describe('Abrirla en la aplicación de escritorio en lugar de guardarla en un archivo'),
       },
     },
-    async ({ template, year, locale, country, name, out, overwrite }) => {
+    async ({ template, year, locale, country, name, out, overwrite, app }) => {
       const design = createDesign(template, { ...(year ? { year } : {}), ...(locale ? { locale } : {}), ...(country !== undefined ? { country } : {}), ...(name ? { name } : {}) });
+      if (app === true) {
+        if (out) throw new Error('Indicá «out» (un archivo) o «app» (abrirla en la aplicación), no las dos.');
+        const opened = await appLink.request<LiveOpened>('design.load', { design });
+        const { doc, errors } = await open(design);
+        return text({ opened, summary: documentSummary(doc, errors) });
+      }
       if (!out) return text(design);
       const full = await ws.write(out, `${JSON.stringify(design, null, 2)}\n`, { extensions: DESIGN_EXT, overwrite: overwrite === true });
       const { doc, errors } = await open(design);
@@ -167,12 +195,14 @@ export function createServer(opts: ServerOptions): McpServer {
     {
       title: 'Cambiar agenda',
       description:
-        'Cambia un archivo .agenda.json con operaciones JSON Patch (RFC 6902: add, remove, replace, move, copy, test; rutas como "/calendar/weekStart" o "/sections/-"). Se aplica todo o nada; si después la agenda no abre, el archivo no se toca. Devuelve los problemas que quedan y los avisos de maquetación que el cambio produjo («warnings»: texto que no entra, elementos que salen de la página o se superponen, con su página): revisalos antes de seguir.',
-      inputSchema: { path: z.string().describe('Archivo .agenda.json'), patch: z.array(patchOp).min(1).max(500) },
+        'Cambia una agenda con operaciones JSON Patch (RFC 6902: add, remove, replace, move, copy, test; rutas como "/calendar/weekStart" o "/sections/-"): un archivo .agenda.json («path») o la agenda abierta en la aplicación de escritorio («app: true»; el cambio es un solo paso que la persona puede deshacer y se rechaza si ella la modificó mientras tanto: volvé a leerla). Se aplica todo o nada; si después la agenda no abre, no se toca. Devuelve los problemas que quedan y los avisos de maquetación que el cambio produjo («warnings»: texto que no entra, elementos que salen de la página o se superponen, con su página): revisalos antes de seguir.',
+      inputSchema: { path: z.string().optional().describe('Archivo .agenda.json'), app: z.boolean().optional().describe('La agenda abierta en la aplicación de escritorio'), patch: z.array(patchOp).min(1).max(500) },
     },
-    async ({ path, patch }) => {
-      const { full, text: body } = await ws.read(path, DESIGN_EXT);
-      const next = applyJsonPatch(parseJson(body, path), patch as JsonPatchOp[]);
+    async ({ path, app, patch }) => {
+      if ((path === undefined) === (app !== true)) throw new Error('Indicá «path» (un archivo) o «app: true» (la agenda abierta en la aplicación), una de las dos.');
+      if (app === true) return updateInApp(patch as JsonPatchOp[]);
+      const { full, text: body } = await ws.read(path!, DESIGN_EXT);
+      const next = applyJsonPatch(parseJson(body, path!), patch as JsonPatchOp[]);
       const check = checkDesignData(next);
       if (!check.design) return { ...text({ written: false, issues: check.issues }), isError: true };
       await ws.write(full, `${JSON.stringify(next, null, 2)}\n`, { extensions: DESIGN_EXT, overwrite: true });
@@ -180,6 +210,73 @@ export function createServer(opts: ServerOptions): McpServer {
       const layout = await newLayoutWarnings(open, checkDesignJson(body).design, check.design);
       return text({ written: true, path: ws.show(full), issues: check.issues, warnings: layout.notes, ...(layout.omitted > 0 ? { omittedWarnings: layout.omitted } : {}) });
     },
+  );
+
+  /**
+   * El cambio sobre la agenda abierta: se lee con su revisión, se aplica y se revisa acá (así el modelo ve
+   * los problemas y los avisos de maquetación), y a la aplicación solo se le manda el parche con esa revisión.
+   * Si la persona tocó la agenda mientras tanto, la aplicación lo rechaza en lugar de pisar su cambio.
+   */
+  async function updateInApp(patch: JsonPatchOp[]): Promise<ToolResult> {
+    const got = await appLink.request<LiveDesign>('design.get', { assets: true });
+    const before = checkDesignData(got.design).design;
+    const next = applyJsonPatch(got.design, patch);
+    const check = checkDesignData(next);
+    if (!check.design) return { ...text({ applied: false, issues: check.issues }), isError: true };
+    const sent = await appLink.request<LivePatchResult>('design.patch', { patch, baseRevision: got.revision });
+    if (!sent.applied) return { ...text({ applied: false, issues: sent.issues }), isError: true };
+    const layout = await newLayoutWarnings(open, before, check.design);
+    return text({ applied: true, revision: sent.revision, issues: check.issues, warnings: layout.notes, ...(layout.omitted > 0 ? { omittedWarnings: layout.omitted } : {}) });
+  }
+
+  /* ---------- La aplicación de escritorio abierta ---------- */
+
+  server.registerTool(
+    'app_status',
+    {
+      title: 'Estado de la aplicación',
+      description:
+        'Pregunta si la aplicación de escritorio Heritage Studio está abierta y qué agenda tiene: nombre, año, páginas y revisión (cambia con cada cambio, también los de la persona). Si no está abierta, lo dice sin error. Con «app: true» en las demás herramientas se trabaja sobre esa agenda; la persona puede desactivarlo en Archivo → «Permitir que un modelo de IA edite la agenda abierta».',
+      annotations: { readOnlyHint: true },
+    },
+    async () => {
+      const info = await appLink.status();
+      if (!info) return text({ running: false, hint: 'La aplicación de escritorio no está abierta (o no es la versión que tiene el enlace). Abrila para trabajar sobre la agenda abierta, o usá «path».' });
+      return text({ running: true, ...(info satisfies LiveInfo) });
+    },
+  );
+
+  server.registerTool(
+    'app_reveal',
+    {
+      title: 'Mostrar en la aplicación',
+      description: 'Lleva la aplicación a una página de la agenda abierta (por número desde 1 o por clave) y, con «blockId», deja elegido ese elemento: así la persona ve de qué se está hablando. Los ids de los elementos salen de render_page.',
+      inputSchema: { page: z.number().int().min(1).optional(), key: z.string().max(200).optional(), blockId: z.string().max(200).optional().describe('Id de un elemento de esa página') },
+    },
+    async ({ page, key, blockId }) => {
+      if (page === undefined && key === undefined) throw new Error('Indicá la página con «page» (número desde 1) o con «key».');
+      return text(await appLink.request<LiveReveal>('view.reveal', { ...(page !== undefined ? { page } : {}), ...(key !== undefined ? { key } : {}), ...(blockId !== undefined ? { blockId } : {}) }));
+    },
+  );
+
+  server.registerTool(
+    'app_library',
+    {
+      title: 'Agendas de la aplicación',
+      description: 'Las agendas guardadas en la biblioteca de la aplicación de escritorio (id, nombre, año, última modificación), las más recientes primero.',
+      annotations: { readOnlyHint: true },
+    },
+    async () => text(await appLink.request<LiveLibraryItem[]>('library.list')),
+  );
+
+  server.registerTool(
+    'app_open',
+    {
+      title: 'Abrir en la aplicación',
+      description: 'Abre en la aplicación una agenda de su biblioteca (por id, ver app_library). La que estaba abierta queda guardada.',
+      inputSchema: { id: z.string().min(1).max(200) },
+    },
+    async ({ id }) => text(await appLink.request<LiveOpened>('design.open', { id })),
   );
 
   server.registerTool(

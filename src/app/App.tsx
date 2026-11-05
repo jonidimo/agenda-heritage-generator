@@ -119,6 +119,10 @@ export function App() {
   const setSidebarOpen = useStore((s) => s.setSidebarOpen);
   const selection = useStore((s) => s.selection);
   const notice = useStore((s) => s.notice);
+  const aiNotice = useStore((s) => s.aiNotice);
+  const setAiNotice = useStore((s) => s.setAiNotice);
+  const revision = useStore((s) => s.revision);
+  const canUndo = useStore((s) => s.past.length > 0);
   const updateReady = useStore((s) => s.updateReady);
   const setNotice = useStore((s) => s.setNotice);
   const bump = useStore((s) => s.bumpResources);
@@ -284,6 +288,20 @@ export function App() {
               <span className="min-w-0 flex-1">{t('notice.updated')}</span>
               <button type="button" className="rounded-md bg-accent px-2 py-0.5 font-semibold text-white" onClick={() => void flushSave().then(() => location.reload())}>
                 {t('notice.reload')}
+              </button>
+            </div>
+          )}
+          {aiNotice && (
+            <div role="status" data-testid="ai-notice" className="flex items-center gap-2 border-b border-line bg-accent-soft px-3 py-1.5 text-[12px] text-ink">
+              <span className="min-w-0 flex-1 break-words">{aiNotice.text}</span>
+              {/* «Deshacer» solo mientras lo último que cambió sea lo del modelo: si no, desharía otra cosa. */}
+              {aiNotice.revision === revision && canUndo && (
+                <button type="button" className="rounded-md bg-accent px-2 py-0.5 font-semibold text-white" onClick={() => useStore.getState().undo()}>
+                  {t('live.undo')}
+                </button>
+              )}
+              <button type="button" className="shrink-0 rounded p-0.5 hover:bg-black/5" aria-label={t('common.close')} onClick={() => setAiNotice(null)}>
+                <X size={14} />
               </button>
             </div>
           )}
