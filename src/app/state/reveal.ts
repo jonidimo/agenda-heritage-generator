@@ -22,6 +22,8 @@ function findByText(root: ParentNode, text: string): HTMLElement | null {
 
 export interface RevealTarget {
   panel?: Panel;
+  /** Buscarlo en el panel del elemento (a la derecha) y no en el panel lateral. */
+  inspector?: boolean;
   /** Selector CSS del control (p. ej. `[data-reveal="role.title"]`). */
   selector?: string;
   /** O su texto visible. */
@@ -37,7 +39,7 @@ export async function reveal(target: RevealTarget): Promise<boolean> {
   }
   await frame();
   await frame();
-  const root = document.querySelector('[data-sidebar]') ?? document;
+  const root = document.querySelector(target.inspector ? '[data-inspector]' : '[data-sidebar]') ?? document;
   const el = (target.selector ? root.querySelector<HTMLElement>(target.selector) : null) ?? (target.text ? findByText(root, target.text) : null);
   if (!el) return false;
   // Abre los grupos plegados que lo contienen (de afuera hacia adentro).

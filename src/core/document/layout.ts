@@ -3,7 +3,7 @@
  * del usuario + marcas de agua + numeración/pestañas + ajustes del editor
  * (mover, escalar, rotar, opacidad, ocultar) con verificación de límites.
  */
-import { enumProp, IMAGE_FITS, numProp, PROP_RANGES, TEXT_ALIGNS, TEXT_ROLES, TEXT_VALIGNS } from '../design/customBlocks';
+import { enumProp, IMAGE_FITS, numProp, PROP_DEFAULTS, PROP_RANGES, TEXT_ALIGNS, TEXT_ROLES, TEXT_VALIGNS } from '../design/customBlocks';
 import type { BlockOverride, CustomBlock, Design, WatermarkPlacement } from '../design/schema';
 import { fmt as fmtStr } from '../i18n';
 import { inset } from '../layout/box';
@@ -145,7 +145,7 @@ function placeCustomBlock(ctx: LayoutContext, cb: CustomBlock, page: PagePlan): 
         align: enumProp(p.align, TEXT_ALIGNS, 'left'),
         valign: enumProp(p.valign, TEXT_VALIGNS, 'top'),
         upper: Boolean(p.upper),
-        tracking: numProp(p.tracking, PROP_RANGES.tracking, 0),
+        tracking: numProp(p.tracking, PROP_RANGES.tracking, PROP_DEFAULTS.tracking),
         wrap: p.wrap !== false,
         fit: true,
         ...(normalizeColor(p.color) ? { color: normalizeColor(p.color)! } : {}),
@@ -158,7 +158,7 @@ function placeCustomBlock(ctx: LayoutContext, cb: CustomBlock, page: PagePlan): 
     case 'image':
       prims = assetPrims(ctx.doc.assets.get(String(p.assetId ?? '')), box, {
         fit: enumProp(p.fit, IMAGE_FITS, 'contain'),
-        opacity: numProp(p.opacity, PROP_RANGES.opacity, 1),
+        opacity: numProp(p.opacity, PROP_RANGES.opacity, PROP_DEFAULTS.opacity),
         minStrokePt: 0.25,
       });
       break;
@@ -170,10 +170,10 @@ function placeCustomBlock(ctx: LayoutContext, cb: CustomBlock, page: PagePlan): 
       prims = [dotField(box, numProp(p.pitch, PROP_RANGES.pitch, ctx.theme.dots.pitch), (ctx.theme.dots.radius * 25.4) / 72, ctx.theme.dots.color)];
       break;
     case 'grid':
-      prims = squareGrid(box, numProp(p.pitch, PROP_RANGES.pitch, 5), ctx.stroke('grid'));
+      prims = squareGrid(box, numProp(p.pitch, PROP_RANGES.pitch, PROP_DEFAULTS.gridPitch), ctx.stroke('grid'));
       break;
     case 'rect':
-      prims = [{ t: 'rect', ...box, r: numProp(p.radius, PROP_RANGES.radius, 0), stroke: ctx.stroke('rule', 'ink', { use: 'frame' }), ...(normalizeColor(p.fill) ? { fill: { color: normalizeColor(p.fill)! } } : {}) }];
+      prims = [{ t: 'rect', ...box, r: numProp(p.radius, PROP_RANGES.radius, PROP_DEFAULTS.radius), stroke: ctx.stroke('rule', 'ink', { use: 'frame' }), ...(normalizeColor(p.fill) ? { fill: { color: normalizeColor(p.fill)! } } : {}) }];
       break;
     case 'line':
       prims = [{ t: 'line', x1: box.x, y1: box.y + box.h / 2, x2: box.x + box.w, y2: box.y + box.h / 2, stroke: ctx.stroke('rule', 'ink', { use: 'separator' }) }];

@@ -18,6 +18,11 @@ Hay dos maneras de trabajar con un modelo:
 
 ## 1. El servidor MCP
 
+**Lo más fácil: la aplicación de escritorio.** Los instaladores ya llevan el servidor, sin nada más
+que instalar: el cliente inicia la aplicación con `--mcp` y no se abre ninguna ventana. La
+configuración de cada sistema está en la [guía de la aplicación de escritorio](desktop.md#5-use-it-with-an-ai-model-mcp)
+(en inglés). El resto de esta sección es para correrlo desde una copia del repositorio.
+
 Hace falta una copia de este repositorio con sus dependencias instaladas (`npm ci`). El servidor
 corre en tu computadora y solo lee y escribe archivos dentro de su **carpeta de trabajo**. Se
 elige con `AGENDA_MCP_ROOT`, por ejemplo una carpeta `~/Agendas`. Sin esa variable, es la carpeta

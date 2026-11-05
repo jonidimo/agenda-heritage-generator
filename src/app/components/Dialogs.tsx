@@ -11,6 +11,7 @@ import { deleteDesign, deleteTemplate, exportDesignFile, listDesigns, listTempla
 import { backupAll, openAnyFile } from '../state/fileActions';
 import { designFromTemplate, exportTemplateFile, importText, saveAsTemplate } from '../state/files';
 import { download, fileBase } from '../state/exporter';
+import { dataFolderFor } from '../state/platform';
 import { resources } from '../state/resources';
 import { useStore } from '../state/store';
 import { Button, Field, NumberInput, Select, TextArea, TextInput, Toggle } from './ui';
@@ -70,6 +71,8 @@ export function WelcomeDialog() {
   const setDesign = useStore((s) => s.setDesign);
   const setShow = useStore((s) => s.setShowWelcome);
   const hasDesign = useStore((s) => s.design !== null);
+  const welcomeOnStart = useStore((s) => s.welcomeOnStart);
+  const setWelcomeOnStart = useStore((s) => s.setWelcomeOnStart);
   const [template, setTemplate] = useState<string>('heritage-norma');
   const [userTpls, setUserTpls] = useState<TemplateRecord[]>([]);
   useEffect(() => void listTemplates().then(setUserTpls), []);
@@ -149,7 +152,8 @@ export function WelcomeDialog() {
       <Field label={t('welcome.country')} hint={t('welcome.countryHint')}>
         <Select value={country} onChange={setCountry} options={[{ value: '', label: '—' }, ...countries]} />
       </Field>
-      <div className="grid grid-cols-[1.5fr_1fr_0.7fr] gap-2">
+      {/* Los controles se alinean por abajo: un rótulo largo puede ocupar dos líneas sin descolocar a los demás. */}
+      <div className="grid grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_minmax(0,0.9fr)] items-end gap-2">
         <Field label={t('cal.weekStart')}>
           <Select
             value={weekStart}
@@ -181,6 +185,85 @@ export function WelcomeDialog() {
         </Button>
         <Button variant="primary" onClick={create}>
           {t('welcome.create')}
+        </Button>
+      </div>
+      <div className="mt-2 border-t border-line pt-1">
+        <Toggle label={t('welcome.showAtStart')} checked={welcomeOnStart} onChange={setWelcomeOnStart} />
+      </div>
+    </Modal>
+  );
+}
+
+/** Enlace a una dirección web: se abre fuera de la aplicación (el navegador o, en el escritorio, el predeterminado). */
+function ExternalLink(props: { href: string; children: React.ReactNode }) {
+  return (
+    <a href={props.href} target="_blank" rel="noopener noreferrer" className="font-semibold text-accent underline">
+      {props.children}
+    </a>
+  );
+}
+
+/** «Acerca de»: versión, enlaces, dónde se guardan los datos y licencias. */
+export function AboutDialog() {
+  const t = useT();
+  const setShow = useStore((s) => s.setShowAbout);
+  const [copied, setCopied] = useState(false);
+  const folder = dataFolderFor(navigator.userAgent);
+  const fonts = resources.manifest?.families ?? [];
+  const copyFolder = (): void => {
+    if (!folder) return;
+    navigator.clipboard.writeText(folder).then(
+      () => setCopied(true),
+      () => setCopied(false),
+    );
+  };
+  return (
+    <Modal title={t('about.title')} onClose={() => setShow(false)}>
+      <p className="text-[12.5px] font-semibold text-ink-soft">{t('about.version', { version: __APP_VERSION__ })}</p>
+      <p className="mt-1 text-[12.5px] leading-snug">{t('app.tagline')}</p>
+
+      <h3 className="mt-3 text-[11px] font-extrabold tracking-[0.08em] uppercase">{t('about.links')}</h3>
+      <ul className="mt-1 space-y-0.5 text-[12.5px]">
+        <li>
+          <ExternalLink href={__APP_HOMEPAGE__}>{t('about.repository')}</ExternalLink>
+        </li>
+        <li>
+          <ExternalLink href={`${__APP_HOMEPAGE__}/releases`}>{t('about.releases')}</ExternalLink>
+        </li>
+        <li>
+          <ExternalLink href={`${__APP_HOMEPAGE__}/issues`}>{t('about.issues')}</ExternalLink>
+        </li>
+      </ul>
+
+      <h3 className="mt-3 text-[11px] font-extrabold tracking-[0.08em] uppercase">{t('about.dataTitle')}</h3>
+      {folder ? (
+        <>
+          <p className="mt-1 text-[12.5px] leading-snug">{t('about.dataDesktop')}</p>
+          <p className="mt-1 flex flex-wrap items-center gap-2">
+            <code className="rounded bg-black/5 px-1.5 py-0.5 font-mono text-[12px] break-all">{folder}</code>
+            <Button onClick={copyFolder}>
+              <Copy size={13} /> {copied ? t('about.copied') : t('about.copyPath')}
+            </Button>
+          </p>
+        </>
+      ) : (
+        <p className="mt-1 text-[12.5px] leading-snug">{t('about.dataWeb', { origin: location.origin })}</p>
+      )}
+
+      <h3 className="mt-3 text-[11px] font-extrabold tracking-[0.08em] uppercase">{t('about.licenses')}</h3>
+      <p className="mt-1 text-[12px] font-semibold">{t('about.fonts')}</p>
+      <ul className="text-[12px] text-ink-soft">
+        {fonts.map((f) => (
+          <li key={f.family}>
+            {f.family} — {f.designer}
+          </li>
+        ))}
+      </ul>
+      <p className="mt-2 text-[12px] leading-snug text-ink-soft">{t('about.holidays')}</p>
+      <p className="mt-2 text-[12px] leading-snug text-ink-soft">{t('about.libraries')}</p>
+      <div className="mt-3 flex justify-end">
+        <Button variant="primary" onClick={() => setShow(false)}>
+          {t('common.close')}
         </Button>
       </div>
     </Modal>

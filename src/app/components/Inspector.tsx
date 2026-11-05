@@ -1,8 +1,9 @@
 /** Panel derecho: elemento seleccionado (valores exactos), elementos propios y verificación previa. */
-import { PROP_RANGES, TEXT_ROLES } from '@core/design/customBlocks';
+import { PROP_DEFAULTS, PROP_RANGES, TEXT_ROLES } from '@core/design/customBlocks';
 import type { AgendaDocument } from '@core/document';
 import { blockBounds } from '@core/document/layout';
-import type { CustomBlock } from '@core/design/schema';
+import { OVERRIDE_DEFAULTS, WATERMARK_DEFAULTS, type CustomBlock } from '@core/design/schema';
+import { getAtPath } from '@core/util/path';
 import type { Block, PageModel, PageWarning, Prim } from '@core/layout/prims';
 import { unionRect, type AlignMode } from '@core/layout/align';
 import type { WritingStyle } from '@core/design/themes';
@@ -116,7 +117,7 @@ export function Inspector({ doc }: { doc: AgendaDocument }) {
 
   const sideLabel = page.side === 'recto' ? t('insp.recto') : t('insp.verso');
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex h-full flex-col" data-inspector="">
       <div className="border-b border-line px-3 py-2 text-[11.5px] text-ink-soft">{t('insp.page', { n: page.index + 1, type: sectionName(t, page.type), side: sideLabel })}</div>
       <div className="scroll-thin min-h-0 flex-1 overflow-y-auto px-3 py-2">
         <h3 className="mb-1 text-[11px] font-extrabold tracking-[0.08em] uppercase">{t('insp.title')}</h3>
@@ -128,7 +129,7 @@ export function Inspector({ doc }: { doc: AgendaDocument }) {
             {!block.editable && <p className="text-[12px] text-ink-soft">{t('insp.locked')}</p>}
             {block.editable && block.role === 'writing' && <WritingFields page={page} scope={scope} setScope={setScope} />}
             {block.editable && block.role === 'watermark' && <WatermarkFields id={block.id.slice(3)} />}
-            {block.editable && block.role === 'custom' && <CustomFields id={block.id.slice(7)} />}
+            {block.editable && block.role === 'custom' && <CustomFields id={block.id.slice(7)} theme={doc.ctx.theme} />}
             {block.editable && block.role !== 'watermark' && block.role !== 'custom' && (
               <BlockFields page={page} blockId={block.id} scope={scope} setScope={setScope} />
             )}
@@ -258,6 +259,8 @@ function WritingFields({ page, scope, setScope }: { page: PageModel; scope: 'typ
   const tokens = pageStyleOf(design, page, scope) as { writing?: { style?: WritingStyle; pitch?: number }; dots?: { pitch?: number; pitchY?: number; radius?: number }; strokes?: { hair?: number } };
   const style = tokens.writing?.style ?? theme?.writing.style ?? 'lines';
   const set = (path: string[], v: unknown): void => setPageStyle(page, scope, path, v, `ps:${page.type}:${path.join('.')}`);
+  // Un valor propio de este tipo (o de esta página) se restablece quitándolo: vuelve a salir del tema.
+  const reset = (path: string[]): { modified: boolean; onReset: () => void } => ({ modified: getAtPath(tokens, path) !== undefined, onReset: () => set(path, undefined) });
   return (
     <div className="mb-2 rounded-md border border-line bg-white/60 p-2">
       <h4 className="mb-1 text-[11px] font-extrabold tracking-[0.08em] uppercase">{t('writing.title')}</h4>
@@ -269,11 +272,11 @@ function WritingFields({ page, scope, setScope }: { page: PageModel; scope: 'typ
       <Field label={t('writing.style')} group>
         <Segmented value={style} onChange={(v) => set(['writing', 'style'], v)} options={(['lines', 'dots', 'grid', 'blank'] as const).map((v) => ({ value: v, label: t(`val.${v}`) }))} />
       </Field>
-      {style === 'lines' && <Slider label={t('writing.pitch')} value={tokens.writing?.pitch ?? theme?.writing.pitch ?? 6} min={3} max={15} step={0.1} onChange={(v) => set(['writing', 'pitch'], v)} />}
-      {style === 'lines' && <Slider label={t('writing.lineWeight')} value={(tokens.strokes?.hair ?? theme?.strokes.hair ?? 0.3)} min={0.1} max={1.5} step={0.05} onChange={(v) => set(['strokes', 'hair'], v)} />}
-      {(style === 'dots' || style === 'grid') && <Slider label={t('writing.dotPitchX')} value={tokens.dots?.pitch ?? theme?.dots.pitch ?? 5} min={2} max={15} step={0.1} onChange={(v) => set(['dots', 'pitch'], v)} />}
-      {style === 'dots' && <Slider label={t('writing.dotPitchY')} value={tokens.dots?.pitchY ?? theme?.dots.pitchY ?? 0} min={0} max={15} step={0.1} onChange={(v) => set(['dots', 'pitchY'], v)} />}
-      {style === 'dots' && <Slider label={t('writing.dotSize')} value={tokens.dots?.radius ?? theme?.dots.radius ?? 0.5} min={0.1} max={2.5} step={0.05} onChange={(v) => set(['dots', 'radius'], v)} />}
+      {style === 'lines' && <Slider label={t('writing.pitch')} value={tokens.writing?.pitch ?? theme?.writing.pitch ?? 6} min={3} max={15} step={0.1} onChange={(v) => set(['writing', 'pitch'], v)} {...reset(['writing', 'pitch'])} />}
+      {style === 'lines' && <Slider label={t('writing.lineWeight')} value={(tokens.strokes?.hair ?? theme?.strokes.hair ?? 0.3)} min={0.1} max={1.5} step={0.05} onChange={(v) => set(['strokes', 'hair'], v)} {...reset(['strokes', 'hair'])} />}
+      {(style === 'dots' || style === 'grid') && <Slider label={t('writing.dotPitchX')} value={tokens.dots?.pitch ?? theme?.dots.pitch ?? 5} min={2} max={15} step={0.1} onChange={(v) => set(['dots', 'pitch'], v)} {...reset(['dots', 'pitch'])} />}
+      {style === 'dots' && <Slider label={t('writing.dotPitchY')} value={tokens.dots?.pitchY ?? theme?.dots.pitchY ?? 0} min={0} max={15} step={0.1} onChange={(v) => set(['dots', 'pitchY'], v)} {...reset(['dots', 'pitchY'])} />}
+      {style === 'dots' && <Slider label={t('writing.dotSize')} value={tokens.dots?.radius ?? theme?.dots.radius ?? 0.5} min={0.1} max={2.5} step={0.05} onChange={(v) => set(['dots', 'radius'], v)} {...reset(['dots', 'radius'])} />}
       <p className="text-[11px] leading-snug text-ink-soft">{t('writing.hint')}</p>
       <Button variant="ghost" onClick={() => resetPageStyle(page, scope)}>
         <RotateCcw size={14} /> {t('writing.reset')}
@@ -330,9 +333,9 @@ function BlockFields({ page, blockId, scope, setScope }: { page: PageModel; bloc
         </p>
       )}
       {inherited && typeO && <p className="mb-1 text-[11px] leading-snug text-ink-soft">{t('insp.inherits')}</p>}
-      <Slider label={t('insp.scale')} value={v.scale} min={0.2} max={3} step={0.01} onChange={(x) => set({ scale: x }, 'scale')} />
-      <Slider label={t('insp.rotation')} value={v.rotation} min={-180} max={180} step={1} onChange={(x) => set({ rotation: x }, 'rotation')} />
-      <Slider label={t('insp.opacity')} value={v.opacity} min={0} max={1} step={0.05} onChange={(x) => set({ opacity: x }, 'opacity')} />
+      <Slider label={t('insp.scale')} value={v.scale} min={0.2} max={3} step={0.01} onChange={(x) => set({ scale: x }, 'scale')} defaultValue={OVERRIDE_DEFAULTS.scale} />
+      <Slider label={t('insp.rotation')} value={v.rotation} min={-180} max={180} step={1} onChange={(x) => set({ rotation: x }, 'rotation')} defaultValue={OVERRIDE_DEFAULTS.rotation} />
+      <Slider label={t('insp.opacity')} value={v.opacity} min={0} max={1} step={0.05} onChange={(x) => set({ opacity: x }, 'opacity')} defaultValue={OVERRIDE_DEFAULTS.opacity} />
     </div>
   );
 }
@@ -399,10 +402,10 @@ export function WatermarkFields({ id }: { id: string }) {
           <NumberInput value={wm.dy} step={0.5} onChange={(v) => set('dy', v)} />
         </Field>
       </div>
-      <Slider label={t('wm.width')} value={wm.width} min={2} max={200} step={0.5} onChange={(v) => set('width', v)} />
-      <Slider label={t('wm.opacity')} value={wm.opacity} min={0.05} max={1} step={0.05} onChange={(v) => set('opacity', v)} />
-      <Slider label={t('wm.rotation')} value={wm.rotation} min={-180} max={180} step={1} onChange={(v) => set('rotation', v)} />
-      <Slider label={t('wm.minStroke')} value={wm.minStrokePt} min={0} max={1.5} step={0.05} onChange={(v) => set('minStrokePt', v)} />
+      <Slider label={t('wm.width')} value={wm.width} min={2} max={200} step={0.5} onChange={(v) => set('width', v)} defaultValue={WATERMARK_DEFAULTS.width} />
+      <Slider label={t('wm.opacity')} value={wm.opacity} min={0.05} max={1} step={0.05} onChange={(v) => set('opacity', v)} defaultValue={WATERMARK_DEFAULTS.opacity} />
+      <Slider label={t('wm.rotation')} value={wm.rotation} min={-180} max={180} step={1} onChange={(v) => set('rotation', v)} defaultValue={WATERMARK_DEFAULTS.rotation} />
+      <Slider label={t('wm.minStroke')} value={wm.minStrokePt} min={0} max={1.5} step={0.05} onChange={(v) => set('minStrokePt', v)} defaultValue={WATERMARK_DEFAULTS.minStrokePt} />
       <Toggle label={t('wm.mirror')} checked={wm.mirrorOnVerso} onChange={(v) => set('mirrorOnVerso', v)} />
       <Field label={t('wm.layer')}>
         <Select value={wm.layer} onChange={(v) => set('layer', v)} options={[{ value: 'above', label: t('wm.above') }, { value: 'below', label: t('wm.below') }]} />
@@ -411,7 +414,7 @@ export function WatermarkFields({ id }: { id: string }) {
   );
 }
 
-function CustomFields({ id }: { id: string }) {
+function CustomFields({ id, theme }: { id: string; theme: AgendaDocument['ctx']['theme'] }) {
   const t = useT();
   const cb = useStore((s) => s.design?.customBlocks.find((c) => c.id === id));
   const assets = useStore((s) => s.design?.assets ?? []);
@@ -422,12 +425,17 @@ function CustomFields({ id }: { id: string }) {
       const c = d.customBlocks.find((x) => x.id === id);
       if (c) Object.assign(c, patch);
     }, `cb:${id}:${key}`);
+  // Con `undefined` la propiedad se quita: el elemento vuelve al valor que le da el tema.
   const setProp = (k: string, v: unknown): void =>
     update((d) => {
       const c = d.customBlocks.find((x) => x.id === id);
-      if (c) c.props = { ...c.props, [k]: v };
+      if (!c) return;
+      const { [k]: _removed, ...rest } = c.props;
+      c.props = v === undefined ? rest : { ...rest, [k]: v };
     }, `cb:${id}:p:${k}`);
   const p = cb.props as Record<string, unknown>;
+  // El paso de los renglones, los puntos y la cuadrícula, cuando el elemento no tiene uno propio.
+  const pitchDefault = cb.kind === 'dots' ? theme.dots.pitch : cb.kind === 'grid' ? PROP_DEFAULTS.gridPitch : theme.writing.pitch;
   return (
     <div>
       <div className="grid grid-cols-2 gap-2">
@@ -459,7 +467,7 @@ function CustomFields({ id }: { id: string }) {
               />
             </Field>
             <Field label={t('insp.size')}>
-              <NumberInput value={Number(p.size ?? 10)} step={0.5} min={PROP_RANGES.textSize.min} max={PROP_RANGES.textSize.max} onChange={(v) => setProp('size', v)} />
+              <NumberInput value={Number(p.size ?? theme.sizes.body)} step={0.5} min={PROP_RANGES.textSize.min} max={PROP_RANGES.textSize.max} onChange={(v) => setProp('size', v)} />
             </Field>
           </div>
           <Field label={t('insp.align')} group>
@@ -504,11 +512,11 @@ function CustomFields({ id }: { id: string }) {
               ]}
             />
           </Field>
-          <Slider label={t('insp.opacity')} value={Number(p.opacity ?? 1)} min={PROP_RANGES.opacity.min} max={PROP_RANGES.opacity.max} step={0.05} onChange={(v) => setProp('opacity', v)} />
+          <Slider label={t('insp.opacity')} value={Number(p.opacity ?? PROP_DEFAULTS.opacity)} min={PROP_RANGES.opacity.min} max={PROP_RANGES.opacity.max} step={0.05} onChange={(v) => setProp('opacity', v)} defaultValue={PROP_DEFAULTS.opacity} />
         </>
       )}
       {(cb.kind === 'lines' || cb.kind === 'dots' || cb.kind === 'grid') && (
-        <Slider label={t('style.pitch')} value={Number(p.pitch ?? 6)} min={PROP_RANGES.pitch.min} max={PROP_RANGES.pitch.max} step={0.1} onChange={(v) => setProp('pitch', v)} />
+        <Slider label={t('style.pitch')} value={Number(p.pitch ?? pitchDefault)} min={PROP_RANGES.pitch.min} max={PROP_RANGES.pitch.max} step={0.1} onChange={(v) => setProp('pitch', v)} modified={p.pitch !== undefined} onReset={() => setProp('pitch', undefined)} />
       )}
     </div>
   );
@@ -542,7 +550,7 @@ function LinkFields(props: { doc: AgendaDocument; page: PageModel; block: Block;
   const urlOk = mode !== 'url' || safeUrl(shown?.url ?? '') !== null;
   const label = (l: (typeof links)[number]): string => (l.page !== undefined ? `${doc.pageLabel(l.page)} · ${t('nav.page', { n: l.page + 1 })}` : (l.url ?? ''));
   return (
-    <div className="mt-3 border-t border-line pt-2" data-testid="link-fields">
+    <div className="mt-3 border-t border-line pt-2" data-testid="link-fields" data-reveal="links">
       <div className="mb-1 flex items-center justify-between gap-2">
         <h4 className="text-[11px] font-extrabold tracking-[0.08em] uppercase">{t('link.title')}</h4>
         <button type="button" className="text-[11.5px] text-accent underline" onClick={() => setShowLinks(!showLinks)}>

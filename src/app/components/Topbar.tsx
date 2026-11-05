@@ -1,9 +1,11 @@
-import { Archive, ArrowLeft, ArrowRight, BookOpen, Search, Columns2, File, FileDown, FolderOpen, Grid3x3, LayoutTemplate, Link2, Magnet, Maximize, PanelLeft, Printer, Redo2, Ruler, Save, Undo2, Upload, ZoomIn, ZoomOut } from 'lucide-react';
+import { Archive, ArrowLeft, ArrowRight, BookOpen, Search, Columns2, File, FileDown, FolderOpen, Grid3x3, Info, LayoutTemplate, Link2, Magnet, Maximize, PanelLeft, Printer, Redo2, Ruler, Save, Undo2, Upload, ZoomIn, ZoomOut } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { backupAll, openAnyFile, saveCurrent } from '../state/fileActions';
 import { openMenuAt } from './ContextMenu';
-import { useT, type UiLang } from '../i18n/ui';
-import { useStore, type View } from '../state/store';
+import { UI_LANG_NAMES, UI_LANGS, useT } from '../i18n/ui';
+import { UI_SCALE } from '../state/prefs';
+import { useStore, ZOOM, type View } from '../state/store';
+import { supportsUiScale } from '../state/uiScale';
 import { IconButton, Segmented } from './ui';
 import { goBack, goForward } from '../state/navigation';
 import { SearchPalette } from './SearchPalette';
@@ -18,11 +20,14 @@ export function Topbar() {
   const redo = useStore((s) => s.redo);
   const view = useStore((s) => s.view);
   const setView = useStore((s) => s.setView);
-  const zoom = useStore((s) => s.zoom);
   const fit = useStore((s) => s.fit);
-  const setZoom = useStore((s) => s.setZoom);
+  const zoomBy = useStore((s) => s.zoomBy);
+  const zoomFit = useStore((s) => s.zoomFit);
   const lang = useStore((s) => s.uiLang);
   const setLang = useStore((s) => s.setUiLang);
+  const uiScale = useStore((s) => s.uiScale);
+  const setUiScale = useStore((s) => s.setUiScale);
+  const setShowAbout = useStore((s) => s.setShowAbout);
   const setShowLibrary = useStore((s) => s.setShowLibrary);
   const setShowSaveTemplate = useStore((s) => s.setShowSaveTemplate);
   const setPanel = useStore((s) => s.setPanel);
@@ -78,10 +83,6 @@ export function Topbar() {
       <IconButton label={t('top.menu')} onClick={() => setSidebarOpen(!sidebarOpen)} active={sidebarOpen}>
         <PanelLeft size={18} />
       </IconButton>
-      <div className="flex items-baseline gap-2 pr-2">
-        <span className="font-display text-[19px] leading-none italic">Heritage</span>
-        <span className="hidden text-[10.5px] font-extrabold tracking-[0.16em] text-ink-soft uppercase 2xl:inline">Studio</span>
-      </div>
       <button type="button" onClick={() => setShowLibrary(true)} className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-[12.5px] font-semibold hover:bg-black/5" title={t('top.library')}>
         <FolderOpen size={16} />
         <span className="hidden xl:inline">{t('top.library')}</span>
@@ -100,6 +101,15 @@ export function Topbar() {
             { separator: true },
             { label: t('file.saveTemplate'), icon: <LayoutTemplate size={14} />, disabled: !design, onSelect: () => setShowSaveTemplate(true) },
             { label: t('file.backup'), icon: <Archive size={14} />, onSelect: () => void backupAll() },
+            { separator: true },
+            { heading: t('top.lang') },
+            ...UI_LANGS.map((l) => ({ label: UI_LANG_NAMES[l], checked: lang === l, onSelect: () => setLang(l) })),
+            // El tamaño de la interfaz usa `zoom`: los navegadores que no lo tienen no lo ofrecen.
+            ...(supportsUiScale()
+              ? [{ separator: true }, { heading: t('file.uiScale') }, ...UI_SCALE.presets.map((p) => ({ label: `${Math.round(p * 100)} %`, checked: Math.abs(uiScale - p) < 0.005, onSelect: () => setUiScale(p) }))]
+              : []),
+            { separator: true },
+            { label: t('file.about'), icon: <Info size={14} />, onSelect: () => setShowAbout(true) },
           ]);
         }}
       >
@@ -147,13 +157,13 @@ export function Topbar() {
         />
       </div>
       <div className="flex items-center">
-        <IconButton label={t('top.zoomOut')} onClick={() => setZoom((fit ? 1 : zoom) / 1.2)}>
+        <IconButton label={t('top.zoomOut')} onClick={() => zoomBy(1 / ZOOM.step)}>
           <ZoomOut size={17} />
         </IconButton>
-        <IconButton label={t('top.fit')} onClick={() => setZoom(1, true)} active={fit}>
+        <IconButton label={t('top.fit')} onClick={zoomFit} active={fit}>
           <Maximize size={16} />
         </IconButton>
-        <IconButton label={t('top.zoomIn')} onClick={() => setZoom((fit ? 1 : zoom) * 1.2)}>
+        <IconButton label={t('top.zoomIn')} onClick={() => zoomBy(ZOOM.step)}>
           <ZoomIn size={17} />
         </IconButton>
         <IconButton label={t('top.guides')} onClick={toggleGuides} active={guides}>
@@ -166,12 +176,6 @@ export function Topbar() {
           <Link2 size={17} />
         </IconButton>
       </div>
-      <select aria-label={t('top.lang')} className="rounded-md border border-line bg-white px-1.5 py-1 text-[12px]" value={lang} onChange={(e) => setLang(e.target.value as UiLang)}>
-        <option value="es">ES</option>
-        <option value="en">EN</option>
-        <option value="pt">PT</option>
-        <option value="it">IT</option>
-      </select>
       <button
         type="button"
         onClick={() => {

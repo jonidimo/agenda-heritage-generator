@@ -67,6 +67,9 @@ instead, see [Run it](#run-it).
 - An image element takes any picture: choose one from the planner or upload a PNG, JPG or
   SVG.
 - Each text element can have its own font and colour, or follow its type of text.
+- **Zoom** the page with Ctrl and + / − / 0 (or the mouse wheel with Ctrl). **File →
+  Interface size** scales the whole interface, and the side panels and the page strip
+  are resized by dragging their edges; the app remembers both.
 - **Right-click** (or long-press on a phone) any element, page or thumbnail for its
   options: change the watermark image, hide something on one page or on all pages of
   that type, select similar elements, add text or images where you clicked.
@@ -179,7 +182,8 @@ instead, see [Run it](#run-it).
 ### Design with an AI model
 
 - An **MCP server** lets Claude, or any model that speaks MCP, create a planner, change
-  it, check it, look at its pages and export the PDF or a theme. Ask it for "a teacher's
+  it, check it, look at its pages and export the PDF or a theme. The desktop app contains
+  it: start it with `--mcp` ([how](docs/desktop.md#5-use-it-with-an-ai-model-mcp)). Ask it for "a teacher's
   planner from March to December" or "a theme with Art Nouveau flourishes".
 - The file format comes with a **JSON Schema** and a catalogue generated from the code,
   and `npm run agenda -- check` says exactly what would be ignored or corrected. Read the

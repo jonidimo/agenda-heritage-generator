@@ -7,10 +7,17 @@ import { parseDesign, type Design } from '@core/design/schema';
 import { produce, type Draft } from 'immer';
 import { create } from 'zustand';
 import { saveDesign } from './persist';
+import { PANEL_LIMITS, prefs, UI_SCALE, type PanelId } from './prefs';
 import type { UiLang } from '../i18n/ui';
 
 export type View = 'page' | 'spread' | 'sheet' | 'book';
 export type Panel = 'sections' | 'style' | 'methods' | 'persona' | 'calendar' | 'assets' | 'print';
+
+/** Límites y paso del zoom del lienzo (el de la página, no el de la interfaz). */
+export const ZOOM = { min: 0.2, max: 6, step: 1.2 } as const;
+
+/** Anchos de los paneles (px): ver `PANEL_LIMITS`. */
+export type PanelSizes = Record<PanelId, number>;
 
 export interface Selection {
   pageKey: string;
@@ -52,6 +59,9 @@ interface StoreState {
   /** Diálogo «Guardar como plantilla». */
   showSaveTemplate: boolean;
   setShowSaveTemplate(b: boolean): void;
+  /** Diálogo «Acerca de Heritage Studio». */
+  showAbout: boolean;
+  setShowAbout(b: boolean): void;
   sidebarOpen: boolean;
   guides: boolean;
   snap: boolean;
@@ -81,6 +91,20 @@ interface StoreState {
   goToPage(i: number): void;
   setSheetSide(s: 'front' | 'back'): void;
   setZoom(z: number, fit?: boolean): void;
+  /** Acerca o aleja el lienzo multiplicando el zoom actual (con el ajuste a la ventana, parte de 1). */
+  zoomBy(factor: number): void;
+  /** Ajusta la página al área de trabajo. */
+  zoomFit(): void;
+  /** Tamaño de la interfaz (1 = 100 %), independiente del zoom del lienzo. */
+  uiScale: number;
+  setUiScale(scale: number): void;
+  /** Mostrar el asistente de «Nueva agenda» al abrir el programa. */
+  welcomeOnStart: boolean;
+  setWelcomeOnStart(show: boolean): void;
+  /** Tamaños de los paneles: se ven al instante y se guardan al soltar el divisor. */
+  panelSizes: PanelSizes;
+  setPanelSize(panel: PanelId, size: number): void;
+  commitPanelSizes(): void;
   select(s: Selection | null): void;
   setScope(s: 'type' | 'page'): void;
   setUiLang(l: UiLang): void;
@@ -96,24 +120,14 @@ interface StoreState {
 const HISTORY_LIMIT = 150;
 const COALESCE_MS = 700;
 
-function langChosen(): boolean {
-  try {
-    return localStorage.getItem('agenda-studio.uiLang') !== null;
-  } catch {
-    return false;
-  }
-}
-
 function initialLang(): UiLang {
-  try {
-    const saved = localStorage.getItem('agenda-studio.uiLang');
-    if (saved === 'es' || saved === 'en' || saved === 'pt' || saved === 'it') return saved;
-  } catch {
-    /* sin almacenamiento */
-  }
+  const saved = prefs.uiLang.read();
+  if (saved) return saved;
   const nav = (typeof navigator !== 'undefined' ? navigator.language : 'es').slice(0, 2);
   return nav === 'en' || nav === 'pt' || nav === 'it' ? nav : 'es';
 }
+
+const clampTo = (v: number, min: number, max: number): number => Math.min(max, Math.max(min, v));
 
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
 let pendingSave: Design | null = null;
@@ -156,7 +170,7 @@ export const useStore = create<StoreState>((set, get) => ({
   future: [],
   coalesce: null,
   view: 'spread',
-  panel: 'sections',
+  panel: 'style',
   pageIndex: 0,
   sheetSide: 'front',
   zoom: 1,
@@ -166,11 +180,15 @@ export const useStore = create<StoreState>((set, get) => ({
   inspectorOpen: false,
   scope: 'type',
   uiLang: initialLang(),
-  uiLangChosen: langChosen(),
+  uiLangChosen: prefs.uiLang.isSet(),
+  uiScale: prefs.uiScale.read(),
+  welcomeOnStart: prefs.welcomeOnStart.read(),
+  panelSizes: { left: prefs.panel.left.read(), right: prefs.panel.right.read(), thumbs: prefs.panel.thumbs.read() },
   resVersion: 0,
   showWelcome: false,
   showLibrary: false,
   showSaveTemplate: false,
+  showAbout: false,
   sidebarOpen: true,
   guides: false,
   snap: true,
@@ -249,32 +267,43 @@ export const useStore = create<StoreState>((set, get) => ({
   setPanel: (panel) => set({ panel }),
   goToPage: (i) => set({ pageIndex: Math.max(0, i), selection: null, selectedIds: [] }),
   setSheetSide: (sheetSide) => set({ sheetSide }),
-  setZoom: (zoom, fit = false) => set({ zoom: Math.min(6, Math.max(0.2, zoom)), fit }),
+  setZoom: (zoom, fit = false) => set({ zoom: clampTo(zoom, ZOOM.min, ZOOM.max), fit }),
+  zoomBy: (factor) => get().setZoom((get().fit ? 1 : get().zoom) * factor),
+  zoomFit: () => get().setZoom(1, true),
+  setUiScale(uiScale) {
+    const v = clampTo(uiScale, UI_SCALE.min, UI_SCALE.max);
+    prefs.uiScale.write(v);
+    set({ uiScale: v });
+  },
+  setWelcomeOnStart(welcomeOnStart) {
+    prefs.welcomeOnStart.write(welcomeOnStart);
+    set({ welcomeOnStart });
+  },
+  setPanelSize: (panel, size) => set((s) => ({ panelSizes: { ...s.panelSizes, [panel]: clampTo(size, PANEL_LIMITS[panel].min, PANEL_LIMITS[panel].max) } })),
+  commitPanelSizes() {
+    const { left, right, thumbs } = get().panelSizes;
+    prefs.panel.left.write(left);
+    prefs.panel.right.write(right);
+    prefs.panel.thumbs.write(thumbs);
+  },
   select: (selection) => set({ selection, selectedIds: selection ? [selection.blockId] : [] }),
   setSelection: (selection, ids) => set({ selection, selectedIds: selection ? [...new Set([...(ids ?? []), selection.blockId])] : [] }),
   setInspectorOpen: (inspectorOpen) => set({ inspectorOpen }),
   setScope: (scope) => set({ scope }),
   setUiLang(uiLang) {
-    try {
-      localStorage.setItem('agenda-studio.uiLang', uiLang);
-    } catch {
-      /* sin almacenamiento */
-    }
+    prefs.uiLang.write(uiLang);
     set({ uiLang, uiLangChosen: true });
   },
   followLang: (uiLang) => set({ uiLang }),
   followAgendaLang(uiLang) {
-    try {
-      localStorage.removeItem('agenda-studio.uiLang');
-    } catch {
-      /* sin almacenamiento */
-    }
+    prefs.uiLang.clear();
     set({ uiLang, uiLangChosen: false });
   },
   bumpResources: (resVersion) => set({ resVersion }),
   setShowWelcome: (showWelcome) => set({ showWelcome }),
   setShowLibrary: (showLibrary) => set({ showLibrary }),
   setShowSaveTemplate: (showSaveTemplate) => set({ showSaveTemplate }),
+  setShowAbout: (showAbout) => set({ showAbout }),
   setSidebarOpen: (sidebarOpen) => set({ sidebarOpen }),
   toggleGuides: () => set((s) => ({ guides: !s.guides })),
   toggleSnap: () => set((s) => ({ snap: !s.snap })),

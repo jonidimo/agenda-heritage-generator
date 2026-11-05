@@ -4,6 +4,8 @@ const PORT = 4318;
 
 export default defineConfig({
   testDir: './e2e',
+  // La aplicación de escritorio se prueba aparte (playwright.electron.config.ts).
+  testIgnore: '**/electron.spec.ts',
   timeout: 120_000,
   expect: { timeout: 15_000 },
   fullyParallel: false,

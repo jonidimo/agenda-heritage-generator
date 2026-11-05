@@ -69,6 +69,9 @@ Para usarla en el navegador, mirá [Cómo usarla](#cómo-usarla).
   o SVG.
 - Cada texto puede tener su propia letra y su propio color, o seguir los de su tipo de
   texto.
+- **Zoom** de la página con Ctrl y + / − / 0 (o la rueda del ratón con Ctrl). **Archivo →
+  Tamaño de la interfaz** agranda o achica toda la interfaz, y los paneles laterales y la tira
+  de miniaturas se redimensionan arrastrando sus bordes; la aplicación recuerda ambas cosas.
 - **Clic derecho** (o pulsación larga en el teléfono) sobre cualquier elemento, página o
   miniatura: cambiar la imagen de la marca de agua, ocultar algo en una página o en todas
   las de ese tipo, seleccionar elementos similares, agregar textos o imágenes donde
@@ -187,7 +190,8 @@ Para usarla en el navegador, mirá [Cómo usarla](#cómo-usarla).
 ### Diseñar con un modelo de inteligencia artificial
 
 - Un **servidor MCP** permite que Claude, o cualquier modelo compatible con MCP, cree una
-  agenda, la cambie, la revise, mire sus páginas y exporte el PDF o un tema. Pedile "una
+  agenda, la cambie, la revise, mire sus páginas y exporte el PDF o un tema. La aplicación de
+  escritorio lo incluye: se inicia con `--mcp` ([cómo](docs/desktop.md#5-use-it-with-an-ai-model-mcp), en inglés). Pedile "una
   agenda docente de marzo a diciembre" o "un tema con firuletes art nouveau".
 - El formato del archivo tiene un **esquema JSON** y un catálogo que salen del código, y
   `npm run agenda -- check` dice exactamente qué se ignoraría o corregiría. Leé la
@@ -211,8 +215,8 @@ Para usarla en el navegador, mirá [Cómo usarla](#cómo-usarla).
 | ![Los métodos y la guía impresa](docs/images/methods-panel.png) | ![El libro entero y los feriados del país](docs/images/book-view.png) |
 | Los métodos y la guía que los explica, con evidencia y referencias. | El libro entero y los feriados del país elegido. |
 
-Las capturas muestran la interfaz en inglés; se cambia de idioma con el selector de
-arriba a la derecha.
+Las capturas muestran la interfaz en inglés; el idioma se cambia en el menú
+**Archivo**.
 
 <p align="center"><img src="docs/images/phone.png" alt="El editor en un teléfono Android" width="280"></p>
 

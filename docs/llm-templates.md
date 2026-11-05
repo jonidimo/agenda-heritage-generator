@@ -18,6 +18,11 @@ There are two ways to work with a model:
 
 ## 1. The MCP server
 
+**Easiest: the desktop app.** The installers already contain the server, with nothing else to
+install: the client starts the app with `--mcp` and no window opens. The configuration for each
+system is in the [desktop app guide](desktop.md#5-use-it-with-an-ai-model-mcp). The rest of this
+section is for running it from a copy of the repository.
+
 You need a copy of this repository with its dependencies installed (`npm ci`). The server runs
 on your computer and only reads and writes files inside its **working folder**. Set it with
 `AGENDA_MCP_ROOT`, for example a folder `~/Planners`. Without it, the folder is the one the

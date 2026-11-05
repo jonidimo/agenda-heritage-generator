@@ -1,7 +1,7 @@
 /**
- * Entorno Node del motor: lee fuentes, feriados e imágenes integradas de la carpeta `public/` del
- * repositorio y abre agendas. Lo comparten la línea de comandos, el servidor MCP y las pruebas,
- * así los tres cargan los recursos de la misma manera.
+ * Entorno Node del motor: lee fuentes, feriados e imágenes integradas de la carpeta de recursos
+ * (`public/` del repositorio, o la que indique `AGENDA_PUBLIC_DIR`) y abre agendas. Lo comparten la
+ * línea de comandos, el servidor MCP y las pruebas, así los tres cargan los recursos de la misma manera.
  */
 import { readFile } from 'node:fs/promises';
 import { dirname, join, resolve, sep } from 'node:path';
@@ -13,17 +13,30 @@ import type { SvgRenderOptions } from '../core/render/svg';
 import { facesForDesign, loadAssets, loadBuiltinFonts, loadFontManifest, loadHolidayData, toBase64, type FontManifest, type ResourceIO } from '../core/resources';
 import { FontRegistry, type FontSpec } from '../core/text/fonts';
 
+/** Raíz del repositorio. Solo vale al correr desde el código fuente: en el paquete del servidor MCP no existe. */
 export const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
-const PUBLIC = join(ROOT, 'public');
 
 /**
- * Lectura de la carpeta pública. Además de lo que valida el esquema, una ruta que sale de la
+ * Variable de entorno que fija la carpeta con las fuentes, los feriados y las imágenes integradas.
+ * La aplicación de escritorio la apunta a su carpeta `dist/` (dentro de su `.asar`); sin ella se usa
+ * `public/` del repositorio.
+ */
+export const PUBLIC_DIR_ENV = 'AGENDA_PUBLIC_DIR';
+
+/** La carpeta de recursos integrados. */
+export function publicDir(): string {
+  return resolve(process.env[PUBLIC_DIR_ENV] || join(ROOT, 'public'));
+}
+
+/**
+ * Lectura de la carpeta de recursos. Además de lo que valida el esquema, una ruta que sale de la
  * carpeta se rechaza: un archivo de agenda no puede hacer leer otros archivos del disco.
  */
 export const nodeIO: ResourceIO = {
   async read(path: string): Promise<Uint8Array> {
-    const full = resolve(PUBLIC, path);
-    if (!full.startsWith(PUBLIC + sep)) throw new Error(`Ruta fuera de la carpeta de recursos: ${path}`);
+    const base = publicDir();
+    const full = resolve(base, path);
+    if (!full.startsWith(base + sep)) throw new Error(`Ruta fuera de la carpeta de recursos: ${path}`);
     return new Uint8Array(await readFile(full));
   },
 };

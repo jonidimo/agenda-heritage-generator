@@ -307,6 +307,10 @@ export const BlockOverrideZ = z.object({
 });
 export type BlockOverride = z.infer<typeof BlockOverrideZ>;
 
+/** Valores por defecto de un ajuste de elemento y de una marca de agua: a ellos vuelve un «restablecer». */
+export const OVERRIDE_DEFAULTS: BlockOverride = BlockOverrideZ.parse({ pageType: '', blockId: '' });
+export const WATERMARK_DEFAULTS: WatermarkPlacement = WatermarkZ.parse({ id: '', assetId: '' });
+
 /**
  * Estilo de escritura (renglones, puntos, cuadrícula, pasos, tamaño de punto, grosor) para un
  * tipo de página o una página puntual. Los valores son ajustes del tema, validados.
@@ -448,6 +452,14 @@ export type Design = z.infer<typeof DesignZ>;
 export type DesignInput = z.input<typeof DesignZ>;
 
 /** Valida y completa con valores por defecto. Lanza un error legible si algo no cuadra. */
+let defaults: Design | undefined;
+
+/** Una agenda vacía con todos los valores por defecto del esquema (de ahí salen los «restablecer»). */
+export function designDefaults(): Design {
+  defaults ??= DesignZ.parse({});
+  return defaults;
+}
+
 export function parseDesign(input: unknown): Design {
   const res = DesignZ.safeParse(input);
   if (res.success) return res.data;

@@ -17,6 +17,7 @@ import { assetHref, onAssetUrlsChange } from '../../state/assetUrls';
 import { useT } from '../../i18n/ui';
 import { useStore, type Selection } from '../../state/store';
 import { jumpToPage } from '../../state/navigation';
+import { currentUiZoom } from '../../state/uiScale';
 
 interface Props {
   doc: AgendaDocument;
@@ -75,8 +76,25 @@ export function PageView({ doc, index, scale, interactive = true }: Props) {
   const t = useT();
   // Zonas tocables del PDF de páginas: se ven en celeste y un clic lleva al destino, como en el lector.
   const links = useMemo(() => (showLinks && interactive ? doc.links(index) : []), [showLinks, interactive, doc, index]);
-  const linkTitle = (l: (typeof links)[number]): string =>
-    l.page !== undefined ? `→ ${doc.pageLabel(l.page)} · ${t('nav.page', { n: l.page + 1 })}` : `→ ${l.url ?? ''}`;
+  const linkTarget = (l: (typeof links)[number]): string => (l.page !== undefined ? `→ ${doc.pageLabel(l.page)} · ${t('nav.page', { n: l.page + 1 })}` : `→ ${l.url ?? ''}`);
+  const linkTitle = (l: (typeof links)[number]): string => `${linkTarget(l)} (${t('link.followHint')})`;
+  const followLink = (l: (typeof links)[number]): void => {
+    if (l.page !== undefined) jumpToPage(l.page);
+    else if (l.url) window.open(l.url, '_blank', 'noopener,noreferrer');
+  };
+  /**
+   * Doble clic: sigue el enlace que hay bajo el puntero (el más chico, si se superponen). Se resuelve
+   * acá y no en cada zona: un elemento ya elegido tiene encima su capa de arrastre y el segundo clic
+   * no llegaría al botón del enlace.
+   */
+  const followLinkAt = (e: React.MouseEvent): void => {
+    if (links.length === 0) return;
+    const p = toMm(e);
+    const hit = links
+      .filter((l) => p.x >= l.rect.x && p.x <= l.rect.x + l.rect.w && p.y >= l.rect.y && p.y <= l.rect.y + l.rect.h)
+      .sort((a, b) => a.rect.w * a.rect.h - b.rect.w * b.rect.h)[0];
+    if (hit) followLink(hit);
+  };
 
   // Cambia de identidad cuando llega una vista previa de imagen/PDF: así se vuelve a dibujar la página.
   const hrefFor = useMemo(() => {
@@ -240,7 +258,8 @@ export function PageView({ doc, index, scale, interactive = true }: Props) {
       setMarquee({ x: Math.min(d.startX, p.x), y: Math.min(d.startY, p.y), w: Math.abs(p.x - d.startX), h: Math.abs(p.y - d.startY) });
       return;
     }
-    const tol = SNAP_PX / scale;
+    // El imán se mide en píxeles de pantalla: con zoom de interfaz, un milímetro ocupa scale × zoom.
+    const tol = SNAP_PX / (scale * currentUiZoom());
     if (d.mode === 'move') {
       let dx = p.x - d.startX;
       let dy = p.y - d.startY;
@@ -355,6 +374,7 @@ export function PageView({ doc, index, scale, interactive = true }: Props) {
       onPointerUp={(e) => finish(e, true)}
       onPointerCancel={(e) => finish(e, false)}
       onContextMenu={onContextMenu}
+      onDoubleClick={followLinkAt}
       tabIndex={interactive ? 0 : undefined}
       aria-label={interactive ? t('page.keys', { n: index + 1 }) : undefined}
       onKeyDown={(e) => {
@@ -418,14 +438,18 @@ export function PageView({ doc, index, scale, interactive = true }: Props) {
               className={`pointer-events-auto absolute rounded-[2px] border border-[#2563eb]/70 bg-[#2563eb]/15 hover:bg-[#2563eb]/30 ${l.cat === 'manual' ? 'border-dashed' : ''}`}
               style={{ left: l.rect.x * scale, top: l.rect.y * scale, width: l.rect.w * scale, height: l.rect.h * scale }}
               title={linkTitle(l)}
-              aria-label={linkTitle(l)}
-              // El enlace no selecciona ni arrastra el elemento de abajo: lo sigue.
+              aria-label={linkTarget(l)}
+              // Un clic elige el elemento al que pertenece la zona (así se ven y se cambian sus enlaces;
+              // Ctrl o Mayús lo suman o lo quitan de la selección); el doble clic sigue el enlace.
               onPointerDown={(e) => e.stopPropagation()}
               onClick={(e) => {
                 e.stopPropagation();
-                if (l.page !== undefined) jumpToPage(l.page);
-                else if (l.url) window.open(l.url, '_blank', 'noopener,noreferrer');
+                const owner = page.blocks.find((b) => b.id === l.blockId);
+                if (!owner) return;
+                if (e.ctrlKey || e.metaKey || e.shiftKey) toggle(owner);
+                else select(selOf(owner));
               }}
+
             />
           ))}
         </div>

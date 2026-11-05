@@ -1,7 +1,8 @@
 import { derivePalette, type DerivedPalette } from '@core/design/palette';
-import type { UserTheme } from '@core/design/schema';
+import { designDefaults, type UserTheme } from '@core/design/schema';
 import { HARMONIES, LINE_PATTERNS, LINE_USES, mergeTokens, THEMES, type Harmony, type LineStyle, type LineUse, type ThemeTokens, type WritingStyle } from '@core/design/themes';
 import type { TextRole } from '@core/layout/context';
+import { deleteAtPath, getAtPath, setAtPath, type PlainRecord } from '@core/util/path';
 import { Download, Palette, RotateCcw, Save, Trash2, Upload } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { uiText, useT, type UiKey } from '../../i18n/ui';
@@ -22,17 +23,12 @@ export function StylePanel() {
   const families = useFamilies();
   const base: ThemeTokens = useMemo(() => mergeTokens(THEMES[design.theme.id] ?? THEMES.heritage!, design.theme.tokens), [design.theme.id, design.theme.tokens]);
 
-  const setToken = (path: Path, value: unknown): void =>
-    update((d) => {
-      const root = d.theme.tokens as Record<string, unknown>;
-      let node = root;
-      for (let i = 0; i < path.length - 1; i++) {
-        const k = path[i]!;
-        if (typeof node[k] !== 'object' || node[k] === null) node[k] = {};
-        node = node[k] as Record<string, unknown>;
-      }
-      node[path[path.length - 1]!] = value;
-    }, `tok:${path.join('.')}`);
+  const setToken = (path: Path, value: unknown): void => update((d) => setAtPath(d.theme.tokens as PlainRecord, path, value), `tok:${path.join('.')}`);
+  // Un valor cambiado a mano se restablece quitándolo de los ajustes: vuelve a salir del tema.
+  const reset = (path: Path): { modified: boolean; onReset: () => void } => ({
+    modified: getAtPath(design.theme.tokens, path) !== undefined,
+    onReset: () => update((d) => void deleteAtPath(d.theme.tokens as PlainRecord, path)),
+  });
 
   const roles = Object.keys(base.fonts) as TextRole[];
   const sizeKeys = Object.keys(base.sizes) as Array<keyof ThemeTokens['sizes']>;
@@ -73,7 +69,7 @@ export function StylePanel() {
                 setToken(['fonts', role], spec);
               }}
             />
-            <ColorInput label={t('style.color')} value={base.colors.roles[role]} onChange={(v) => setToken(['colors', 'roles', role], v)} />
+            <ColorInput label={t('style.color')} value={base.colors.roles[role]} onChange={(v) => setToken(['colors', 'roles', role], v)} {...reset(['colors', 'roles', role])} />
           </div>
         ))}
       </Group>
@@ -86,7 +82,7 @@ export function StylePanel() {
       <Group title={t('style.lines')} id="lines" defaultOpen={false}>
         <p className="pb-1 text-[11.5px] leading-snug text-ink-soft">{t('lines.help')}</p>
         {LINE_USES.map((use) => (
-          <LineStyleEditor key={use} use={use} value={base.lines[use]} set={(k, v) => setToken(['lines', use, k], v)} />
+          <LineStyleEditor key={use} use={use} value={base.lines[use]} set={(k, v) => setToken(['lines', use, k], v)} reset={(k) => reset(['lines', use, k])} />
         ))}
       </Group>
 
@@ -98,41 +94,41 @@ export function StylePanel() {
             options={(['lines', 'dots', 'grid', 'blank'] as const).map((v) => ({ value: v, label: t(`val.${v}`) }))}
           />
         </Field>
-        <Slider label={t('style.pitch')} value={base.writing.pitch} min={4} max={12} step={0.1} onChange={(v) => setToken(['writing', 'pitch'], v)} />
+        <Slider label={t('style.pitch')} value={base.writing.pitch} min={4} max={12} step={0.1} onChange={(v) => setToken(['writing', 'pitch'], v)} {...reset(['writing', 'pitch'])} />
         <Toggle label={t('style.weekendShading')} checked={base.weekendShading} onChange={(v) => setToken(['weekendShading'], v)} />
       </Group>
 
       <Group title={t('style.colors')} defaultOpen={false}>
         {colorKeys.map((k) => (
-          <ColorInput key={k} label={t(`color.${k}` as UiKey)} value={base.colors[k]} onChange={(v) => setToken(['colors', k], v)} />
+          <ColorInput key={k} label={t(`color.${k}` as UiKey)} value={base.colors[k]} onChange={(v) => setToken(['colors', k], v)} {...reset(['colors', k])} />
         ))}
-        <ColorInput label={t('style.dotColor')} value={base.dots.color} onChange={(v) => setToken(['dots', 'color'], v)} />
+        <ColorInput label={t('style.dotColor')} value={base.dots.color} onChange={(v) => setToken(['dots', 'color'], v)} {...reset(['dots', 'color'])} />
       </Group>
 
       <Group title={t('style.sizes')} defaultOpen={false}>
         {sizeKeys.map((k) => (
-          <Slider key={k} label={t(`size.${k}` as UiKey)} value={base.sizes[k]} min={4} max={k === 'hero' || k === 'monthHero' ? 120 : 40} step={0.5} onChange={(v) => setToken(['sizes', k], v)} />
+          <Slider key={k} label={t(`size.${k}` as UiKey)} value={base.sizes[k]} min={4} max={k === 'hero' || k === 'monthHero' ? 120 : 40} step={0.5} onChange={(v) => setToken(['sizes', k], v)} {...reset(['sizes', k])} />
         ))}
-        <Slider label={t('style.minText')} value={base.minTextPt} min={4} max={14} step={0.5} onChange={(v) => setToken(['minTextPt'], v)} />
-        <Slider label={t('style.tracking')} value={base.tracking.label} min={0} max={0.3} step={0.01} onChange={(v) => setToken(['tracking', 'label'], v)} />
+        <Slider label={t('style.minText')} value={base.minTextPt} min={4} max={14} step={0.5} onChange={(v) => setToken(['minTextPt'], v)} {...reset(['minTextPt'])} />
+        <Slider label={t('style.tracking')} value={base.tracking.label} min={0} max={0.3} step={0.01} onChange={(v) => setToken(['tracking', 'label'], v)} {...reset(['tracking', 'label'])} />
       </Group>
 
       <Group title={t('style.strokes')} defaultOpen={false}>
         {strokeKeys.map((k) => (
-          <Slider key={k} label={t(`stroke.${k}` as UiKey)} value={base.strokes[k]} min={0.05} max={3} step={0.05} onChange={(v) => setToken(['strokes', k], v)} />
+          <Slider key={k} label={t(`stroke.${k}` as UiKey)} value={base.strokes[k]} min={0.05} max={3} step={0.05} onChange={(v) => setToken(['strokes', k], v)} {...reset(['strokes', k])} />
         ))}
       </Group>
 
       <Group title={t('style.dots')} defaultOpen={false}>
-        <Slider label={t('style.dotPitch')} value={base.dots.pitch} min={3} max={10} step={0.1} onChange={(v) => setToken(['dots', 'pitch'], v)} />
-        <Slider label={t('style.dotRadius')} value={base.dots.radius} min={0.2} max={1.5} step={0.05} onChange={(v) => setToken(['dots', 'radius'], v)} />
+        <Slider label={t('style.dotPitch')} value={base.dots.pitch} min={3} max={10} step={0.1} onChange={(v) => setToken(['dots', 'pitch'], v)} {...reset(['dots', 'pitch'])} />
+        <Slider label={t('style.dotRadius')} value={base.dots.radius} min={0.2} max={1.5} step={0.05} onChange={(v) => setToken(['dots', 'radius'], v)} {...reset(['dots', 'radius'])} />
       </Group>
 
       <Group title={t('style.margins')} defaultOpen={false}>
         {(['top', 'bottom', 'inner', 'outer'] as const).map((k) => (
-          <Slider key={k} label={t(`margin.${k}`)} value={base.margins[k]} min={5} max={35} step={0.5} onChange={(v) => setToken(['margins', k], v)} />
+          <Slider key={k} label={t(`margin.${k}`)} value={base.margins[k]} min={5} max={35} step={0.5} onChange={(v) => setToken(['margins', k], v)} {...reset(['margins', k])} />
         ))}
-        <Slider label={t('style.gutter')} value={design.binding.gutter} min={0} max={15} step={0.5} onChange={(v) => update((d) => void (d.binding.gutter = v), 'gutter')} />
+        <Slider label={t('style.gutter')} value={design.binding.gutter} min={0} max={15} step={0.5} onChange={(v) => update((d) => void (d.binding.gutter = v), 'gutter')} defaultValue={designDefaults().binding.gutter} />
       </Group>
     </div>
   );
@@ -275,7 +271,7 @@ function PaletteEditor({ current, onApply }: { current: ThemeTokens['palette']; 
 }
 
 /** Estilo de las líneas de un uso: patrón, ornamento, esquinas (marcos), tamaño y color. */
-function LineStyleEditor({ use, value, set }: { use: LineUse; value: LineStyle; set: (k: keyof LineStyle, v: unknown) => void }) {
+function LineStyleEditor({ use, value, set, reset }: { use: LineUse; value: LineStyle; set: (k: keyof LineStyle, v: unknown) => void; reset: (k: keyof LineStyle) => { modified: boolean; onReset: () => void } }) {
   const t = useT();
   const withOrnament = value.pattern === 'repeat' || value.pattern === 'center';
   return (
@@ -286,7 +282,7 @@ function LineStyleEditor({ use, value, set }: { use: LineUse; value: LineStyle; 
       </Field>
       {withOrnament && <OrnamentPicker label={t('lines.ornament')} value={value.ornament} kinds={value.pattern === 'repeat' ? ['tile'] : ['center', 'tile']} allowNone={false} onChange={(v) => set('ornament', v)} />}
       {use === 'frame' && <OrnamentPicker label={t('lines.corner')} value={value.corner} kinds={['corner']} onChange={(v) => set('corner', v)} />}
-      {(withOrnament || (use === 'frame' && value.corner)) && <Slider label={t('lines.size')} value={value.size} min={1} max={20} step={0.5} onChange={(v) => set('size', v)} />}
+      {(withOrnament || (use === 'frame' && value.corner)) && <Slider label={t('lines.size')} value={value.size} min={1} max={20} step={0.5} onChange={(v) => set('size', v)} {...reset('size')} />}
       <div className="flex items-center gap-1.5">
         <div className="flex-1">
           <ColorInput label={t('lines.color')} value={value.color || '#000000'} onChange={(v) => set('color', v)} />
