@@ -8,7 +8,7 @@ import { fmt } from '../i18n';
 import { centerIn, cols, flex, grid, hsplit, inset, rows, takeBottom, takeTop, vsplit } from '../layout/box';
 import type { LayoutContext } from '../layout/context';
 import { circle, line, rect, type LinkArea, type Prim } from '../layout/prims';
-import { heartIcon, isSouthern, moonIcon, ruledLines, sectionHeader, textLine, writingArea } from '../layout/widgets';
+import { amountLines, heartIcon, isSouthern, moonIcon, ruledLines, sectionHeader, textLine, writingArea } from '../layout/widgets';
 import { TABULAR_FEATURES } from '../text/shape';
 import { ptToMm, type Rect } from '../util/geometry';
 import { abbreviated, checklist, headed, label, monthTitle, nextMonthName, order } from './common';
@@ -370,15 +370,7 @@ export const balance: SectionModule = {
       const label = i === 0 ? s.income : s.variable;
       const h = sectionHeader(ctx, col, label, `balance.col${i}.head`);
       const area = ctx.rect(`balance.col${i}`, { x: col.x, y: col.y + h, w: col.w, h: col.h - h });
-      const p: Prim[] = [];
-      const n = Math.floor(area.h / pitch);
-      for (let k = 1; k <= n; k++) {
-        const y = area.y + k * pitch;
-        p.push(line(area.x, y, area.x + area.w, y, ctx.stroke('hair', undefined, { use: 'table' })));
-        p.push(line(area.x + area.w * 0.7, y - pitch + 1, area.x + area.w * 0.7, y, ctx.stroke('hair', 'ruleSoft', { use: 'table' })));
-        p.push(ctx.textAt(ctx.doc.currency, area.x + area.w * 0.7 + 1, y - 1.2, { role: 'label', size: 'labelSmall', color: '#9a9a9a' }).prim);
-      }
-      ctx.add(`balance.col${i}`, label, p);
+      ctx.add(`balance.col${i}`, label, amountLines(ctx, area, pitch));
     });
     const totalBase = { x: rest!.x, y: rest!.y, w: rest!.w, h: 11 };
     const totalBox = ctx.rect('balance.total', totalBase);

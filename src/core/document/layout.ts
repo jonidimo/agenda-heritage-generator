@@ -20,6 +20,7 @@ import { mergeTokens, type ThemeTokens, type WritingStyle } from '../design/them
 import { normalizeColor } from '../util/color';
 import { parseFontSpec, type FontRegistry } from '../text/fonts';
 import { assetPrims } from './assets';
+import { drawElement } from './elements';
 import { safeArea } from './binding';
 import { pageGeometry } from './context';
 import { pageTextVars } from '../sections/common';
@@ -193,6 +194,7 @@ function placeCustomBlock(ctx: LayoutContext, cb: CustomBlock, page: PagePlan): 
   let box = { x, y: cb.y, w: cb.w, h: cb.h };
   const p = cb.props as Record<string, unknown>;
   let prims: Prim[] = [];
+  let links: LinkArea[] = [];
   switch (cb.kind) {
     case 'text': {
       // Con alto automático el texto se maqueta sin límite de alto y la caja se ajusta a sus renglones.
@@ -251,8 +253,20 @@ function placeCustomBlock(ctx: LayoutContext, cb: CustomBlock, page: PagePlan): 
     case 'line':
       prims = [{ t: 'line', x1: box.x, y1: box.y + box.h / 2, x2: box.x + box.w, y2: box.y + box.h / 2, stroke: ctx.stroke('rule', 'ink', { use: 'separator' }) }];
       break;
+    default: {
+      // Los elementos compuestos (tabla, lista, hábitos…) se dibujan completos en su caja.
+      const el = drawElement(ctx, cb.kind, p, box, page);
+      prims = el.prims;
+      links = el.links;
+    }
   }
-  ctx.add(`custom.${cb.id}`, String(p.label ?? 'Elemento propio'), prims, { role: 'custom', layer: 15, bbox: box, ...(cb.kind === 'text' ? { text: { kind: 'custom' as const, id: cb.id } } : {}) });
+  ctx.add(`custom.${cb.id}`, String(p.label ?? 'Elemento propio'), prims, {
+    role: 'custom',
+    layer: 15,
+    bbox: box,
+    ...(cb.kind === 'text' ? { text: { kind: 'custom' as const, id: cb.id } } : {}),
+    ...(links.length > 0 ? { links } : {}),
+  });
 }
 
 /**

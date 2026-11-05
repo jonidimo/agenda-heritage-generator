@@ -10,7 +10,7 @@ import { TABULAR_FEATURES } from '../text/shape';
 import { ptToMm, type Rect } from '../util/geometry';
 import { cols, rows } from './box';
 import type { LayoutContext, SizeKey, TextAtOpts } from './context';
-import { circle, line, type DotsPrim, type Prim, type Stroke, type TextPrim, type TextSource } from './prims';
+import { circle, line, rect, type DotsPrim, type Prim, type Stroke, type TextPrim, type TextSource } from './prims';
 
 /* ---------- Texto de una línea ---------- */
 
@@ -258,9 +258,13 @@ export function signifierIcon(ctx: LayoutContext, kind: Signifier, cx: number, c
 
 /** Ícono de cumpleaños/fecha personal (pequeño corazón). */
 export function heartIcon(ctx: LayoutContext, cx: number, cy: number, size: number): Prim {
+  return { t: 'path', d: heartPath(cx, cy, size), fill: { color: ctx.theme.colors.ink } };
+}
+
+/** Contorno de un corazón centrado en (cx, cy) que cabe en un cuadrado de lado `size`. */
+export function heartPath(cx: number, cy: number, size: number): string {
   const s = size / 2;
-  const d = `M ${cx} ${cy + s * 0.85} C ${cx - s * 1.25} ${cy - s * 0.05} ${cx - s * 0.75} ${cy - s * 1.05} ${cx} ${cy - s * 0.35} C ${cx + s * 0.75} ${cy - s * 1.05} ${cx + s * 1.25} ${cy - s * 0.05} ${cx} ${cy + s * 0.85} Z`;
-  return { t: 'path', d, fill: { color: ctx.theme.colors.ink } };
+  return `M ${cx} ${cy + s * 0.85} C ${cx - s * 1.25} ${cy - s * 0.05} ${cx - s * 0.75} ${cy - s * 1.05} ${cx} ${cy - s * 0.35} C ${cx + s * 0.75} ${cy - s * 1.05} ${cx + s * 1.25} ${cy - s * 0.05} ${cx} ${cy + s * 0.85} Z`;
 }
 
 /** Casilla circular (para listas de pendientes). */
@@ -271,6 +275,113 @@ export function checkCircle(ctx: LayoutContext, cx: number, cy: number, r: numbe
 /** Casilla cuadrada. */
 export function checkBox(ctx: LayoutContext, x: number, y: number, size: number): Prim {
   return { t: 'rect', x, y, w: size, h: size, stroke: ctx.stroke('rule', 'ink', { width: ptToMm(0.5) }) };
+}
+
+/**
+ * Lista con casillas sobre renglones. Sin más opciones dibuja viñetas circulares; `square` pone
+ * casillas cuadradas, `none` ninguna, y `labels` escribe un texto sobre cada renglón.
+ */
+export function checklist(ctx: LayoutContext, r: Rect, pitch: number, opts: { circles?: boolean; max?: number; square?: boolean; labels?: readonly string[] } = {}): Prim[] {
+  const out: Prim[] = [];
+  const n = Math.min(opts.max ?? Infinity, Math.floor((r.h + 1e-6) / pitch));
+  const marked = opts.circles !== false;
+  for (let i = 1; i <= n; i++) {
+    const y = r.y + i * pitch;
+    if (marked) out.push(opts.square ? checkBox(ctx, r.x + 0.2, y - 3.5, 3) : checkCircle(ctx, r.x + 1.6, y - 1.9, 1.5));
+    const text = opts.labels?.[i - 1];
+    if (text) out.push(...ctx.textIn(text, { x: r.x + (marked ? 5 : 0.5), y: y - pitch + 0.4, w: r.w - (marked ? 5.5 : 1), h: pitch - 0.8 }, { role: 'body', size: ctx.theme.sizes.small, valign: 'bottom', fit: true, wrap: false }).prims);
+    out.push(line(r.x + (marked ? 4.5 : 0), y, r.x + r.w, y, ctx.stroke('hair', undefined, { use: 'writing' })));
+  }
+  return out;
+}
+
+/**
+ * Renglones de importes: una línea por fila, con la moneda al pie de una columna de cifras (el
+ * 30 % derecho). El balance del mes y el elemento «finanzas» se dibujan con esto.
+ */
+export function amountLines(ctx: LayoutContext, area: Rect, pitch: number): Prim[] {
+  const out: Prim[] = [];
+  const n = Math.floor(area.h / pitch);
+  for (let k = 1; k <= n; k++) {
+    const y = area.y + k * pitch;
+    out.push(line(area.x, y, area.x + area.w, y, ctx.stroke('hair', undefined, { use: 'table' })));
+    out.push(line(area.x + area.w * 0.7, y - pitch + 1, area.x + area.w * 0.7, y, ctx.stroke('hair', 'ruleSoft', { use: 'table' })));
+    out.push(ctx.textAt(ctx.doc.currency, area.x + area.w * 0.7 + 1, y - 1.2, { role: 'label', size: 'labelSmall', color: '#9a9a9a' }).prim);
+  }
+  return out;
+}
+
+/**
+ * Tabla: marco, filas y columnas iguales y, si se pide, una fila de títulos sombreada arriba
+ * (`headers` son los títulos de las columnas, de izquierda a derecha; los que faltan quedan vacíos).
+ */
+export function tableGrid(ctx: LayoutContext, r: Rect, o: { rows: number; cols: number; header: boolean; headers: readonly string[] }): Prim[] {
+  const total = o.rows + (o.header ? 1 : 0);
+  const rowH = r.h / total;
+  const colW = r.w / o.cols;
+  const grid = ctx.stroke('grid', 'ink', { use: 'table' });
+  const out: Prim[] = [];
+  if (o.header) out.push(rect({ x: r.x, y: r.y, w: r.w, h: rowH }, { fill: ctx.fill('weekend') }));
+  for (let i = 1; i < total; i++) out.push(line(r.x, r.y + i * rowH, r.x + r.w, r.y + i * rowH, grid));
+  for (let j = 1; j < o.cols; j++) out.push(line(r.x + j * colW, r.y, r.x + j * colW, r.y + r.h, grid));
+  out.push(rect(r, { stroke: ctx.stroke('rule', 'ink', { use: 'table' }) }));
+  if (o.header) {
+    for (let j = 0; j < o.cols; j++) {
+      const text = o.headers[j];
+      if (text) out.push(...ctx.textIn(text, { x: r.x + j * colW + 0.8, y: r.y, w: colW - 1.6, h: rowH }, { role: 'labelStrong', size: 'labelSmall', upper: true, tracking: true, align: 'center', valign: 'middle', fit: true, wrap: false }).prims);
+    }
+  }
+  return out;
+}
+
+/**
+ * Seguimiento de hábitos: una fila por hábito (con su nombre a la izquierda) y una columna por día,
+ * con los números de los días arriba.
+ */
+export function habitGrid(ctx: LayoutContext, r: Rect, o: { rows: number; days: number; names: readonly string[] }): Prim[] {
+  const headH = Math.min(6, r.h / (o.rows + 1));
+  const nameW = Math.min(34, r.w * 0.3);
+  const dayW = (r.w - nameW) / o.days;
+  const rowH = (r.h - headH) / o.rows;
+  const grid = ctx.stroke('grid', 'ink', { use: 'table' });
+  const out: Prim[] = [];
+  for (let d = 0; d < o.days; d++) {
+    out.push(...ctx.textIn(String(d + 1), { x: r.x + nameW + d * dayW, y: r.y, w: dayW, h: headH }, { role: 'labelStrong', size: Math.min(ctx.theme.sizes.labelSmall, dayW * 1.5), align: 'center', valign: 'middle', features: TABULAR_FEATURES }).prims);
+  }
+  for (let i = 0; i <= o.rows; i++) out.push(line(r.x, r.y + headH + i * rowH, r.x + r.w, r.y + headH + i * rowH, grid));
+  for (let d = 0; d <= o.days; d++) out.push(line(r.x + nameW + d * dayW, r.y, r.x + nameW + d * dayW, r.y + r.h, grid));
+  out.push(line(r.x, r.y, r.x, r.y + r.h, grid), line(r.x, r.y, r.x + r.w, r.y, grid));
+  for (let i = 0; i < o.rows; i++) {
+    const name = o.names[i];
+    if (name) out.push(...ctx.textIn(name, { x: r.x + 0.8, y: r.y + headH + i * rowH, w: nameW - 1.6, h: rowH }, { role: 'body', size: ctx.theme.sizes.small, valign: 'middle', fit: true, wrap: false }).prims);
+  }
+  return out;
+}
+
+/** Figuras de una valoración (estrellas, círculos, corazones o cuadrados vacíos). */
+export const RATING_SHAPES = ['star', 'circle', 'heart', 'square'] as const;
+export type RatingShape = (typeof RATING_SHAPES)[number];
+
+export function ratingShape(ctx: LayoutContext, shape: RatingShape, cx: number, cy: number, size: number): Prim {
+  const stroke = ctx.stroke('rule', 'ink', { width: ptToMm(0.6) });
+  const h = size / 2;
+  switch (shape) {
+    case 'circle':
+      return circle(cx, cy, h, { stroke });
+    case 'square':
+      return rect({ x: cx - h, y: cy - h, w: size, h: size }, { stroke });
+    case 'heart':
+      return { t: 'path', d: heartPath(cx, cy, size), stroke };
+    case 'star': {
+      // Cinco puntas: los vértices externos e internos se alternan cada 36°.
+      const pts = Array.from({ length: 10 }, (_, i) => {
+        const a = -Math.PI / 2 + (i * Math.PI) / 5;
+        const rad = i % 2 === 0 ? h : h * 0.42;
+        return `${(cx + Math.cos(a) * rad).toFixed(3)} ${(cy + Math.sin(a) * rad).toFixed(3)}`;
+      });
+      return { t: 'path', d: `M ${pts.join(' L ')} Z`, stroke };
+    }
+  }
 }
 
 /** Hemisferio sur según el país (para orientar los íconos lunares). */

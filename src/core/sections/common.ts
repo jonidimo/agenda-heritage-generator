@@ -6,7 +6,7 @@ import { takeTop } from '../layout/box';
 import type { LayoutContext } from '../layout/context';
 import type { Prim, TextSource } from '../layout/prims';
 import { line } from '../layout/prims';
-import { checkCircle, pageHeader, ruledLines } from '../layout/widgets';
+import { pageHeader, ruledLines } from '../layout/widgets';
 import type { Rect } from '../util/geometry';
 import type { PagePlan } from './types';
 
@@ -35,17 +35,7 @@ export function order(ctx: LayoutContext): number[] {
   return weekOrder(ctx.doc.cal.options.weekStart);
 }
 
-/** Lista con viñetas circulares sobre renglones. */
-export function checklist(ctx: LayoutContext, r: Rect, pitch: number, opts: { circles?: boolean; max?: number } = {}): Prim[] {
-  const out: Prim[] = [];
-  const n = Math.min(opts.max ?? Infinity, Math.floor((r.h + 1e-6) / pitch));
-  for (let i = 1; i <= n; i++) {
-    const y = r.y + i * pitch;
-    if (opts.circles !== false) out.push(checkCircle(ctx, r.x + 1.6, y - 1.9, 1.5));
-    out.push(line(r.x + (opts.circles !== false ? 4.5 : 0), y, r.x + r.w, y, ctx.stroke('hair', undefined, { use: 'writing' })));
-  }
-  return out;
-}
+export { checklist } from '../layout/widgets';
 
 /** Rótulo + renglones debajo (devuelve las primitivas y el alto usado). */
 export function labeledLines(ctx: LayoutContext, r: Rect, label: string, lines: number, pitch: number, opts: { size?: number } = {}): { prims: Prim[]; height: number } {

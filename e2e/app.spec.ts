@@ -85,7 +85,8 @@ test('la interfaz cambia de idioma y traduce los nombres de los elementos', asyn
   const block = page.locator('[data-block="week.minical"]').first();
   const box = await block.boundingBox();
   await page.mouse.click(box!.x + box!.width / 2, box!.y + box!.height / 2);
-  await expect(page.getByText('Mini calendar', { exact: true })).toBeVisible();
+  // El nombre del elemento elegido figura en su panel (el botón de «agregar» se llama igual).
+  await expect(page.getByRole('paragraph').filter({ hasText: /^Mini calendar$/ })).toBeVisible();
 });
 
 test('un clic con un temblor de 1 px no mueve ni encaja el elemento', async ({ page }) => {
@@ -120,7 +121,7 @@ test('en un teléfono, tocar un elemento abre su panel', async ({ browser }) => 
   const box = (await block.boundingBox())!;
   await page.touchscreen.tap(box.x + box.width / 2, box.y + box.height / 2);
   await expect(page.getByRole('dialog', { name: 'Elemento' })).toBeVisible();
-  await expect(page.getByText('Minicalendario', { exact: true })).toBeVisible();
+  await expect(page.getByRole('paragraph').filter({ hasText: /^Minicalendario$/ })).toBeVisible();
   await ctx.close();
 });
 
@@ -1512,5 +1513,43 @@ test.describe('modos y destino', () => {
     await page.getByRole('button', { name: 'Leer en pantalla', exact: true }).click();
     await expect(sheet(page)).toHaveCount(0);
     await expect(page.locator('[data-page-index]').first()).toBeVisible();
+  });
+});
+
+test.describe('elementos compuestos', () => {
+  const last = (page: Page) => page.evaluate<{ kind: string; props: Record<string, unknown> }>('(() => { const c = globalThis.__agenda.getState().design.customBlocks.at(-1); return { kind: c.kind, props: c.props }; })()');
+
+  test('se agregan desde el panel, se editan sus campos y se dibujan en la página', async ({ page }) => {
+    await openQuiet(page);
+    const add = page.getByTestId('add-elements');
+    await add.getByRole('button', { name: 'Tabla' }).click();
+    expect((await last(page)).kind).toBe('table');
+    await expect(page.locator('[data-block^="custom."]').first()).toBeVisible();
+
+    await page.getByRole('spinbutton', { name: 'Filas' }).fill('8');
+    await expect.poll(async () => (await last(page)).props.rows).toBe(8);
+    await page.getByRole('textbox').filter({ hasText: /Columna 1/ }).fill('Día\nTarea\nHecho');
+    await expect.poll(async () => (await last(page)).props.headers).toEqual(['Día', 'Tarea', 'Hecho']);
+
+    await add.getByRole('button', { name: 'Valoración' }).click();
+    expect((await last(page)).kind).toBe('rating');
+    await page.getByRole('spinbutton', { name: 'Cantidad' }).fill('7');
+    await expect.poll(async () => (await last(page)).props.count).toBe(7);
+    await page.getByRole('button', { name: 'Corazones' }).click();
+    await expect.poll(async () => (await last(page)).props.shape).toBe('heart');
+  });
+
+  test('cada tipo se puede agregar desde el menú de la página y queda elegido', async ({ page }) => {
+    await openQuiet(page);
+    const kinds = ['table', 'checklist', 'habits', 'finance', 'minical', 'quadrants', 'notes', 'timeline', 'rating'];
+    const names = ['Tabla', 'Lista de pendientes', 'Seguimiento de hábitos', 'Finanzas', 'Minicalendario', 'Cuadrantes', 'Notas', 'Horario del día', 'Valoración'];
+    for (const [i, name] of names.entries()) {
+      await page.locator('[data-page-index]').first().click({ button: 'right', position: { x: 30, y: 30 } });
+      await page.getByRole('menuitem', { name, exact: true }).click();
+      expect((await last(page)).kind).toBe(kinds[i]);
+      // Se agrega en el lugar del clic: se quita para que el próximo clic derecho caiga en la página y no sobre él.
+      await page.evaluate("globalThis.__agenda.getState().update((d) => { d.customBlocks.pop(); }, 'e2e-pop')");
+      await expect(page.locator('[data-block^="custom."]')).toHaveCount(0);
+    }
   });
 });

@@ -683,12 +683,21 @@ export function currentOverride(design: Design, page: PageModel, blockId: string
  * Agrega un elemento propio al tipo de página (o solo a esta página). Si se indica un punto
  * (clic derecho), el elemento se ubica ahí; si no, abajo del área de contenido.
  */
-export function addCustomBlock(page: PageModel, kind: CustomBlock['kind'], labels: { text: string; image: string; rect: string; lines: string; dots: string }, scope: Scope, at?: { x: number; y: number }, assetId?: string): string {
+export function addCustomBlock(
+  page: PageModel,
+  kind: CustomBlock['kind'],
+  labels: { text: string; image: string; rect: string; lines: string; dots: string },
+  scope: Scope,
+  at?: { x: number; y: number },
+  assetId?: string,
+  /** Para los elementos compuestos: tamaño y propiedades iniciales (ver `state/elements.ts`). */
+  element?: { size: { w: number; h: number }; props: Record<string, unknown> },
+): string {
   const design = useStore.getState().design;
   const c = page.content;
   const id = newId('el');
   const size: Record<string, { w: number; h: number }> = { text: { w: c.w, h: 10 }, image: { w: 30, h: 30 }, rect: { w: c.w, h: 30 }, lines: { w: c.w, h: 30 }, dots: { w: c.w, h: 30 } };
-  const { w, h } = size[kind] ?? { w: 30, h: 30 };
+  const { w, h } = element?.size ?? size[kind] ?? { w: 30, h: 30 };
   const def = at
     ? { x: Math.min(Math.max(0, at.x), page.w - w), y: Math.min(Math.max(0, at.y), page.h - h) }
     : kind === 'image'
@@ -696,8 +705,9 @@ export function addCustomBlock(page: PageModel, kind: CustomBlock['kind'], label
       : { x: c.x, y: c.y + c.h - (kind === 'text' ? 14 : h) };
   // Lo que se ve en una página izquierda se guarda como en una derecha (el elemento se espeja).
   const x = page.side === 'verso' ? page.w - def.x - w : def.x;
-  const props: Record<string, unknown> =
-    kind === 'text'
+  const props: Record<string, unknown> = element
+    ? element.props
+    : kind === 'text'
       ? { text: '{name}', role: 'quote', size: 11, align: 'right', fit: false, autoHeight: true, label: labels.text }
       : kind === 'image'
         ? { assetId: assetId ?? design?.assets.find((a) => a.kind !== 'pdf')?.id ?? '', fit: 'contain', opacity: 1, label: labels.image }

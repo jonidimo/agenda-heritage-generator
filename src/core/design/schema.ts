@@ -6,6 +6,7 @@
 import { z } from 'zod';
 import { normalizeColor } from '../util/color';
 import { LINE_PATTERNS, LINE_USES, pruneTokens } from './themes';
+import { ELEMENT_KINDS } from './customBlocks';
 
 // Sin compilación a medida: zod decide si compilar sus validadores probando `new Function`, y la
 // política de seguridad de la aplicación prohíbe evaluar texto como código, así que el navegador
@@ -280,7 +281,7 @@ export const CustomBlockZ = z.object({
   id: z.string(),
   pageType: z.string(),
   pageKey: z.string().nullable().default(null),
-  kind: z.enum(['text', 'image', 'lines', 'dots', 'grid', 'rect', 'line', 'drawing']),
+  kind: z.enum(['text', 'image', 'lines', 'dots', 'grid', 'rect', 'line', 'drawing', ...ELEMENT_KINDS]),
   x: z.number().transform(clampTo(BLOCK_BOUNDS.pos.min, BLOCK_BOUNDS.pos.max)),
   y: z.number().transform(clampTo(BLOCK_BOUNDS.pos.min, BLOCK_BOUNDS.pos.max)),
   w: z.number().transform(clampTo(BLOCK_BOUNDS.size.min, BLOCK_BOUNDS.size.max)),

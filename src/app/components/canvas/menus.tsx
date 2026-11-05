@@ -2,6 +2,8 @@
  * Opciones del menú contextual del lienzo y de las miniaturas. Cada opción repite lo que ya
  * está en los paneles, a mano donde se está trabajando.
  */
+import { ELEMENT_ICONS } from '../ElementFields';
+import { ELEMENT_KINDS, ELEMENT_LABELS, elementProps, elementSize } from '../../state/elements';
 import type { AgendaDocument } from '@core/document';
 import type { WritingStyle } from '@core/design/themes';
 import { trimmedRange } from '@core/calendar/range';
@@ -268,6 +270,15 @@ export function pageMenu(c: MenuContext): MenuItem[] {
     { label: t('menu.addDotsHere'), icon: <Grip size={14} />, onSelect: add('dots') },
     { label: t('menu.addFrameHere'), icon: <Square size={14} />, onSelect: add('rect') },
     { label: t('menu.paste'), icon: <ClipboardPaste size={14} />, onSelect: () => void pasteSelection() },
+    { separator: true },
+    { heading: t('el.addMore') },
+    ...ELEMENT_KINDS.map(
+      (kind): MenuItem => ({
+        label: t(ELEMENT_LABELS[kind]),
+        icon: ELEMENT_ICONS[kind],
+        onSelect: () => void addCustomBlock(page, kind, labels, scope, at, undefined, { size: elementSize(kind, page.content.w), props: elementProps(kind, t) }),
+      }),
+    ),
     { separator: true },
     { label: t('menu.insertPage'), icon: <FilePlus2 size={14} />, onSelect: () => insertPageAfter(doc, page.index) },
     {

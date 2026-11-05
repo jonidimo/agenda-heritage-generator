@@ -32,6 +32,8 @@ import {
   Type,
 } from 'lucide-react';
 import { pageLinks, safeUrl } from '@core/document/links';
+import { ElementFields, ELEMENT_ICONS, type MonthChoice } from './ElementFields';
+import { ELEMENT_KINDS, ELEMENT_LABELS, elementProps, elementSize, isElementKind, type ElementKind } from '../state/elements';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { blockLabel, warningText } from '../i18n/messages';
 import { sectionName, uiText, useT } from '../i18n/ui';
@@ -106,6 +108,12 @@ export function Inspector({ doc }: { doc: AgendaDocument }) {
   const addCustom = (kind: CustomBlock['kind']): void =>
     void addCustomBlock(page, kind, { text: t('insp.addText'), image: t('insp.addImage'), rect: t('insp.addRect'), lines: t('insp.addLines'), dots: t('insp.addDots') }, selection?.pageKey === page.key ? scope : 'type');
 
+  const addElement = (kind: ElementKind): void =>
+    void addCustomBlock(page, kind, { text: '', image: '', rect: '', lines: '', dots: '' }, selection?.pageKey === page.key ? scope : 'type', undefined, undefined, {
+      size: elementSize(kind, page.content.w),
+      props: elementProps(kind, t),
+    });
+
   const sideLabel = page.side === 'recto' ? t('insp.recto') : t('insp.verso');
   return (
     <div className="flex h-full flex-col" data-inspector="">
@@ -120,7 +128,7 @@ export function Inspector({ doc }: { doc: AgendaDocument }) {
             {!block.editable && <p className="text-[12px] text-ink-soft">{t('insp.locked')}</p>}
             {block.editable && block.role === 'writing' && <WritingFields page={page} scope={scope} setScope={setScope} />}
             {block.editable && block.role === 'watermark' && <WatermarkFields id={block.id.slice(3)} />}
-            {block.editable && block.role === 'custom' && <CustomFields id={block.id.slice(7)} theme={doc.ctx.theme} block={block} />}
+            {block.editable && block.role === 'custom' && <CustomFields id={block.id.slice(7)} theme={doc.ctx.theme} block={block} months={doc.ctx.cal.months.map((m) => ({ value: m.key, label: `${m.name} ${m.y}` }))} />}
             {block.editable && block.role !== 'watermark' && block.role !== 'custom' && (
               <>
                 <BlockFields page={page} blockId={block.id} scope={scope} setScope={setScope} />
@@ -170,6 +178,13 @@ export function Inspector({ doc }: { doc: AgendaDocument }) {
             <Button onClick={() => addCustom('rect')}>
               <Square size={14} /> {t('insp.addRect')}
             </Button>
+          </div>
+          <div className="mt-1.5 flex flex-wrap gap-1.5" data-testid="add-elements">
+            {ELEMENT_KINDS.map((kind) => (
+              <Button key={kind} onClick={() => addElement(kind)}>
+                {ELEMENT_ICONS[kind]} {t(ELEMENT_LABELS[kind])}
+              </Button>
+            ))}
           </div>
         </div>
         <Preflight doc={doc} />
@@ -445,7 +460,7 @@ function propRecipe(id: string, k: string, v: unknown): Recipe {
   };
 }
 
-function CustomFields({ id, theme, block }: { id: string; theme: AgendaDocument['ctx']['theme']; block: Block }) {
+function CustomFields({ id, theme, block, months }: { id: string; theme: AgendaDocument['ctx']['theme']; block: Block; months: readonly MonthChoice[] }) {
   const t = useT();
   const cb = useStore((s) => s.design?.customBlocks.find((c) => c.id === id));
   const assets = useStore((s) => s.design?.assets ?? []);
@@ -580,6 +595,7 @@ function CustomFields({ id, theme, block }: { id: string; theme: AgendaDocument[
           <Slider label={t('insp.opacity')} value={Number(p.opacity ?? PROP_DEFAULTS.opacity)} min={PROP_RANGES.opacity.min} max={PROP_RANGES.opacity.max} step={0.05} {...dragProp('opacity')} defaultValue={PROP_DEFAULTS.opacity} />
         </>
       )}
+      {isElementKind(cb.kind) && <ElementFields kind={cb.kind} props={p} setProp={setProp} months={months} />}
       {(cb.kind === 'lines' || cb.kind === 'dots' || cb.kind === 'grid') && (
         <Slider label={t('style.pitch')} value={Number(p.pitch ?? pitchDefault)} min={PROP_RANGES.pitch.min} max={PROP_RANGES.pitch.max} step={0.1} {...dragProp('pitch')} modified={p.pitch !== undefined} onReset={() => setProp('pitch', undefined)} />
       )}
