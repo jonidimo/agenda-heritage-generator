@@ -1,0 +1,19 @@
+name: diag
+on:
+  push:
+    branches: [lote/eager-faraday-9g1w7y]
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - name: Probe Electron stdio on Windows
+        shell: bash
+        run: |
+          ELECTRON=$(node -e "console.log(require('electron'))")
+          echo "electron=$ELECTRON"
+          node diag/harness.mjs "$ELECTRON" diag/probe.mjs --no-sandbox
