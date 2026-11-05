@@ -105,7 +105,7 @@ test('un clic con un temblor de 1 px no mueve ni encaja el elemento', async ({ p
 
 test('un número con decimales en un campo entero se redondea', async ({ page }) => {
   await open(page);
-  await page.getByRole('tab', { name: 'Impresión' }).click();
+  await page.getByRole('button', { name: 'Impresión', exact: true }).click();
   await page.getByRole('spinbutton', { name: 'Hojas por cuadernillo' }).fill('4.5');
   await expect.poll(async () => (await state(page)).design!.binding.signature.sheets).toBe(5);
 });
@@ -1447,5 +1447,70 @@ test.describe('avisos, ocultos y encuadre', () => {
         return Boolean(b && area && b.x >= area.x - 1 && b.y >= area.y - 1 && b.x + b.width <= area.x + area.width + 1 && b.y + b.height <= area.y + area.height + 1);
       })
       .toBe(true);
+  });
+});
+
+test.describe('modos y destino', () => {
+  const sheet = (page: Page) => page.getByRole('button', { name: 'Hoja impresa', exact: true });
+
+  test('Diseño y Impresión ofrecen cada uno sus vistas y pestañas; imprimir muestra las franjas de imprenta', async ({ page }) => {
+    await openQuiet(page);
+    // Diseño: libro sí, hoja impresa y pestaña de impresión no.
+    await expect(page.getByRole('button', { name: 'Libro', exact: true })).toBeVisible();
+    await expect(sheet(page)).toHaveCount(0);
+    await expect(page.getByRole('tab', { name: 'Impresión' })).toHaveCount(0);
+    await expect(page.getByTestId('press-guides')).toHaveCount(0);
+
+    await page.getByRole('button', { name: 'Impresión', exact: true }).click();
+    await expect(page.getByRole('tab', { name: 'Impresión' })).toHaveAttribute('aria-selected', 'true');
+    await expect(sheet(page)).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Libro', exact: true })).toHaveCount(0);
+    await expect(page.getByTestId('press-guides').first()).toBeVisible();
+    await expect(page.getByTestId('press-legend')).toContainText('No se imprime');
+
+    await page.getByRole('button', { name: 'Diseño', exact: true }).click();
+    await expect(page.getByRole('tab', { name: 'Impresión' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Libro', exact: true })).toBeVisible();
+    await expect(page.getByTestId('press-guides')).toHaveCount(0);
+  });
+
+  test('Ctrl+E abre Impresión desde el diseño; la hoja impresa vuelve a «página doble» en Diseño', async ({ page }) => {
+    await openQuiet(page);
+    await page.keyboard.press('Control+e');
+    await expect(page.getByRole('tab', { name: 'Impresión' })).toHaveAttribute('aria-selected', 'true');
+    await page.getByRole('button', { name: 'Hoja impresa', exact: true }).click();
+    await expect.poll(() => page.evaluate<string>('globalThis.__agenda.getState().view')).toBe('sheet');
+    await page.getByRole('button', { name: 'Diseño', exact: true }).click();
+    await expect.poll(() => page.evaluate<string>('globalThis.__agenda.getState().view')).toBe('spread');
+  });
+
+  test('«Leer en pantalla» quita la costura, las hojas y las opciones de imprenta, y se puede volver', async ({ page }) => {
+    await openQuiet(page);
+    await page.getByRole('button', { name: 'Impresión', exact: true }).click();
+    const nonPrintable = () => page.getByRole('spinbutton', { name: 'Zona no imprimible' });
+    const content = () => page.evaluate<number>('globalThis.__agenda.getState().design.binding.gutter');
+    expect(await content()).toBeGreaterThanOrEqual(0);
+
+    await page.getByRole('button', { name: 'Leer en pantalla', exact: true }).click();
+    await expect.poll(() => page.evaluate<string>('globalThis.__agenda.getState().design.binding.target')).toBe('screen');
+    await expect(page.getByRole('button', { name: 'PDF para leer en pantalla' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Hoja de calibración' })).toHaveCount(0);
+    await expect(nonPrintable()).toHaveCount(0);
+    await expect(sheet(page)).toHaveCount(0);
+    await expect(page.getByTestId('press-guides')).toHaveCount(0);
+    // Lo guardado no se perdió: al volver a imprimir está todo como estaba.
+    await page.getByRole('button', { name: 'Imprimir y encuadernar', exact: true }).click();
+    await expect(page.getByRole('button', { name: 'Hoja de calibración' })).toBeVisible();
+    await expect(sheet(page)).toBeVisible();
+  });
+
+  test('con la hoja impresa a la vista, pasar a «Leer en pantalla» vuelve a la página doble', async ({ page }) => {
+    await openQuiet(page);
+    await page.getByRole('button', { name: 'Impresión', exact: true }).click();
+    await sheet(page).click();
+    await expect(page.getByRole('button', { name: /Dar vuelta la hoja/ })).toBeVisible();
+    await page.getByRole('button', { name: 'Leer en pantalla', exact: true }).click();
+    await expect(sheet(page)).toHaveCount(0);
+    await expect(page.locator('[data-page-index]').first()).toBeVisible();
   });
 });

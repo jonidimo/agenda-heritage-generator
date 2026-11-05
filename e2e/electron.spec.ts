@@ -141,7 +141,7 @@ test('al exportar un PDF se ve dónde quedó, y «Abrir carpeta» solo abre lo q
   await electronApp.evaluate(({ session }, dir) => {
     session.defaultSession.on('will-download', (_event, item) => item.setSavePath(`${dir}/${item.getFilename()}`));
   }, out);
-  await win.getByRole('tab', { name: 'Impresión' }).click();
+  await win.getByRole('button', { name: 'Impresión', exact: true }).click();
   await win.getByRole('button', { name: 'Hoja de calibración' }).click();
   const box = win.getByTestId('last-export');
   await expect(box).toBeVisible({ timeout: 60_000 });

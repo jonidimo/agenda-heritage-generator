@@ -7,7 +7,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { pageTitle, useT } from '../../i18n/ui';
 import { assetHref } from '../../state/assetUrls';
 import { pageStep, spreadOf } from '../../state/paging';
-import { useStore } from '../../state/store';
+import { activeView, useStore } from '../../state/store';
 import { IconButton } from '../ui';
 import { ErrorBoundary, ViewError } from '../ErrorBoundary';
 import { PageView } from './PageView';
@@ -36,7 +36,8 @@ function useSize(): [React.RefObject<HTMLDivElement | null>, { w: number; h: num
  */
 export function Canvas({ committed, live }: { committed: AgendaDocument; live: AgendaDocument }) {
   const t = useT();
-  const view = useStore((s) => s.view);
+  const view = useStore(activeView);
+  const printing = useStore((s) => s.mode === 'print') && !live.screen;
   const pageIndex = useStore((s) => Math.min(s.pageIndex, live.pageCount - 1));
   const goToPage = useStore((s) => s.goToPage);
   const zoom = useStore((s) => s.zoom);
@@ -96,6 +97,16 @@ export function Canvas({ committed, live }: { committed: AgendaDocument; live: A
           <IconButton label="→" onClick={next} disabled={pageIndex >= live.pageCount - 1}>
             <ChevronRight size={18} />
           </IconButton>
+          {printing && view !== 'sheet' && (
+            <span className="ml-2 inline-flex items-center gap-2 text-[11.5px] text-ink-soft" data-testid="press-legend">
+              <span className="inline-block h-2.5 w-2.5 rounded-sm bg-[#dc2626]/30 ring-1 ring-[#dc2626]/60" aria-hidden="true" /> {t('press.unprintable')}
+              {live.binding.gutter > 0 && (
+                <>
+                  <span className="inline-block h-2.5 w-2.5 rounded-sm bg-[#2563eb]/30 ring-1 ring-[#2563eb]/60" aria-hidden="true" /> {t('press.gutter')}
+                </>
+              )}
+            </span>
+          )}
           {problems > 0 && (
             <button
               type="button"

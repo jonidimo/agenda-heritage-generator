@@ -4,7 +4,7 @@ import { copySelection, cutSelection, duplicateSelection, pasteSelection } from 
 import { currentDocument, selectionContext } from '../state/selectionContext';
 import { shortcutHint } from '../state/shortcutHints';
 import { SHORTCUTS } from '../state/shortcuts';
-import { useStore, type View } from '../state/store';
+import { activeView, useStore, viewsOf, type View } from '../state/store';
 import type { UiKey } from '../i18n/ui';
 import type { MenuItem } from './ContextMenu';
 
@@ -61,6 +61,7 @@ const VIEW_LABELS: Array<[View, UiKey]> = [
 
 export function viewMenu(t: T): MenuItem[] {
   const st = useStore.getState();
+  const screen = st.design?.binding.target === 'screen';
   return [
     { label: t('sc.view.zoomIn'), icon: <ZoomIn size={14} />, hint: shortcutHint('view.zoomIn', t), onSelect: () => st.zoomBy(1.2) },
     { label: t('sc.view.zoomOut'), icon: <ZoomOut size={14} />, hint: shortcutHint('view.zoomOut', t), onSelect: () => st.zoomBy(1 / 1.2) },
@@ -68,7 +69,10 @@ export function viewMenu(t: T): MenuItem[] {
     { label: t('sc.view.zoom100'), hint: shortcutHint('view.zoom100', t), onSelect: () => st.setZoom(1, false) },
     { label: t('sc.view.zoomSelection'), hint: shortcutHint('view.zoomSelection', t), disabled: !st.selection, onSelect: () => run('view.zoomSelection') },
     { separator: true },
-    ...VIEW_LABELS.map(([v, key]): MenuItem => ({ label: t(key), checked: st.view === v, onSelect: () => st.setView(v) })),
+    { label: t('mode.design'), checked: st.mode === 'design', onSelect: () => st.setMode('design') },
+    { label: t('mode.print'), checked: st.mode === 'print', onSelect: () => st.setMode('print') },
+    { separator: true },
+    ...VIEW_LABELS.filter(([v]) => viewsOf(st.mode, screen).includes(v)).map(([v, key]): MenuItem => ({ label: t(key), checked: activeView(st) === v, onSelect: () => st.setView(v) })),
     { separator: true },
     { label: t('sc.view.sidebar'), icon: <PanelLeft size={14} />, checked: st.sidebarOpen, hint: shortcutHint('view.sidebar', t), onSelect: () => st.setSidebarOpen(!st.sidebarOpen) },
     { label: t('sc.view.guides'), checked: st.guides, hint: shortcutHint('view.guides', t), onSelect: () => st.toggleGuides() },

@@ -105,6 +105,11 @@ export const PaperZ = z
 
 export const BindingZ = z
   .object({
+    /**
+     * Para qué se hace la agenda. `print`: se imprime y se encuaderna (costura, recortes, marcas, relleno
+     * de cuadernillos). `screen`: se lee en pantalla (tableta, lector): las mismas páginas sin nada de eso.
+     */
+    target: z.enum(['print', 'screen']).default('print'),
     method: z.enum(['sewn', 'saddle', 'cut-stack', 'single']).default('sewn'),
     signature: z
       .object({

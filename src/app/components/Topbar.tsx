@@ -1,4 +1,4 @@
-import { Archive, ArrowLeft, Eye, Keyboard, Pencil, ArrowRight, BookOpen, Search, Columns2, File, FileDown, FolderOpen, Grid3x3, Info, LayoutTemplate, Link2, Magnet, Maximize, PanelLeft, Printer, Redo2, Ruler, Save, Undo2, Upload, ZoomIn, ZoomOut } from 'lucide-react';
+import { Archive, ArrowLeft, Eye, Keyboard, Pencil, PenTool, ArrowRight, BookOpen, Search, Columns2, File, FileDown, FolderOpen, Grid3x3, Info, LayoutTemplate, Link2, Magnet, Maximize, PanelLeft, Printer, Redo2, Ruler, Save, Undo2, Upload, ZoomIn, ZoomOut } from 'lucide-react';
 import { useEffect } from 'react';
 import { backupAll, openAnyFile, saveCurrent } from '../state/fileActions';
 import { openMenuAt, type MenuItem } from './ContextMenu';
@@ -6,7 +6,7 @@ import { editMenu, viewMenu } from './topMenus';
 import { shortcutHint } from '../state/shortcutHints';
 import { UI_LANG_NAMES, UI_LANGS, useT } from '../i18n/ui';
 import { UI_SCALE } from '../state/prefs';
-import { useStore, ZOOM, type View } from '../state/store';
+import { activeView, useStore, viewsOf, ZOOM, type Mode, type View } from '../state/store';
 import { supportsUiScale } from '../state/uiScale';
 import { IconButton, Segmented } from './ui';
 import { goBack, goForward } from '../state/navigation';
@@ -32,6 +32,13 @@ function MenuButton({ label, icon, build }: { label: string; icon: React.ReactNo
   );
 }
 
+const VIEW_ICONS: Record<View, React.ReactNode> = {
+  page: <File size={14} />,
+  spread: <BookOpen size={14} />,
+  sheet: <Columns2 size={14} />,
+  book: <Grid3x3 size={14} />,
+};
+
 export function Topbar() {
   const t = useT();
   const design = useStore((s) => s.design);
@@ -40,8 +47,11 @@ export function Topbar() {
   const canRedo = useStore((s) => s.future.length > 0);
   const undo = useStore((s) => s.undo);
   const redo = useStore((s) => s.redo);
-  const view = useStore((s) => s.view);
+  const view = useStore(activeView);
   const setView = useStore((s) => s.setView);
+  const mode = useStore((s) => s.mode);
+  const setMode = useStore((s) => s.setMode);
+  const screen = useStore((s) => s.design?.binding.target === 'screen');
   const fit = useStore((s) => s.fit);
   const zoomBy = useStore((s) => s.zoomBy);
   const zoomFit = useStore((s) => s.zoomFit);
@@ -139,16 +149,19 @@ export function Topbar() {
           <Redo2 size={17} />
         </IconButton>
       </div>
-      <div className="mx-auto">
+      <div className="mx-auto flex items-center gap-2">
+        <Segmented<Mode>
+          value={mode}
+          onChange={setMode}
+          options={[
+            { value: 'design', label: t('mode.design'), icon: <PenTool size={14} /> },
+            { value: 'print', label: t('mode.print'), icon: <Printer size={14} /> },
+          ]}
+        />
         <Segmented<View>
           value={view}
           onChange={setView}
-          options={[
-            { value: 'page', label: t('view.page'), icon: <File size={14} /> },
-            { value: 'spread', label: t('view.spread'), icon: <BookOpen size={14} /> },
-            { value: 'sheet', label: t('view.sheet'), icon: <Columns2 size={14} /> },
-            { value: 'book', label: t('view.book'), icon: <Grid3x3 size={14} /> },
-          ]}
+          options={viewsOf(mode, screen).map((v) => ({ value: v, label: t(`view.${v}`), icon: VIEW_ICONS[v] }))}
         />
       </div>
       <div className="flex items-center">

@@ -33,6 +33,8 @@ export interface SignaturePlan {
 
 export function planSignatures(pageCount: number, binding: Design['binding']): SignaturePlan {
   const P = Math.max(0, pageCount);
+  // Para leer en pantalla no hay cuadernillos: las páginas que hay, sin completar ninguna.
+  if (binding.target === 'screen') return { method: 'single', signatures: [], totalPages: P, totalSheets: Math.ceil(P / 2), padding: 0 };
   const method = binding.method;
   if (method === 'single') {
     const total = Math.max(2, P + (P % 2));

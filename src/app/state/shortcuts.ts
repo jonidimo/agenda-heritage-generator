@@ -16,7 +16,7 @@ import { goBack, goForward } from './navigation';
 import { pageStep } from './paging';
 import { currentDocument, selectionContext } from './selectionContext';
 import { scrollRectIntoView, zoomToRect } from './viewport';
-import { PANEL_ORDER, useStore, ZOOM, type View } from './store';
+import { activeView, PANEL_ORDER, useStore, viewsOf, ZOOM } from './store';
 import { isTyping } from './typing';
 
 export type ShortcutGroup = 'file' | 'edit' | 'select' | 'view' | 'navigate' | 'panels' | 'help';
@@ -149,8 +149,6 @@ function zoomToSelection(): boolean {
   return true;
 }
 
-const VIEWS: readonly View[] = ['page', 'spread', 'sheet', 'book'];
-
 function openPanel(panel: (typeof PANEL_ORDER)[number]): boolean {
   if (!state().design) return false;
   state().setPanel(panel);
@@ -161,7 +159,7 @@ function openPanel(panel: (typeof PANEL_ORDER)[number]): boolean {
 function page(dir: 1 | -1): boolean {
   const count = currentDocument()?.pageCount ?? 0;
   if (count === 0) return false;
-  state().goToPage(pageStep(state().view, state().pageIndex, count, dir));
+  state().goToPage(pageStep(activeView(state()), state().pageIndex, count, dir));
   return true;
 }
 
@@ -184,7 +182,8 @@ export const SHORTCUTS: readonly Shortcut[] = [
     chords: [{ key: 'p', mod: true }],
     run: () => {
       if (!openPanel('print')) return false;
-      state().setView('sheet');
+      // Una agenda para pantalla no tiene hojas impresas: se queda en el panel de impresión.
+      if (state().design?.binding.target !== 'screen') state().setView('sheet');
     },
   },
 
@@ -229,7 +228,8 @@ export const SHORTCUTS: readonly Shortcut[] = [
     chords: [{ key: 'v' }],
     run: () => {
       if (!state().design) return false;
-      state().setView(VIEWS[(VIEWS.indexOf(state().view) + 1) % VIEWS.length]!);
+      const views = viewsOf(state().mode, state().design?.binding.target === 'screen');
+      state().setView(views[(views.indexOf(activeView(state())) + 1) % views.length]!);
     },
   },
   { id: 'view.sidebar', group: 'view', chords: [{ key: 'b', mod: true }], run: () => state().setSidebarOpen(!state().sidebarOpen) },

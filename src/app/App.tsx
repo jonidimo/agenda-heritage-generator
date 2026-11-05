@@ -27,7 +27,7 @@ import { resources } from './state/resources';
 import { installClipboard } from './state/clipboard';
 import { installShortcuts } from './state/shortcuts';
 import { PANEL_LIMITS } from './state/prefs';
-import { flushSave, useStore, type Panel } from './state/store';
+import { activeView, flushSave, useStore, type Panel } from './state/store';
 import { DESKTOP_BREAKPOINT, useUiLayout } from './state/uiScale';
 import { jumpToPage } from './state/navigation';
 
@@ -45,10 +45,11 @@ function Sidebar() {
   const t = useT();
   const panel = useStore((s) => s.panel);
   const setPanel = useStore((s) => s.setPanel);
+  const mode = useStore((s) => s.mode);
   return (
     <aside className="flex h-full min-h-0 w-full flex-col border-r border-line bg-paper">
       <nav className="scroll-thin flex shrink-0 gap-0.5 overflow-x-auto border-b border-line px-1.5 pt-1.5" role="tablist">
-        {TABS.map((tab) => (
+        {TABS.filter((tab) => tab.id !== 'print' || mode === 'print').map((tab) => (
           <button
             key={tab.id}
             type="button"
@@ -79,7 +80,7 @@ function Sidebar() {
 /** Vista central: si una página o la hoja no se pueden dibujar, el resto del editor sigue andando. */
 function CanvasArea({ doc, live }: { doc: AgendaDocument; live: AgendaDocument }) {
   const pageIndex = useStore((s) => s.pageIndex);
-  const view = useStore((s) => s.view);
+  const view = useStore(activeView);
   return (
     <ErrorBoundary resetKeys={[live, pageIndex, view]} fallback={(e) => <ViewError error={e} />}>
       <Canvas committed={doc} live={live} />

@@ -13,6 +13,7 @@ import { addMonths } from '../util/dates';
 import { renderPdf, type PdfLink, type PdfPageInput } from '../render/pdf';
 import { SECTION_REGISTRY } from '../sections/registry';
 import { shapeText } from '../text/shape';
+import { isScreen, type Binding } from './binding';
 import { createDocContext, pageFormat, type PageFormat, type Resources } from './context';
 import { dedupeWarnings, layoutPage, pageInputs, pagePrims, samePageInputs, verifyPage, type PageInputs } from './layout';
 import { buildOutline, LinkResolver, pageFullTitle, pageLinks, remapOutline, type ResolvedLink } from './links';
@@ -87,6 +88,16 @@ export class AgendaDocument {
     this.inherited = prev && reusePlan && sameLayoutContext(prev.ctx, this.ctx) && samePageDesign(prev.design, design) ? prev.cache : null;
   }
 
+  /** Encuadernación efectiva: la guardada para imprimir; para leer en pantalla, sin costura ni recortes. */
+  get binding(): Binding {
+    return this.ctx.binding;
+  }
+
+  /** ¿Se hace para leer en pantalla? Entonces no hay hojas impuestas ni material de encuadernación. */
+  get screen(): boolean {
+    return isScreen(this.binding);
+  }
+
   get pageCount(): number {
     return this.plan.pages.length;
   }
@@ -148,7 +159,8 @@ export class AgendaDocument {
   }
 
   sides(): SheetSide[] {
-    if (!this.sidesCache) this.sidesCache = impose(this.plan.signatures, this.format, this.design.binding);
+    // Para leer en pantalla no hay hojas: las páginas se ven y se exportan de a una.
+    if (!this.sidesCache) this.sidesCache = this.screen ? [] : impose(this.plan.signatures, this.format, this.binding);
     return this.sidesCache;
   }
 
@@ -157,7 +169,7 @@ export class AgendaDocument {
     const labelFace = this.ctx.fonts.resolveWithFallback({ family: 'Manrope', weight: 700, style: 'normal' }, this.ctx.theme.fallbacks);
     return composeSide(side, (i) => (i < this.pageCount ? this.page(i) : null), {
       fmt: this.format,
-      binding: this.design.binding,
+      binding: this.binding,
       label: (t) => shapeText(labelFace, t, 5),
       ...(opts.guides ? { guides: true } : {}),
     });
@@ -238,6 +250,7 @@ export class AgendaDocument {
     const title = `${d.name}`;
     const base = { fonts: this.ctx.fonts, assetBytes: opts.assetBytes, info: { title, author: d.persona.name, subject: 'Agenda', keywords: 'agenda, planner' }, ...(opts.onProgress ? { onProgress: opts.onProgress } : {}) };
     const toInput = (r: SheetRender): PdfPageInput => ({ w: r.w, h: r.h, prims: r.prims });
+    if (kind !== 'pages' && this.screen) throw new Error(`El PDF «${kind}» es para imprimir y encuadernar: la agenda está hecha para leer en pantalla. Cambiá el destino a «Encuadernación» o exportá las páginas.`);
     switch (kind) {
       case 'pages': {
         // Para leer en pantalla (tableta, lector de tinta electrónica): con enlaces y marcadores.
@@ -272,13 +285,13 @@ export class AgendaDocument {
         if (kind === 'fronts') sides = sides.filter((s) => s.side === 'front');
         if (kind === 'backs') {
           sides = sides.filter((s) => s.side === 'back');
-          if (d.binding.manualReverseBacks) sides = [...sides].reverse();
+          if (this.binding.manualReverseBacks) sides = [...sides].reverse();
         }
         if (kind === 'signature') {
           sides = sides.filter((s) => s.signature === (opts.signature ?? 0));
           if (sides.length === 0) throw new Error(`No existe el cuadernillo ${(opts.signature ?? 0) + 1} (hay ${this.plan.signatures.signatures.length}).`);
         }
-        const duplex = this.format.nUp === 1 || d.binding.duplex === 'long-edge' ? 'DuplexFlipLongEdge' : 'DuplexFlipShortEdge';
+        const duplex = this.format.nUp === 1 || this.binding.duplex === 'long-edge' ? 'DuplexFlipLongEdge' : 'DuplexFlipShortEdge';
         return renderPdf(
           sides.map((s) => toInput(this.sheet(s))),
           { ...base, duplex: kind === 'fronts' || kind === 'backs' ? 'Simplex' : duplex, pickTrayByPdfSize: true },
@@ -288,7 +301,7 @@ export class AgendaDocument {
         return renderPdf(calibrationSheet(this.ctx, this.format, this.ctx.strings).map(toInput), {
           ...base,
           info: { ...base.info, title: `${title} · calibración` },
-          duplex: this.format.nUp === 1 || d.binding.duplex === 'long-edge' ? 'DuplexFlipLongEdge' : 'DuplexFlipShortEdge',
+          duplex: this.format.nUp === 1 || this.binding.duplex === 'long-edge' ? 'DuplexFlipLongEdge' : 'DuplexFlipShortEdge',
           pickTrayByPdfSize: true,
         });
       case 'sewing':

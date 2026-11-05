@@ -11,6 +11,33 @@ import { PANEL_LIMITS, prefs, UI_SCALE, type PanelId } from './prefs';
 import type { UiLang } from '../i18n/ui';
 
 export type View = 'page' | 'spread' | 'sheet' | 'book';
+/** Diseñar la agenda o prepararla para imprimir: cada modo muestra solo lo que le sirve. */
+export type Mode = 'design' | 'print';
+
+/** Las vistas de cada modo, en el orden en que se ofrecen: el libro es para diseñar; la hoja impresa, para imprimir. */
+export const MODE_VIEWS: Readonly<Record<Mode, readonly View[]>> = {
+  design: ['page', 'spread', 'book'],
+  print: ['page', 'spread', 'sheet'],
+};
+
+/**
+ * La vista que corresponde mostrar: la elegida si el modo la ofrece y, de no ser así (o si la agenda
+ * es para leer en pantalla y no tiene hojas impresas), la página doble.
+ */
+export function viewFor(mode: Mode, view: View, screen: boolean): View {
+  const ok = MODE_VIEWS[mode].includes(view) && !(view === 'sheet' && screen);
+  return ok ? view : 'spread';
+}
+
+/** La vista que se está mostrando ahora (la elegida, acomodada al modo y al destino de la agenda). */
+export function activeView(s: { mode: Mode; view: View; design: { binding: { target: string } } | null }): View {
+  return viewFor(s.mode, s.view, s.design?.binding.target === 'screen');
+}
+
+/** Las vistas que se ofrecen en un modo (sin la hoja impresa si la agenda es para pantalla). */
+export function viewsOf(mode: Mode, screen: boolean): readonly View[] {
+  return MODE_VIEWS[mode].filter((v) => !(v === 'sheet' && screen));
+}
 export type Panel = 'sections' | 'style' | 'methods' | 'persona' | 'calendar' | 'assets' | 'print';
 
 /** Las pestañas del panel lateral, en el orden en que se muestran (y en el que las eligen Ctrl+1, Ctrl+2…). */
@@ -132,6 +159,9 @@ interface StoreState {
   undo(): void;
   redo(): void;
   setView(v: View): void;
+  mode: Mode;
+  /** Cambia de modo: la vista y la pestaña se acomodan a lo que ofrece (al imprimir se abre «Impresión»). */
+  setMode(mode: Mode): void;
   setPanel(p: Panel): void;
   goToPage(i: number): void;
   setSheetSide(s: 'front' | 'back'): void;
@@ -247,7 +277,8 @@ export const useStore = create<StoreState>((set, get) => ({
   future: [],
   coalesce: null,
   view: 'spread',
-  panel: 'style',
+  mode: prefs.mode.read(),
+  panel: prefs.mode.read() === 'print' ? 'print' : 'style',
   pageIndex: 0,
   sheetSide: 'front',
   zoom: 1,
@@ -362,7 +393,18 @@ export const useStore = create<StoreState>((set, get) => ({
   },
 
   setView: (view) => set({ view, selection: null, selectedIds: [] }),
-  setPanel: (panel) => set({ panel }),
+  setMode(mode) {
+    prefs.mode.write(mode);
+    const { view, panel } = get();
+    set({
+      mode,
+      // La vista que el modo nuevo no ofrece se cambia (lo elegido se limpia solo si la vista cambia).
+      ...(MODE_VIEWS[mode].includes(view) ? {} : { view: 'spread' as const, selection: null, selectedIds: [] }),
+      panel: mode === 'print' ? 'print' : panel === 'print' ? 'style' : panel,
+    });
+  },
+  // Las opciones de impresión viven en el modo «Impresión»: pedirlas desde el diseño lo cambia.
+  setPanel: (panel) => (panel === 'print' && get().mode !== 'print' ? get().setMode('print') : set({ panel })),
   setSearchOpen: (searchOpen) => set({ searchOpen }),
   setLastExport: (lastExport) => set({ lastExport }),
   setShowShortcuts: (showShortcuts) => set({ showShortcuts }),

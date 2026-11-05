@@ -196,7 +196,7 @@ function filler(n: number, group: string, style: string, reason: 'parity' | 'sig
 export function planDocument(doc: DocContext, registry: ReadonlyMap<string, SectionModule>, opts: PlanOptions = {}): DocumentPlan {
   const placeholder = doc.strings.custom.placeholder;
   const drafts = insertCustomPages(draftPages(doc, registry, opts), doc.design, placeholder);
-  const style = doc.design.binding.fillWith;
+  const style = doc.binding.fillWith;
   const pages: PagePlan[] = [];
   let parity = 0;
   const twoSided = true;
@@ -211,7 +211,7 @@ export function planDocument(doc: DocContext, registry: ReadonlyMap<string, Sect
     pages.push({ ...d, module: d.module ?? d.type, index: pages.length, side: pages.length % 2 === 0 ? 'recto' : 'verso' });
   }
   const contentPages = pages.length - parity;
-  const signatures = planSignatures(pages.length, doc.design.binding);
+  const signatures = planSignatures(pages.length, doc.binding);
   let padded = 0;
   const lastGroup = pages[pages.length - 1]?.group ?? '';
   while (pages.length < signatures.totalPages) {

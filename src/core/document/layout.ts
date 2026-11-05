@@ -20,6 +20,7 @@ import { mergeTokens, type ThemeTokens, type WritingStyle } from '../design/them
 import { normalizeColor } from '../util/color';
 import { parseFontSpec, type FontRegistry } from '../text/fonts';
 import { assetPrims } from './assets';
+import { safeArea } from './binding';
 import { pageGeometry } from './context';
 import { pageTextVars } from '../sections/common';
 import { applyBlockStyle, blockStyleMap, mergeLineTable } from './blockstyle';
@@ -339,7 +340,7 @@ function pageNumberTarget(design: Design, plan: PagePlan, link: Design['links'][
 
 function addChrome(ctx: LayoutContext, page: PagePlan, totalPages: number, pageNumberLink: Design['links']['pageNumber']): void {
   const d = ctx.doc.design;
-  const pn = d.binding.pageNumbers;
+  const pn = ctx.doc.binding.pageNumbers;
   const noChrome = new Set(['titlePage', 'monthCover', 'custom', 'cover']);
   if (pn.enabled && page.index >= pn.skipFirst && !noChrome.has(page.type) && page.index < totalPages) {
     const y = ctx.page.h - ctx.theme.margins.bottom / 2;
@@ -363,7 +364,7 @@ function addChrome(ctx: LayoutContext, page: PagePlan, totalPages: number, pageN
     const back = pageNumberTarget(d, page, pageNumberLink);
     ctx.add('chrome.pageNumber', 'Número de página', [t.prim], { role: 'chrome', layer: 18, ...(back ? { links: [{ ...pad(t.bbox, 1.5), to: back, cat: 'pageNumber' }] } : {}) });
   }
-  const ti = d.binding.thumbIndex;
+  const ti = ctx.doc.binding.thumbIndex;
   const month = page.params?.month as { y: number; m: number } | undefined;
   const months = ctx.doc.cal.months;
   const idx = month ? months.findIndex((mm) => mm.y === month.y && mm.m === month.m) : -1;
@@ -373,7 +374,7 @@ function addChrome(ctx: LayoutContext, page: PagePlan, totalPages: number, pageN
   if (ti.enabled && (idx >= 0 || (all && page.type !== 'titlePage' && page.type !== 'custom'))) {
     const area = inset({ x: 0, y: 0, w: ctx.page.w, h: ctx.page.h }, ctx.theme.margins.top, 0, ctx.theme.margins.bottom, 0);
     const tabH = area.h / months.length;
-    const np = d.binding.nonPrintable;
+    const np = ctx.doc.binding.nonPrintable;
     const x = ctx.page.side === 'recto' ? ctx.page.w - np - ti.width : np;
     const prims: Prim[] = [];
     const links: LinkArea[] = [];
@@ -503,13 +504,12 @@ export function layoutPage(
  * cada glifo y compara los textos de a pares, por eso no corre en cada maquetación sino cuando
  * alguien la pide (verificación previa, exportación, servidor MCP, línea de comandos).
  */
-export function verifyPage(doc: Pick<DocContext, 'design' | 'fonts' | 'assets'>, page: PageModel): PageWarning[] {
+export function verifyPage(doc: Pick<DocContext, 'design' | 'binding' | 'fonts' | 'assets'>, page: PageModel): PageWarning[] {
   const out: PageWarning[] = [];
   const warn = (code: PageWarning['code'], message: string, params: PageWarning['params'] = {}): void => void out.push({ code, params, message });
   const pageBox = { x: 0, y: 0, w: page.w, h: page.h };
-  const np = doc.design.binding.nonPrintable;
-  const allEdges = doc.design.binding.method === 'single' || doc.design.binding.method === 'cut-stack';
-  const safe = allEdges ? inset(pageBox, np) : inset(pageBox, np, page.side === 'recto' ? np : 0, np, page.side === 'recto' ? 0 : np);
+  const np = doc.binding.nonPrintable;
+  const safe = safeArea(doc.binding, page);
   const texts: Array<{ r: Rect; label: string; block: string }> = [];
   for (const b of page.blocks) {
     if (b.role === 'watermark' || b.role === 'chrome' || b.role === 'artwork') continue;

@@ -45,6 +45,14 @@ describe('sin avisos en todas las combinaciones', () => {
     }
   }
 
+  // Para leer en pantalla (sin costura ni zona no imprimible) tampoco debe quedar nada fuera de lugar.
+  for (const c of CASES) {
+    it(`pantalla · ${c.template} · ${c.locale}`, async () => {
+      const d = design(c.template, c.locale, c.country, (x) => void (x.binding.target = 'screen'));
+      expect(await warningsOf(d)).toEqual([]);
+    });
+  }
+
   for (const comfort of ['compact', 'normal', 'wide'] as const) {
     for (const lang of ['es-AR', 'pt-BR'] as const) {
       it(`comodidad ${comfort} · ${lang}`, async () => {

@@ -62,7 +62,7 @@ export function calibrationSheet(doc: DocContext, fmt0: PageFormat, s: AgendaStr
   const k = kit(sans, bold);
   const W = fmt0.sheetW;
   const H = fmt0.sheetH;
-  const np = doc.design.binding.nonPrintable;
+  const np = doc.binding.nonPrintable;
   const sides: SheetRender[] = [];
   const crosses: Array<[number, number]> = [
     [W * 0.25, H * 0.2],
@@ -133,8 +133,8 @@ export function calibrationSheet(doc: DocContext, fmt0: PageFormat, s: AgendaStr
     }
     if (side === 'back') {
       let m: Matrix = translate(0, 0);
-      if (backRotates(doc.design.binding, fmt0.nUp)) m = compose(m, rotateAround(180, W / 2, H / 2));
-      const off = doc.design.binding.backOffset;
+      if (backRotates(doc.binding, fmt0.nUp)) m = compose(m, rotateAround(180, W / 2, H / 2));
+      const off = doc.binding.backOffset;
       if (off.x !== 0 || off.y !== 0) m = compose(translate(off.x, off.y), m);
       sides.push({ w: W, h: H, prims: [{ t: 'group', m, children: p }] });
     } else sides.push({ w: W, h: H, prims: p });
@@ -147,7 +147,7 @@ export function sewingTemplate(doc: DocContext, fmt0: PageFormat, s: AgendaStrin
   const sans = doc.fonts.resolveWithFallback({ family: 'Manrope', weight: 400, style: 'normal' }, doc.theme.fallbacks);
   const bold = doc.fonts.resolveWithFallback({ family: 'Manrope', weight: 800, style: 'normal' }, doc.theme.fallbacks);
   const k = kit(sans, bold);
-  const sw = doc.design.binding.sewing;
+  const sw = doc.binding.sewing;
   const pageH = doc.pageH;
   // Hoja vertical del papel elegido.
   const W = Math.min(fmt0.sheetW, fmt0.sheetH);
@@ -155,7 +155,7 @@ export function sewingTemplate(doc: DocContext, fmt0: PageFormat, s: AgendaStrin
   const p: Prim[] = [];
   const x = W / 2;
   const y0 = (H - pageH) / 2;
-  p.push(txt(k, s.sewing.title, W / 2, Math.max(doc.design.binding.nonPrintable + 6, y0 - 12), 10, { bold: true, align: 'center' }));
+  p.push(txt(k, s.sewing.title, W / 2, Math.max(doc.binding.nonPrintable + 6, y0 - 12), 10, { bold: true, align: 'center' }));
   p.push(line(x, y0, x, y0 + pageH, { color: '#000000', width: ptToMm(0.4), dash: [2, 1.5] }));
   p.push(line(x - 6, y0, x + 6, y0, { color: '#000000', width: ptToMm(0.4) }), line(x - 6, y0 + pageH, x + 6, y0 + pageH, { color: '#000000', width: ptToMm(0.4) }));
   // Estaciones.
@@ -183,7 +183,7 @@ export function sewingTemplate(doc: DocContext, fmt0: PageFormat, s: AgendaStrin
   const info = [fmt(s.sewing.stations, { n: stations.length }), s.sewing.kettle, s.sewing.instructions];
   info.forEach((l, i) => {
     const lines = wrapLines(k, l, 7, W - 30);
-    lines.forEach((ll, j) => p.push(txt(k, ll, 15, Math.min(H - doc.design.binding.nonPrintable - 20, y0 + pageH + 10) + i * 8 + j * 3.4, 7)));
+    lines.forEach((ll, j) => p.push(txt(k, ll, 15, Math.min(H - doc.binding.nonPrintable - 20, y0 + pageH + 10) + i * 8 + j * 3.4, 7)));
   });
   return { w: W, h: H, prims: p };
 }
@@ -193,8 +193,8 @@ export function coverSheet(doc: DocContext, plan: SignaturePlan): SheetRender {
   const c = doc.design.cover;
   const pw = doc.pageW;
   const ph = doc.pageH;
-  const caliper = doc.design.binding.creep.caliper;
-  const leavesPerSheet = doc.design.binding.method === 'single' || doc.design.binding.method === 'cut-stack' ? 1 : 2;
+  const caliper = doc.binding.creep.caliper;
+  const leavesPerSheet = doc.binding.method === 'single' || doc.binding.method === 'cut-stack' ? 1 : 2;
   const spine = c.spine === 'auto' ? Math.max(3, plan.totalSheets * leavesPerSheet * caliper + 2) : c.spine;
   const p: Prim[] = [];
   const guide = { color: '#888888', width: ptToMm(0.3), dash: [1.5, 1] };

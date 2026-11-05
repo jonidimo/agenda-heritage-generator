@@ -20,6 +20,7 @@ import { editableInPlace, TextEditor } from './TextEditor';
 import { assetHref, onAssetUrlsChange } from '../../state/assetUrls';
 import { useT } from '../../i18n/ui';
 import { useStore, type Selection } from '../../state/store';
+import { printGuides } from '@core/document/binding';
 import { jumpToPage } from '../../state/navigation';
 import { currentUiZoom } from '../../state/uiScale';
 
@@ -95,6 +96,9 @@ export function PageView({ doc, index, scale, interactive = true }: Props) {
   const setLinkArea = useStore((s) => s.setLinkArea);
   const scope = useStore((s) => s.scope);
   const showGuides = useStore((s) => s.guides);
+  // En el modo «Impresión» se ve la franja que la impresora no imprime y la que se reserva para coser.
+  const printMode = useStore((s) => s.mode === 'print');
+  const press = printMode && interactive && !doc.screen ? printGuides(doc.binding, page) : null;
   const snapOn = useStore((s) => s.snap);
   const showLinks = useStore((s) => s.showLinks);
   const t = useT();
@@ -437,6 +441,21 @@ export function PageView({ doc, index, scale, interactive = true }: Props) {
       <svg ref={svgRef} width={w} height={h} viewBox={`0 0 ${page.w} ${page.h}`} className="block select-none" role="img" aria-label={`${page.title} — ${index + 1}`}>
         <defs dangerouslySetInnerHTML={{ __html: defs }} />
         <g dangerouslySetInnerHTML={{ __html: body }} />
+        {press && (
+          <g pointerEvents="none" data-testid="press-guides">
+            {/* Lo que no se imprime: el papel entero menos el área segura (relleno con regla par-impar). */}
+            {press.safe.w < page.w || press.safe.h < page.h ? (
+              <path
+                d={`M0 0H${page.w}V${page.h}H0Z M${press.safe.x} ${press.safe.y}V${press.safe.y + press.safe.h}H${press.safe.x + press.safe.w}V${press.safe.y}Z`}
+                fillRule="evenodd"
+                fill="#dc2626"
+                fillOpacity={0.14}
+              />
+            ) : null}
+            <rect x={press.safe.x} y={press.safe.y} width={press.safe.w} height={press.safe.h} fill="none" stroke="#dc2626" strokeWidth={0.6 / scale} strokeDasharray={`${3 / scale} ${2 / scale}`} />
+            {press.gutter && <rect x={press.gutter.x} y={press.gutter.y} width={press.gutter.w} height={press.gutter.h} fill="#2563eb" fillOpacity={0.14} />}
+          </g>
+        )}
         {showGuides && (
           <g pointerEvents="none">
             <rect x={c.x} y={c.y} width={c.w} height={c.h} fill="none" stroke="#3b82f6" strokeWidth={0.6 / scale} strokeDasharray={`${3 / scale} ${2 / scale}`} />

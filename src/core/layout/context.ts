@@ -99,6 +99,8 @@ export interface PageGeometry {
 
 export interface DocContext {
   design: Design;
+  /** Encuadernación efectiva (ver `effectiveBinding`): la que mandan el formato, los márgenes y las hojas. */
+  binding: Design['binding'];
   theme: ThemeTokens;
   fonts: FontRegistry;
   strings: AgendaStrings;
