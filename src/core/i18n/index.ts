@@ -11,6 +11,11 @@ export type Lang = (typeof LANGUAGES)[number];
 
 const TABLE: Record<Lang, AgendaStrings> = { es, en, pt, it };
 
+/** ¿Es uno de los idiomas de la agenda? */
+export function isLang(l: string): l is Lang {
+  return (LANGUAGES as readonly string[]).includes(l);
+}
+
 /** Idioma base de una etiqueta BCP 47 ('es-AR' → 'es'); cae en español si no está soportado. */
 export function langOf(locale: string): Lang {
   const base = locale.toLowerCase().split(/[-_]/)[0] ?? 'es';
@@ -56,8 +61,25 @@ export function resolveStrings(locale: string, overrides: Record<string, string>
   const base = TABLE[langOf(locale)];
   const regional = regionalPatch(locale);
   const merged = structuredCloneJson(base);
-  for (const [path, value] of Object.entries({ ...regional, ...overrides })) setPath(merged, path, value);
+  for (const [path, value] of Object.entries(regional)) setPath(merged, path, value);
+  // En Suiza y Liechtenstein el alemán no usa «ß»: se escribe «ss» (antes de lo que escribió la persona).
+  const tag = locale.toLowerCase();
+  if (tag === 'de-ch' || tag === 'de-li') rewriteStrings(merged, (v) => v.replace(/ß/g, 'ss'));
+  for (const [path, value] of Object.entries(overrides)) setPath(merged, path, value);
   return merged;
+}
+
+/** Pasa por `f` cada texto de una tabla (ya copiada: se cambia en el lugar). */
+function rewriteStrings(node: unknown, f: (v: string) => string): void {
+  if (Array.isArray(node)) {
+    node.forEach((v, i) => (typeof v === 'string' ? (node[i] = f(v)) : rewriteStrings(v, f)));
+  } else if (node && typeof node === 'object') {
+    const bag = node as Record<string, unknown>;
+    for (const [k, v] of Object.entries(bag)) {
+      if (typeof v === 'string') bag[k] = f(v);
+      else rewriteStrings(v, f);
+    }
+  }
 }
 
 /** Ajustes regionales de un mismo idioma (p. ej. «X» para miércoles en España). */

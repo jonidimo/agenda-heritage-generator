@@ -50,7 +50,7 @@ export interface HolidayEdits {
 export interface HolidayQuery {
   subdivision?: string | null;
   types: readonly HolidayType[];
-  /** Idioma preferido (es, en, pt, it…). */
+  /** Idioma preferido (es, en, pt, it, de, fr…). */
   lang: string;
   from: string;
   to: string;

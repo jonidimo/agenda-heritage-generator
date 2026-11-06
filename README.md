@@ -9,6 +9,8 @@ folded into signatures and sewn by hand.**
 [![Español](https://img.shields.io/badge/-Espa%C3%B1ol-8a9a7b?style=for-the-badge)](README.es.md)
 [![Português](https://img.shields.io/badge/-Portugu%C3%AAs-8a9a7b?style=for-the-badge)](README.pt.md)
 [![Italiano](https://img.shields.io/badge/-Italiano-8a9a7b?style=for-the-badge)](README.it.md)
+[![Deutsch](https://img.shields.io/badge/-Deutsch-8a9a7b?style=for-the-badge)](README.de.md)
+[![Français](https://img.shields.io/badge/-Fran%C3%A7ais-8a9a7b?style=for-the-badge)](README.fr.md)
 
 <img src="docs/images/tapa.jpg" alt="The 2026 Heritage planner, printed on a laser printer and sewn by hand" width="560">
 
@@ -61,8 +63,10 @@ instead, see [Run it](#run-it).
 - Drag, nudge, scale, rotate, fade or hide any element. Apply the change to every page of
   that type, mirrored on left-hand pages, or to one page only. Snapping, margin guides,
   undo and redo.
-- **Watermarks per person**: the hummingbird or your own SVG or PNG, anchored to the outer
-  or inner edge, with size and opacity.
+- **Watermarks per person**: the hummingbird, an icon or your own SVG or PNG, anchored to the
+  outer or inner edge, with size and opacity; on every page or only on right or left pages,
+  blended with the paper (*Multiply* makes a logo's white background disappear), in grey or
+  tinted, and with the position and the image mirrored separately on left pages.
 - **Your own pages anywhere**: an image, a vector SVG or a page of a PDF (kept as vectors
   in the final PDF), or a page of lines, dots or grid. The rest of the book reflows
   around them.
@@ -84,7 +88,8 @@ instead, see [Run it](#run-it).
 - An image element takes any picture: choose one from the planner or upload a PNG, JPG or
   SVG.
 - Each text element can have its own font and colour, or follow its type of text.
-- **Zoom** the page with Ctrl and + / − / 0 (or the mouse wheel with Ctrl). **File →
+- **Zoom** the page with Ctrl and + / − / 0, or with Ctrl and the mouse wheel (or a pinch on
+  the touchpad): the point under the cursor stays where it is. **File →
   Interface size** scales the whole interface, and the side panels and the page strip
   are resized by dragging their edges; the app remembers both.
 - **Right-click** (or long-press on a phone) any element, page or thumbnail for its
@@ -97,12 +102,19 @@ instead, see [Run it](#run-it).
   vertical dot spacing, dot size and line weight.
 - **Scale and deform**: every element has eight handles that reflow its content in the new box; the scale is a separate slider, and **Allow deforming** stretches the drawing in any direction instead.
 - **Copy the planner's own elements** (Ctrl+C on a month name, a frame, a table…) and paste an editable element of your own: text stays editable text; the rest becomes a drawing that keeps its line weights.
-- **Nine more kinds of element**: table, checklist, habit tracker, finance lines, mini calendar (its days link to their pages), quadrants, notes, day schedule and rating, each with its own fields.
+- **Ten more kinds of element**: table, checklist, habit tracker, finance lines, mini calendar (its days link to their pages), quadrants, notes, day schedule, rating and **QR code** (any web address, email, phone or text; tappable in the PDF), each with its own fields.
+- **Icons and shapes**: a library of 96 icons (Lucide), searchable in every language and tinted any colour, and fifteen shapes: rectangle, ellipse, line with arrows or dots, arrow, triangle, diamond, polygon (3 to 24 sides), star (3 to 24 points), heart, ring, arc or sector, speech bubble, banner, cross and a free SVG path. The stroke stays inside the box and only the settings of each shape are shown.
+- **An image on each month cover** instead of the sticker, for one month or for all of them.
 - **Layers**: a panel lists the page's elements from top to bottom; raise, lower, send to the back, rename, hide, and blend with what is underneath (multiply, screen, darken, lighten). Ctrl+↑ and Ctrl+↓ move the chosen element.
 - **Hidden elements are never lost**: Edit → *Show hidden elements* lists them and brings each one back. **Zoom to the selection** with Ctrl+Shift+2; the page footer counts the warnings of the current page, and thumbnails show a dot.
 - **Keyboard shortcuts** for everything, listed in the app (F1) and beside each menu item, with File, Edit and View menus.
 
 ### Sections and page templates
+
+- **Start from scratch**: the *Blank* template has no pages at all and shows what to do
+  first; the *Notebook* template is a title page and as many dotted, lined, squared or plain
+  pages as you want, with no calendar. Add any section (and several sections of notes),
+  add pages to each month, or remove a section from its menu.
 
 - Click a section in the **Sections** panel to go to its page. Right-click it to move it,
   turn it off or change how often it repeats.
@@ -114,15 +126,17 @@ instead, see [Run it](#run-it).
 
 ### Find anything
 
-- **Search** (Ctrl+K, `/` or the magnifier) finds settings, sections, pages and elements,
+- The **top bar** has three zones (file and history, mode and view, search and zoom) and
+  folds what does not fit into a «⋯» menu on narrow windows.
+- **Search** (Ctrl+K, `/` or the search field in the top bar) finds settings, sections, pages and elements,
   even with typos, without accents or in any case, and takes you there with a highlight.
 - **Back and forward** buttons in the top bar go through the pages you visited, as in a
   browser.
 
 ### Any year, language and country
 
-- Printed text in Spanish, English, Portuguese and Italian; the interface speaks the same
-  four languages and follows the language chosen when the planner is created.
+- Printed text in Spanish, English, Portuguese, Italian, German and French; the interface
+  speaks the same six languages and follows the language chosen when the planner is created.
 - The country sets the regional conventions (date order, currency, first day of the
   week) from the Unicode CLDR data built into the browser, so English in Argentina is
   written day/month. Date order and first day of the week can also be set by hand;
@@ -205,7 +219,24 @@ instead, see [Run it](#run-it).
 - Planners are also kept in the browser, but only in that browser and at that app
   address, so files are the safe copy.
 - The **Images** and **Fonts** panels say where each image is used (watermark, cover, elements, pages, ornaments) and remove it together with everything that used it; fonts show which characters are missing and where each family is used, and your own can be removed.
+- **Images next to the file**: a planner can point to its images by path (`"path":
+  "images/logo.png"`) instead of carrying them inside; the command line, the MCP server and
+  the desktop app (when the system opens the file) read them from that folder only.
 - Desktop app: after exporting a PDF it shows **where it was saved**, with *Open folder*; planners open by double-clicking a `.agenda.json` or by dropping it on the window, and closing never loses the last change.
+
+### An AI assistant inside the app
+
+- A discreet pill at the foot of the page (**Ctrl+J**): ask for a change in your own words
+  («make the notes on this page bigger», «a habit tracker every month»). The assistant reads
+  the planner, proposes **one** change, and you see it on the page before you **Apply** or
+  **Discard** it; an applied change is a single undo step. Nothing is kept once you close it.
+- Works with **Anthropic (Claude), Google Gemini, OpenAI and compatible services**
+  (OpenRouter, Groq, Mistral) and **local models** (Ollama, LM Studio), with your own key.
+  Optionally it can look at the pages (vision).
+- Your key is never stored in clear: in the desktop app the operating system encrypts it
+  (Keychain, DPAPI, libsecret) and requests go out through the app; on the website it lives
+  in memory, or encrypted in the browser if you choose to remember it. Settings in
+  *File → AI assistant…* or the gear on the pill.
 
 ### Design with an AI model
 
@@ -218,6 +249,9 @@ instead, see [Run it](#run-it).
   [guide](docs/llm-templates.md) ([en español](docs/plantillas-llm.md)).
 - Every change the model makes comes back with the layout warnings it caused (text that does
   not fit, elements off the page or overlapping), so it can fix them without anyone looking.
+- Models can use `icon:<name>` for any icon without declaring it, draw with shapes, and keep
+  images next to the file by path. Across the tools, `path` is always the file that is read
+  and `out` the one that is written.
 - **Live link (desktop app)**: with the app open, the same server works on **the planner you have open**. The model reads it, changes it as one step you can undo (refused if you edited it meanwhile), shows you a page, or opens another planner. Turn it off in *File → Let an AI model edit the open planner*. Nothing listens on the network: it is a local socket protected by a token made at every start.
 
 ### Made to last
@@ -374,6 +408,12 @@ fail if any text overflows, overlaps or leaves the printable area. To add a meth
 section, read [Adding methods and sections](docs/adding-methods.md).
 
 ## Credits
+
+- Made by **Jonatan Damián Dimotta Bré** ([Instagram](https://www.instagram.com/dimottajonatan/),
+  [source code](https://github.com/jonidimo/agenda-heritage-generator),
+  [online](https://jonidimo.github.io/agenda-heritage-generator/)). Every planner's guide ends
+  with these credits and a QR code to the source; they can be turned off in *Methods*.
+- Icons from [Lucide](https://lucide.dev) (ISC license).
 
 - Fonts under the SIL Open Font License: Cormorant Garamond, Manrope, Atkinson
   Hyperlegible Next, EB Garamond and Caveat (licenses in `public/fonts`).

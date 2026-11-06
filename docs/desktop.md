@@ -212,7 +212,7 @@ extracted `AppRun`:
 
 ```sh
 cd ~/Apps
-./heritage-studio-2.3.0-linux-x86_64.AppImage --appimage-extract   # creates ~/Apps/squashfs-root
+./heritage-studio-2.4.0-linux-x86_64.AppImage --appimage-extract   # creates ~/Apps/squashfs-root
 ```
 
 This also starts faster and needs no FUSE. Do not use `--appimage-extract-and-run` (or the
@@ -270,13 +270,13 @@ a **View** menu with **Reload** and **Toggle Developer Tools**.
 2. Push a tag that starts with `v`:
 
    ```sh
-   git tag v2.3.0
-   git push origin v2.3.0
+   git tag v2.4.0
+   git push origin v2.4.0
    ```
 
 3. The **Desktop apps** workflow builds the three systems and creates the GitHub Release
-   **v2.3.0** with all the installers and generated release notes. Tags with a hyphen,
-   such as `v2.3.0-beta.1`, become pre-releases. You can edit the notes afterwards on the
+   **v2.4.0** with all the installers and generated release notes. Tags with a hyphen,
+   such as `v2.4.0-beta.1`, become pre-releases. You can edit the notes afterwards on the
    Releases page.
 
 To build the installers without publishing anything, open **Actions → Desktop apps → Run

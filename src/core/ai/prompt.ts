@@ -5,7 +5,7 @@
  */
 import type { AiContext } from './tools';
 
-const LANGUAGE_NAMES: Record<string, string> = { es: 'Spanish (Rioplatense, using «vos»)', en: 'English', pt: 'Portuguese', it: 'Italian' };
+const LANGUAGE_NAMES: Record<string, string> = { es: 'Spanish (Rioplatense, using «vos»)', en: 'English', pt: 'Portuguese', it: 'Italian', de: 'German (using «du»)', fr: 'French (using «vous»)' };
 
 export function systemPrompt(uiLanguage: string, vision: boolean): string {
   const language = LANGUAGE_NAMES[uiLanguage] ?? 'the language the person writes in';

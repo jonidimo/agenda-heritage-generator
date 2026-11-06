@@ -3,6 +3,7 @@
  * deshacer/rehacer, vista, selección y preferencias de la interfaz. El diseño
  * se guarda solo en IndexedDB (con demora) en cada cambio.
  */
+import { isLang } from '@core/i18n';
 import { parseDesign, type Design } from '@core/design/schema';
 import { produce, type Draft } from 'immer';
 import { create } from 'zustand';
@@ -209,7 +210,7 @@ function initialLang(): UiLang {
   const saved = prefs.uiLang.read();
   if (saved) return saved;
   const nav = (typeof navigator !== 'undefined' ? navigator.language : 'es').slice(0, 2);
-  return nav === 'en' || nav === 'pt' || nav === 'it' ? nav : 'es';
+  return isLang(nav) ? nav : 'es';
 }
 
 const clampTo = (v: number, min: number, max: number): number => Math.min(max, Math.max(min, v));

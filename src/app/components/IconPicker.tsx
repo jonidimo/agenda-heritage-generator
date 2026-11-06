@@ -1,4 +1,4 @@
-/** La biblioteca de íconos: una grilla con búsqueda (por nombre o palabras, en los cuatro idiomas). */
+/** La biblioteca de íconos: una grilla con búsqueda (por nombre o palabras, en todos los idiomas). */
 import { iconPath, searchIcons } from '@core/assets/icons';
 import { useState } from 'react';
 import { useT } from '../i18n/ui';

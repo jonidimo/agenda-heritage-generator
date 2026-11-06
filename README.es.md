@@ -9,6 +9,8 @@ en cuadernillos plegados y cosidos a mano.**
 [![Español](https://img.shields.io/badge/-Espa%C3%B1ol-2f5d3a?style=for-the-badge)](README.es.md)
 [![Português](https://img.shields.io/badge/-Portugu%C3%AAs-8a9a7b?style=for-the-badge)](README.pt.md)
 [![Italiano](https://img.shields.io/badge/-Italiano-8a9a7b?style=for-the-badge)](README.it.md)
+[![Deutsch](https://img.shields.io/badge/-Deutsch-8a9a7b?style=for-the-badge)](README.de.md)
+[![Français](https://img.shields.io/badge/-Fran%C3%A7ais-8a9a7b?style=for-the-badge)](README.fr.md)
 
 <img src="docs/images/tapa.jpg" alt="La agenda Heritage 2026, impresa en láser y cosida a mano" width="560">
 
@@ -61,8 +63,11 @@ Para usarla en el navegador, mirá [Cómo usarla](#cómo-usarla).
 - Arrastrá, mové de a poco, escalá, rotá, atenuá u ocultá cualquier elemento. El cambio
   se aplica a todas las páginas de ese tipo, espejado en las páginas izquierdas, o a una
   sola página. Imán, guías de márgenes, deshacer y rehacer.
-- **Marcas de agua por persona**: el colibrí o tu propio SVG o PNG, anclados al borde
-  exterior o interior, con tamaño y opacidad.
+- **Marcas de agua por persona**: el colibrí, un ícono o tu propio SVG o PNG, anclados al
+  borde exterior o interior, con tamaño y opacidad; en todas las páginas o solo en las
+  derechas o las izquierdas, fundidas con el papel (*Multiplicar* hace desaparecer el fondo
+  blanco de un logo), en grises o teñidas, y con la posición y la imagen espejadas por
+  separado en las páginas izquierdas.
 - **Páginas propias donde quieras**: una imagen, un SVG vectorial o una página de un PDF
   (que sigue siendo vectorial en el PDF final), o una página de renglones, puntos o
   cuadrícula. El resto del libro se reacomoda solo.
@@ -88,7 +93,8 @@ Para usarla en el navegador, mirá [Cómo usarla](#cómo-usarla).
   o SVG.
 - Cada texto puede tener su propia letra y su propio color, o seguir los de su tipo de
   texto.
-- **Zoom** de la página con Ctrl y + / − / 0 (o la rueda del ratón con Ctrl). **Archivo →
+- **Zoom** de la página con Ctrl y + / − / 0, o con Ctrl y la rueda del mouse (o pellizcando
+  el panel táctil): el punto bajo el cursor queda quieto. **Archivo →
   Tamaño de la interfaz** agranda o achica toda la interfaz, y los paneles laterales y la tira
   de miniaturas se redimensionan arrastrando sus bordes; la aplicación recuerda ambas cosas.
 - **Clic derecho** (o pulsación larga en el teléfono) sobre cualquier elemento, página o
@@ -102,12 +108,19 @@ Para usarla en el navegador, mirá [Cómo usarla](#cómo-usarla).
   renglones, separación horizontal y vertical de puntos, tamaño de punto y grosor.
 - **Escalar y deformar**: cada elemento tiene ocho tiradores que reacomodan su contenido en la caja nueva; la escala es un deslizador aparte, y **Permitir deformar** estira el dibujo en cualquier dirección en su lugar.
 - **Copiá los elementos del programa** (Ctrl+C sobre el nombre de un mes, un marco, una tabla…) y pegá un elemento propio editable: el texto sigue siendo texto editable; lo demás pasa a ser un dibujo que conserva el grosor de sus líneas.
-- **Nueve tipos más de elemento**: tabla, lista de pendientes, seguimiento de hábitos, renglones de finanzas, minicalendario (sus días llevan a su página), cuadrantes, notas, horario del día y valoración, cada uno con sus propios campos.
+- **Diez tipos más de elemento**: tabla, lista de pendientes, seguimiento de hábitos, renglones de finanzas, minicalendario (sus días llevan a su página), cuadrantes, notas, horario del día, valoración y **código QR** (cualquier dirección web, correo, teléfono o texto; tocable en el PDF), cada uno con sus propios campos.
+- **Íconos y formas**: una biblioteca de 96 íconos (Lucide), que se buscan en cualquier idioma y se tiñen de cualquier color, y quince formas: rectángulo, elipse, línea con flechas o puntos, flecha, triángulo, rombo, polígono (de 3 a 24 lados), estrella (de 3 a 24 puntas), corazón, aro, arco o sector, globo de diálogo, cinta, cruz y trazado libre SVG. El trazo queda dentro de la caja y cada forma muestra solo sus ajustes.
+- **Una imagen en cada portada de mes** en lugar del sticker, para un mes o para todos.
 - **Capas**: un panel lista los elementos de la página de arriba hacia abajo; subir, bajar, llevar al fondo, renombrar, ocultar y fusionar con lo de abajo (multiplicar, trama, oscurecer, aclarar). Ctrl+↑ y Ctrl+↓ mueven el elemento elegido.
 - **Lo oculto no se pierde**: Edición → *Mostrar elementos ocultos* los lista y devuelve cada uno. **Acercar a la selección** con Ctrl+Mayús+2; el pie de la página cuenta los avisos de la página actual y las miniaturas muestran un punto.
 - **Atajos de teclado** para todo, listados en la aplicación (F1) y junto a cada ítem de menú, con menús Archivo, Edición y Ver.
 
 ### Secciones y plantillas de página
+
+- **Empezar de cero**: la plantilla *En blanco* no tiene ninguna página y muestra qué hacer
+  primero; la plantilla *Cuaderno* es una portada y todas las páginas de puntos, renglones,
+  cuadrícula o lisas que quieras, sin calendario. Agregá cualquier sección (y varias de
+  notas), agregá páginas a cada mes o quitá una sección desde su menú.
 
 - Hacé clic en una sección del panel **Secciones** para ir a su página. Con clic derecho
   la movés, la apagás o cambiás cada cuánto se repite.
@@ -119,7 +132,9 @@ Para usarla en el navegador, mirá [Cómo usarla](#cómo-usarla).
 
 ### Encontrar cualquier cosa
 
-- **Buscador** (Ctrl+K, `/` o la lupa): encuentra ajustes, secciones, páginas y elementos
+- La **barra superior** tiene tres zonas (archivo e historial, modo y vista, búsqueda y zoom) y
+  en ventanas angostas guarda lo que no entra en un menú «⋯».
+- **Buscador** (Ctrl+K, `/` o el campo de búsqueda de la barra): encuentra ajustes, secciones, páginas y elementos
   aunque escribas con errores, sin tildes o con otras mayúsculas, y te lleva ahí
   resaltándolo.
 - Botones **Atrás y Adelante** en la barra superior para volver a las páginas que
@@ -127,8 +142,8 @@ Para usarla en el navegador, mirá [Cómo usarla](#cómo-usarla).
 
 ### Cualquier año, idioma y país
 
-- Textos impresos en español, inglés, portugués e italiano; la interfaz habla los mismos
-  cuatro idiomas y sigue al que se elige al crear la agenda.
+- Textos impresos en español, inglés, portugués, italiano, alemán y francés; la interfaz
+  habla los mismos seis idiomas y sigue al que se elige al crear la agenda.
 - El país fija las convenciones regionales (orden de las fechas, moneda, día en que
   empieza la semana) con los datos de Unicode CLDR que trae el navegador: el inglés en
   Argentina se escribe día/mes. El orden de las fechas y el comienzo de la semana también
@@ -215,7 +230,24 @@ Para usarla en el navegador, mirá [Cómo usarla](#cómo-usarla).
 - Las agendas también quedan en el navegador, pero solo en ese navegador y en esa
   dirección de la aplicación: los archivos son la copia segura.
 - Los paneles **Imágenes** y **Fuentes** dicen dónde se usa cada imagen (marca de agua, tapa, elementos, páginas, ornamentos) y la quitan junto con todo lo que la usaba; las fuentes muestran qué caracteres faltan y dónde se usa cada familia, y las tuyas se pueden quitar.
+- **Imágenes junto al archivo**: una agenda puede apuntar a sus imágenes por ruta (`"path":
+  "imagenes/logo.png"`) en lugar de llevarlas adentro; la línea de comandos, el servidor MCP y
+  la aplicación de escritorio (cuando el sistema le abre el archivo) las leen solo de esa carpeta.
 - Aplicación de escritorio: al exportar un PDF muestra **dónde quedó guardado**, con *Abrir carpeta*; las agendas se abren con doble clic en un `.agenda.json` o soltándolas sobre la ventana, y cerrar nunca pierde el último cambio.
+
+### Un asistente de IA dentro de la aplicación
+
+- Una píldora discreta al pie de la página (**Ctrl+J**): pedí un cambio con tus palabras
+  («agrandá las notas de esta página», «un registro de hábitos cada mes»). El asistente lee
+  la agenda, propone **un** cambio y lo ves en la página antes de **Aplicarlo** o
+  **Descartarlo**; un cambio aplicado es un solo paso de deshacer. No queda nada guardado al cerrar.
+- Funciona con **Anthropic (Claude), Google Gemini, OpenAI y servicios compatibles**
+  (OpenRouter, Groq, Mistral) y **modelos locales** (Ollama, LM Studio), con tu propia clave.
+  Si querés, también puede mirar las páginas (visión).
+- Tu clave nunca se guarda en texto plano: en la aplicación de escritorio la cifra el sistema
+  operativo (Llavero, DPAPI, libsecret) y los pedidos salen por la aplicación; en la web vive
+  en memoria, o cifrada en el navegador si elegís recordarla. Los ajustes están en
+  *Archivo → Asistente de IA…* o en el engranaje de la píldora.
 
 ### Diseñar con un modelo de inteligencia artificial
 
@@ -228,6 +260,9 @@ Para usarla en el navegador, mirá [Cómo usarla](#cómo-usarla).
   [guía](docs/plantillas-llm.md) ([in English](docs/llm-templates.md)).
 - Cada cambio del modelo vuelve con los avisos de maquetación que produjo (textos que no
   entran, elementos fuera de la página o superpuestos), así puede corregirlos sin que nadie mire.
+- Los modelos pueden usar `icon:<nombre>` para cualquier ícono sin declararlo, dibujar con
+  formas y dejar las imágenes junto al archivo por ruta. En todas las herramientas, `path` es
+  siempre el archivo que se lee y `out` el que se escribe.
 - **Enlace en vivo (aplicación de escritorio)**: con la aplicación abierta, el mismo servidor trabaja sobre **la agenda que tenés abierta**. El modelo la lee, la cambia en un solo paso que se puede deshacer (se rechaza si la editaste mientras tanto), te muestra una página o abre otra agenda. Se apaga en *Archivo → Permitir que un modelo de IA edite la agenda abierta*. Nada escucha en la red: es un socket local protegido por un token que se genera en cada arranque.
 
 ### Hecha para durar
@@ -393,6 +428,12 @@ fallan si algún texto no entra, se pisa con otro o sale del área imprimible. P
 un método o una sección, leé [Adding methods and sections](docs/adding-methods.md).
 
 ## Créditos
+
+- Hecho por **Jonatan Damián Dimotta Bré** ([Instagram](https://www.instagram.com/dimottajonatan/),
+  [código fuente](https://github.com/jonidimo/agenda-heritage-generator),
+  [en línea](https://jonidimo.github.io/agenda-heritage-generator/)). La guía de cada agenda
+  termina con estos créditos y un código QR al código fuente; se pueden apagar en *Métodos*.
+- Íconos de [Lucide](https://lucide.dev) (licencia ISC).
 
 - Fuentes con licencia SIL Open Font License: Cormorant Garamond, Manrope, Atkinson
   Hyperlegible Next, EB Garamond y Caveat (licencias en `public/fonts`).

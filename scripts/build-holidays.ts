@@ -21,7 +21,7 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const outDir = join(root, 'public', 'holidays');
 
 const TYPE_CODE: Record<string, string> = { public: 'p', bank: 'b', school: 's', optional: 'o', observance: 'v' };
-const EXTRA_LANGS = ['es', 'en', 'pt', 'it'];
+const EXTRA_LANGS = ['es', 'en', 'pt', 'it', 'de', 'fr'];
 const FORMAT_VERSION = 1;
 
 interface RawItem {
@@ -146,7 +146,7 @@ async function main(): Promise<void> {
     // feriado argentino pedido en italiano). Se conserva una traducción solo si
     // no repite el texto de un idioma de mayor autoridad; en tiempo de ejecución
     // el idioma faltante cae en el idioma local del país y luego en inglés.
-    const authority = [...new Set([defaultLang, ...langs, 'en', 'es', 'pt', 'it'])];
+    const authority = [...new Set([defaultLang, ...langs, 'en', 'es', 'pt', 'it', 'de', 'fr'])];
     const dict: Array<Record<string, string>> = [];
     const dictIndex = new Map<string, number>();
     const ruleToDict = new Map<string, number>();
