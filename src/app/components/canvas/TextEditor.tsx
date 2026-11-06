@@ -38,7 +38,7 @@ function textLines(block: Block): TextPrim[] {
 
 /** El bloque se puede editar en su lugar solo si va sin giro ni escala: el cuadro de texto no se transforma. */
 export function editableInPlace(block: Block): boolean {
-  if (!block.text || !block.editable) return false;
+  if (!block.text || !block.editable || block.locked) return false;
   const m = block.m;
   if (!m) return true;
   return Math.abs(m[0] - 1) < 1e-6 && Math.abs(m[3] - 1) < 1e-6 && Math.abs(m[1]) < 1e-6 && Math.abs(m[2]) < 1e-6;

@@ -39,7 +39,7 @@ function withEverything(): Design {
   d.pageTemplates.push({ id: 't1', title: 'Plantilla', showTitle: true, content: { kind: 'artwork', assetId: 'img1', pdfPage: 1, fit: 'contain', area: 'page', background: 'blank', text: '', rotation: 0, opacity: 1 } } as Design['pageTemplates'][number]);
   d.theme.tokens = { lines: { separator: { pattern: 'center', ornament: 'asset:img1', size: 4 } } };
   d.blockStyles.push({ pageType: 'monthLog', pageKey: null, blockId: 'header.rule', lines: { separator: { ornament: 'asset:img1' } } } as unknown as Design['blockStyles'][number]);
-  d.overrides.push({ pageType: 'titlePage', pageKey: null, blockId: 'custom.b1', dx: 1, dy: 0, dw: 0, dh: 0, scale: 1, scaleY: null, deform: false, rotation: 0, opacity: 1, hidden: false, layer: null, label: null, blend: 'normal' });
+  d.overrides.push({ pageType: 'titlePage', pageKey: null, blockId: 'custom.b1', dx: 1, dy: 0, dw: 0, dh: 0, scale: 1, scaleY: null, deform: false, rotation: 0, opacity: 1, hidden: false, layer: null, label: null, blend: 'normal', locked: false });
   return parseDesign(d);
 }
 

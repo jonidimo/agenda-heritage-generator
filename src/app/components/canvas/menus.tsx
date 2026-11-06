@@ -11,7 +11,7 @@ import type { WritingStyle } from '@core/design/themes';
 import { trimmedRange } from '@core/calendar/range';
 import type { ResolvedLink } from '@core/document/links';
 import type { Block, PageModel } from '@core/layout/prims';
-import { AlignCenterHorizontal, AlignCenterVertical, AlignEndHorizontal, AlignEndVertical, AlignHorizontalDistributeCenter, AlignStartHorizontal, AlignStartVertical, AlignVerticalDistributeCenter, ClipboardPaste, Copy, Crosshair, EyeOff, FilePlus2, Grid3x3, Grip, Image as ImageIcon, ImagePlus, Link2, MousePointerClick, RotateCcw, Scaling, Scissors, Shapes, SlidersHorizontal, Smile, Square, SquareDashedMousePointer, StretchHorizontal, Trash2, Type } from 'lucide-react';
+import { AlignCenterHorizontal, AlignCenterVertical, AlignEndHorizontal, AlignEndVertical, AlignHorizontalDistributeCenter, AlignStartHorizontal, AlignStartVertical, AlignVerticalDistributeCenter, ArrowDownToLine, ArrowUpToLine, ClipboardPaste, Copy, Crosshair, EyeOff, Lock, LockOpen, Pencil, FilePlus2, Grid3x3, Grip, Image as ImageIcon, ImagePlus, Link2, MousePointerClick, RotateCcw, Scaling, Scissors, Shapes, SlidersHorizontal, Smile, Square, SquareDashedMousePointer, StretchHorizontal, Trash2, Type } from 'lucide-react';
 import { blockLabel } from '../../i18n/messages';
 import { pageTitle, sectionName, type UiKey } from '../../i18n/ui';
 import {
@@ -26,6 +26,8 @@ import {
   duplicateCustomBlock,
   hideBlocks,
   matchScale,
+  moveInStack,
+  setLocked,
   pageStyleOf,
   resetBlocks,
   setPageStyle,
@@ -42,6 +44,7 @@ import { setEnabled } from '../../state/sections';
 import { reveal } from '../../state/reveal';
 import { exportPageSvg, fileBase } from '../../state/exporter';
 import { useStore } from '../../state/store';
+import { shortcutHint } from '../../state/shortcutHints';
 import { addAssetFiles, pickFiles } from '../../state/uploads';
 import type { MenuItem } from '../ContextMenu';
 import { jumpToPage } from '../../state/navigation';
@@ -164,12 +167,14 @@ export function blockMenu(c: MenuContext, block: Block): MenuItem[] {
   } else if (block.role === 'custom') {
     items.push(
       { label: t('menu.copy'), icon: <Copy size={14} />, onSelect: () => void copySelection() },
-      { label: t('menu.cut'), icon: <Scissors size={14} />, onSelect: () => void cutSelection() },
+      { label: t('menu.cut'), icon: <Scissors size={14} />, disabled: block.locked === true, onSelect: () => void cutSelection() },
       { label: t('menu.duplicate'), icon: <Copy size={14} />, onSelect: () => duplicateCustomBlock(page, block) },
+      lockItem(t, page, block, scope),
       {
         label: t('insp.delete'),
         icon: <Trash2 size={14} />,
         danger: true,
+        disabled: block.locked === true,
         onSelect: () => {
           hideBlocks(page, [block], scope);
           useStore.getState().select(null);
@@ -183,8 +188,9 @@ export function blockMenu(c: MenuContext, block: Block): MenuItem[] {
       { label: t('menu.copyAsOwn'), icon: <Copy size={14} />, onSelect: () => void copySelection() },
       { label: t('menu.duplicateAsOwn'), icon: <Copy size={14} />, onSelect: () => void duplicateSelection() },
       { separator: true },
-      { label: t('align.centerMargins'), icon: <Crosshair size={14} />, onSelect: () => centerBlocks(page, [block], 'margins', 'x', scope) },
-      { label: t('insp.reset'), icon: <RotateCcw size={14} />, onSelect: () => resetBlocks(page, [block.id], scope) },
+      { label: t('align.centerMargins'), icon: <Crosshair size={14} />, disabled: block.locked === true, onSelect: () => centerBlocks(page, [block], 'margins', 'x', scope) },
+      { label: t('insp.reset'), icon: <RotateCcw size={14} />, disabled: block.locked === true, onSelect: () => resetBlocks(page, [block.id], scope) },
+      lockItem(t, page, block, scope),
       { separator: true },
     );
     // Dibujo de todas las líneas del elemento de una vez (el detalle por clase de línea está en el panel).
@@ -207,6 +213,45 @@ export function blockMenu(c: MenuContext, block: Block): MenuItem[] {
     { label: t('menu.properties'), icon: <SlidersHorizontal size={14} />, onSelect: openProperties },
   );
   return items;
+}
+
+/** Bloquear o desbloquear un elemento (no se mueve, no cambia de tamaño ni se borra). */
+function lockItem(t: T, page: PageModel, block: Block, scope: Scope): MenuItem {
+  return block.locked
+    ? { label: t('layers.unlock'), icon: <LockOpen size={14} />, hint: shortcutHint('edit.lock', t), onSelect: () => setLocked(page, [block], scope, false) }
+    : { label: t('layers.lock'), icon: <Lock size={14} />, hint: shortcutHint('edit.lock', t), onSelect: () => setLocked(page, [block], scope, true) };
+}
+
+/**
+ * El menú de una fila del panel de Capas: lo que se hace con una capa (duplicar, borrar u ocultar,
+ * bloquear, renombrar, llevar al frente o al fondo).
+ */
+export function layerMenu(t: T, page: PageModel, block: Block, scope: Scope, actions: { rename: () => void; select: () => void }): MenuItem[] {
+  const locked = block.locked === true;
+  const custom = block.role === 'custom';
+  const at = page.blocks.findIndex((b) => b.id === block.id);
+  return [
+    { heading: blockLabel(t, block.id, block.label, block.renamed) },
+    custom
+      ? { label: t('menu.duplicate'), icon: <Copy size={14} />, onSelect: () => duplicateCustomBlock(page, block) }
+      : { label: t('menu.duplicateAsOwn'), icon: <Copy size={14} />, onSelect: () => (actions.select(), void duplicateSelection()) },
+    lockItem(t, page, block, scope),
+    { label: t('layers.renameMenu'), icon: <Pencil size={14} />, hint: 'F2', onSelect: actions.rename },
+    { separator: true },
+    { label: t('layers.front'), icon: <ArrowUpToLine size={14} />, disabled: at === page.blocks.length - 1, onSelect: () => moveInStack(page, block.id, 'front', scope) },
+    { label: t('layers.back'), icon: <ArrowDownToLine size={14} />, disabled: at === 0, onSelect: () => moveInStack(page, block.id, 'back', scope) },
+    { separator: true },
+    {
+      label: custom ? t('insp.delete') : t('insp.hide'),
+      icon: custom ? <Trash2 size={14} /> : <EyeOff size={14} />,
+      danger: custom,
+      disabled: locked || block.role === 'watermark',
+      onSelect: () => {
+        hideBlocks(page, [block], scope);
+        useStore.getState().select(null);
+      },
+    },
+  ];
 }
 
 /** Opciones sobre una zona tocable del PDF (un día, un mes…) de un elemento. */

@@ -6,6 +6,7 @@
  * un dibujo (ver `snapshot.ts`); el original no cambia. Mientras se escribe en un campo, las teclas
  * son del campo.
  */
+import { movable } from './movable';
 import { CustomBlockZ, type CustomBlock } from '@core/design/schema';
 import type { Block, PageModel } from '@core/layout/prims';
 import { z } from 'zod';
@@ -66,7 +67,8 @@ export function copySelection(data?: DataTransfer | null): boolean {
 export function cutSelection(data?: DataTransfer | null): boolean {
   const got = selectedCopies();
   if (!got || !copySelection(data)) return false;
-  hideBlocks(got.page, got.blocks, useStore.getState().scope);
+  // Se copia todo; lo bloqueado se queda donde está.
+  hideBlocks(got.page, got.blocks.filter(movable), useStore.getState().scope);
   useStore.getState().select(null);
   return true;
 }

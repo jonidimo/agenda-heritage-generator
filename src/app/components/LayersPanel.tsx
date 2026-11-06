@@ -19,17 +19,23 @@ import {
   currentOverride,
   hideBlock,
   moveInStack,
+  opacityOf,
+  opacityRecipe,
+  setLocked,
   renameBlock,
   resetStack,
   setBlend,
   showHiddenElements,
 } from "../state/actions";
 import { useStore } from "../state/store";
-import { Button, Field, Segmented, Select, TextInput } from "./ui";
+import { scrub, type Scrubbing } from "../state/scrub";
+import { openMenuAt } from "./ContextMenu";
+import { layerMenu } from "./canvas/menus";
+import { Button, Field, Segmented, Select, Slider, TextInput, Toggle } from "./ui";
 
-/** Los elementos que se pueden ocultar con el ojo: no los propios (que se borran) ni las marcas de agua (que tienen su panel). */
+/** Los elementos que se pueden ocultar con el ojo: no los propios (que se borran), ni las marcas de agua (que tienen su panel), ni los bloqueados. */
 const hideable = (b: Block): boolean =>
-  b.editable && b.role !== "custom" && b.role !== "watermark";
+  b.editable && !b.locked && b.role !== "custom" && b.role !== "watermark";
 
 function StackButton({
   label,
@@ -146,10 +152,23 @@ function Row({
     <li
       data-testid="layer-row"
       data-block-id={block.id}
+      data-locked={block.locked ? "true" : undefined}
+      onContextMenu={(e) => {
+        if (!block.editable) return;
+        pick();
+        openMenuAt(e, layerMenu(t, page, block, scope, { rename: startRename, select: pick }));
+      }}
       aria-current={selected ? "true" : undefined}
       className={`flex items-center gap-1 rounded-md border px-1 py-0.5 text-[12px] ${selected ? "border-accent bg-accent/10" : "border-transparent hover:bg-black/5"} ${block.editable ? "" : "text-ink-soft"}`}
     >
-      {hideable(block) ? (
+      {block.locked ? (
+        <StackButton
+          label={t("layers.unlock")}
+          onClick={() => setLocked(page, [block], scope, false)}
+        >
+          <Lock size={12} />
+        </StackButton>
+      ) : hideable(block) ? (
         <StackButton
           label={t("layers.hide")}
           onClick={() => hideBlock(page, block, scope)}
@@ -200,7 +219,7 @@ function Row({
           {blockLabel(t, block.id, block.label, block.renamed)}
         </button>
       )}
-      {block.editable && (
+      {block.editable && !block.locked && (
         <StackButtons page={page} block={block} scope={scope} />
       )}
     </li>
@@ -223,6 +242,8 @@ export function LayersPanel({
   const hidden = doc.hidden(page.index);
   // De arriba hacia abajo: el último que se dibuja es el que se ve encima.
   const rows = [...page.blocks].reverse();
+  const selection = useStore((s) => s.selection);
+  const selectedBlock = selection?.pageKey === page.key ? page.blocks.find((b) => b.id === selection.blockId) : undefined;
   const level = page.type === "custom" ? "page" : scope;
   const hasOrder = design.overrides.some(
     (o) =>
@@ -258,6 +279,9 @@ export function LayersPanel({
           />
         ))}
       </ul>
+      {selectedBlock && selectedIds.length === 1 && selectedBlock.editable && selectedBlock.role !== "watermark" && (
+        <StackFields page={page} block={selectedBlock} scope={scope} full />
+      )}
       {hasOrder && (
         <div className="mt-2">
           <Button variant="ghost" onClick={() => resetStack(page, scope)}>
@@ -300,10 +324,13 @@ export function StackFields({
   page,
   block,
   scope,
+  full = false,
 }: {
   page: PageModel;
   block: Block;
   scope: "type" | "page";
+  /** En la pestaña Capas: también la opacidad (en Elemento está con las demás propiedades). */
+  full?: boolean;
 }) {
   const t = useT();
   const design = useStore((s) => s.design)!;
@@ -321,6 +348,8 @@ export function StackFields({
       <div className="mb-1">
         <StackButtons page={page} block={block} scope={scope} />
       </div>
+      {/* En Capas el nombre se cambia en la fila (doble clic o F2). */}
+      {!full && (
       <Field label={t("layers.name")}>
         {/* Un borrador local: el nombre se guarda al salir del campo (al escribir no se puede recortar). */}
         <TextInput
@@ -342,6 +371,25 @@ export function StackFields({
           }}
         />
       </Field>
+      )}
+      {full && (
+        <Slider
+          label={t("insp.opacity")}
+          value={Math.round(opacityOf(design, page, block, scope) * 100)}
+          min={0}
+          max={100}
+          step={1}
+          unit="%"
+          {...percentScrub(scrub<number>((v) => opacityRecipe(design, page, block, scope, v), `opacity:${block.id}`))}
+          defaultValue={100}
+        />
+      )}
+      <Toggle
+        label={t("layers.lock")}
+        hint={t("layers.lockHint")}
+        checked={block.locked === true}
+        onChange={(v) => setLocked(page, [block], scope, v)}
+      />
       <Field label={t("layers.blend")}>
         <Select
           value={blend}
@@ -355,4 +403,9 @@ export function StackFields({
       </Field>
     </div>
   );
+}
+
+/** Un deslizador en por ciento sobre un valor de 0 a 1. */
+function percentScrub(s: Scrubbing<number>): Scrubbing<number> {
+  return { onPreview: (v) => s.onPreview(v / 100), onChange: (v) => s.onChange(v / 100) };
 }

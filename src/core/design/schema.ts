@@ -375,6 +375,8 @@ export const BlockOverrideZ = z.object({
   label: z.string().transform((v) => v.slice(0, 120)).nullable().default(null),
   /** Cómo se fusiona con lo que tiene debajo. */
   blend: z.enum(BLEND_MODES).catch('normal').default('normal'),
+  /** Bloqueado por la persona: se ve y se elige, pero no se mueve, no cambia de tamaño ni se borra. */
+  locked: z.boolean().catch(false).default(false),
 });
 export type BlockOverride = z.infer<typeof BlockOverrideZ>;
 

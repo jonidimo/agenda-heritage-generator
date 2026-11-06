@@ -1,4 +1,5 @@
 /** Panel derecho: elemento seleccionado (valores exactos), elementos propios y verificación previa. */
+import { movable } from '../state/movable';
 import { PROP_DEFAULTS, PROP_RANGES, TEXT_ROLES } from '@core/design/customBlocks';
 import type { AgendaDocument } from '@core/document';
 import { OVERRIDE_DEFAULTS, WATERMARK_DEFAULTS, type CustomBlock, type WatermarkPlacement } from '@core/design/schema';
@@ -22,6 +23,7 @@ import {
   Grid3x3,
   Image as ImageIcon,
   Info,
+  Lock,
   Minus,
   Play,
   RotateCcw,
@@ -67,6 +69,7 @@ import {
   resetPageStyle,
   resizeBox,
   setBlockLink,
+  setLocked,
   setPageStyle,
   tidyBlocks,
   typeMirrored,
@@ -163,12 +166,21 @@ export function Inspector({ doc }: { doc: AgendaDocument }) {
           <div>
             <p className="mb-2 text-[13px] font-semibold">{blockLabel(t, block.id, block.label, block.renamed)}</p>
             {!block.editable && <p className="text-[12px] text-ink-soft">{t('insp.locked')}</p>}
-            {block.editable && block.role === 'writing' && <WritingFields page={page} scope={scope} setScope={setScope} />}
-            {block.editable && block.role === 'watermark' && <WatermarkFields id={block.id.slice(3)} />}
+            {block.editable && block.locked && (
+              <p className="mb-2 flex items-center gap-2 rounded-md bg-black/5 px-2 py-1.5 text-[12px] text-ink" data-testid="locked-notice">
+                <Lock size={13} className="shrink-0" aria-hidden="true" />
+                <span className="flex-1">{t('layers.lockedNotice')}</span>
+                <Button variant="outline" onClick={() => setLocked(page, [block], scope, false)}>
+                  {t('layers.unlock')}
+                </Button>
+              </p>
+            )}
+            {movable(block) && block.role === 'writing' && <WritingFields page={page} scope={scope} setScope={setScope} />}
+            {movable(block) && block.role === 'watermark' && <WatermarkFields id={block.id.slice(3)} />}
             {block.id === 'cover.sticker' && page.type === 'monthCover' && <CoverImageFields key={page.key} page={page} doc={doc} />}
-            {block.editable && block.role === 'custom' && <CustomFields id={block.id.slice(7)} theme={doc.ctx.theme} block={block} months={doc.ctx.cal.months.map((m) => ({ value: m.key, label: `${m.name} ${m.y}` }))} />}
-            {block.editable && block.role === 'custom' && <CustomRotation page={page} blockId={block.id} />}
-            {block.editable && block.role !== 'watermark' && block.role !== 'custom' && (
+            {movable(block) && block.role === 'custom' && <CustomFields id={block.id.slice(7)} theme={doc.ctx.theme} block={block} months={doc.ctx.cal.months.map((m) => ({ value: m.key, label: `${m.name} ${m.y}` }))} />}
+            {movable(block) && block.role === 'custom' && <CustomRotation page={page} blockId={block.id} />}
+            {movable(block) && block.role !== 'watermark' && block.role !== 'custom' && (
               <>
                 <BlockFields page={page} blockId={block.id} scope={scope} setScope={setScope} />
                 <BlockStyleFields page={page} block={block} scope={scope} />
@@ -177,7 +189,7 @@ export function Inspector({ doc }: { doc: AgendaDocument }) {
             {block.editable && block.role !== 'watermark' && <StackFields page={page} block={block} scope={scope} />}
             <TextRoleLinks block={block} />
             <LineUseLinks block={block} />
-            {block.editable && (
+            {movable(block) && (
               <div className="mt-2 flex flex-wrap gap-1.5">
                 <Button
                   variant="outline"
@@ -244,7 +256,7 @@ function MultiFields({ page, blocks, primary, scope, setScope }: { page: PageMod
   const t = useT();
   const select = useStore((s) => s.select);
   const [ref, setRef] = useState<AlignRef>('selection');
-  const editable = blocks.filter((b) => b.editable);
+  const editable = blocks.filter(movable);
   const align = (mode: AlignMode) => () => alignBlocks(page, editable, mode, ref, scope);
   const tool = (label: string, icon: ReactNode, onClick: () => void, disabled = false) => (
     <button type="button" title={label} aria-label={label} disabled={disabled} onClick={onClick} className="flex h-8 w-8 items-center justify-center rounded-md border border-line bg-white text-ink hover:bg-paper disabled:opacity-40">

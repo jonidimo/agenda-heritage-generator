@@ -1618,6 +1618,59 @@ test.describe('capas y fusión', () => {
     expect(await overrideOf(page, id)).toMatchObject({ label: 'Mi nombre' });
   });
 
+  test('clic derecho en una capa: bloquear (no se mueve ni se oculta), desbloquear, y fusión y opacidad a mano', async ({ page }) => {
+    await openQuiet(page);
+    await toWeek(page);
+    await settled(page);
+    await page.getByRole('button', { name: 'Capas', exact: true }).click();
+    const row = page.getByTestId('layer-row').filter({ has: page.getByRole('button', { name: 'Ocultar en la página' }) }).first();
+    const id = (await row.getAttribute('data-block-id'))!;
+    const sameRow = page.locator(`[data-testid="layer-row"][data-block-id="${id}"]`);
+    await row.click({ button: 'right' });
+    await page.getByRole('menuitem', { name: /^Bloquear/ }).click();
+    await expect(sameRow).toHaveAttribute('data-locked', 'true');
+    expect(await overrideOf(page, id)).toMatchObject({ locked: true });
+    // Elegido, las flechas no lo mueven y Suprimir no lo oculta.
+    await expect.poll(() => page.evaluate<string | undefined>('globalThis.__agenda.getState().selection?.blockId')).toBe(id);
+    await page.evaluate('document.activeElement?.blur?.()');
+    await page.keyboard.press('ArrowRight');
+    await page.keyboard.press('Delete');
+    expect(await overrideOf(page, id)).toMatchObject({ dx: 0, hidden: false, locked: true });
+    // En la página no tiene tiradores.
+    await expect(page.locator('[data-handle]')).toHaveCount(0);
+    // Debajo de la lista: fusión, opacidad y el bloqueo del elegido.
+    const fields = page.getByTestId('layers-panel').getByTestId('stack-fields');
+    await expect(fields.getByRole('checkbox', { name: /^Bloquear/ })).toBeChecked();
+    const opacity = fields.getByRole('spinbutton', { name: 'Opacidad' });
+    await opacity.fill('50');
+    await opacity.press('Enter');
+    await expect.poll(async () => (await overrideOf(page, id))?.opacity).toBeCloseTo(0.5, 5);
+    await fields.getByRole('combobox', { name: 'Fusión con lo de abajo' }).selectOption('multiply');
+    await expect.poll(async () => (await overrideOf(page, id))?.blend).toBe('multiply');
+    await page.screenshot({ path: 'test-results/layers-lock.png' });
+    // El candado de la fila lo desbloquea.
+    await sameRow.getByRole('button', { name: 'Desbloquear' }).click();
+    await expect(sameRow).not.toHaveAttribute('data-locked', 'true');
+    expect(await overrideOf(page, id)).toMatchObject({ locked: false });
+  });
+
+  test('clic derecho en una capa propia: duplicar deja una copia corrida 5 mm, con un id nuevo', async ({ page }) => {
+    await openQuiet(page);
+    await page.getByTestId('add-elements').locator('..').getByRole('button', { name: 'Forma', exact: true }).click();
+    const blocks = () => page.evaluate<Array<{ id: string; x: number; y: number }>>('globalThis.__agenda.getState().design.customBlocks.map((c) => ({ id: c.id, x: c.x, y: c.y }))');
+    const [first] = await blocks();
+    await page.getByRole('button', { name: 'Capas', exact: true }).click();
+    const row = page.locator(`[data-testid="layer-row"][data-block-id="custom.${first!.id}"]`);
+    await row.click({ button: 'right' });
+    await expect(page.getByRole('menuitem', { name: 'Al frente' })).toBeVisible();
+    await page.getByRole('menuitem', { name: 'Duplicar', exact: true }).click();
+    await expect.poll(async () => (await blocks()).length).toBe(2);
+    const copy = (await blocks())[1]!;
+    expect(copy.id).not.toBe(first!.id);
+    expect(copy.x).toBeCloseTo(first!.x + 5, 1);
+    expect(copy.y).toBeCloseTo(first!.y + 5, 1);
+  });
+
   test('el modo de fusión se aplica a la página de verdad (el navegador lo dibuja con mix-blend-mode)', async ({ page }) => {
     await openQuiet(page);
     await toWeek(page);

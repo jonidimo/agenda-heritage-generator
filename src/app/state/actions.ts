@@ -68,6 +68,7 @@ function upsertOverride(d: Draft<Design>, page: PageModel, blockId: string, scop
       layer: base?.layer ?? null,
       label: base?.label ?? null,
       blend: base?.blend ?? 'normal',
+      locked: base?.locked ?? false,
     });
     o = d.overrides[d.overrides.length - 1]!;
   }
@@ -601,9 +602,58 @@ export function setBlend(page: PageModel, id: string, scope: Scope, blend: Blend
   patchOverride(page, id, scope, { blend }, `blend:${id}`);
 }
 
+/**
+ * Dónde se guarda un ajuste que es de la persona y no del lugar (bloqueo, opacidad): un elemento propio
+ * de una sola página o de una página propia, en esa página; los demás, en el alcance elegido.
+ */
+export function ownScope(design: Design, page: PageModel, block: Block, scope: Scope): Scope {
+  if (page.type === 'custom') return 'page';
+  if (block.role === 'custom') return design.customBlocks.find((c) => `custom.${c.id}` === block.id)?.pageKey ? 'page' : 'type';
+  return scope;
+}
+
+/** Bloquea o desbloquea elementos (un solo paso de «Deshacer»). */
+export function setLocked(page: PageModel, blocks: readonly Block[], scope: Scope, locked: boolean): void {
+  const design = useStore.getState().design;
+  if (!design) return;
+  const mirrored = typeMirrored(page);
+  useStore.getState().update((d) => {
+    for (const b of blocks) {
+      if (!b.editable) continue;
+      const sc = effectiveScope(page, ownScope(design, page, b, scope));
+      upsertOverride(d, page, b.id, sc, (o) => void (o.locked = locked), mirrored);
+      // Un bloqueo del tipo y otro de esta página: desbloquear tiene que soltar los dos.
+      if (!locked) for (const o of d.overrides) if (o.blockId === b.id && o.pageType === page.type && (o.pageKey === null || o.pageKey === page.key)) o.locked = false;
+    }
+  });
+}
+
+/** La opacidad que se ve de un elemento: la propia de un elemento propio que la tiene, si no la de su ajuste. */
+export function opacityOf(design: Design, page: PageModel, block: Block, scope: Scope): number {
+  const cb = block.role === 'custom' ? design.customBlocks.find((c) => `custom.${c.id}` === block.id) : undefined;
+  if (cb && typeof cb.props.opacity === 'number') return cb.props.opacity;
+  const sc = ownScope(design, page, block, scope);
+  return (currentOverride(design, page, block.id, sc) ?? currentOverride(design, page, block.id, 'type'))?.opacity ?? 1;
+}
+
+/** Receta que cambia la opacidad: en las propiedades de un elemento propio que la maneja él mismo, si no en su ajuste. */
+export function opacityRecipe(design: Design, page: PageModel, block: Block, scope: Scope, value: number): Recipe {
+  const cb = block.role === 'custom' ? design.customBlocks.find((c) => `custom.${c.id}` === block.id) : undefined;
+  if (cb && OWN_OPACITY.has(cb.kind)) {
+    return (d) => {
+      const c = d.customBlocks.find((x) => x.id === cb.id);
+      if (c) c.props.opacity = value;
+    };
+  }
+  return overrideRecipe(page, block.id, ownScope(design, page, block, scope), { opacity: value });
+}
+
+/** Los elementos propios que tienen su propia opacidad (la del Inspector): la de Capas es la misma. */
+const OWN_OPACITY = new Set<string>(['image', 'drawing', 'shape']);
+
 /** ¿Un ajuste sin ningún cambio (solo estaba para ocultar)? */
 function isNeutralOverride(o: BlockOverride): boolean {
-  return o.dx === 0 && o.dy === 0 && o.dw === 0 && o.dh === 0 && o.scale === 1 && o.scaleY === null && !o.deform && o.rotation === 0 && o.opacity === 1 && o.layer === null && o.label === null && o.blend === 'normal';
+  return o.dx === 0 && o.dy === 0 && o.dw === 0 && o.dh === 0 && o.scale === 1 && o.scaleY === null && !o.deform && o.rotation === 0 && o.opacity === 1 && o.layer === null && o.label === null && o.blend === 'normal' && !o.locked;
 }
 
 /**

@@ -218,7 +218,10 @@ export interface Block {
   text?: TextSource;
   prims: Prim[];
   role: BlockRole;
+  /** El programa deja editarlo (lo que no, como el número de página, nunca se mueve). */
   editable: boolean;
+  /** La persona lo bloqueó: se elige y se ve, pero no se mueve ni se borra hasta desbloquearlo. */
+  locked?: true;
   /** Orden de apilado: 0 fondo, 10 contenido, 20 por encima (marcas de agua). */
   layer: number;
   /** Lugar en que la sección lo agregó a la página: con la misma capa, el de menor lugar se dibuja debajo. */

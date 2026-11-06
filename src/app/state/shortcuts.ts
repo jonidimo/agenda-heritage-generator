@@ -6,12 +6,13 @@
  * Una tecla «Mod» es Ctrl, o ⌘ en un Mac. Nunca se toma una tecla mientras se escribe en un campo
  * (salvo las marcadas `typing`), y Ctrl con Alt es AltGr en varias distribuciones: no cuenta como Ctrl.
  */
+import { movable } from './movable';
 import { focusAssistant } from './ai/assistant';
 import { blockBounds } from '@core/document/layout';
 import { unionRect } from '@core/layout/align';
 import type { StackMove } from '@core/layout/stack';
 import type { Block } from '@core/layout/prims';
-import { clampMoveDelta, hideBlocks, moveBlocks, moveInStack } from './actions';
+import { clampMoveDelta, hideBlocks, moveBlocks, moveInStack, setLocked } from './actions';
 import { duplicateSelection } from './clipboard';
 import { openAnyFile, saveCurrent } from './fileActions';
 import { goBack, goForward } from './navigation';
@@ -81,7 +82,8 @@ const state = () => useStore.getState();
 function selectedMovable(): { page: NonNullable<ReturnType<typeof selectionContext>>['page']; blocks: Block[] } | null {
   const ctx = selectionContext();
   if (!ctx) return null;
-  const blocks = ctx.selected.filter((b) => b.editable);
+  // Los bloqueados no se mueven ni se borran con el teclado.
+  const blocks = ctx.selected.filter(movable);
   return blocks.length > 0 ? { page: ctx.page, blocks } : null;
 }
 
@@ -124,6 +126,15 @@ function hideSelection(scope: 'current' | 'type'): boolean {
   return true;
 }
 
+/** Bloquea lo elegido; si ya estaba todo bloqueado, lo desbloquea. */
+function toggleLockSelection(): boolean {
+  const ctx = selectionContext();
+  const blocks = ctx?.selected.filter((b) => b.editable) ?? [];
+  if (!ctx || blocks.length === 0) return false;
+  setLocked(ctx.page, blocks, state().scope, !blocks.every((b) => b.locked));
+  return true;
+}
+
 function selectAll(): boolean {
   const ctx = selectionContext();
   if (!ctx) return false;
@@ -153,7 +164,7 @@ function restackSelection(move: StackMove): boolean {
   const ctx = selectionContext();
   const id = state().selection?.blockId;
   const block = id ? ctx?.page.blocks.find((b) => b.id === id) : undefined;
-  if (!ctx || !block || !block.editable) return false;
+  if (!ctx || !block || !movable(block)) return false;
   moveInStack(ctx.page, block.id, move, state().scope);
   return true;
 }
@@ -213,6 +224,7 @@ export const SHORTCUTS: readonly Shortcut[] = [
   { id: 'edit.delete', group: 'edit', chords: [{ key: 'Delete' }, { key: 'Backspace' }], run: () => hideSelection('current') },
   { id: 'edit.hide', group: 'edit', chords: [{ key: 'h', mod: true }], run: () => hideSelection('current') },
   { id: 'edit.hideType', group: 'edit', chords: [{ key: 'h', mod: true, shift: true }], run: () => hideSelection('type') },
+  { id: 'edit.lock', group: 'edit', chords: [{ key: 'l', mod: true, alt: true }], run: () => toggleLockSelection() },
   {
     id: 'edit.nudge',
     group: 'edit',

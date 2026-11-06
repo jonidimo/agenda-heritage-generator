@@ -2,6 +2,7 @@
  * Página interactiva: SVG exacto (mismos glifos que el PDF) + capa de edición
  * con selección, arrastre con imán, redimensionado y guías de márgenes.
  */
+import { movable } from '../../state/movable';
 import { blockBounds } from '@core/document/layout';
 import type { AgendaDocument } from '@core/document';
 import type { Block } from '@core/layout/prims';
@@ -222,7 +223,7 @@ export function PageView({ doc, index, scale, interactive = true }: Props) {
   const startDrag = (e: React.PointerEvent<HTMLDivElement>, block: Block, mode: 'move' | 'resize', members: Block[] = [block], handle: Handle = 'se'): void => {
     const p = toMm(e);
     const parts = members
-      .filter((b) => b.editable)
+      .filter(movable)
       .map((b) => {
         const el = svgRef.current?.querySelector<SVGGElement>(`[data-block="${CSS.escape(b.id)}"]`) ?? null;
         return { block: b, el, base: el?.getAttribute('transform') ?? null, origin: blockBounds(b) };
@@ -260,9 +261,9 @@ export function PageView({ doc, index, scale, interactive = true }: Props) {
     const additive = e.ctrlKey || e.metaKey || e.shiftKey;
     const target = e.target as Element | null;
     const grip = target?.closest('[data-handle]')?.getAttribute('data-handle') as Handle | null | undefined;
-    if (grip && selected?.editable && single) return startDrag(e, selected, 'resize', [selected], grip);
+    if (grip && selected && movable(selected) && single) return startDrag(e, selected, 'resize', [selected], grip);
     // Con el dedo se arrastra lo que ya está seleccionado (sin que la página se desplace).
-    if (target?.closest('[data-sel-surface]') && touch && selected?.editable && !additive) return startDrag(e, selected, 'move');
+    if (target?.closest('[data-sel-surface]') && touch && selected && movable(selected) && !additive) return startDrag(e, selected, 'move');
     const block = blockAt(e);
     if (!block) {
       if (touch) {
@@ -285,7 +286,8 @@ export function PageView({ doc, index, scale, interactive = true }: Props) {
     if (inGroup) setSelection(selOf(block), selectedIds);
     else select(selOf(block));
     // Con el dedo, el primer toque solo selecciona: así el mismo gesto sigue desplazando la página.
-    if (!block.editable || touch) return;
+    // Un elemento bloqueado se elige (para ver o desbloquearlo) pero no se arrastra.
+    if (!movable(block) || touch) return;
     startDrag(e, block, 'move', inGroup ? group : [block]);
   };
 
@@ -536,7 +538,7 @@ export function PageView({ doc, index, scale, interactive = true }: Props) {
         const target = page.blocks.find((b) => b.id === editing);
         return target?.text ? <TextEditor key={`${page.key}:${editing}`} doc={doc} page={page} blockId={editing} source={target.text} scale={scale} onDone={() => setEditing(null)} /> : null;
       })()}
-      {interactive && single && selBounds && selected?.editable && !editing && (
+      {interactive && single && selBounds && selected && movable(selected) && !editing && (
         <>
           {/* Capa del elemento seleccionado: con el dedo se arrastra desde acá sin desplazar la página. */}
           <div data-sel-surface="" className="absolute cursor-move" style={{ left: selBounds.x * scale, top: selBounds.y * scale, width: selBounds.w * scale, height: selBounds.h * scale, touchAction: 'none' }} />

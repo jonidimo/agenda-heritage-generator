@@ -565,6 +565,7 @@ export function layoutPage(
         b.renamed = true;
       }
       if (o.blend !== 'normal') b.blend = o.blend;
+      if (o.locked) b.locked = true;
     }
     blocks.push(b);
   }
