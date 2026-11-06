@@ -3,6 +3,8 @@
  * lienzo: mover, escalar, ocultar o restablecer bloques; mover marcas de agua y
  * elementos propios respetando sus anclajes y su espejado.
  */
+import { iconIdOf } from '@core/assets/icons';
+import { declareIcon } from './iconPicker';
 import type { BlockLineKey, BlockLineStyle, BlockLink, BlockOverride, BlockStyle, CustomBlock, Design } from '@core/design/schema';
 import { newId } from '@core/util/hash';
 import { readTextSource, writeTextSource } from '@core/design/textSource';
@@ -750,7 +752,7 @@ export function addCustomBlock(
   const design = useStore.getState().design;
   const c = page.content;
   const id = newId('el');
-  const size: Record<string, { w: number; h: number }> = { text: { w: c.w, h: 10 }, image: { w: 30, h: 30 }, rect: { w: c.w, h: 30 }, lines: { w: c.w, h: 30 }, dots: { w: c.w, h: 30 } };
+  const size: Record<string, { w: number; h: number }> = { text: { w: c.w, h: 10 }, image: { w: 30, h: 30 }, rect: { w: c.w, h: 30 }, lines: { w: c.w, h: 30 }, dots: { w: c.w, h: 30 }, shape: { w: 30, h: 30 } };
   const { w, h } = element?.size ?? size[kind] ?? { w: 30, h: 30 };
   const def = at
     ? { x: Math.min(Math.max(0, at.x), page.w - w), y: Math.min(Math.max(0, at.y), page.h - h) }
@@ -767,7 +769,12 @@ export function addCustomBlock(
         ? { assetId: assetId ?? design?.assets.find((a) => a.kind !== 'pdf')?.id ?? '', fit: 'contain', opacity: 1, label: labels.image }
         : { label: labels[kind as 'rect' | 'lines' | 'dots'] ?? kind };
   const block: CustomBlock = { id, pageType: page.type, pageKey: effectiveScope(page, scope) === 'page' || page.type === 'custom' ? page.key : null, kind, mirror: true, x: r2(x), y: r2(def.y), w, h, props };
-  useStore.getState().update((d) => void d.customBlocks.push(block));
+  useStore.getState().update((d) => {
+    // Un ícono de la biblioteca queda entre las imágenes de la agenda (en el mismo paso de «Deshacer»).
+    const icon = typeof props.assetId === 'string' ? iconIdOf(props.assetId) : null;
+    if (icon) declareIcon(d, icon);
+    d.customBlocks.push(block);
+  });
   useStore.getState().select({ pageKey: page.key, pageType: page.type, blockId: `custom.${id}`, role: 'custom' });
   return id;
 }

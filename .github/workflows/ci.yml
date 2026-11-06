@@ -24,6 +24,8 @@ jobs:
       - run: npm run holidays
       - run: npm run typecheck
       - run: npm run lint
+      - name: Icon library matches its list
+        run: npx tsx scripts/build-icons.ts && git diff --exit-code public/icons
       - run: npm test
       - run: npx vite build
       - name: Example planners print without warnings

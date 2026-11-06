@@ -2,6 +2,8 @@
  * Opciones del menú contextual del lienzo y de las miniaturas. Cada opción repite lo que ya
  * está en los paneles, a mano donde se está trabajando.
  */
+import { ICON_PREFIX } from '@core/assets/icons';
+import { pickIcon } from '../../state/iconPicker';
 import { ELEMENT_ICONS } from '../ElementFields';
 import { ELEMENT_KINDS, ELEMENT_LABELS, elementProps, elementSize } from '../../state/elements';
 import type { AgendaDocument } from '@core/document';
@@ -9,36 +11,7 @@ import type { WritingStyle } from '@core/design/themes';
 import { trimmedRange } from '@core/calendar/range';
 import type { ResolvedLink } from '@core/document/links';
 import type { Block, PageModel } from '@core/layout/prims';
-import {
-  AlignCenterHorizontal,
-  AlignCenterVertical,
-  AlignEndHorizontal,
-  AlignEndVertical,
-  AlignHorizontalDistributeCenter,
-  AlignStartHorizontal,
-  AlignStartVertical,
-  AlignVerticalDistributeCenter,
-  ClipboardPaste,
-  Copy,
-  Crosshair,
-  EyeOff,
-  FilePlus2,
-  Grid3x3,
-  Grip,
-  Image as ImageIcon,
-  ImagePlus,
-  Link2,
-  MousePointerClick,
-  RotateCcw,
-  Scaling,
-  Scissors,
-  SlidersHorizontal,
-  Square,
-  SquareDashedMousePointer,
-  StretchHorizontal,
-  Trash2,
-  Type,
-} from 'lucide-react';
+import { AlignCenterHorizontal, AlignCenterVertical, AlignEndHorizontal, AlignEndVertical, AlignHorizontalDistributeCenter, AlignStartHorizontal, AlignStartVertical, AlignVerticalDistributeCenter, ClipboardPaste, Copy, Crosshair, EyeOff, FilePlus2, Grid3x3, Grip, Image as ImageIcon, ImagePlus, Link2, MousePointerClick, RotateCcw, Scaling, Scissors, Shapes, SlidersHorizontal, Smile, Square, SquareDashedMousePointer, StretchHorizontal, Trash2, Type } from 'lucide-react';
 import { blockLabel } from '../../i18n/messages';
 import { pageTitle, sectionName, type UiKey } from '../../i18n/ui';
 import {
@@ -270,6 +243,12 @@ export function pageMenu(c: MenuContext): MenuItem[] {
     { label: t('menu.addLinesHere'), icon: <StretchHorizontal size={14} />, onSelect: add('lines') },
     { label: t('menu.addDotsHere'), icon: <Grip size={14} />, onSelect: add('dots') },
     { label: t('menu.addFrameHere'), icon: <Square size={14} />, onSelect: add('rect') },
+    {
+      label: t('menu.addIconHere'),
+      icon: <Smile size={14} />,
+      onSelect: () => void pickIcon().then((icon) => icon && addCustomBlock(page, 'image', labels, scope, at, `${ICON_PREFIX}${icon}`, { size: { w: 15, h: 15 }, props: { assetId: `${ICON_PREFIX}${icon}`, fit: 'contain', label: icon } })),
+    },
+    { label: t('menu.addShapeHere'), icon: <Shapes size={14} />, onSelect: () => void addCustomBlock(page, 'shape', labels, scope, at, undefined, { size: { w: 30, h: 30 }, props: { shape: 'rect', label: t('insp.addShape') } }) },
     { label: t('menu.paste'), icon: <ClipboardPaste size={14} />, onSelect: () => void pasteSelection() },
     { separator: true },
     { heading: t('el.addMore') },

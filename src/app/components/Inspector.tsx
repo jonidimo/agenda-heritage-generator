@@ -26,12 +26,17 @@ import {
   Play,
   RotateCcw,
   Scaling,
+  Shapes,
+  Smile,
   Square,
   StretchHorizontal,
   Trash2,
   Type,
 } from 'lucide-react';
 import { pageLinks, safeUrl } from '@core/document/links';
+import { ShapeFields } from './ShapeFields';
+import { ICON_PREFIX } from '@core/assets/icons';
+import { declareIcon, pickIcon } from '../state/iconPicker';
 import { ElementFields, ELEMENT_ICONS, type MonthChoice } from './ElementFields';
 import { LayersPanel, StackFields } from './LayersPanel';
 import { ELEMENT_KINDS, ELEMENT_LABELS, elementProps, elementSize, isElementKind, type ElementKind } from '../state/elements';
@@ -111,8 +116,9 @@ export function Inspector({ doc }: { doc: AgendaDocument }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [revealKey, sidebarPanel]);
 
-  const addCustom = (kind: CustomBlock['kind']): void =>
-    void addCustomBlock(page, kind, { text: t('insp.addText'), image: t('insp.addImage'), rect: t('insp.addRect'), lines: t('insp.addLines'), dots: t('insp.addDots') }, selection?.pageKey === page.key ? scope : 'type');
+  const addLabels = { text: t('insp.addText'), image: t('insp.addImage'), rect: t('insp.addRect'), lines: t('insp.addLines'), dots: t('insp.addDots') };
+  const addScope = selection?.pageKey === page.key ? scope : 'type';
+  const addCustom = (kind: CustomBlock['kind']): void => void addCustomBlock(page, kind, addLabels, addScope);
 
   const addElement = (kind: ElementKind): void =>
     void addCustomBlock(page, kind, { text: '', image: '', rect: '', lines: '', dots: '' }, selection?.pageKey === page.key ? scope : 'type', undefined, undefined, {
@@ -210,6 +216,12 @@ export function Inspector({ doc }: { doc: AgendaDocument }) {
             </Button>
             <Button onClick={() => addCustom('rect')}>
               <Square size={14} /> {t('insp.addRect')}
+            </Button>
+            <Button onClick={() => void pickIcon().then((icon) => icon && addCustomBlock(page, 'image', addLabels, addScope, undefined, `${ICON_PREFIX}${icon}`, { size: { w: 15, h: 15 }, props: { assetId: `${ICON_PREFIX}${icon}`, fit: 'contain', label: icon } }))}>
+              <Smile size={14} /> {t('insp.addIcon')}
+            </Button>
+            <Button onClick={() => void addCustomBlock(page, 'shape', addLabels, addScope, undefined, undefined, { size: { w: 30, h: 30 }, props: { shape: 'rect', label: t('insp.addShape') } })}>
+              <Shapes size={14} /> {t('insp.addShape')}
             </Button>
           </div>
           <div className="mt-1.5 flex flex-wrap gap-1.5" data-testid="add-elements">
@@ -481,6 +493,19 @@ export function WatermarkFields({ id }: { id: string }) {
           <ImageIcon size={14} /> {t('wm.upload')}
         </Button>
         <Button
+          onClick={() =>
+            void pickIcon().then((icon) => {
+              if (icon) update((d) => {
+                const ref = declareIcon(d, icon);
+                const w = d.watermarks.find((x) => x.id === id);
+                if (w) w.assetId = ref;
+              }, `wm:${id}:assetId`);
+            })
+          }
+        >
+          <Smile size={14} /> {t('icons.pick')}
+        </Button>
+        <Button
           variant="ghost"
           onClick={() => {
             update((d) => void (d.watermarks = d.watermarks.filter((w) => w.id !== id)));
@@ -539,7 +564,10 @@ export function WatermarkFields({ id }: { id: string }) {
           <p className="mt-1 text-[11px] leading-snug text-ink-soft">{t('wm.grayCopyHint')}</p>
         </div>
       ) : (
-        <Toggle label={t('wm.grayscale')} checked={wm.grayscale} onChange={(v) => set('grayscale', v)} />
+        <>
+          <ColorInput label={t('insp.tint')} value={wm.color ?? '#000000'} modified={wm.color !== undefined} onReset={() => update((d) => void delete d.watermarks.find((x) => x.id === id)?.color, `wm:${id}:color`)} onChange={(v) => set('color', v)} />
+          {wm.color === undefined && <Toggle label={t('wm.grayscale')} checked={wm.grayscale} onChange={(v) => set('grayscale', v)} />}
+        </>
       )}
       <Field label={t('wm.layer')}>
         <Select value={wm.layer} onChange={(v) => set('layer', v)} options={[{ value: 'above', label: t('wm.above') }, { value: 'below', label: t('wm.below') }]} />
@@ -678,7 +706,23 @@ function CustomFields({ id, theme, block, months }: { id: string; theme: AgendaD
             >
               <ImageIcon size={14} /> {t('insp.uploadImage')}
             </Button>
+            <Button
+              onClick={() =>
+                void pickIcon().then((icon) => {
+                  if (icon) update((d) => {
+                    const ref = declareIcon(d, icon);
+                    const c = d.customBlocks.find((x) => x.id === id);
+                    if (c) c.props.assetId = ref;
+                  }, `cb:${id}:p:assetId`);
+                })
+              }
+            >
+              <Smile size={14} /> {t('icons.pick')}
+            </Button>
           </div>
+          {assets.find((a) => a.id === p.assetId)?.kind === 'vector' && (
+            <ColorInput label={t('insp.tint')} value={normalizeColor(p.color) ?? theme.colors.ink} modified={normalizeColor(p.color) !== null} onReset={() => setProp('color', undefined)} onChange={(v) => setProp('color', v)} />
+          )}
           <Field label={t('cp.fit')}>
             <Select
               value={String(p.fit ?? 'contain') as 'contain'}
@@ -693,6 +737,7 @@ function CustomFields({ id, theme, block, months }: { id: string; theme: AgendaD
           <Slider label={t('insp.opacity')} value={Number(p.opacity ?? PROP_DEFAULTS.opacity)} min={PROP_RANGES.opacity.min} max={PROP_RANGES.opacity.max} step={0.05} {...dragProp('opacity')} defaultValue={PROP_DEFAULTS.opacity} />
         </>
       )}
+      {cb.kind === 'shape' && <ShapeFields p={p} setProp={setProp} dragProp={(k) => dragProp<number>(k)} ink={theme.colors.ink} />}
       {isElementKind(cb.kind) && <ElementFields kind={cb.kind} props={p} setProp={setProp} months={months} ink={theme.colors.ink} />}
       {(cb.kind === 'lines' || cb.kind === 'dots' || cb.kind === 'grid') && (
         <Slider label={t('style.pitch')} value={Number(p.pitch ?? pitchDefault)} min={PROP_RANGES.pitch.min} max={PROP_RANGES.pitch.max} step={0.1} {...dragProp('pitch')} modified={p.pitch !== undefined} onReset={() => setProp('pitch', undefined)} />

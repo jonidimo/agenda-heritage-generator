@@ -5,7 +5,7 @@
  */
 import { z } from 'zod';
 import { RELATIVE_PATH_MAX, RELATIVE_PATH_PATTERN } from '../util/relpath';
-import { normalizeColor } from '../util/color';
+import { COLOR_PATTERN, normalizeColor } from '../util/color';
 import { LINE_PATTERNS, LINE_USES, pruneTokens } from './themes';
 import { BLEND_MODES } from './blend';
 import { ELEMENT_KINDS } from './customBlocks';
@@ -287,7 +287,7 @@ export const CustomBlockZ = z.object({
   id: z.string(),
   pageType: z.string(),
   pageKey: z.string().nullable().default(null),
-  kind: z.enum(['text', 'image', 'lines', 'dots', 'grid', 'rect', 'line', 'drawing', ...ELEMENT_KINDS]),
+  kind: z.enum(['text', 'image', 'lines', 'dots', 'grid', 'rect', 'line', 'drawing', 'shape', ...ELEMENT_KINDS]),
   x: z.number().transform(clampTo(BLOCK_BOUNDS.pos.min, BLOCK_BOUNDS.pos.max)),
   y: z.number().transform(clampTo(BLOCK_BOUNDS.pos.min, BLOCK_BOUNDS.pos.max)),
   w: z.number().transform(clampTo(BLOCK_BOUNDS.size.min, BLOCK_BOUNDS.size.max)),
@@ -327,6 +327,8 @@ export const WatermarkZ = z.object({
   blend: z.enum(BLEND_MODES).catch('normal').default('normal'),
   /** En escala de grises (los dibujos vectoriales; una imagen se convierte con una copia en grises). */
   grayscale: z.boolean().catch(false).default(false),
+  /** Tiñe un dibujo vectorial (un ícono, un logo SVG) de este color; manda sobre `grayscale`. */
+  color: z.string().regex(new RegExp(COLOR_PATTERN)).optional().catch(undefined),
 });
 export type WatermarkPlacement = z.infer<typeof WatermarkZ>;
 

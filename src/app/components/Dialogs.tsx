@@ -284,6 +284,7 @@ export function AboutDialog() {
         ))}
       </ul>
       <p className="mt-2 text-[12px] leading-snug text-ink-soft">{t('about.holidays')}</p>
+      <p className="mt-2 text-[12px] leading-snug text-ink-soft">{t('about.icons')}</p>
       <p className="mt-2 text-[12px] leading-snug text-ink-soft">{t('about.libraries')}</p>
       <div className="mt-3 flex justify-end">
         <Button variant="primary" onClick={() => setShow(false)}>

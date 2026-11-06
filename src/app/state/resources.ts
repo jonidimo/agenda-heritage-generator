@@ -3,6 +3,7 @@
  * gráficos. Se cargan bajo demanda y quedan en caché; cada cambio incrementa
  * `version` para que el documento se reconstruya.
  */
+import { effectiveAssets } from '@core/assets/icons';
 import type { Design } from '@core/design/schema';
 import type { HolidayCountryData, HolidayIndex } from '@core/holidays';
 import type { AssetInfo } from '@core/layout/context';
@@ -80,7 +81,7 @@ export class Resources {
   }
 
   /** De qué partes del diseño salió lo último que se aseguró: si no cambiaron, no hay nada nuevo que cargar. */
-  private ensured: { theme: Design['theme']; customBlocks: Design['customBlocks']; country: string | null; assets: Design['assets'] } | null = null;
+  private ensured: { theme: Design['theme']; customBlocks: Design['customBlocks']; country: string | null; assets: Design['assets']; icons: number } | null = null;
 
   /** Carga lo que necesita un diseño (caras del tema, datos del país, recursos). */
   async ensureFor(design: Design): Promise<void> {
@@ -88,7 +89,9 @@ export class Resources {
     // Un cambio de color, de nombre o de un ajuste de página no pide nada nuevo.
     const prev = this.ensured;
     const country = design.holidays.country;
-    if (prev && prev.theme === design.theme && prev.customBlocks === design.customBlocks && prev.country === country && prev.assets === design.assets) return;
+    // Los íconos por nombre (`icon:<id>`) pueden aparecer en cualquier parte: se cuentan aparte.
+    const icons = effectiveAssets(design).length;
+    if (prev && prev.theme === design.theme && prev.customBlocks === design.customBlocks && prev.country === country && prev.assets === design.assets && prev.icons === icons) return;
     let changed = false;
     // Si algo falla (una descarga, un archivo), no se da por asegurado: el próximo cambio lo reintenta.
     let failed = false;
@@ -119,7 +122,7 @@ export class Resources {
       }
       changed = true;
     }
-    for (const ref of design.assets) {
+    for (const ref of effectiveAssets(design)) {
       if (this.assetInfos.has(ref.id)) continue;
       try {
         let bytes = this.assetBytes.get(ref.id);
@@ -137,7 +140,7 @@ export class Resources {
       }
     }
     // Sin lista de fuentes todavía (el programa está arrancando) no se cargó nada: no cuenta.
-    if (!failed && this.manifest) this.ensured = { theme: design.theme, customBlocks: design.customBlocks, country, assets: design.assets };
+    if (!failed && this.manifest) this.ensured = { theme: design.theme, customBlocks: design.customBlocks, country, assets: design.assets, icons };
     if (changed) this.bump();
   }
 

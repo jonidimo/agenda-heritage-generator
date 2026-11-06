@@ -6,6 +6,7 @@
 import { rasterInfo } from './assets/image';
 import { importSvg } from './assets/svg';
 import type { AssetRef, Design } from './design/schema';
+import { effectiveAssets } from './assets/icons';
 import { themeFaces, resolveThemeFor } from './design/themes';
 import type { HolidayCountryData, HolidayIndex } from './holidays';
 import type { AssetInfo } from './layout/context';
@@ -199,7 +200,7 @@ export async function loadAssets(io: ResourceIO, design: Design, provided: Reado
   const bytes = new Map<string, Uint8Array>();
   const errors: string[] = [];
   await Promise.all(
-    design.assets.map(async (ref) => {
+    effectiveAssets(design).map(async (ref) => {
       try {
         let b = provided.get(ref.id);
         if (!b && ref.data) b = fromBase64(ref.data);

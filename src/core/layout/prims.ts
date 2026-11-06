@@ -270,7 +270,9 @@ export type WarningCode =
   /** Un enlace elegido a mano lleva a una página que ya no existe o a una dirección no válida. */
   | 'brokenLink'
   /** El texto de un código QR no entra ni en el código más grande. */
-  | 'qrTooLong';
+  | 'qrTooLong'
+  /** El trazado libre de una forma no es un trazado SVG válido. */
+  | 'invalidPath';
 
 export interface PageWarning {
   code: WarningCode;

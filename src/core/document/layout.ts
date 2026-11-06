@@ -22,6 +22,7 @@ import { normalizeColor } from '../util/color';
 import { parseFontSpec, type FontRegistry } from '../text/fonts';
 import { assetPrims } from './assets';
 import { drawElement } from './elements';
+import { shapeGeometry, SHAPE_DEFAULTS, SHAPE_RANGES, SHAPES } from '../layout/shapes';
 import { safeArea } from './binding';
 import { pageGeometry } from './context';
 import { pageTextVars } from '../sections/common';
@@ -168,7 +169,9 @@ function placeWatermark(ctx: LayoutContext, wm: WatermarkPlacement): void {
   const x = anchorRight === null ? (pw - w) / 2 + wm.dx : anchorRight ? pw - wm.dx - w : wm.dx;
   const y = wm.vAnchor === 'top' ? wm.dy : wm.vAnchor === 'bottom' ? ph - wm.dy - h : (ph - h) / 2 + wm.dy;
   const mirror = wm.mirrorOnVerso && side === 'verso' && (wm.hAnchor === 'outer' || wm.hAnchor === 'inner');
-  const prims = assetPrims(info, { x, y, w, h }, { fit: 'fill', opacity: wm.opacity, rotation: wm.rotation, mirror, minStrokePt: wm.minStrokePt, ...(wm.grayscale ? { recolor: grayOf } : {}) });
+  // Un color propio tiñe el dibujo (y manda sobre la escala de grises).
+  const tint = wm.color ? normalizeColor(wm.color) : null;
+  const prims = assetPrims(info, { x, y, w, h }, { fit: 'fill', opacity: wm.opacity, rotation: wm.rotation, mirror, minStrokePt: wm.minStrokePt, ...(tint ? { recolor: () => tint } : wm.grayscale ? { recolor: grayOf } : {}) });
   const block = ctx.add(`wm.${wm.id}`, 'Marca de agua', prims, { role: 'watermark', layer: wm.layer === 'above' ? 20 : 1, bbox: { x, y, w, h } });
   // La fusión propia de la marca de agua (un ajuste del editor sobre el bloque, si lo hay, manda después).
   if (wm.blend !== 'normal') block.blend = wm.blend;
@@ -206,6 +209,36 @@ function substitute(text: string, ctx: LayoutContext, page: PagePlan): string {
   return fmtStr(text, pageTextVars(ctx, page));
 }
 
+/** Los trazos de un elemento «forma»: su contorno (relleno y trazo) y, en una línea, sus puntas. */
+function shapePrims(ctx: LayoutContext, p: Record<string, unknown>, box: Rect, label: string): Prim[] {
+  const shape = enumProp(p.shape, SHAPES, 'rect');
+  const strokeMm = ptToMm(numProp(p.strokePt, SHAPE_RANGES.strokePt, SHAPE_DEFAULTS.strokePt));
+  const g = shapeGeometry(shape, box, p, strokeMm);
+  if (!g.d) {
+    if (shape === 'path' && typeof p.d === 'string' && p.d.trim() !== '') ctx.warn('invalidPath', `El trazado de «${label}» no es un trazado SVG válido: no se dibuja.`, { label });
+    return [{ t: 'rect', ...box, stroke: { color: '#b0b0b0', width: 0.2, dash: [1, 1] } }];
+  }
+  const opacity = numProp(p.opacity, PROP_RANGES.opacity, PROP_DEFAULTS.opacity);
+  const ink = normalizeColor(p.strokeColor) ?? ctx.theme.colors.ink;
+  const fill = g.open ? null : normalizeColor(p.fill);
+  const dash = enumProp(p.dash, ['solid', 'dashed', 'dotted'] as const, 'solid');
+  const w = Math.max(strokeMm, 0.05);
+  const stroke =
+    strokeMm > 0
+      ? {
+          color: ink,
+          width: strokeMm,
+          ...(opacity < 1 ? { opacity } : {}),
+          ...(dash === 'dashed' ? { dash: [w * 3, w * 2] } : dash === 'dotted' ? { dash: [0.001, w * 2], cap: 'round' as const } : {}),
+          ...(shape === 'line' || shape === 'arc' ? { cap: dash === 'dotted' ? ('round' as const) : ('butt' as const) } : {}),
+          join: 'round' as const,
+        }
+      : undefined;
+  const main: Prim = { t: 'path', d: g.d, ...(fill ? { fill: { color: fill, ...(opacity < 1 ? { opacity } : {}) } } : {}), ...(stroke ? { stroke } : {}), ...(g.rule ? { rule: g.rule } : {}) };
+  const caps: Prim[] = g.caps.map((d) => ({ t: 'path', d, fill: { color: ink, ...(opacity < 1 ? { opacity } : {}) } }));
+  return [main, ...caps];
+}
+
 function placeCustomBlock(ctx: LayoutContext, cb: CustomBlock, page: PagePlan): void {
   const x = cb.mirror && ctx.page.side === 'verso' ? ctx.page.w - cb.x - cb.w : cb.x;
   let box = { x, y: cb.y, w: cb.w, h: cb.h };
@@ -239,10 +272,13 @@ function placeCustomBlock(ctx: LayoutContext, cb: CustomBlock, page: PagePlan): 
       const id = typeof p.assetId === 'string' ? p.assetId : '';
       // Sin imagen elegida es un elemento a medio armar; con una que no se pudo cargar, se avisa.
       if (id && !ctx.doc.assets.has(id)) ctx.warn('missingAsset', `La imagen «${String(p.label ?? cb.id)}» usa un archivo que no se pudo cargar: se deja el espacio vacío.`, { name: id });
+      // Un dibujo vectorial (un ícono) se puede teñir de un color.
+      const tint = normalizeColor(p.color);
       prims = assetPrims(ctx.doc.assets.get(id), box, {
         fit: enumProp(p.fit, IMAGE_FITS, 'contain'),
         opacity: numProp(p.opacity, PROP_RANGES.opacity, PROP_DEFAULTS.opacity),
         minStrokePt: 0.25,
+        ...(tint ? { recolor: () => tint } : {}),
       });
       break;
     }
@@ -273,6 +309,9 @@ function placeCustomBlock(ctx: LayoutContext, cb: CustomBlock, page: PagePlan): 
     }
     case 'line':
       prims = [{ t: 'line', x1: box.x, y1: box.y + box.h / 2, x2: box.x + box.w, y2: box.y + box.h / 2, stroke: ctx.stroke('rule', 'ink', { use: 'separator' }) }];
+      break;
+    case 'shape':
+      prims = shapePrims(ctx, p, box, String(p.label ?? cb.id));
       break;
     default: {
       // Los elementos compuestos (tabla, lista, hábitos…) se dibujan completos en su caja.

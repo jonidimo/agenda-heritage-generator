@@ -1,3 +1,4 @@
+import { IconPickerHost } from './components/IconPicker';
 import clsx from 'clsx';
 import { BookMarked, CalendarDays, Image as ImageIcon, LayoutList, Palette, Printer, SlidersHorizontal, Type, UserRound, X } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
@@ -396,6 +397,7 @@ export function App() {
       {showSaveTemplate && <SaveTemplateDialog />}
       {showAbout && <AboutDialog />}
       {showShortcuts && <ShortcutsDialog />}
+      <IconPickerHost />
       {showHidden && <HiddenDialog />}
     </div>
   );

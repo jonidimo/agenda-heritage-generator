@@ -2062,3 +2062,54 @@ test.describe('2.4: empezar de cero, marcas de agua, portada del mes, QR y créd
     await expect(page.getByText('Es demasiado texto para un código QR: acortalo.')).toBeVisible();
   });
 });
+
+test.describe('2.4: íconos y formas', () => {
+  const last = (page: Page) => page.evaluate<{ kind: string; props: Record<string, unknown> }>('(() => { const c = globalThis.__agenda.getState().design.customBlocks.at(-1); return { kind: c.kind, props: c.props }; })()');
+
+  test('un ícono de la biblioteca se busca, se agrega a la página y se tiñe', async ({ page }) => {
+    await openQuiet(page);
+    await page.getByTestId('add-elements').locator('..').getByRole('button', { name: 'Ícono', exact: true }).click();
+    const dialog = page.getByRole('dialog', { name: 'Biblioteca de íconos' });
+    await expect(dialog).toBeVisible();
+    await dialog.getByRole('textbox', { name: /Buscar un ícono/ }).fill('trofeo');
+    await expect(dialog.getByTestId('icon-grid').locator('[data-icon]')).toHaveCount(1);
+    // Las imágenes de la grilla cargan (los SVG están en la carpeta de íconos).
+    await expect.poll(() => dialog.locator('[data-icon="trophy"] img').evaluate((img: { naturalWidth: number }) => img.naturalWidth)).toBeGreaterThan(0);
+    await page.keyboard.press('Enter');
+    await expect(dialog).toHaveCount(0);
+    expect(await last(page)).toMatchObject({ kind: 'image', props: { assetId: 'icon:trophy' } });
+    expect(await page.evaluate<boolean>("globalThis.__agenda.getState().design.assets.some((a) => a.id === 'icon:trophy')")).toBe(true);
+    await expect(page.locator('[data-block^="custom."]').first()).toBeVisible();
+    // Agregarlo es un solo paso de «Deshacer» (el elemento y la imagen juntos).
+    const trophies = () => page.evaluate<number>("globalThis.__agenda.getState().design.assets.filter((a) => a.id === 'icon:trophy').length + globalThis.__agenda.getState().design.customBlocks.filter((c) => c.props.assetId === 'icon:trophy').length");
+    await page.locator('.desk').click({ position: { x: 5, y: 5 } });
+    await page.keyboard.press('Control+z');
+    await expect.poll(trophies).toBe(0);
+    await page.keyboard.press('Control+Shift+z');
+    await expect.poll(trophies).toBe(2);
+    // Un dibujo vectorial se tiñe.
+    await page.evaluate("(() => { const s = globalThis.__agenda.getState(); const c = s.design.customBlocks.at(-1); const el = document.querySelector('[data-block=\"custom.' + c.id + '\"]'); const w = el.closest('[data-page-key]'); s.setSelection({ pageKey: w.getAttribute('data-page-key'), pageType: w.getAttribute('data-page-type'), blockId: 'custom.' + c.id, role: 'custom' }, ['custom.' + c.id]); })()");
+    const tint = page.locator('label', { hasText: 'Color del dibujo' }).locator('input[type="color"]');
+    await tint.fill('#c0392b');
+    await expect.poll(async () => (await last(page)).props.color).toBe('#c0392b');
+  });
+
+  test('una forma se agrega, cambia de forma y muestra solo sus parámetros', async ({ page }) => {
+    await openQuiet(page);
+    await page.getByTestId('add-elements').locator('..').getByRole('button', { name: 'Forma', exact: true }).click();
+    expect((await last(page)).kind).toBe('shape');
+    const fields = page.getByTestId('shape-fields');
+    await expect(fields).toBeVisible();
+    await expect(fields.getByText('Esquinas redondeadas')).toBeVisible();
+    await fields.getByRole('combobox', { name: 'Forma' }).selectOption('star');
+    await expect.poll(async () => (await last(page)).props.shape).toBe('star');
+    await expect(fields.getByText('Puntas', { exact: true })).toBeVisible();
+    await expect(fields.getByText('Lados', { exact: true })).toHaveCount(0);
+    await fields.getByRole('combobox', { name: 'Forma' }).selectOption('polygon');
+    await expect(fields.getByText('Lados', { exact: true })).toBeVisible();
+    // La forma se dibuja en la página como un trazado.
+    await expect(page.locator('[data-block^="custom."] path').first()).toBeVisible();
+    await fields.getByRole('button', { name: 'Guiones', exact: true }).click();
+    await expect.poll(async () => (await last(page)).props.dash).toBe('dashed');
+  });
+});

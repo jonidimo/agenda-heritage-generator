@@ -4,6 +4,8 @@
  * lo mismo.
  */
 import { COLOR_PATTERN } from '../util/color';
+import { BUBBLE_SIDES, LINE_CAPS, SHAPE_RANGES, SHAPES } from '../layout/shapes';
+import { PATH_LIMITS } from '../util/pathData';
 import type { ThemeTokens } from './themes';
 
 /** Tipos de texto (cada uno con la fuente y el color que le da el tema). */
@@ -122,9 +124,39 @@ export function customBlockPropsSchema(kind: string): Json {
       },
     },
     image: {
-      assetId: { type: 'string', description: 'id de una imagen de «assets»' },
+      assetId: { type: 'string', description: 'id de una imagen de «assets», o «icon:<id>» para un ícono de la biblioteca (ver icons en el catálogo) sin declararlo' },
       fit: { enum: IMAGE_FITS },
       opacity: range(PROP_RANGES.opacity, 'Opacidad'),
+      color: color('Tiñe un dibujo vectorial (un ícono, un SVG) de este color; las fotos no cambian'),
+    },
+    shape: {
+      shape: { enum: SHAPES, default: 'rect', description: 'Forma; cada una usa solo sus propios parámetros (ver shapes en el catálogo)' },
+      fill: color('Relleno (por defecto, ninguno; las líneas y los arcos abiertos no se rellenan)'),
+      strokeColor: color('Color del trazo (por defecto, la tinta del tema)'),
+      strokePt: range(SHAPE_RANGES.strokePt, 'Grosor del trazo en puntos (0: sin trazo); va por dentro de la caja'),
+      dash: { enum: ['solid', 'dashed', 'dotted'], default: 'solid', description: 'Trazo lleno, con guiones o de puntos' },
+      opacity: range(PROP_RANGES.opacity, 'Opacidad'),
+      radius: range(SHAPE_RANGES.radius, 'rect y bubble: radio de las esquinas, en mm'),
+      angle: range(SHAPE_RANGES.angle, 'line: ángulo en grados (0 horizontal, 90 vertical); la línea pasa por el centro de la caja'),
+      startCap: { enum: LINE_CAPS, description: 'line: punta del comienzo' },
+      endCap: { enum: LINE_CAPS, description: 'line: punta del final' },
+      head: range(SHAPE_RANGES.head, 'arrow: largo de la punta, en % del ancho'),
+      shaft: range(SHAPE_RANGES.shaft, 'arrow: grosor del cuerpo, en % del alto'),
+      apex: range(SHAPE_RANGES.apex, 'triangle: dónde está el vértice de arriba, en % del ancho (50 isósceles, 0 rectángulo)'),
+      sides: { type: 'integer', minimum: SHAPE_RANGES.sides.min, maximum: SHAPE_RANGES.sides.max, description: 'polygon: cantidad de lados' },
+      points: { type: 'integer', minimum: SHAPE_RANGES.points.min, maximum: SHAPE_RANGES.points.max, description: 'star: cantidad de puntas' },
+      inner: range(SHAPE_RANGES.inner, 'star: radio interior, en % del exterior'),
+      rotation: range(SHAPE_RANGES.rotation, 'polygon y star: giro en grados'),
+      cornerRadius: range(SHAPE_RANGES.cornerRadius, 'polygon y star: redondeo de las esquinas, en mm'),
+      thickness: range(SHAPE_RANGES.thickness, 'ring: grosor del aro, en % del radio'),
+      start: range(SHAPE_RANGES.start, 'arc: comienzo en grados (0 arriba, en el sentido del reloj)'),
+      sweep: range(SHAPE_RANGES.sweep, 'arc: cuántos grados abarca'),
+      pie: { type: 'boolean', description: 'arc: sector cerrado (una porción de torta) en lugar de un arco abierto' },
+      tailSide: { enum: BUBBLE_SIDES, description: 'bubble: lado de la cola' },
+      tailAt: range(SHAPE_RANGES.tailAt, 'bubble: dónde va la cola a lo largo de su lado, en %'),
+      notch: range(SHAPE_RANGES.notch, 'banner: hondura de las muescas de las puntas, en % de medio alto'),
+      arm: range(SHAPE_RANGES.arm, 'cross: grosor de los brazos, en %'),
+      d: { type: 'string', maxLength: PATH_LIMITS.chars, description: 'path: trazado SVG (M, L, H, V, C, S, Q, T, A, Z) dibujado en una caja de 0 a 100 que se estira a la del elemento' },
     },
     lines: pitch,
     dots: pitch,

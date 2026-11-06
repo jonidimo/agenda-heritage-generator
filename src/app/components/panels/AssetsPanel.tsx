@@ -1,6 +1,7 @@
 import { assetUses, removeAssetFrom, type AssetUse } from '@core/design/assetUse';
 import { newId } from '@core/util/hash';
-import { FilePlus2, Image as ImageIcon, Stamp, Trash2, Upload } from 'lucide-react';
+import { FilePlus2, Image as ImageIcon, Smile, Stamp, Trash2, Upload } from 'lucide-react';
+import { declareIcon, pickIcon } from '../../state/iconPicker';
 import { useEffect, useReducer, useRef, useState } from 'react';
 import { plural, sectionName, useT, type UiKey } from '../../i18n/ui';
 import { assetHref, onAssetUrlsChange } from '../../state/assetUrls';
@@ -98,9 +99,14 @@ export function AssetsPanel() {
             void onFiles(input.files).finally(() => (input.value = ''));
           }}
         />
-        <Button variant="primary" onClick={() => fileRef.current?.click()}>
-          <Upload size={14} /> {t('assets.upload')}
-        </Button>
+        <div className="flex flex-wrap gap-1.5">
+          <Button variant="primary" onClick={() => fileRef.current?.click()}>
+            <Upload size={14} /> {t('assets.upload')}
+          </Button>
+          <Button onClick={() => void pickIcon().then((icon) => icon && update((d) => void declareIcon(d, icon)))}>
+            <Smile size={14} /> {t('icons.library')}
+          </Button>
+        </div>
         <ul className="mt-2 space-y-2">
           {design.assets.map((a) => {
             const info = resources.assetInfos.get(a.id);

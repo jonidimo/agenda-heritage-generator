@@ -8,6 +8,8 @@
  * el archivo simplemente se ignore, para que un error de tipeo se vea en lugar de perderse.
  */
 import { z } from 'zod';
+import { ICON_PREFIX, ICONS } from '../assets/icons';
+import { SHAPE_PARAMS, SHAPES } from '../layout/shapes';
 import { BUILTIN_ORNAMENTS } from '../layout/ornaments';
 import { PAGE_TEXT_VARIABLES } from '../sections/common';
 import { choiceValue, EXTRA_OPTIONS, OPTION_COUNT, sectionOptionFields } from '../sections/options';
@@ -187,6 +189,9 @@ export function designCatalogue(): Json {
     ornaments: BUILTIN_ORNAMENTS.map((o) => ({ ref: `builtin:${o.id}`, kind: o.kind, aspect: o.aspect })),
     templates: TEMPLATES,
     customBlockKinds: CustomBlockZ.shape.kind.options,
+    // Íconos de la biblioteca: «icon:<id>» en cualquier lugar que lleva una imagen.
+    icons: ICONS.map((i) => `${ICON_PREFIX}${i.id}`),
+    shapes: SHAPES.map((s) => ({ shape: s, params: SHAPE_PARAMS[s] })),
     pageTypes: PAGE_TYPES,
     textVariables: PAGE_TEXT_VARIABLES,
   };
