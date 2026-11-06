@@ -48,11 +48,13 @@ catalog.
        en: { name: 'Two-minute rule', text: '…' },
        pt: { name: 'Regra dos dois minutos', text: '…' },
        it: { name: 'Regola dei due minuti', text: '…' },
+       de: { name: 'Zwei-Minuten-Regel', text: '…' },
+       fr: { name: 'Règle des deux minutes', text: '…' },
      },
    },
    ```
 
-   The type requires the four languages. Write the text for the person who will hold the
+   The type requires the six languages. Write the text for the person who will hold the
    planner: short sentences, what to do, and an honest line about the evidence.
 
 3. **Make pages react to it** (optional). In the section that should change, ask the
