@@ -2184,5 +2184,23 @@ test.describe('2.4: íconos y formas', () => {
     await expect(page.locator('[data-block^="custom."] path').first()).toBeVisible();
     await fields.getByRole('button', { name: 'Guiones', exact: true }).click();
     await expect.poll(async () => (await last(page)).props.dash).toBe('dashed');
+    // El relleno es una muestra de color siempre a mano, con «Sin relleno» al lado.
+    const fill = fields.getByTestId('shape-fill');
+    await fill.locator('input[type="color"]').fill('#336699');
+    await expect.poll(async () => (await last(page)).props.fill).toBe('#336699');
+    await fill.getByRole('button', { name: 'Sin relleno' }).click();
+    await expect.poll(async () => (await last(page)).props.fill).toBeUndefined();
+    // Opacidad en por ciento (se guarda de 0 a 1).
+    const opacity = fields.getByRole('spinbutton', { name: 'Opacidad' });
+    await opacity.fill('40');
+    await opacity.press('Enter');
+    await expect.poll(async () => (await last(page)).props.opacity).toBeCloseTo(0.4, 5);
+    // Toda forma (todo elemento propio) gira de 0 a 360°.
+    const id = await page.evaluate<string>('globalThis.__agenda.getState().design.customBlocks.at(-1).id');
+    const rotation = page.getByRole('spinbutton', { name: 'Rotación (°)', exact: true });
+    await rotation.fill('300');
+    await rotation.press('Enter');
+    await expect.poll(() => page.evaluate<number | undefined>(`globalThis.__agenda.getState().design.overrides.find((o) => o.blockId === 'custom.${id}')?.rotation`)).toBe(300);
+    await page.screenshot({ path: 'test-results/shape-fields.png' });
   });
 });

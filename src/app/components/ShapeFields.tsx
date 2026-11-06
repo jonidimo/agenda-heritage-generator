@@ -2,6 +2,7 @@
 import { BUBBLE_SIDES, LINE_CAPS, SHAPE_DEFAULTS, SHAPE_PARAMS, SHAPE_RANGES, SHAPES, type ShapeKind } from '@core/layout/shapes';
 import { PATH_LIMITS, parsePathData } from '@core/util/pathData';
 import { normalizeColor } from '@core/util/color';
+import clsx from 'clsx';
 import { useT, type UiKey } from '../i18n/ui';
 import type { Scrubbing } from '../state/scrub';
 import { ColorInput, Field, Segmented, Select, Slider, TextArea, Toggle } from './ui';
@@ -38,6 +39,11 @@ const NUMERIC: Partial<Record<NumKey, { step: number; unit: string; integer?: bo
 };
 
 const isNumKey = (k: string): k is NumKey => k in NUMERIC;
+
+/** Un deslizador en por ciento sobre una propiedad que se guarda de 0 a 1. */
+function percent(s: Scrubbing<number>): Scrubbing<number> {
+  return { onPreview: (v) => s.onPreview(v / 100), onChange: (v) => s.onChange(v / 100) };
+}
 
 export function ShapeFields({ p, setProp, dragProp, ink }: Props) {
   const t = useT();
@@ -95,17 +101,27 @@ export function ShapeFields({ p, setProp, dragProp, ink }: Props) {
         return isNumKey(key) ? num(key) : null;
       })}
       {shape !== 'line' && !(shape === 'arc' && p.pie !== true) && (
-        <div className="flex items-center gap-2">
-          <Toggle label={t('shape.fill')} checked={fill !== null} onChange={(v) => setProp('fill', v ? '#e8e4dc' : undefined)} />
-          {fill !== null && (
-            <div className="min-w-0 flex-1">
-              <ColorInput label={t('shape.fillColor')} value={fill} onChange={(v) => setProp('fill', v)} />
-            </div>
-          )}
+        <div className="flex items-center justify-between gap-2 py-1" data-testid="shape-fill">
+          <span className="text-[12px] text-ink">{t('shape.fill')}</span>
+          <span className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => setProp('fill', undefined)}
+              aria-pressed={fill === null}
+              title={t('shape.noFill')}
+              aria-label={t('shape.noFill')}
+              className={clsx('h-6 w-8 rounded border bg-white', fill === null ? 'border-accent ring-2 ring-accent/40' : 'border-line')}
+              // Tablero gris y blanco con una diagonal roja: «sin relleno».
+              style={{ backgroundImage: 'linear-gradient(to top right, transparent calc(50% - 1px), #c0392b calc(50% - 1px), #c0392b calc(50% + 1px), transparent calc(50% + 1px)), repeating-conic-gradient(#ddd 0 25%, #fff 0 50%)', backgroundSize: '100% 100%, 8px 8px' }}
+            />
+            {fill !== null && <span className="font-mono text-[11px] text-ink-soft">{fill}</span>}
+            <input type="color" aria-label={t('shape.fillColor')} className={clsx('h-6 w-8 cursor-pointer rounded border bg-white p-0', fill !== null ? 'border-accent' : 'border-line')} value={fill ?? '#e8e4dc'} onChange={(e) => setProp('fill', e.target.value)} />
+          </span>
         </div>
       )}
       <ColorInput label={t('shape.strokeColor')} value={normalizeColor(p.strokeColor) ?? ink} modified={normalizeColor(p.strokeColor) !== null} onReset={() => setProp('strokeColor', undefined)} onChange={(v) => setProp('strokeColor', v)} />
       <Slider label={t('shape.strokePt')} value={typeof p.strokePt === 'number' ? p.strokePt : SHAPE_DEFAULTS.strokePt} min={SHAPE_RANGES.strokePt.min} max={SHAPE_RANGES.strokePt.max} step={0.25} unit="pt" {...dragProp('strokePt')} defaultValue={SHAPE_DEFAULTS.strokePt} />
+      <Slider label={t('insp.opacity')} value={Math.round((typeof p.opacity === 'number' ? p.opacity : 1) * 100)} min={5} max={100} step={1} unit="%" {...percent(dragProp('opacity'))} defaultValue={100} />
       <Field label={t('shape.dash')} group>
         <Segmented compact value={(['solid', 'dashed', 'dotted'] as const).find((d) => d === p.dash) ?? 'solid'} onChange={(v) => setProp('dash', v === 'solid' ? undefined : v)} options={(['solid', 'dashed', 'dotted'] as const).map((d) => ({ value: d, label: t(`shape.dash.${d}`) }))} />
       </Field>

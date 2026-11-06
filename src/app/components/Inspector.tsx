@@ -167,6 +167,7 @@ export function Inspector({ doc }: { doc: AgendaDocument }) {
             {block.editable && block.role === 'watermark' && <WatermarkFields id={block.id.slice(3)} />}
             {block.id === 'cover.sticker' && page.type === 'monthCover' && <CoverImageFields key={page.key} page={page} doc={doc} />}
             {block.editable && block.role === 'custom' && <CustomFields id={block.id.slice(7)} theme={doc.ctx.theme} block={block} months={doc.ctx.cal.months.map((m) => ({ value: m.key, label: `${m.name} ${m.y}` }))} />}
+            {block.editable && block.role === 'custom' && <CustomRotation page={page} blockId={block.id} />}
             {block.editable && block.role !== 'watermark' && block.role !== 'custom' && (
               <>
                 <BlockFields page={page} blockId={block.id} scope={scope} setScope={setScope} />
@@ -413,6 +414,21 @@ function BlockFields({ page, blockId, scope, setScope }: { page: PageModel; bloc
       <Slider label={t('insp.opacity')} value={v.opacity} min={0} max={1} step={0.05} {...drag('opacity')} defaultValue={OVERRIDE_DEFAULTS.opacity} />
     </div>
   );
+}
+
+/**
+ * El giro de un elemento propio (0–360°), sea cual sea: el mismo ajuste que gira los bloques del
+ * programa, guardado en la página donde está el elemento (o en su tipo, si se repite).
+ */
+function CustomRotation({ page, blockId }: { page: PageModel; blockId: string }) {
+  const t = useT();
+  const design = useStore((s) => s.design)!;
+  const cb = design.customBlocks.find((x) => `custom.${x.id}` === blockId);
+  const scope: 'type' | 'page' = page.type === 'custom' || cb?.pageKey ? 'page' : 'type';
+  const o = currentOverride(design, page, blockId, scope);
+  const value = (((o?.rotation ?? 0) % 360) + 360) % 360;
+  const drag = scrub<number>((x) => overrideRecipe(page, blockId, scope, { rotation: x }), `insp:${blockId}:rotation`);
+  return <Slider label={t('insp.rotation')} value={value} min={0} max={360} step={1} {...drag} defaultValue={0} />;
 }
 
 /** Receta que cambia un ajuste de una marca de agua. */
