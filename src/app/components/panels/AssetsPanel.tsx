@@ -1,6 +1,6 @@
 import { assetUses, removeAssetFrom, type AssetUse } from '@core/design/assetUse';
 import { newId } from '@core/util/hash';
-import { FilePlus2, Image as ImageIcon, Smile, Stamp, Trash2, Upload } from 'lucide-react';
+import { Brush, FilePlus2, Image as ImageIcon, MousePointerClick, Smile, Stamp, Trash2, Upload } from 'lucide-react';
 import { declareIcon, pickIcon } from '../../state/iconPicker';
 import { useEffect, useReducer, useRef, useState } from 'react';
 import { plural, sectionName, useT, type UiKey } from '../../i18n/ui';
@@ -10,7 +10,9 @@ import { useDocument } from '../../state/doc';
 import { jumpToPage } from '../../state/navigation';
 import { addAssetFiles } from '../../state/uploads';
 import { resources } from '../../state/resources';
-import { useStore } from '../../state/store';
+import { useStore, type StampTool } from '../../state/store';
+import { placeAsset } from '../../state/actions';
+import { assetAspect } from '../canvas/StampLayer';
 import { WatermarkFields } from '../Inspector';
 import { Badge, Button, Field, Group, Select, Toggle } from '../ui';
 import { PAGE_TYPES } from '@core/sections/registry';
@@ -74,6 +76,19 @@ export function AssetsPanel() {
       case 'ornament':
         return t(`assets.use.ornament.${u.where}` as UiKey);
     }
+  };
+
+  /** La página que se ve ahora (donde se coloca un recurso con un clic). */
+  const currentPage = () => (doc && doc.pageCount > 0 ? doc.page(Math.min(pageIndex, doc.pageCount - 1)) : null);
+  const place = (a: (typeof design.assets)[number]): void => {
+    const page = currentPage();
+    if (page) placeAsset(page, a.id, assetAspect(a), { label: a.name });
+  };
+  /** El pincel con este recurso (con lo último que se usó, o lo de siempre). */
+  const brush = (a: (typeof design.assets)[number]): void => {
+    const last = useStore.getState().stamp;
+    const tool: StampTool = { size: 8, spacing: 1.2, rotate: 'follow', jitter: 0.15, tint: null, ...(last ?? {}), assetId: a.id };
+    useStore.getState().setStamp(tool);
   };
 
   /** Página propia con esta imagen, después de la página actual (y se va a ella). */
@@ -147,6 +162,16 @@ export function AssetsPanel() {
                     );
                   })()}
                   <div className="mt-1 flex flex-wrap gap-1">
+                    {a.kind !== 'pdf' && (
+                      <>
+                        <Button variant="outline" onClick={() => place(a)} title={t('assets.placeHint')}>
+                          <MousePointerClick size={13} /> {t('assets.place')}
+                        </Button>
+                        <Button variant="outline" onClick={() => brush(a)} title={t('stamp.help')}>
+                          <Brush size={13} /> {t('assets.brush')}
+                        </Button>
+                      </>
+                    )}
                     <Button variant="ghost" onClick={() => addWatermark(a.id)}>
                       <Stamp size={13} /> {t('assets.useAsWatermark')}
                     </Button>

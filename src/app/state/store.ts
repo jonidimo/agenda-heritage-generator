@@ -60,6 +60,20 @@ export interface Selection {
 /** Receta de immer que cambia un diseño (la usan `update`, `preview` y `commit`). */
 export type Recipe = (draft: Draft<Design>) => void;
 
+/** El pincel de sello y trazo: qué recurso y cómo deja sus copias. */
+export interface StampTool {
+  assetId: string;
+  /** Ancho de cada copia, en mm. */
+  size: number;
+  /** Distancia entre copias, en veces el ancho. */
+  spacing: number;
+  rotate: 'none' | 'follow' | 'random';
+  /** Variación de tamaño y giro (0 a 0,5). */
+  jitter: number;
+  /** Tinte de un recurso vectorial (`null`: sus colores). */
+  tint: string | null;
+}
+
 interface StoreState {
   design: Design | null;
   /**
@@ -113,6 +127,9 @@ interface StoreState {
   setSearchOpen(b: boolean): void;
   showShortcuts: boolean;
   setShowShortcuts(b: boolean): void;
+  /** El pincel de sello y trazo, si está en uso (el puntero sobre la página deja copias del recurso). */
+  stamp: StampTool | null;
+  setStamp(tool: StampTool | null): void;
   /** Pantalla completa: sin barra lateral ni inspector (su estado no se toca: vuelven como estaban). */
   focusMode: boolean;
   setFocusMode(b: boolean): void;
@@ -316,6 +333,7 @@ export const useStore = create<StoreState>((set, get) => ({
   showShortcuts: false,
   showPaper: false,
   focusMode: false,
+  stamp: null,
   showHidden: false,
   preflightRequest: 0,
   liveLink: prefs.liveLink.read(),
@@ -427,6 +445,7 @@ export const useStore = create<StoreState>((set, get) => ({
   setShowShortcuts: (showShortcuts) => set({ showShortcuts }),
   setShowPaper: (showPaper) => set({ showPaper }),
   setFocusMode: (focusMode) => set({ focusMode }),
+  setStamp: (stamp) => set({ stamp }),
   setShowHidden: (showHidden) => set({ showHidden }),
   setLiveLink(liveLink) {
     prefs.liveLink.write(liveLink);

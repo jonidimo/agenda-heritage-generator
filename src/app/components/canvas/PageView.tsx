@@ -2,6 +2,7 @@
  * Página interactiva: SVG exacto (mismos glifos que el PDF) + capa de edición
  * con selección, arrastre con imán, redimensionado y guías de márgenes.
  */
+import { StampLayer } from './StampLayer';
 import { movable } from '../../state/movable';
 import { blockBounds } from '@core/document/layout';
 import type { AgendaDocument } from '@core/document';
@@ -76,6 +77,8 @@ export function PageView({ doc, index, scale, interactive = true }: Props) {
   const svgRef = useRef<SVGSVGElement | null>(null);
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const drag = useRef<Drag | null>(null);
+  /** El pincel de sello y trazo, si está en uso: el puntero pinta en lugar de elegir. */
+  const stamp = useStore((s) => s.stamp);
   const [guides, setGuides] = useState<{ x: number[]; y: number[] }>({ x: [], y: [] });
   const [live, setLive] = useState<Rect | null>(null);
   const [liveDelta, setLiveDelta] = useState<{ dx: number; dy: number } | null>(null);
@@ -538,7 +541,8 @@ export function PageView({ doc, index, scale, interactive = true }: Props) {
         const target = page.blocks.find((b) => b.id === editing);
         return target?.text ? <TextEditor key={`${page.key}:${editing}`} doc={doc} page={page} blockId={editing} source={target.text} scale={scale} onDone={() => setEditing(null)} /> : null;
       })()}
-      {interactive && single && selBounds && selected && movable(selected) && !editing && (
+      {interactive && stamp && <StampLayer page={page} tool={stamp} />}
+      {interactive && !stamp && single && selBounds && selected && movable(selected) && !editing && (
         <>
           {/* Capa del elemento seleccionado: con el dedo se arrastra desde acá sin desplazar la página. */}
           <div data-sel-surface="" className="absolute cursor-move" style={{ left: selBounds.x * scale, top: selBounds.y * scale, width: selBounds.w * scale, height: selBounds.h * scale, touchAction: 'none' }} />

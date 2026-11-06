@@ -150,7 +150,7 @@ test('la política de seguridad no bloquea nada de la aplicación', async ({ pag
   const pdf = await PDFDocument.create();
   pdf.addPage([300, 400]).drawText('Hola', { x: 40, y: 300, size: 30 });
   const bytes = Buffer.from(await pdf.save());
-  await page.getByRole('tab', { name: 'Imágenes', exact: true }).click();
+  await page.getByRole('tab', { name: 'Recursos / Vectores', exact: true }).click();
   await page.locator('input[type="file"][accept*="pdf"]').setInputFiles({ name: 'prueba.pdf', mimeType: 'application/pdf', buffer: bytes });
   await expect(page.getByText('prueba.pdf').filter({ visible: true }).first()).toBeVisible();
   // pdf.js dibujó la vista previa (una imagen blob:), así que su Worker funciona con la política.
@@ -1695,7 +1695,7 @@ test.describe('imágenes y fuentes', () => {
       d.cover.imageAssetId = 'img-e2e';
       d.customBlocks.push({ id: 'pic', pageType: 'titlePage', pageKey: null, kind: 'image', x: 20, y: 20, w: 30, h: 30, mirror: true, props: { assetId: 'img-e2e', label: 'Mi foto' } });
     }, 'e2e-asset')`);
-    await page.getByRole('tab', { name: 'Imágenes', exact: true }).click();
+    await page.getByRole('tab', { name: 'Recursos / Vectores', exact: true }).click();
     const uses = page.locator('[data-testid="asset-uses"][data-asset="img-e2e"]');
     await expect(uses).toContainText('Tapa');
     await expect(uses).toContainText('Elemento «Mi foto»');
@@ -1964,6 +1964,57 @@ test.describe('asistente de IA', () => {
   });
 });
 
+test.describe('recursos: colocar y pincel de sello y trazo', () => {
+  const customs = (page: Page) => page.evaluate<Array<{ id: string; kind: string; pageKey: string | null; props: Record<string, unknown> }>>('globalThis.__agenda.getState().design.customBlocks.map((c) => ({ id: c.id, kind: c.kind, pageKey: c.pageKey, props: c.props }))');
+
+  test('un ícono se coloca con un clic, y como pincel: un clic deja una copia, un trazo deja varias en un solo elemento que se deshace entero', async ({ page }) => {
+    await openQuiet(page);
+    await page.getByRole('tab', { name: 'Recursos / Vectores', exact: true }).click();
+    // Un ícono de la biblioteca entra a los recursos.
+    await page.getByRole('button', { name: 'Biblioteca de íconos…' }).click();
+    const picker = page.getByRole('dialog', { name: 'Biblioteca de íconos' });
+    await picker.getByRole('textbox', { name: /Buscar un ícono/ }).fill('trofeo');
+    await expect(picker.getByTestId('icon-grid').locator('[data-icon]')).toHaveCount(1);
+    await page.keyboard.press('Enter');
+    await expect(picker).toHaveCount(0);
+    const item = page.locator('li', { has: page.getByText('trophy', { exact: true }) }).first();
+    // Colocar: un elemento imagen en la página que se ve.
+    await item.getByRole('button', { name: 'Colocar' }).click();
+    await expect.poll(async () => (await customs(page)).length).toBe(1);
+    expect((await customs(page))[0]).toMatchObject({ kind: 'image', props: { assetId: 'icon:trophy' } });
+
+    // El pincel.
+    await item.getByRole('button', { name: 'Pincel' }).click();
+    const toolbar = page.getByTestId('stamp-toolbar');
+    await expect(toolbar).toBeVisible();
+    const layer = page.getByTestId('stamp-layer').first();
+    await expect(layer).toBeVisible();
+    const box = (await layer.boundingBox())!;
+    // Un clic: una copia más.
+    await page.mouse.click(box.x + box.width * 0.3, box.y + box.height * 0.3);
+    await expect.poll(async () => (await customs(page)).length).toBe(2);
+    // Un trazo: un solo elemento «dibujo» con varias copias.
+    const y = box.y + box.height * 0.6;
+    await page.mouse.move(box.x + box.width * 0.15, y);
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width * 0.85, y + 20, { steps: 25 });
+    await page.screenshot({ path: 'test-results/stamp-stroke.png' });
+    await page.mouse.up();
+    await expect.poll(async () => (await customs(page)).length).toBe(3);
+    const stroke = (await customs(page))[2]!;
+    expect(stroke.kind).toBe('drawing');
+    expect((stroke.props.prims as unknown[]).length).toBeGreaterThan(3);
+    // Se ve en la página como trazados (no una imagen rota).
+    await expect(page.locator(`[data-block="custom.${stroke.id}"] path`).first()).toBeVisible();
+    // Esc deja el pincel; Ctrl+Z quita el trazo entero.
+    await page.keyboard.press('Escape');
+    await expect(toolbar).toHaveCount(0);
+    await page.locator('.desk').click({ position: { x: 5, y: 5 } });
+    await page.keyboard.press('Control+z');
+    await expect.poll(async () => (await customs(page)).length).toBe(2);
+  });
+});
+
 test.describe('pantalla completa', () => {
   test('F11 deja solo la página (sin barra lateral ni inspector) y otra vez F11 los devuelve como estaban', async ({ page }) => {
     await openQuiet(page);
@@ -2148,7 +2199,7 @@ test.describe('2.4: empezar de cero, marcas de agua, portada del mes, QR y créd
     await openQuiet(page);
     await toWeek(page);
     await settled(page);
-    await page.getByRole('tab', { name: 'Imágenes', exact: true }).click();
+    await page.getByRole('tab', { name: 'Recursos / Vectores', exact: true }).click();
     const wm = () => page.evaluate<{ side: string; blend: string }>('(() => { const w = globalThis.__agenda.getState().design.watermarks[0]; return { side: w.side, blend: w.blend }; })()');
     await page.getByRole('button', { name: 'Derechas', exact: true }).first().click();
     await expect.poll(async () => (await wm()).side).toBe('recto');

@@ -9,7 +9,7 @@ import { fmt as fmtStr } from '../i18n';
 import { inset } from '../layout/box';
 import { grayOf } from '../util/color';
 import { adjustedSize, type BoxAdjust } from '../layout/box';
-import { LayoutContext, type BoxAdjuster, type DocContext } from '../layout/context';
+import { LayoutContext, type AssetInfo, type BoxAdjuster, type DocContext } from '../layout/context';
 import { stretchPrims, stretchRect } from '../layout/stretch';
 import { parseDrawing, type DrawingProps } from '../design/drawing';
 import { primsBounds, strokeUses, type Block, type LinkArea, type LinkTarget, type PageModel, type PageWarning, type Prim } from '../layout/prims';
@@ -301,7 +301,7 @@ function placeCustomBlock(ctx: LayoutContext, cb: CustomBlock, page: PagePlan): 
         ctx.warn('layoutError', `El dibujo «${String(p.label ?? cb.id)}» no es válido y no se dibuja.`, { id: cb.id });
         break;
       }
-      prims = drawingPrims(drawing, box);
+      prims = drawingPrims(drawing, box, ctx.doc.assets);
       for (const asset of new Set(imageAssets(drawing.prims))) {
         if (!ctx.doc.assets.has(asset)) ctx.warn('missingAsset', `El dibujo «${String(p.label ?? cb.id)}» usa una imagen que no está en esta agenda: se deja un recuadro vacío.`, { name: asset });
       }
@@ -335,15 +335,31 @@ function placeCustomBlock(ctx: LayoutContext, cb: CustomBlock, page: PagePlan): 
  * (las líneas y los recuadros se estiran sin cambiar de grosor; lo que tiene tamaño propio se mueve) y
  * `scale` lo escala entero. Una imagen que ya no está en la agenda se avisa.
  */
-function drawingPrims(drawing: DrawingProps, box: Rect): Prim[] {
+function drawingPrims(drawing: DrawingProps, box: Rect, assets: ReadonlyMap<string, AssetInfo>): Prim[] {
   const from = { x: 0, y: 0, w: drawing.w0, h: drawing.h0 };
-  const prims = drawing.prims as Prim[];
+  const prims = vectorImages(drawing.prims as Prim[], assets, drawing.tint);
   const out: Prim[] =
     drawing.mode === 'scale'
       ? [{ t: 'group', m: composeAll(translate(box.x, box.y), scale(box.w / drawing.w0, box.h / drawing.h0)), children: prims }]
       : stretchPrims(prims, from, box);
   if (drawing.opacity === undefined || drawing.opacity >= 1) return out;
   return [{ t: 'group', opacity: drawing.opacity, children: out }];
+}
+
+/**
+ * Las imágenes de un dibujo que son dibujos vectoriales (íconos, SVG) se dibujan con sus trazados, como
+ * cualquier imagen vectorial: así se pueden teñir, salen vectoriales en el PDF y no dependen de que el
+ * lector sepa mostrar un SVG. Las demás quedan como imágenes.
+ */
+function vectorImages(prims: readonly Prim[], assets: ReadonlyMap<string, AssetInfo>, tint: string | undefined): Prim[] {
+  return prims.map((p): Prim => {
+    if (p.t === 'group') return { ...p, children: vectorImages(p.children, assets, tint) };
+    if (p.t !== 'image') return p;
+    const info = assets.get(p.asset);
+    if (info?.kind !== 'vector') return p;
+    const out = assetPrims(info, { x: p.x, y: p.y, w: p.w, h: p.h }, { fit: 'fill', minStrokePt: 0.25, ...(p.opacity !== undefined ? { opacity: p.opacity } : {}), ...(tint ? { recolor: () => tint } : {}) });
+    return out.length === 1 ? out[0]! : { t: 'group', children: out };
+  });
 }
 
 /** Los recursos (imágenes) que usan unas primitivas, entrando en los grupos. */

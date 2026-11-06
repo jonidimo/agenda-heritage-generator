@@ -218,7 +218,7 @@ test('al abrir un archivo con imágenes guardadas junto a él, las imágenes lle
   const electronApp = await launch(file);
   const win = await electronApp.firstWindow();
   await expect.poll(() => win.evaluate<string | null>('globalThis.__agenda?.getState().design?.name ?? null'), { timeout: 60_000 }).toBe('Con imágenes');
-  await win.getByRole('tab', { name: 'Imágenes', exact: true }).click();
+  await win.getByRole('tab', { name: 'Recursos / Vectores', exact: true }).click();
   // La miniatura sale de los bytes: solo existe si la imagen llegó.
   await expect(win.locator('li', { hasText: 'Logo junto al archivo' }).locator('img')).toBeVisible();
   await expect(win.locator('li', { hasText: 'Fuera de la carpeta' }).locator('img')).toHaveCount(0);

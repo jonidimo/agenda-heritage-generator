@@ -86,6 +86,8 @@ export const DrawingPropsZ = z
     mode: z.enum(DRAWING_MODES).default('stretch'),
     prims: z.array(DrawingPrimZ).max(DRAWING_LIMITS.prims),
     opacity: unit.optional(),
+    /** Tiñe de este color los dibujos vectoriales (íconos, SVG) que lleva: el trazo de un sello. */
+    tint: color.optional(),
     /** De dónde se copió (solo para decírselo a quien lo edita). */
     source: z.object({ block: z.string().max(120), label: z.string().max(200) }).optional(),
     label: z.string().max(120).optional(),

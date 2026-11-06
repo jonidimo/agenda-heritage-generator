@@ -15,6 +15,7 @@ import type { Rect } from '@core/util/geometry';
 import type { BlendMode } from '@core/design/blend';
 import type { HiddenElement } from '@core/document/hidden';
 import { moveInOrder, restackOne, type StackMove } from '@core/layout/stack';
+import { stampDrawing, stampsAlong, type StampRotation } from '@core/layout/stamps';
 import { blockBounds, findOverride as appliedOverride, mirroredScaleShift } from '@core/document/layout';
 import { deformable } from '@core/layout/handles';
 import { axisScales, deformScales, MIN_BOX, naturalBox, storeAdjust, visualToBox, type BoxAdjust } from '@core/layout/box';
@@ -842,4 +843,58 @@ export function duplicateCustomBlock(page: PageModel, block: Block): void {
     }
   });
   useStore.getState().select({ pageKey: page.key, pageType: page.type, blockId: `custom.${id}`, role: 'custom' });
+}
+
+/* ---------- Recursos en la página: colocar y sello y trazo ---------- */
+
+/** Ancho con que se coloca un recurso con un clic, en mm. */
+export const PLACE_WIDTH = 30;
+
+/**
+ * Coloca un recurso (imagen, SVG, ícono) en la página como elemento propio: centrado en `at` o, sin
+ * él, en el contenido; con su proporción. Queda en esa página (no en todas las de su tipo).
+ */
+export function placeAsset(page: PageModel, assetId: string, aspect: number, opts: { at?: { x: number; y: number }; width?: number; tint?: string | null; label?: string } = {}): string {
+  const ratio = Number.isFinite(aspect) && aspect > 0 ? aspect : 1;
+  const w = Math.min(opts.width ?? PLACE_WIDTH, page.w);
+  const h = Math.min(w / ratio, page.h);
+  const center = opts.at ?? { x: page.content.x + page.content.w / 2, y: page.content.y + page.content.h / 2 };
+  const id = newId('el');
+  const block: CustomBlock = {
+    id,
+    pageType: page.type,
+    pageKey: page.key,
+    kind: 'image',
+    mirror: false,
+    x: r2(Math.min(Math.max(0, center.x - w / 2), page.w - w)),
+    y: r2(Math.min(Math.max(0, center.y - h / 2), page.h - h)),
+    w: r2(w),
+    h: r2(h),
+    props: { assetId, fit: 'contain', opacity: 1, ...(opts.tint ? { color: opts.tint } : {}), ...(opts.label ? { label: opts.label } : {}) },
+  };
+  useStore.getState().update((d) => {
+    const icon = iconIdOf(assetId);
+    if (icon) declareIcon(d, icon);
+    d.customBlocks.push(block);
+  });
+  useStore.getState().select({ pageKey: page.key, pageType: page.type, blockId: `custom.${id}`, role: 'custom' });
+  return id;
+}
+
+/**
+ * Un trazo del pincel: las copias del recurso a lo largo de los puntos (en mm de la página), en un solo
+ * elemento «dibujo» y un solo paso de «Deshacer». Devuelve el id, o `null` si no quedó ninguna copia.
+ */
+export function placeStampStroke(page: PageModel, points: readonly { x: number; y: number }[], tool: { assetId: string; size: number; spacing: number; rotate: StampRotation; jitter: number; tint: string | null }, aspect: number, seed: number, label: string): string | null {
+  const stamps = stampsAlong(points, { size: tool.size, spacing: tool.spacing, rotate: tool.rotate, jitter: tool.jitter, seed });
+  const drawn = stampDrawing(stamps, tool.assetId, aspect, { ...(tool.tint ? { tint: tool.tint } : {}), label });
+  if (!drawn) return null;
+  const id = newId('el');
+  const block: CustomBlock = { id, pageType: page.type, pageKey: page.key, kind: 'drawing', mirror: false, x: drawn.box.x, y: drawn.box.y, w: drawn.box.w, h: drawn.box.h, props: drawn.props };
+  useStore.getState().update((d) => {
+    const icon = iconIdOf(tool.assetId);
+    if (icon) declareIcon(d, icon);
+    d.customBlocks.push(block);
+  });
+  return id;
 }

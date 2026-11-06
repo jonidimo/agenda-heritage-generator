@@ -1,4 +1,5 @@
 /** Área central: página, pliego, hoja impresa (frente/dorso) o libro completo. */
+import { StampToolbar } from './StampToolbar';
 import type { AgendaDocument } from '@core/document';
 import { primsToSvg, GlyphSink } from '@core/render/svg';
 import { isProblem } from '@core/layout/prims';
@@ -134,6 +135,7 @@ export function Canvas({ committed, live }: { committed: AgendaDocument; live: A
           </div>
         )}
       </div>
+      <StampToolbar />
       <AssistantDock footer={view !== 'book'} />
       {view !== 'book' && (
         <div className="flex items-center justify-center gap-2 border-t border-line bg-paper/90 px-3 py-1.5 text-[12px]">
