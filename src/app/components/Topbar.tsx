@@ -1,4 +1,4 @@
-import { Archive, ArrowLeft, Eye, Keyboard, Pencil, PenTool, ArrowRight, BookOpen, Search, Columns2, File, FileDown, FolderOpen, Grid3x3, Info, LayoutTemplate, Link2, Magnet, Maximize, MoreHorizontal, PanelLeft, Printer, Redo2, Ruler, Save, Sparkles, Undo2, Upload, ZoomIn, ZoomOut } from 'lucide-react';
+import { Archive, ArrowLeft, Eye, Keyboard, Pencil, PenTool, ArrowRight, BookOpen, Search, Columns2, File, FileDown, FilePlus, FolderOpen, Grid3x3, Info, LayoutTemplate, Link2, Magnet, Maximize, MoreHorizontal, PanelLeft, Printer, Redo2, Ruler, Save, Sparkles, Undo2, Upload, ZoomIn, ZoomOut } from 'lucide-react';
 import { useEffect, useRef } from 'react';
 import { backupAll, openAnyFile, saveCurrent } from '../state/fileActions';
 import { openMenuAt, type MenuItem } from './ContextMenu';
@@ -177,6 +177,9 @@ export function Topbar() {
         {labels && <span>{t('top.library')}</span>}
       </button>
       <MenuButton showLabel={labels} label={t('file.menu')} icon={<Save size={16} />} build={() => [
+            { label: t('file.new'), icon: <FilePlus size={14} />, onSelect: () => useStore.getState().setShowWelcome(true) },
+            { label: t('paper.menu'), icon: <Ruler size={14} />, disabled: !design, onSelect: () => useStore.getState().setShowPaper(true) },
+            { separator: true },
             { label: t('file.save'), icon: <Save size={14} />, hint: shortcutHint('file.save', t), disabled: !design, onSelect: () => void saveCurrent(false) },
             { label: t('file.saveAs'), icon: <FileDown size={14} />, hint: shortcutHint('file.saveAs', t), disabled: !design, onSelect: () => void saveCurrent(true) },
             { label: t('file.open'), icon: <Upload size={14} />, hint: shortcutHint('file.open', t), onSelect: () => void openAnyFile() },

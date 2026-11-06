@@ -56,7 +56,7 @@ evita que npm escriba en el canal que usan el cliente y el servidor.
 
 | Herramienta | Qué hace |
 | --- | --- |
-| `create_design` | Agenda nueva desde una plantilla (`heritage`, `heritage-norma` (con dedicatoria), `clara` (letra grande), `minimal`) para un año, idioma, país y nombre. Con `out` escribe el archivo; con `app: true` la abre en la aplicación de escritorio. |
+| `create_design` | Agenda nueva desde una plantilla (`heritage`, `heritage-norma` (con dedicatoria), `clara` (letra grande), `minimal`) para un año, idioma, país y nombre, y desde el principio el tamaño de la hoja (`paper`: A4, LETTER, LEGAL…, pantallas de tableta `TABLET_10_3`, `IPAD_11`…, o `CUSTOM` con `width`/`height`), el destino (`purpose`: `print` o `screen`) y la encuadernación (`binding`). Con `out` escribe el archivo; con `app: true` la abre en la aplicación de escritorio. |
 | `update_design` | Cambia un archivo (`path`) o la agenda abierta en la aplicación de escritorio (`app: true`) con operaciones [JSON Patch](https://datatracker.ietf.org/doc/html/rfc6902) (`add`, `remove`, `replace`, `move`, `copy`, `test`). Todo o nada; si el resultado no abriría, no se cambia nada. Con `out`, el resultado se escribe en otro archivo y `path` queda como estaba. En todas las herramientas, `path` es siempre el archivo que se lee y `out` el que se escribe. |
 | `check_design` | Lista lo que el programa ignoraría o corregiría en el archivo (claves desconocidas, colores no válidos, valores fuera de la lista o del rango) y resume la agenda armada: páginas, hojas, cuadernillos, enlaces y avisos (textos que no entran, imágenes que faltan, enlaces rotos) con sus páginas. |
 | `list_pages` | Las páginas, con su número, clave, tipo y título (se puede filtrar por tipo). |

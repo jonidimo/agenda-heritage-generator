@@ -2013,6 +2013,40 @@ test.describe('2.4: empezar de cero, marcas de agua, portada del mes, QR y créd
     expect(errors).toEqual([]);
   });
 
+  test('el tamaño de la hoja se elige al empezar, a la vista, y la agenda nace con él', async ({ page }) => {
+    const dialog = await welcome(page);
+    const paper = dialog.getByTestId('welcome-paper');
+    await expect(paper).toBeVisible();
+    await expect(paper.getByTestId('paper-result')).toContainText('Cada página');
+    await paper.getByRole('button', { name: 'Leer en pantalla' }).click();
+    await paper.getByRole('combobox', { name: 'Pantalla' }).selectOption('TABLET_10_3');
+    await expect(paper.getByTestId('paper-result')).toContainText('157,8 × 210,4 mm');
+    await page.screenshot({ path: 'test-results/welcome-paper.png' });
+    await dialog.getByRole('button', { name: 'Crear agenda' }).click();
+    await expect(page.locator('[data-page-index]').first()).toBeVisible({ timeout: 60_000 });
+    const d = await page.evaluate<{ preset: string; target: string; method: string }>(`(() => { const d = globalThis.__agenda.getState().design; return { preset: d.paper.preset, target: d.binding.target, method: d.binding.method }; })()`);
+    expect(d).toEqual({ preset: 'TABLET_10_3', target: 'screen', method: 'single' });
+  });
+
+  test('Edición → Tamaño de la hoja cambia el papel y lleva lo hecho a mano en proporción, en un paso que se deshace', async ({ page }) => {
+    await openQuiet(page);
+    await page.evaluate(`globalThis.__agenda.getState().update((d) => { d.customBlocks.push({ id: 'cb-paper', pageType: d.customBlocks[0]?.pageType ?? 'notes', pageKey: null, kind: 'rect', x: 20, y: 40, w: 30, h: 30, mirror: true, props: {} }); })`);
+    await page.locator('header').getByRole('button', { name: 'Edición', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Tamaño de la hoja…' }).click();
+    const dialog = page.getByRole('dialog', { name: 'Tamaño de la hoja' });
+    await dialog.getByRole('combobox', { name: 'Papel' }).selectOption('A3');
+    await expect(dialog.getByTestId('paper-change')).toBeVisible();
+    await expect(dialog.getByRole('checkbox', { name: /Llevar lo hecho a mano/ })).toBeChecked();
+    await dialog.getByRole('button', { name: 'Aplicar', exact: true }).click();
+    await expect(dialog).toBeHidden();
+    const after = await page.evaluate<{ preset: string; x: number }>(`(() => { const d = globalThis.__agenda.getState().design; return { preset: d.paper.preset, x: d.customBlocks.find((b) => b.id === 'cb-paper').x }; })()`);
+    expect(after.preset).toBe('A3');
+    expect(after.x).toBeGreaterThan(25);
+    await page.locator('.desk').click({ position: { x: 5, y: 5 } });
+    await page.keyboard.press('Control+z');
+    await expect.poll(() => page.evaluate<string>('globalThis.__agenda.getState().design.paper.preset')).toBe('A4');
+  });
+
   test('el cuaderno pide páginas y estilo, y sale sin calendario', async ({ page }) => {
     const dialog = await welcome(page);
     await dialog.getByRole('radio', { name: /Cuaderno/ }).check();

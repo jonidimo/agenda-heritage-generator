@@ -65,3 +65,32 @@ export function agendaFileFromArgv(argv) {
   }
   return null;
 }
+
+/**
+ * Whether Chromium will draw through Wayland: Linux, a Wayland session (or `--ozone-platform=wayland`),
+ * and not forced to X11 or headless. Electron picks Wayland by itself in such a session.
+ * @param {readonly string[]} argv
+ * @param {Readonly<Record<string, string | undefined>>} env
+ * @param {string} platform `process.platform`
+ */
+export function usesWayland(argv, env, platform) {
+  if (platform !== 'linux') return false;
+  const args = argv.slice(1);
+  const forced = args.map((a) => /^--ozone-platform=(.+)$/.exec(a)?.[1]).filter(Boolean).at(-1);
+  if (forced) return forced === 'wayland';
+  return Boolean(env.WAYLAND_DISPLAY) || env.XDG_SESSION_TYPE === 'wayland';
+}
+
+/**
+ * A `--disable-features` list with one more feature (without repeating it). Chromium reads only the
+ * last `--disable-features`, so what the person already passed has to stay in the list.
+ * @param {string} existing The current value (empty if none).
+ * @param {string} feature
+ */
+export function withDisabledFeature(existing, feature) {
+  const list = existing
+    .split(',')
+    .map((f) => f.trim())
+    .filter(Boolean);
+  return list.includes(feature) ? list.join(',') : [...list, feature].join(',');
+}

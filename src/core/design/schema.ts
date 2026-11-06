@@ -29,9 +29,17 @@ export const PAPER_PRESETS = {
   FOLIO: { w: 215.9, h: 330.2, label: 'Folio 8½ × 13" (216 × 330 mm)' },
   A3: { w: 297, h: 420, label: 'A3 (297 × 420 mm) → páginas A4' },
   A5: { w: 148, h: 210, label: 'A5 (148 × 210 mm) → páginas A6' },
+  // Pantallas de tabletas y lectores (para leer en pantalla, una página por hoja): el área visible en mm.
+  TABLET_7_8: { w: 118.9, h: 158.5, label: 'Lector de tinta 7,8" (Boox Nova/Tab Mini, Kobo Sage) 119 × 159 mm' },
+  TABLET_10_3: { w: 157.8, h: 210.4, label: 'Tableta de tinta 10,3" (reMarkable 2, Boox Note Air, Supernote A5X, Kindle Scribe) 158 × 210 mm' },
+  TABLET_13_3: { w: 202.7, h: 270.3, label: 'Tableta de tinta 13,3" (Boox Tab X, Supernote A4X) 203 × 270 mm' },
+  IPAD_11: { w: 160.5, h: 229.8, label: 'iPad 11" 161 × 230 mm' },
+  IPAD_13: { w: 198.6, h: 264.8, label: 'iPad 13" 199 × 265 mm' },
   CUSTOM: { w: 210, h: 297, label: 'Personalizado' },
 } as const;
 export type PaperPresetId = keyof typeof PAPER_PRESETS;
+/** Los tamaños de pantalla: una página por hoja, para leer en una tableta. */
+export const SCREEN_PRESETS: readonly PaperPresetId[] = ['TABLET_7_8', 'TABLET_10_3', 'TABLET_13_3', 'IPAD_11', 'IPAD_13'];
 export const PaperPresetZ = z.enum(Object.keys(PAPER_PRESETS) as [PaperPresetId, ...PaperPresetId[]]);
 
 /**

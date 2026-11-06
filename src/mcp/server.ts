@@ -11,7 +11,8 @@ import { dirname, relative, resolve, sep } from 'node:path';
 import { z } from 'zod';
 import { createDesign, TEMPLATES, type TemplateId } from '../core/design/defaults';
 import { designJsonSchema, schemaPart } from '../core/design/jsonSchema';
-import type { Design } from '../core/design/schema';
+import { PAPER_PRESETS, PaperPresetZ, type Design } from '../core/design/schema';
+import { changePaper } from '../core/document/paper';
 import { themeFile, themeFromDesign } from '../core/design/themeFile';
 import { EXPORT_KINDS } from '../core/document';
 import { documentSummary } from '../core/document/summary';
@@ -53,6 +54,11 @@ Flujo: create_design (desde una plantilla) → update_design (JSON Patch) → ch
 Referencia: list_catalogue (secciones con sus opciones, temas, ornamentos, variables de texto) y get_schema (con «part» para leer solo una parte, p. ej. "theme.tokens.lines").
 Con la aplicación de escritorio abierta: app_status dice qué agenda tiene; con «app: true» check_design, render_page, update_design y las demás trabajan sobre ESA agenda (los cambios son un paso que la persona puede deshacer; si ella la tocó mientras tanto, volvé a leerla), app_reveal le muestra una página y app_library/app_open cambian de agenda.
 Medidas en milímetros; colores #rrggbb; las rutas de archivo son relativas a la carpeta de trabajo. La guía completa está en el recurso agenda://guide.`;
+
+/** Los tamaños de hoja que se pueden pedir, con su medida (para el modelo). */
+const PAPER_HELP = Object.entries(PAPER_PRESETS)
+  .map(([id, p]) => (id === 'CUSTOM' ? 'CUSTOM: width y height a elección' : `${id}: ${p.w} × ${p.h} mm`))
+  .join('; ');
 
 type ToolResult = { content: Array<{ type: 'text'; text: string } | { type: 'image'; data: string; mimeType: string }>; isError?: boolean };
 
@@ -212,13 +218,27 @@ export function createServer(opts: ServerOptions): McpServer {
         locale: z.string().regex(/^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$/).optional().describe('Idioma y país, p. ej. es-AR, en-US, pt-BR, it-IT'),
         country: z.string().regex(/^[A-Z]{2}$/).nullable().optional().describe('Feriados de este país (código ISO); null: sin feriados. Por defecto, el del idioma.'),
         name: z.string().max(120).optional().describe('Nombre de la persona (portada, dedicatoria)'),
+        paper: PaperPresetZ.optional().describe(`Tamaño de la hoja desde el principio (cambiarlo después mueve lo hecho a mano). ${PAPER_HELP}`),
+        width: z.number().min(50).max(1000).optional().describe('Con paper "CUSTOM": ancho de la hoja en mm'),
+        height: z.number().min(50).max(1500).optional().describe('Con paper "CUSTOM": alto de la hoja en mm'),
+        purpose: z.enum(['print', 'screen']).optional().describe('print: se imprime y encuaderna; screen: para leer en una tableta (una página por hoja, sin costura ni recortes). Un tamaño de pantalla (TABLET_*, IPAD_*) ya implica screen.'),
+        binding: z.enum(['sewn', 'saddle', 'cut-stack', 'single']).optional().describe('Para imprimir: sewn/saddle/cut-stack ponen dos páginas por cara (la página es media hoja); single, una página por hoja'),
         out: z.string().optional().describe('Archivo que se escribe (.agenda.json), relativo a la carpeta de trabajo'),
         overwrite: z.boolean().optional(),
         app: z.boolean().optional().describe('Abrirla en la aplicación de escritorio en lugar de guardarla en un archivo'),
       },
     },
-    async ({ template, year, locale, country, name, out, overwrite, app }) => {
-      const design = createDesign(template, { ...(year ? { year } : {}), ...(locale ? { locale } : {}), ...(country !== undefined ? { country } : {}), ...(name ? { name } : {}) });
+    async ({ template, year, locale, country, name, paper, width, height, purpose, binding, out, overwrite, app }) => {
+      const created = createDesign(template, { ...(year ? { year } : {}), ...(locale ? { locale } : {}), ...(country !== undefined ? { country } : {}), ...(name ? { name } : {}) });
+      const design =
+        paper || purpose || binding || width || height
+          ? changePaper(created, {
+              paper: { preset: paper ?? created.paper.preset, width: width ?? created.paper.width, height: height ?? created.paper.height },
+              ...(purpose ? { target: purpose } : {}),
+              ...(binding ? { method: binding } : {}),
+              rescale: false,
+            })
+          : created;
       if (app === true) {
         if (out) throw new Error('Indicá «out» (un archivo) o «app» (abrirla en la aplicación), no las dos.');
         const opened = await appLink.request<LiveOpened>('design.load', { design });

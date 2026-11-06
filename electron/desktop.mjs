@@ -13,7 +13,7 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { app, BrowserWindow, dialog, Menu, net, protocol, safeStorage, screen, session, shell } from 'electron';
 import { AiSettingsStore, AUTH, aiTargetAllowed, cleanBaseUrl, isProviderId, KEY_PATTERN, MAX_KEY_LENGTH, parseChatRequest } from './lib/ai.mjs';
-import { agendaFileFromArgv, MAX_OPEN_BYTES } from './lib/args.mjs';
+import { agendaFileFromArgv, MAX_OPEN_BYTES, usesWayland, withDisabledFeature } from './lib/args.mjs';
 import { inlineAssetPaths } from './lib/assets.mjs';
 import { createCloseGuard } from './lib/closing.mjs';
 import { DownloadLog, sysRequestAllowed, sysRoute } from './lib/downloads.mjs';
@@ -34,6 +34,12 @@ app.setName(APP_NAME);
 // single-instance lock.
 app.setPath('userData', path.join(app.getPath('appData'), isDev ? `${APP_NAME} (dev)` : APP_NAME));
 if (process.platform === 'win32') app.setAppUserModelId(APP_ID);
+
+// Chromium on Wayland cannot draw with Vulkan, and says so on every start ("'--ozone-platform=wayland'
+// is not compatible with Vulkan"): turn Vulkan off there (GL keeps working). Before `ready`.
+if (usesWayland(process.argv, process.env, process.platform) && !app.commandLine.getSwitchValue('enable-features').split(',').includes('Vulkan')) {
+  app.commandLine.appendSwitch('disable-features', withDisabledFeature(app.commandLine.getSwitchValue('disable-features'), 'Vulkan'));
+}
 
 // Must happen before the `ready` event.
 protocol.registerSchemesAsPrivileged([

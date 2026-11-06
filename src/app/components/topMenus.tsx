@@ -1,5 +1,5 @@
 /** Los menús «Edición» y «Ver» de la barra superior, con las teclas de cada acción a la derecha. */
-import { Copy, Crosshair, Eye, EyeOff, Link2, MousePointer2, PanelLeft, Redo2, Scissors, SquareDashedMousePointer, Undo2, Type, ZoomIn, ZoomOut, Keyboard, Sparkles } from 'lucide-react';
+import { Copy, Crosshair, Eye, EyeOff, Link2, MousePointer2, PanelLeft, Redo2, Scissors, SquareDashedMousePointer, Undo2, Type, ZoomIn, ZoomOut, Keyboard, Sparkles, Ruler } from 'lucide-react';
 import { useAssistant } from '../state/ai/assistant';
 import { copySelection, cutSelection, duplicateSelection, pasteSelection } from '../state/clipboard';
 import { currentDocument, selectionContext } from '../state/selectionContext';
@@ -51,6 +51,8 @@ export function editMenu(t: T): MenuItem[] {
     item('edit.editText', 'sc.edit.editText', <Type size={14} />, () => run('edit.editText'), !text),
     item('edit.hide', 'sc.edit.hide', <Eye size={14} />, () => run('edit.hide'), selected.length === 0),
     { label: t('menu.showHidden'), icon: <EyeOff size={14} />, disabled: hiddenCount() === 0, onSelect: () => st.setShowHidden(true) },
+    { separator: true },
+    { label: t('paper.menu'), icon: <Ruler size={14} />, disabled: !has, onSelect: () => st.setShowPaper(true) },
   ];
 }
 

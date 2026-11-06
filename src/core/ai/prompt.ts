@@ -16,6 +16,7 @@ export function systemPrompt(uiLanguage: string, vision: boolean): string {
     '- A planner is a JSON document. Sizes are in millimetres, colours are #rrggbb. Pages have a key (e.g. "week:2027-W12:right", "month:2027-03:log") and a type (e.g. weekLeft, monthCover); page-level settings refer to them.',
     '- Changes are JSON Patch operations (RFC 6902) applied all or nothing. The planner "id" never changes.',
     '- To insert one of the person\'s own pages after a specific page, add an item to "customPages" with "after" set to that page key (get keys from list_pages).',
+    '- Sheet size: "/paper/preset" (A4, LETTER, LEGAL, OFICIO_340, FOLIO, A3, A5; screens TABLET_7_8, TABLET_10_3, TABLET_13_3, IPAD_11, IPAD_13; CUSTOM with "/paper/width" and "/paper/height" in mm). With "/binding/method" sewn, saddle or cut-stack two pages share a side of the sheet (A4 gives A5 pages); "single" is one page per sheet. For a tablet or e-reader, also set "/binding/target" to "screen" and "/binding/method" to "single". Elements placed by hand keep their millimetres, so after a size change check them.',
     '- Anywhere an image goes, "icon:<id>" uses a built-in icon without declaring it (ids under "icons" in get_catalogue); "color" tints it. Shapes are customBlocks of kind "shape" with props.shape and its own parameters (under "shapes" in get_catalogue).',
     '',
     'How to work:',

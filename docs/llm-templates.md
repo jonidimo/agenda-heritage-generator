@@ -56,7 +56,7 @@ matters: it keeps npm from printing anything on the channel the client and the s
 
 | Tool | What it does |
 | --- | --- |
-| `create_design` | New planner from a template (`heritage`, `heritage-norma` (with a dedication), `clara` (large print), `minimal`) for a year, language, country and name. With `out` it writes the file; with `app: true` it opens it in the desktop app instead. |
+| `create_design` | New planner from a template (`heritage`, `heritage-norma` (with a dedication), `clara` (large print), `minimal`) for a year, language, country and name, and from the start its sheet size (`paper`: A4, LETTER, LEGAL…, tablet screens `TABLET_10_3`, `IPAD_11`…, or `CUSTOM` with `width`/`height`), `purpose` (`print` or `screen`) and `binding`. With `out` it writes the file; with `app: true` it opens it in the desktop app instead. |
 | `update_design` | Changes a file (`path`) or the planner open in the desktop app (`app: true`) with [JSON Patch](https://datatracker.ietf.org/doc/html/rfc6902) operations (`add`, `remove`, `replace`, `move`, `copy`, `test`). All or nothing; if the result would not open, nothing is changed. With `out`, the result is written to another file and `path` stays as it was. Across all tools, `path` is always the file that is read and `out` the file that is written. |
 | `check_design` | Lists what the program would ignore or correct in the file (unknown keys, invalid colours, values outside the list or range), and summarizes the built planner: pages, sheets, signatures, links and warnings (text that does not fit, missing images, broken links) with their pages. |
 | `list_pages` | The pages, with their number, key, type and title (filter by type). |

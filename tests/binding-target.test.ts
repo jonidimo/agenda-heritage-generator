@@ -55,7 +55,8 @@ describe('encuadernación efectiva', () => {
   });
 
   it('el núcleo no lee design.binding salvo para elegir el tamaño de la página, el esquema y esta función', () => {
-    const allowed = new Set(['src/core/document/binding.ts', 'src/core/document/reuse.ts', 'src/core/design/schema.ts', 'src/core/design/defaults.ts']);
+    // `paper.ts` escribe la encuadernación al cambiar el tamaño de la hoja (no la lee para maquetar).
+    const allowed = new Set(['src/core/document/binding.ts', 'src/core/document/reuse.ts', 'src/core/design/schema.ts', 'src/core/design/defaults.ts', 'src/core/document/paper.ts']);
     const hits: string[] = [];
     const walk = (dir: string): void => {
       for (const name of readdirSync(dir)) {

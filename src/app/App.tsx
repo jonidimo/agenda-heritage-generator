@@ -6,6 +6,7 @@ import type { AgendaDocument } from '@core/document';
 import { Canvas } from './components/canvas/Canvas';
 import { ContextMenuHost } from './components/ContextMenu';
 import { AboutDialog, HiddenDialog, LibraryDialog, SaveTemplateDialog, ShortcutsDialog, WelcomeDialog } from './components/Dialogs';
+import { PaperDialog } from './components/PaperDialog';
 import { ErrorBoundary, ViewError } from './components/ErrorBoundary';
 import { installFileDrop, openAnyFile } from './state/fileActions';
 import { Inspector } from './components/Inspector';
@@ -119,6 +120,7 @@ export function App() {
   const showSaveTemplate = useStore((s) => s.showSaveTemplate);
   const showAbout = useStore((s) => s.showAbout);
   const showShortcuts = useStore((s) => s.showShortcuts);
+  const showPaper = useStore((s) => s.showPaper);
   const showHidden = useStore((s) => s.showHidden);
   const setShowWelcome = useStore((s) => s.setShowWelcome);
   const sidebarOpen = useStore((s) => s.sidebarOpen);
@@ -397,6 +399,7 @@ export function App() {
       {showSaveTemplate && <SaveTemplateDialog />}
       {showAbout && <AboutDialog />}
       {showShortcuts && <ShortcutsDialog />}
+      {showPaper && <PaperDialog />}
       <IconPickerHost />
       {showHidden && <HiddenDialog />}
     </div>

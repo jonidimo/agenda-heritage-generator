@@ -1,7 +1,8 @@
 /** Biblioteca de agendas y asistente de nueva agenda. */
 import { createDesign, duplicateForYear, NOTEBOOK_DEFAULT_PAGES, NOTEBOOK_STYLES, TEMPLATES, type NotebookStyle, type TemplateId } from '@core/design/defaults';
 import { OPTION_COUNT } from '@core/sections/options';
-import type { Design } from '@core/design/schema';
+import { designDefaults, type Design } from '@core/design/schema';
+import { changePaper } from '@core/document/paper';
 import { countryName } from '@core/holidays';
 import { monthNames, regionOf, regionWeekInfo } from '@core/calendar/locale';
 import { countryLang, homeCountry, LANGUAGES, langOf, localeFor, type Lang } from '@core/i18n';
@@ -20,6 +21,7 @@ import { dataFolderFor } from '../state/platform';
 import { resources } from '../state/resources';
 import { useStore } from '../state/store';
 import { Button, Field, NumberInput, Select, TextArea, TextInput, Toggle } from './ui';
+import { PaperFields, paperChoiceOf, type PaperChoice } from './PaperDialog';
 import { clampPage } from '../state/paging';
 
 const FOCUSABLE = 'button:not([disabled]), [href], input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
@@ -94,6 +96,18 @@ export function WelcomeDialog() {
   const [notePages, setNotePages] = useState(NOTEBOOK_DEFAULT_PAGES);
   const [noteStyle, setNoteStyle] = useState<NotebookStyle>('dots');
   const undated = TEMPLATES.find((x) => x.id === template)?.undated === true;
+  // El tamaño de la hoja se elige al empezar: cambiarlo con la agenda armada mueve lo hecho a mano.
+  const [paper, setPaper] = useState<PaperChoice>(() => paperChoiceOf(designDefaults()));
+  // Cada plantilla trae su tamaño (una para tableta, por ejemplo): elegirla lo propone.
+  const pickTemplate = (id: string): void => {
+    setTemplate(id);
+    const own = id.startsWith('user:') ? userTpls.find((x) => `user:${x.id}` === id) : undefined;
+    try {
+      setPaper(paperChoiceOf(own ? own.design : createDesign(id as TemplateId, { year, locale: 'es-AR', country: null })));
+    } catch {
+      setPaper(paperChoiceOf(designDefaults()));
+    }
+  };
   const [startMonth, setStartMonth] = useState(1);
   const [monthCount, setMonthCount] = useState(12);
   const locale = localeFor(lang, country || null);
@@ -105,13 +119,15 @@ export function WelcomeDialog() {
   const create = (): void => {
     const own = template.startsWith('user:') ? userTpls.find((x) => `user:${x.id}` === template) : undefined;
     const calendar = (d: Design): Design => ({ ...d, calendar: { ...d.calendar, weekStart, startMonth, monthCount } });
+    // Una agenda nueva nace con el tamaño elegido (no hay nada hecho a mano que acompañar).
+    const sized = (d: Design): Design => changePaper(d, { ...paper, rescale: false });
     if (own) {
-      setDesign(calendar(designFromTemplate(own.design, { year, locale, country: country || null, name })));
+      setDesign(sized(calendar(designFromTemplate(own.design, { year, locale, country: country || null, name }))));
       setShow(false);
       return;
     }
     const d = createDesign(template as TemplateId, { year, locale, country: country || null, ...(name.trim() ? { name: name.trim() } : {}), ...(template === 'notebook' ? { pages: notePages, style: noteStyle } : {}) });
-    setDesign(undated ? d : calendar(d));
+    setDesign(sized(undated ? d : calendar(d)));
     setShow(false);
   };
 
@@ -121,7 +137,7 @@ export function WelcomeDialog() {
         <div className="grid gap-1.5">
           {TEMPLATES.map((tp) => (
             <label key={tp.id} className={`flex cursor-pointer gap-2 rounded-md border px-2 py-1.5 ${template === tp.id ? 'border-accent bg-accent-soft' : 'border-line bg-white/60'}`}>
-              <input type="radio" name="tpl" checked={template === tp.id} onChange={() => setTemplate(tp.id)} className="mt-0.5" />
+              <input type="radio" name="tpl" checked={template === tp.id} onChange={() => pickTemplate(tp.id)} className="mt-0.5" />
               <span>
                 <span className="block text-[13px] font-semibold">{uiText(t, `tpl.${tp.id}`, tp.name)}</span>
                 <span className="block text-[11.5px] text-ink-soft">{uiText(t, `tpl.${tp.id}.desc`, tp.description)}</span>
@@ -131,7 +147,7 @@ export function WelcomeDialog() {
           {userTpls.length > 0 && <p className="mt-1 text-[11px] font-extrabold tracking-[0.08em] text-ink-soft uppercase">{t('tpl.mine')}</p>}
           {userTpls.map((tp) => (
             <label key={tp.id} className={`flex cursor-pointer gap-2 rounded-md border px-2 py-1.5 ${template === `user:${tp.id}` ? 'border-accent bg-accent-soft' : 'border-line bg-white/60'}`}>
-              <input type="radio" name="tpl" checked={template === `user:${tp.id}`} onChange={() => setTemplate(`user:${tp.id}`)} className="mt-0.5" />
+              <input type="radio" name="tpl" checked={template === `user:${tp.id}`} onChange={() => pickTemplate(`user:${tp.id}`)} className="mt-0.5" />
               <span>
                 <span className="block text-[13px] font-semibold">{tp.name}</span>
                 {tp.description && <span className="block text-[11.5px] text-ink-soft">{tp.description}</span>}
@@ -198,6 +214,10 @@ export function WelcomeDialog() {
       <Field label={t('welcome.name')}>
         <TextInput value={name} onChange={setName} />
       </Field>
+      <section className="mt-1 rounded-md border border-line bg-white/60 px-2 py-1.5" aria-label={t('paper.title')} data-testid="welcome-paper">
+        <h3 className="mb-0.5 text-[11px] font-extrabold tracking-[0.08em] text-ink-soft uppercase">{t('paper.title')}</h3>
+        <PaperFields value={paper} onChange={setPaper} />
+      </section>
       <div className="mt-3 flex justify-end gap-2">
         {hasDesign && (
           <Button variant="ghost" onClick={() => setShow(false)}>

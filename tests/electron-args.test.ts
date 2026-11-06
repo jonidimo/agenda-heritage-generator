@@ -3,7 +3,7 @@
  * Linux sin pantalla hay que decir cómo hacerlo andar. Funciones puras, sin Electron.
  */
 import { describe, expect, it } from 'vitest';
-import { agendaFileFromArgv, HEADLESS_FLAG, MCP_FLAG, MISSING_DISPLAY_MESSAGE, missingDisplay, wantsMcp, windowsMcpMessage } from '../electron/lib/args.mjs';
+import { agendaFileFromArgv, HEADLESS_FLAG, MCP_FLAG, MISSING_DISPLAY_MESSAGE, missingDisplay, usesWayland, wantsMcp, windowsMcpMessage, withDisabledFeature } from '../electron/lib/args.mjs';
 
 describe('wantsMcp', () => {
   it('detecta --mcp en la aplicación instalada y en `electron .`', () => {
@@ -61,5 +61,23 @@ describe('archivo de agenda en la línea de comandos', () => {
     expect(agendaFileFromArgv(['electron', '/repo', '--no-sandbox', 'C:\\Agendas\\2027.AGENDA.JSON'])).toBe('C:\\Agendas\\2027.AGENDA.JSON');
     expect(agendaFileFromArgv(['electron', '--flag.json', 'x.txt'])).toBeNull();
     expect(agendaFileFromArgv(['electron'])).toBeNull();
+  });
+});
+
+describe('Wayland sin Vulkan', () => {
+  it('reconoce una sesión Wayland, salvo que se fuerce otra plataforma', () => {
+    expect(usesWayland(['electron', '.'], { WAYLAND_DISPLAY: 'wayland-0' }, 'linux')).toBe(true);
+    expect(usesWayland(['electron', '.'], { XDG_SESSION_TYPE: 'wayland' }, 'linux')).toBe(true);
+    expect(usesWayland(['electron', '.', '--ozone-platform=x11'], { WAYLAND_DISPLAY: 'wayland-0' }, 'linux')).toBe(false);
+    expect(usesWayland(['electron', '.', '--ozone-platform=headless'], { WAYLAND_DISPLAY: 'wayland-0' }, 'linux')).toBe(false);
+    expect(usesWayland(['electron', '.', '--ozone-platform=wayland'], { DISPLAY: ':0' }, 'linux')).toBe(true);
+    expect(usesWayland(['electron', '.'], { DISPLAY: ':0' }, 'linux')).toBe(false);
+    expect(usesWayland(['electron', '.'], { WAYLAND_DISPLAY: 'wayland-0' }, 'darwin')).toBe(false);
+  });
+
+  it('agrega Vulkan a la lista de funciones apagadas sin perder las que ya estaban', () => {
+    expect(withDisabledFeature('', 'Vulkan')).toBe('Vulkan');
+    expect(withDisabledFeature('Foo, Bar', 'Vulkan')).toBe('Foo,Bar,Vulkan');
+    expect(withDisabledFeature('Vulkan,Foo', 'Vulkan')).toBe('Vulkan,Foo');
   });
 });

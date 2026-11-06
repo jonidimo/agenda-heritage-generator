@@ -113,6 +113,9 @@ interface StoreState {
   setSearchOpen(b: boolean): void;
   showShortcuts: boolean;
   setShowShortcuts(b: boolean): void;
+  /** El diálogo «Tamaño de la hoja». */
+  showPaper: boolean;
+  setShowPaper(b: boolean): void;
   /** Diálogo con los elementos ocultos de la página actual. */
   showHidden: boolean;
   setShowHidden(b: boolean): void;
@@ -308,6 +311,7 @@ export const useStore = create<StoreState>((set, get) => ({
   showAbout: false,
   searchOpen: false,
   showShortcuts: false,
+  showPaper: false,
   showHidden: false,
   preflightRequest: 0,
   liveLink: prefs.liveLink.read(),
@@ -417,6 +421,7 @@ export const useStore = create<StoreState>((set, get) => ({
   setSearchOpen: (searchOpen) => set({ searchOpen }),
   setLastExport: (lastExport) => set({ lastExport }),
   setShowShortcuts: (showShortcuts) => set({ showShortcuts }),
+  setShowPaper: (showPaper) => set({ showPaper }),
   setShowHidden: (showHidden) => set({ showHidden }),
   setLiveLink(liveLink) {
     prefs.liveLink.write(liveLink);
