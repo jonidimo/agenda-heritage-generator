@@ -3,7 +3,7 @@
  * hábitos o bienestar, con un texto breve para imprimir en la guía, su nivel
  * de evidencia y las referencias verificadas (ver docs/evidencia-metodos.md).
  *
- * Para agregar un método nuevo: sumá una entrada aquí (textos en es/en/pt/it,
+ * Para agregar un método nuevo: sumá una entrada aquí (textos en es/en/pt/it/de/fr,
  * nivel de evidencia y referencias) y, si modifica páginas, consultá
  * `ctx.has('<id>')` en la sección correspondiente. Los usuarios también
  * pueden crear métodos propios desde la interfaz (sin código).

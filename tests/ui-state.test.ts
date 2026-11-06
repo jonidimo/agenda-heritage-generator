@@ -123,7 +123,7 @@ describe('preferencias de la interfaz', () => {
   it('un valor ilegible se ignora y uno fuera de rango se acomoda', () => {
     storage.setItem('agenda-studio.welcomeOnStart', 'quizás');
     storage.setItem('agenda-studio.uiScale', 'grande');
-    storage.setItem('agenda-studio.uiLang', 'fr');
+    storage.setItem('agenda-studio.uiLang', 'ja');
     storage.setItem('agenda-studio.panel.left', '99999');
     storage.setItem('agenda-studio.panel.right', '-5');
     storage.setItem('agenda-studio.panel.thumbs', '');

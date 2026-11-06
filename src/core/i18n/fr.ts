@@ -207,11 +207,11 @@ export const fr: AgendaStrings = {
   },
   designName: {
     base: 'Agenda {year}',
-    person: 'Agenda de {name} {year}',
+    person: 'Agenda {name} {year}',
     clara: 'Agenda {year} · Lecture facile',
     minimal: 'Agenda {year} · Minimal',
     notebook: 'Carnet',
-    notebookPerson: 'Carnet de {name}',
+    notebookPerson: 'Carnet · {name}',
     blank: 'Agenda vierge',
   },
   gift: {

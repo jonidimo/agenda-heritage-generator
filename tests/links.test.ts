@@ -473,7 +473,9 @@ describe('idioma y región', () => {
     expect(localeFor('es', null)).toBe('es');
     expect(countryLang('UY')).toBe('es');
     expect(countryLang('BR')).toBe('pt');
-    expect(countryLang('DE')).toBeUndefined();
+    expect(countryLang('DE')).toBe('de');
+    expect(countryLang('FR')).toBe('fr');
+    expect(countryLang('JP')).toBeUndefined();
   });
 });
 

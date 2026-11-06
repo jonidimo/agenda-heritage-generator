@@ -1,10 +1,13 @@
 /**
- * Textos de la interfaz (no de la agenda impresa) en es/en/pt/it. Diccionario
+ * Textos de la interfaz (no de la agenda impresa) en es/en/pt/it/de/fr. Diccionario
  * plano: TypeScript exige que cada idioma tenga todas las claves.
  */
+import { LANGUAGES, type Lang } from '@core/i18n';
 import { useStore } from '../state/store';
+import { de } from './ui.de';
+import { fr } from './ui.fr';
 
-export type UiLang = 'es' | 'en' | 'pt' | 'it';
+export type UiLang = Lang;
 
 const es = {
   'app.name': 'Agenda Heritage Studio',
@@ -5467,7 +5470,7 @@ const it: Dict = {
   'welcome.openFile': 'Apri un file…',
 };
 
-const DICTS: Record<UiLang, Dict> = { es, en, pt, it };
+const DICTS: Record<UiLang, Dict> = { es, en, pt, it, de, fr };
 
 /** Todos los textos de la interfaz en un idioma (los usa el buscador). */
 export function uiEntries(lang: UiLang): Array<[UiKey, string]> {
@@ -5517,8 +5520,8 @@ export function pageTitle(t: (k: UiKey) => string, p: { type: string; title: str
   return dynamic && p.title ? p.title : sectionName(t, p.type);
 }
 
-export const UI_LANGS: readonly UiLang[] = ['es', 'en', 'pt', 'it'];
-export const UI_LANG_NAMES: Record<UiLang, string> = { es: 'Español', en: 'English', pt: 'Português', it: 'Italiano' };
+export const UI_LANGS: readonly UiLang[] = LANGUAGES;
+export const UI_LANG_NAMES: Record<UiLang, string> = { es: 'Español', en: 'English', pt: 'Português', it: 'Italiano', de: 'Deutsch', fr: 'Français' };
 
 export function isUiLang(l: string): l is UiLang {
   return (UI_LANGS as readonly string[]).includes(l);

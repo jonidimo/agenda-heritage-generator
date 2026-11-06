@@ -1,15 +1,17 @@
 import { likelyLanguage, likelyRegion } from '../calendar/locale';
 import { en } from './en';
+import { de } from './de';
 import { es, type AgendaStrings } from './es';
+import { fr } from './fr';
 import { it } from './it';
 import { pt } from './pt';
 
 export type { AgendaStrings } from './es';
 
-export const LANGUAGES = ['es', 'en', 'pt', 'it'] as const;
+export const LANGUAGES = ['es', 'en', 'pt', 'it', 'de', 'fr'] as const;
 export type Lang = (typeof LANGUAGES)[number];
 
-const TABLE: Record<Lang, AgendaStrings> = { es, en, pt, it };
+const TABLE: Record<Lang, AgendaStrings> = { es, en, pt, it, de, fr };
 
 /** ¿Es uno de los idiomas de la agenda? */
 export function isLang(l: string): l is Lang {
@@ -22,7 +24,7 @@ export function langOf(locale: string): Lang {
   return (LANGUAGES as readonly string[]).includes(base) ? (base as Lang) : 'es';
 }
 
-/** Idioma de la agenda que se habla en un país, según CLDR (AR → es, BR → pt, DE → ninguno). */
+/** Idioma de la agenda que se habla en un país, según CLDR (AR → es, BR → pt, JP → ninguno). */
 export function countryLang(country: string | null | undefined): Lang | undefined {
   if (!country) return undefined;
   const l = likelyLanguage(country.toUpperCase());
