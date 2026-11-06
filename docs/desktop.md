@@ -97,6 +97,14 @@ desktop app, on the website and on any other computer. Anything that was not sav
 file is lost if that folder is deleted. Files and PDFs are saved through the usual system
 **Save** dialog.
 
+**Images next to the file.** A planner written by hand or by an AI model can point to its
+images by path instead of carrying them inside (`"path": "images/logo.png"`, relative to the
+folder of the `.agenda.json`). When the system opens such a file in the app (double click,
+**Open with…**, or the file passed on the command line), the app reads those images from that
+folder, never from outside it, and from then on keeps them with the planner. Opening the file
+from inside the app (**File → Open** or dragging it onto the window) cannot reach the folder:
+the app says which images it could not read.
+
 ## 4. If the window does not appear
 
 On some Linux computers (for example Wayland with an NVIDIA graphics card) Chromium cannot

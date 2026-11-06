@@ -64,7 +64,7 @@ async function cmdNew(): Promise<void> {
 }
 
 async function cmdInfo(path: string): Promise<void> {
-  const { doc, errors } = await openNodeDocument(await readDesignFile(path), await allFonts());
+  const { doc, errors } = await openNodeDocument(await readDesignFile(path), await allFonts(), { baseDir: dirname(resolve(path)) });
   for (const line of formatSummary(documentSummary(doc, errors))) console.log(line);
 }
 
@@ -74,7 +74,7 @@ async function cmdInfo(path: string): Promise<void> {
  */
 async function cmdCheck(path: string): Promise<void> {
   const { design, issues } = checkDesignJson(await readFile(resolve(path), 'utf8'));
-  const opened = design ? await openNodeDocument(design, await allFonts()) : null;
+  const opened = design ? await openNodeDocument(design, await allFonts(), { baseDir: dirname(resolve(path)) }) : null;
   const summary = opened ? documentSummary(opened.doc, opened.errors) : null;
   const failed = !design || (has('strict') && issues.length > 0);
   if (has('json')) process.stdout.write(`${JSON.stringify({ ok: !failed, opens: Boolean(design), issues, summary }, null, 2)}\n`);
@@ -94,7 +94,7 @@ async function cmdPdf(path: string): Promise<void> {
   const signature = sigFlag === undefined ? undefined : Number(sigFlag);
   if (mode === 'signature' && (signature === undefined || !Number.isInteger(signature) || signature < 1))
     throw new Error('Con --mode signature indicá el cuadernillo con --signature N (1, 2, 3…).');
-  const { doc, bytes } = await openNodeDocument(design, await allFonts());
+  const { doc, bytes } = await openNodeDocument(design, await allFonts(), { baseDir: dirname(resolve(path)) });
   const t0 = Date.now();
   const pdf = await doc.exportPdf(mode, {
     assetBytes: (id) => bytes.get(id),
@@ -109,7 +109,7 @@ async function cmdPdf(path: string): Promise<void> {
 }
 
 async function cmdSvg(path: string): Promise<void> {
-  const { doc, assetHref } = await openNodeDocument(await readDesignFile(path), await allFonts());
+  const { doc, assetHref } = await openNodeDocument(await readDesignFile(path), await allFonts(), { baseDir: dirname(resolve(path)) });
   const index = Number(flag('page', '1')) - 1;
   const page = doc.page(index);
   const out = await writeOut(flag('out', `output/page-${index + 1}.svg`)!, pageToSvg(page, { fonts: doc.ctx.fonts, assetHref }, { background: '#ffffff' }));

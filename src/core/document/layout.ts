@@ -235,13 +235,17 @@ function placeCustomBlock(ctx: LayoutContext, cb: CustomBlock, page: PagePlan): 
       if (auto) box = { ...box, h: autoTextHeight(t.lines, t.sizePt) };
       break;
     }
-    case 'image':
-      prims = assetPrims(ctx.doc.assets.get(String(p.assetId ?? '')), box, {
+    case 'image': {
+      const id = typeof p.assetId === 'string' ? p.assetId : '';
+      // Sin imagen elegida es un elemento a medio armar; con una que no se pudo cargar, se avisa.
+      if (id && !ctx.doc.assets.has(id)) ctx.warn('missingAsset', `La imagen «${String(p.label ?? cb.id)}» usa un archivo que no se pudo cargar: se deja el espacio vacío.`, { name: id });
+      prims = assetPrims(ctx.doc.assets.get(id), box, {
         fit: enumProp(p.fit, IMAGE_FITS, 'contain'),
         opacity: numProp(p.opacity, PROP_RANGES.opacity, PROP_DEFAULTS.opacity),
         minStrokePt: 0.25,
       });
       break;
+    }
     case 'lines':
       // Un elemento propio de renglones es siempre de renglones (no sigue el estilo de la página).
       prims = ruledLines(box, numProp(p.pitch, PROP_RANGES.pitch, ctx.theme.writing.pitch), ctx.stroke('hair'));

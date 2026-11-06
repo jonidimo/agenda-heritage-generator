@@ -14,6 +14,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { app, BrowserWindow, dialog, Menu, net, protocol, safeStorage, screen, session, shell } from 'electron';
 import { AiSettingsStore, AUTH, aiTargetAllowed, cleanBaseUrl, isProviderId, MAX_KEY_LENGTH, parseChatRequest } from './lib/ai.mjs';
 import { agendaFileFromArgv, MAX_OPEN_BYTES } from './lib/args.mjs';
+import { inlineAssetPaths } from './lib/assets.mjs';
 import { createCloseGuard } from './lib/closing.mjs';
 import { DownloadLog, sysRequestAllowed, sysRoute } from './lib/downloads.mjs';
 import { createLiveBroker, LIVE_ERRORS, LIVE_INFO_FILE, LIVE_PROTOCOL, liveEndpoint, newToken, writeLiveInfo } from './lib/live.mjs';
@@ -258,7 +259,8 @@ async function openPlannerFile(file) {
     dialog.showErrorBox(APP_NAME, `Could not open ${file}.`);
     return;
   }
-  const text = await readFile(file, 'utf8');
+  // Images saved next to the file (by relative path) travel inside it: the page cannot read that folder.
+  const { text } = await inlineAssetPaths(await readFile(file, 'utf8'), path.dirname(file), { realpath: fsp.realpath, stat: fsp.stat, readFile: fsp.readFile });
   app.addRecentDocument(file);
   await win.webContents.executeJavaScript(`window.__heritageOpen && window.__heritageOpen(${JSON.stringify(text)}, ${JSON.stringify(path.basename(file))})`);
   if (win.isMinimized()) win.restore();

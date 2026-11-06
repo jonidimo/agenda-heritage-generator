@@ -97,6 +97,9 @@ async function importDesignObject(data: unknown): Promise<Design> {
   await saveDesign(design);
   // Guardado por una versión más nueva: lo que esta no entiende se descartó al abrirlo y se perdería al guardarlo.
   if (isNewerVersion(design.writtenBy, __APP_VERSION__)) useStore.getState().setNotice(tNow('file.newerVersion', { name: design.name, version: design.writtenBy, current: __APP_VERSION__ }));
+  // Imágenes guardadas junto al archivo (por ruta): desde acá no se puede leer esa carpeta.
+  const unread = design.assets.filter((a) => a.path && !assets.some((x) => x.id === a.id));
+  if (unread.length > 0) useStore.getState().setNotice(tNow(unread.length === 1 ? 'file.pathAssetsOne' : 'file.pathAssets', { name: unread[0]!.name, path: unread[0]!.path ?? '', n: unread.length }));
   return design;
 }
 

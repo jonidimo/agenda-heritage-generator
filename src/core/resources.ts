@@ -190,10 +190,11 @@ export interface LoadedAssets {
 }
 
 /**
- * Carga los recursos del diseño: integrados (desde la carpeta pública),
- * incrustados en base64 o provistos por el llamador (p. ej. IndexedDB).
+ * Carga los recursos del diseño, en este orden: los provistos por el llamador (p. ej. IndexedDB), los
+ * incrustados en base64, los archivos junto a la agenda (`path`, con `files`: la carpeta del
+ * `.agenda.json`) y los integrados (desde la carpeta pública).
  */
-export async function loadAssets(io: ResourceIO, design: Design, provided: ReadonlyMap<string, Uint8Array> = new Map()): Promise<LoadedAssets> {
+export async function loadAssets(io: ResourceIO, design: Design, provided: ReadonlyMap<string, Uint8Array> = new Map(), files: ResourceIO | null = null): Promise<LoadedAssets> {
   const infos = new Map<string, AssetInfo>();
   const bytes = new Map<string, Uint8Array>();
   const errors: string[] = [];
@@ -202,9 +203,20 @@ export async function loadAssets(io: ResourceIO, design: Design, provided: Reado
       try {
         let b = provided.get(ref.id);
         if (!b && ref.data) b = fromBase64(ref.data);
+        let pathError: string | null = null;
+        if (!b && ref.path) {
+          if (!files) pathError = `La imagen «${ref.name}» está en un archivo aparte (${ref.path}) que acá no se puede leer: abrí la agenda desde su carpeta o incrustá la imagen.`;
+          else {
+            try {
+              b = await files.read(ref.path);
+            } catch (err) {
+              pathError = `No se pudo leer «${ref.name}» (${ref.path}): ${(err as Error).message}`;
+            }
+          }
+        }
         if (!b && ref.builtin) b = await io.read(ref.builtin);
         if (!b) {
-          errors.push(`Falta el recurso «${ref.name}».`);
+          errors.push(pathError ?? `Falta el recurso «${ref.name}».`);
           return;
         }
         bytes.set(ref.id, b);

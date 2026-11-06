@@ -7,6 +7,7 @@
  * Los archivos se leen y escriben solo dentro de la carpeta de trabajo (ver `Workspace`).
  */
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { dirname } from 'node:path';
 import { z } from 'zod';
 import { createDesign, TEMPLATES, type TemplateId } from '../core/design/defaults';
 import { designJsonSchema, schemaPart } from '../core/design/jsonSchema';
@@ -23,7 +24,7 @@ import type { FontRegistry } from '../core/text/fonts';
 import { applyJsonPatch, type JsonPatchOp } from '../core/util/jsonPatch';
 import { JsonPatchOpZ } from '../core/util/jsonPatchSchema';
 import { checkDesignData, checkDesignJson, type CheckResult } from '../node/check';
-import { fullCatalogue, loadFonts, openNodeDocument } from '../node/env';
+import { folderIO, fullCatalogue, loadFonts, openNodeDocument } from '../node/env';
 import type { Rasterizer } from './resvg';
 import { AppLink } from './live';
 import { Workspace } from './workspace';
@@ -101,8 +102,12 @@ export function createServer(opts: ServerOptions): McpServer {
     return fonts;
   };
 
-  /** Lee y revisa la agenda pedida; si no abre, el error lista los problemas. */
-  async function load(input: { path?: string | undefined; design?: Record<string, unknown> | undefined; app?: boolean | undefined }): Promise<{ check: CheckResult; design: Design; revision?: number }> {
+  /**
+   * Lee y revisa la agenda pedida; si no abre, el error lista los problemas. `baseDir` es la carpeta de
+   * donde salen sus imágenes por ruta: la del archivo, o la de trabajo para una agenda escrita en el
+   * pedido (la de la aplicación ya trae sus imágenes adentro).
+   */
+  async function load(input: { path?: string | undefined; design?: Record<string, unknown> | undefined; app?: boolean | undefined }): Promise<{ check: CheckResult; design: Design; revision?: number; baseDir?: string }> {
     const given = [input.path !== undefined, input.design !== undefined, input.app === true].filter(Boolean).length;
     if (given !== 1) throw new Error('Indicá la agenda con «path» (un archivo), con «design» (el JSON) o con «app: true» (la abierta en la aplicación): una sola.');
     let raw: unknown = input.design;
@@ -113,16 +118,21 @@ export function createServer(opts: ServerOptions): McpServer {
       raw = got.design;
       revision = got.revision;
     }
-    if (input.path !== undefined) raw = parseJson((await ws.read(input.path, JSON_EXT)).text, input.path);
+    let baseDir: string | undefined = input.design !== undefined ? ws.root : undefined;
+    if (input.path !== undefined) {
+      const file = await ws.read(input.path, JSON_EXT);
+      raw = parseJson(file.text, input.path);
+      baseDir = dirname(file.full);
+    }
     // Una plantilla guardada desde la aplicación trae la agenda adentro.
     const wrapped = raw as { kind?: unknown; design?: unknown } | null;
     if (wrapped?.kind === 'heritage-template' && wrapped.design) raw = wrapped.design;
     const check = checkDesignData(raw);
     if (!check.design) throw new Error(`La agenda no se puede abrir:\n${check.issues.map((i) => `${i.path}: ${i.message}`).join('\n')}`);
-    return { check, design: check.design, ...(revision !== undefined ? { revision } : {}) };
+    return { check, design: check.design, ...(revision !== undefined ? { revision } : {}), ...(baseDir !== undefined ? { baseDir } : {}) };
   }
 
-  const open = async (design: Design) => openNodeDocument(design, await sharedFonts());
+  const open = async (design: Design, baseDir?: string) => openNodeDocument(design, await sharedFonts(), { baseDir });
 
   /** Un archivo escrito por este servidor dice qué versión lo escribió (la aplicación avisa si ella es más vieja). */
   const stamp = <T,>(design: T): T => (typeof design === 'object' && design !== null && !Array.isArray(design) ? { ...design, writtenBy: opts.version } : design);
@@ -207,7 +217,7 @@ export function createServer(opts: ServerOptions): McpServer {
       if (!check.design) return { ...text({ written: false, issues: check.issues }), isError: true };
       await ws.write(full, `${JSON.stringify(stamp(next), null, 2)}\n`, { extensions: DESIGN_EXT, overwrite: true });
       // Los avisos de maquetación que el cambio produjo (texto que no entra, fuera de la página…).
-      const layout = await newLayoutWarnings(open, checkDesignJson(body).design, check.design);
+      const layout = await newLayoutWarnings((d) => open(d, dirname(full)), checkDesignJson(body).design, check.design);
       return text({ written: true, path: ws.show(full), issues: check.issues, warnings: layout.notes, ...(layout.omitted > 0 ? { omittedWarnings: layout.omitted } : {}) });
     },
   );
@@ -223,10 +233,35 @@ export function createServer(opts: ServerOptions): McpServer {
     const next = applyJsonPatch(got.design, patch);
     const check = checkDesignData(next);
     if (!check.design) return { ...text({ applied: false, issues: check.issues }), isError: true };
-    const sent = await appLink.request<LivePatchResult>('design.patch', { patch, baseRevision: got.revision });
+    // La aplicación no tiene carpeta: las imágenes por ruta (relativas a la de trabajo) le llegan con sus datos.
+    const { ops: withData, errors: assetErrors } = await pathAssetData(check.design);
+    const sent = await appLink.request<LivePatchResult>('design.patch', { patch: [...patch, ...withData], baseRevision: got.revision });
     if (!sent.applied) return { ...text({ applied: false, issues: sent.issues }), isError: true };
-    const layout = await newLayoutWarnings(open, before, check.design);
-    return text({ applied: true, revision: sent.revision, issues: check.issues, warnings: layout.notes, ...(layout.omitted > 0 ? { omittedWarnings: layout.omitted } : {}) });
+    const layout = await newLayoutWarnings((d) => open(d, ws.root), before, check.design);
+    return text({
+      applied: true,
+      revision: sent.revision,
+      issues: check.issues,
+      warnings: layout.notes,
+      ...(layout.omitted > 0 ? { omittedWarnings: layout.omitted } : {}),
+      ...(assetErrors.length > 0 ? { assetErrors } : {}),
+    });
+  }
+
+  /** Operaciones que agregan los datos de las imágenes por ruta de una agenda (leídas de la carpeta de trabajo). */
+  async function pathAssetData(design: Design): Promise<{ ops: JsonPatchOp[]; errors: string[] }> {
+    const io = folderIO(ws.root);
+    const ops: JsonPatchOp[] = [];
+    const errors: string[] = [];
+    for (const [i, a] of design.assets.entries()) {
+      if (a.data || !a.path) continue;
+      try {
+        ops.push({ op: 'add', path: `/assets/${i}/data`, value: toBase64(await io.read(a.path)) });
+      } catch (err) {
+        errors.push(`No se pudo leer «${a.name}» (${a.path}): ${(err as Error).message}`);
+      }
+    }
+    return { ops, errors };
   }
 
   /* ---------- La aplicación de escritorio abierta ---------- */
@@ -289,8 +324,8 @@ export function createServer(opts: ServerOptions): McpServer {
       annotations: { readOnlyHint: true },
     },
     async (input) => {
-      const { check, design } = await load(input);
-      const { doc, errors } = await open(design);
+      const { check, design, baseDir } = await load(input);
+      const { doc, errors } = await open(design, baseDir);
       return text({ issues: check.issues, summary: documentSummary(doc, errors) });
     },
   );
@@ -309,8 +344,8 @@ export function createServer(opts: ServerOptions): McpServer {
       annotations: { readOnlyHint: true },
     },
     async ({ type, offset, limit, ...input }) => {
-      const { design } = await load(input);
-      const { doc } = await open(design);
+      const { design, baseDir } = await load(input);
+      const { doc } = await open(design, baseDir);
       return text(listPages(doc, { type, offset, limit }));
     },
   );
@@ -324,8 +359,8 @@ export function createServer(opts: ServerOptions): McpServer {
       annotations: { readOnlyHint: true },
     },
     async ({ page, width, ...input }) => {
-      const { design } = await load(input);
-      const { doc, assetHref } = await open(design);
+      const { design, baseDir } = await load(input);
+      const { doc, assetHref } = await open(design, baseDir);
       if (page > doc.pageCount) throw new Error(`La agenda tiene ${doc.pageCount} páginas.`);
       const model = doc.page(page - 1);
       const svg = pageToSvg(model, { fonts: doc.ctx.fonts, assetHref }, { background: '#ffffff' });
@@ -358,8 +393,8 @@ export function createServer(opts: ServerOptions): McpServer {
     },
     async ({ mode, signature, out, ...input }) => {
       if (mode === 'signature' && signature === undefined) throw new Error('Con mode=signature indicá el cuadernillo en «signature» (1, 2, 3…).');
-      const { design } = await load(input);
-      const { doc, bytes } = await open(design);
+      const { design, baseDir } = await load(input);
+      const { doc, bytes } = await open(design, baseDir);
       const pdf = await doc.exportPdf(mode, { assetBytes: (id) => bytes.get(id), ...(signature !== undefined ? { signature: signature - 1 } : {}) });
       const full = await ws.write(out, pdf, { extensions: ['.pdf'], overwrite: true });
       return text({ path: ws.show(full), bytes: pdf.length, pages: doc.pageCount });
@@ -374,8 +409,8 @@ export function createServer(opts: ServerOptions): McpServer {
       inputSchema: { ...source, name: z.string().min(1).max(80), description: z.string().max(400).optional(), out: z.string().describe('Archivo a escribir (.tema.json)'), overwrite: z.boolean().optional() },
     },
     async ({ name, description, out, overwrite, ...input }) => {
-      const { design } = await load(input);
-      const { bytes } = await open(design);
+      const { design, baseDir } = await load(input);
+      const { bytes } = await open(design, baseDir);
       const file = themeFile(themeFromDesign(design, name, description ?? ''), (id) => {
         const b = bytes.get(id);
         return b ? toBase64(b) : null;

@@ -129,7 +129,7 @@ Todo campo tiene valor por defecto: alcanza con escribir lo que cambia. Las medi
 | `blockStyles` | Estilo propio de un bloque del programa: `lines` (por uso: `writing`, `separator`, `table`, `frame`, `other`) con `pattern`, `color`, `widthPt`; `fill.color` (`null`: sin relleno); `text.color` y `text.roles`. La entrada de la página gana a la del tipo, campo por campo. |
 | `pageStyles` | Ajustes del tema solo para un tipo de página o una página. |
 | `links` | Enlaces y marcadores del PDF para tabletas y lectores de tinta electrónica. En `links.blocks`, `area` elige una zona tocable de un bloque (`date:2027-01-05`, `month:2027-03`, `toc`…); vacía, vale para todo el bloque. |
-| `assets` | Imágenes y PDF, como ruta integrada (`watermarks/colibri.svg`) o datos en base64. |
+| `assets` | Imágenes y PDF, como ruta integrada (`builtin`: `watermarks/colibri.svg`), datos en base64 (`data`) o un archivo junto a la agenda (`path`: relativo a la carpeta del `.agenda.json`, como `imagenes/logo.png`, nunca con `..`). Para que el JSON no se infle, preferí `path` y dejá la imagen junto al archivo: la leen la línea de comandos, el servidor MCP y la aplicación de escritorio (al abrir el archivo); la aplicación web pide incrustarla. |
 
 **Tipos y claves de página.** Cada página tiene un *tipo* (`weekLeft`, `monthLog`, `notes`…,
 listados como `pageTypes` en el catálogo) y una *clave* única. `list_pages` y `render_page`

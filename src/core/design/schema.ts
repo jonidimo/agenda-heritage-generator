@@ -4,6 +4,7 @@
  * así un archivo viejo o incompleto siempre se completa y valida.
  */
 import { z } from 'zod';
+import { RELATIVE_PATH_MAX, RELATIVE_PATH_PATTERN } from '../util/relpath';
 import { normalizeColor } from '../util/color';
 import { LINE_PATTERNS, LINE_USES, pruneTokens } from './themes';
 import { BLEND_MODES } from './blend';
@@ -485,6 +486,12 @@ export const AssetRefZ = z.object({
   builtin: z.string().regex(BUILTIN_PATH).nullable().catch(null).default(null),
   /** Contenido en base64 cuando el diseño se exporta como archivo autocontenido. */
   data: z.string().nullable().optional(),
+  /**
+   * Archivo junto a la agenda, relativo a la carpeta del `.agenda.json` (p. ej. «imagenes/logo.png»):
+   * vale cuando no hay `data`. Lo leen la línea de comandos, el servidor MCP y la aplicación de
+   * escritorio al abrir el archivo; nunca fuera de esa carpeta.
+   */
+  path: z.string().max(RELATIVE_PATH_MAX).regex(new RegExp(RELATIVE_PATH_PATTERN, 'u')).nullable().optional().catch(null),
   pages: intIn(0, 100_000).optional(),
 });
 export type AssetRef = z.infer<typeof AssetRefZ>;

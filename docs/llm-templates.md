@@ -128,7 +128,7 @@ sizes in **points**, colours are `#rrggbb`.
 | `blockStyles` | Own style for a built-in block: `lines` (per use: `writing`, `separator`, `table`, `frame`, `other`) with `pattern`, `color`, `widthPt`; `fill.color` (`null` for none); `text.color` and `text.roles`. The page entry wins over the page-type entry field by field. |
 | `pageStyles` | Theme tokens for one page type or one page only. |
 | `links` | Links and bookmarks of the PDF for tablets and e-readers. In `links.blocks`, `area` picks one tappable spot of a block (`date:2027-01-05`, `month:2027-03`, `toc`…); empty means the whole block. |
-| `assets` | Images and PDFs, as built-in paths (`watermarks/colibri.svg`) or base64 data. |
+| `assets` | Images and PDFs, as built-in paths (`builtin`: `watermarks/colibri.svg`), base64 data (`data`), or a file next to the planner (`path`: relative to the `.agenda.json` folder, such as `images/logo.png`, never with `..`). To keep the JSON small, prefer `path` and leave the image next to the file: the command line, the MCP server and the desktop app (when it opens the file) read it; the web app asks for it to be embedded. |
 
 **Page types and keys.** Every page has a *type* (`weekLeft`, `monthLog`, `notes`… listed as
 `pageTypes` in the catalogue) and a unique *key*. `list_pages` and `render_page` show both.

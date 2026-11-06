@@ -4,7 +4,7 @@
  * (en CI, `xvfb-run`).
  */
 import { _electron as electron, expect, test, type ElectronApplication } from '@playwright/test';
-import { mkdir, mkdtemp, rm, stat, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createRequire } from 'node:module';
@@ -186,6 +186,29 @@ test('un archivo de agenda pasado a la aplicación («Abrir con…», doble clic
   expect(await win.evaluate<number>('globalThis.__agenda.getState().design.calendar.year')).toBe(2031);
   // El archivo no trae secciones: se abre una agenda sin páginas, con lo que se puede hacer para empezar.
   await expect(win.getByTestId('no-pages')).toBeVisible({ timeout: 60_000 });
+});
+
+test('al abrir un archivo con imágenes guardadas junto a él, las imágenes llegan a la agenda', async () => {
+  const folder = join(profile, 'con-imagenes');
+  await mkdir(join(folder, 'img'), { recursive: true });
+  await writeFile(join(folder, 'img', 'logo.svg'), await readFile(join(ROOT, 'public/watermarks/colibri.svg')));
+  const design = {
+    name: 'Con imágenes',
+    sections: [{ id: 'titlePage', type: 'titlePage' }],
+    assets: [
+      { id: 'logo', name: 'Logo junto al archivo', kind: 'vector', mime: 'image/svg+xml', width: 20, height: 20, path: 'img/logo.svg' },
+      { id: 'fuera', name: 'Fuera de la carpeta', kind: 'vector', mime: 'image/svg+xml', width: 20, height: 20, path: '../secreto.svg' },
+    ],
+  };
+  const file = join(folder, 'Con imágenes.agenda.json');
+  await writeFile(file, JSON.stringify(design));
+  const electronApp = await launch(file);
+  const win = await electronApp.firstWindow();
+  await expect.poll(() => win.evaluate<string | null>('globalThis.__agenda?.getState().design?.name ?? null'), { timeout: 60_000 }).toBe('Con imágenes');
+  await win.getByRole('tab', { name: 'Imágenes', exact: true }).click();
+  // La miniatura sale de los bytes: solo existe si la imagen llegó.
+  await expect(win.locator('li', { hasText: 'Logo junto al archivo' }).locator('img')).toBeVisible();
+  await expect(win.locator('li', { hasText: 'Fuera de la carpeta' }).locator('img')).toHaveCount(0);
 });
 
 test('cerrar la ventana espera a que termine el guardado pendiente', async () => {
