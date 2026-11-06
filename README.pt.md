@@ -113,6 +113,10 @@ ficam as suas agendas e como gerar o aplicativo. Para usar no navegador, veja
 - **Ícones e formas**: uma biblioteca de 96 ícones (Lucide), que se buscam em qualquer idioma e se tingem de qualquer cor, e quinze formas: retângulo, elipse, linha com setas ou pontos, seta, triângulo, losango, polígono (de 3 a 24 lados), estrela (de 3 a 24 pontas), coração, anel, arco ou setor, balão de fala, faixa, cruz e traçado livre SVG. O traço fica dentro da caixa e cada forma mostra só seus ajustes.
 - **Uma imagem em cada capa de mês** no lugar do adesivo, para um mês ou para todos.
 - **Camadas**: um painel lista os elementos da página de cima para baixo; subir, descer, enviar para o fundo, renomear, ocultar e mesclar com o que está embaixo (multiplicar, tela, escurecer, clarear). Ctrl+↑ e Ctrl+↓ movem o elemento escolhido.
+- **Menu de camadas e bloqueio**: clique direito numa linha de Camadas para duplicar, bloquear ou desbloquear, renomear, trazer para a frente, enviar para o fundo ou apagar. Um elemento bloqueado é selecionado, mas não é arrastado, redimensionado, movido com as setas nem apagado (Ctrl+Alt+L). Abaixo da lista, a opacidade, a mesclagem e o bloqueio do escolhido.
+- **Formas**: preenchimento como amostra de cor com um botão *Sem preenchimento*, opacidade de 5 a 100 %, e todo elemento próprio gira de 0 a 360°.
+- **Recursos / Vetores**: qualquer imagem, SVG ou ícone se coloca na página com um clique, ou vira um **pincel de carimbo e traço**: um clique deixa uma cópia; arrastar deixa cópias ao longo do traço (tamanho, espaçamento, reto / segue o traço / aleatório, variação, cor). Cada traço é um elemento e um passo de Desfazer.
+- **Tela cheia (F11)**: só a página, sem os painéis laterais; F11 ou Esc os devolvem como estavam.
 - **O que se oculta não se perde**: Editar → *Mostrar elementos ocultos* lista cada um e o traz de volta. **Aproximar da seleção** com Ctrl+Shift+2; o rodapé da página conta os avisos da página atual e as miniaturas mostram um ponto.
 - **Atalhos de teclado** para tudo, listados no aplicativo (F1) e ao lado de cada item de menu, com menus Arquivo, Editar e Ver.
 
@@ -234,10 +238,11 @@ ficam as suas agendas e como gerar o aplicativo. Para usar no navegador, veja
   (`"path": "imagens/logo.png"`) em vez de levá-las dentro; a linha de comando, o servidor MCP
   e o aplicativo de desktop (quando o sistema abre o arquivo) as leem só dessa pasta.
 - Aplicativo de desktop: ao exportar um PDF mostra **onde foi salvo**, com *Abrir pasta*; as agendas abrem com duplo clique num `.agenda.json` ou soltando-as na janela, e fechar nunca perde a última alteração.
+- **O tamanho da folha desde o início**: a tela de agenda nova mostra o papel (ou a tela do tablet), a encadernação e o tamanho que fica cada página. *Arquivo/Edição → Tamanho da folha…* muda depois e pode levar seus elementos à página nova num só passo de Desfazer.
 
 ### Um assistente de IA dentro do aplicativo
 
-- Uma pílula discreta no pé da página (**Ctrl+J**): peça uma mudança com suas palavras
+- Um botão redondo no canto inferior direito (**Ctrl+J**): peça uma mudança com suas palavras
   («aumente as notas desta página», «um registro de hábitos todo mês»). O assistente lê a
   agenda, propõe **uma** mudança e você a vê na página antes de **Aplicar** ou **Descartar**;
   uma mudança aplicada é um único passo de desfazer. Nada fica guardado ao fechar.
@@ -248,6 +253,7 @@ ficam as suas agendas e como gerar o aplicativo. Para usar no navegador, veja
   criptografa (Chaves, DPAPI, libsecret) e os pedidos saem pelo aplicativo; na web ela fica em
   memória, ou criptografada no navegador se você escolher lembrá-la. Os ajustes estão em
   *Arquivo → Assistente de IA…* ou na engrenagem da pílula.
+- **Versão 2.4.1**: o assistente fica como um botão redondo no canto inferior direito. Com um servidor local a lista de modelos é buscada sozinha (uma lista para escolher, não um campo que filtra), e um endereço sem `/v1` é oferecido corrigido. Pedir outra coisa com uma proposta à vista a **ajusta** (a próxima proposta se soma e Aplicar confirma tudo num passo), e o cartão mostra cada mudança com o valor anterior e o novo.
 
 ### Crie com um modelo de inteligência artificial
 

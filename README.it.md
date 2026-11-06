@@ -111,6 +111,10 @@ Per usarla nel browser, vedi [Come usarla](#come-usarla).
 - **Icone e forme**: una libreria di 96 icone (Lucide), che si cercano in qualsiasi lingua e si colorano di qualsiasi colore, e quindici forme: rettangolo, ellisse, linea con frecce o punti, freccia, triangolo, rombo, poligono (da 3 a 24 lati), stella (da 3 a 24 punte), cuore, anello, arco o settore, fumetto, nastro, croce e tracciato libero SVG. Il tratto resta dentro il riquadro e ogni forma mostra solo le sue impostazioni.
 - **Un’immagine su ogni copertina del mese** al posto dell’adesivo, per un mese o per tutti.
 - **Livelli**: un pannello elenca gli elementi della pagina dall’alto in basso; sposta su, giù, sullo sfondo, rinomina, nascondi e fondi con ciò che sta sotto (moltiplica, scherma, scurisci, schiarisci). Ctrl+↑ e Ctrl+↓ spostano l’elemento scelto.
+- **Menu dei livelli e blocco**: clic destro su una riga di Livelli per duplicare, bloccare o sbloccare, rinominare, portare in primo piano, mandare sullo sfondo o eliminare. Un elemento bloccato si seleziona ma non si trascina, non si ridimensiona, non si sposta con le frecce e non si elimina (Ctrl+Alt+L). Sotto l’elenco, opacità, fusione e blocco dell’elemento scelto.
+- **Forme**: riempimento come campione di colore con un pulsante *Nessun riempimento*, opacità dal 5 al 100 %, e ogni elemento personale ruota da 0 a 360°.
+- **Risorse / Vettori**: qualsiasi immagine, SVG o icona si posiziona sulla pagina con un clic, o diventa un **pennello timbro e tratto**: un clic lascia una copia; trascinando si lasciano copie lungo il tratto (dimensione, spaziatura, dritto / segue il tratto / casuale, variazione, colore). Ogni tratto è un elemento e un passo di Annulla.
+- **Schermo intero (F11)**: solo la pagina, senza i pannelli laterali; F11 o Esc li riportano com’erano.
 - **Ciò che nascondi non si perde**: Modifica → *Mostra elementi nascosti* li elenca e li riporta uno per uno. **Ingrandisci sulla selezione** con Ctrl+Maiusc+2; il piè di pagina conta gli avvisi della pagina corrente e le miniature mostrano un punto.
 - **Scorciatoie da tastiera** per tutto, elencate nell’app (F1) e accanto a ogni voce di menu, con i menu File, Modifica e Vista.
 
@@ -233,10 +237,11 @@ Per usarla nel browser, vedi [Come usarla](#come-usarla).
   (`"path": "immagini/logo.png"`) invece di contenerle; la riga di comando, il server MCP e
   l’app desktop (quando il sistema le apre il file) le leggono solo da quella cartella.
 - App desktop: dopo aver esportato un PDF mostra **dove è stato salvato**, con *Apri cartella*; le agende si aprono con doppio clic su un `.agenda.json` o trascinandole sulla finestra, e chiudere non perde mai l’ultima modifica.
+- **Il formato del foglio fin dall’inizio**: la schermata della nuova agenda mostra la carta (o lo schermo del tablet), la rilegatura e il formato di ogni pagina. *File/Modifica → Formato del foglio…* lo cambia dopo e può portare i tuoi elementi alla nuova pagina in un solo passo di Annulla.
 
 ### Un assistente IA dentro l’app
 
-- Una pillola discreta in fondo alla pagina (**Ctrl+J**): chiedi una modifica con parole tue
+- Un pulsante rotondo in basso a destra (**Ctrl+J**): chiedi una modifica con parole tue
   («ingrandisci le note di questa pagina», «un registro delle abitudini ogni mese»).
   L’assistente legge l’agenda, propone **una** modifica e la vedi sulla pagina prima di
   **Applicarla** o **Scartarla**; una modifica applicata è un solo passo di annulla. Alla
@@ -248,6 +253,7 @@ Per usarla nel browser, vedi [Come usarla](#come-usarla).
   operativo (Portachiavi, DPAPI, libsecret) e le richieste passano dall’app; sul web resta in
   memoria, o cifrata nel browser se scegli di ricordarla. Le impostazioni sono in
   *File → Assistente IA…* o nell’ingranaggio della pillola.
+- **Versione 2.4.1**: l’assistente sta in un pulsante rotondo in basso a destra. Con un server locale l’elenco dei modelli si cerca da solo (un elenco da cui scegliere, non un campo che filtra), e un indirizzo senza `/v1` viene proposto corretto. Chiedere altro con una proposta in vista la **ritocca** (la proposta successiva si somma e Applica conferma tutto in un passo), e la scheda mostra ogni modifica con il valore prima e dopo.
 
 ### Progetta con un modello di intelligenza artificiale
 

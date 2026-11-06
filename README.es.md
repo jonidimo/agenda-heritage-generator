@@ -112,6 +112,10 @@ Para usarla en el navegador, mirá [Cómo usarla](#cómo-usarla).
 - **Íconos y formas**: una biblioteca de 96 íconos (Lucide), que se buscan en cualquier idioma y se tiñen de cualquier color, y quince formas: rectángulo, elipse, línea con flechas o puntos, flecha, triángulo, rombo, polígono (de 3 a 24 lados), estrella (de 3 a 24 puntas), corazón, aro, arco o sector, globo de diálogo, cinta, cruz y trazado libre SVG. El trazo queda dentro de la caja y cada forma muestra solo sus ajustes.
 - **Una imagen en cada portada de mes** en lugar del sticker, para un mes o para todos.
 - **Capas**: un panel lista los elementos de la página de arriba hacia abajo; subir, bajar, llevar al fondo, renombrar, ocultar y fusionar con lo de abajo (multiplicar, trama, oscurecer, aclarar). Ctrl+↑ y Ctrl+↓ mueven el elemento elegido.
+- **Menú de capas y bloqueo**: clic derecho en una fila de Capas para duplicar, bloquear o desbloquear, renombrar, traer al frente, enviar al fondo o borrar. Un elemento bloqueado se elige pero no se arrastra, no cambia de tamaño, no se mueve con las flechas ni se borra (Ctrl+Alt+L). Debajo de la lista, la opacidad, la fusión y el bloqueo del elegido.
+- **Formas**: relleno como una muestra de color con un botón *Sin relleno*, opacidad de 5 a 100 %, y todo elemento propio gira de 0 a 360°.
+- **Recursos / Vectores**: cualquier imagen, SVG o ícono se coloca en la página con un clic, o se usa como **pincel de sello y trazo**: un clic deja una copia; arrastrar deja copias a lo largo del trazo (tamaño, espaciado, derecho / sigue el trazo / al azar, variación, color). Cada trazo es un elemento y un paso de Deshacer.
+- **Pantalla completa (F11)**: solo la página, sin los paneles laterales; F11 o Esc los devuelven como estaban.
 - **Lo oculto no se pierde**: Edición → *Mostrar elementos ocultos* los lista y devuelve cada uno. **Acercar a la selección** con Ctrl+Mayús+2; el pie de la página cuenta los avisos de la página actual y las miniaturas muestran un punto.
 - **Atajos de teclado** para todo, listados en la aplicación (F1) y junto a cada ítem de menú, con menús Archivo, Edición y Ver.
 
@@ -234,10 +238,11 @@ Para usarla en el navegador, mirá [Cómo usarla](#cómo-usarla).
   "imagenes/logo.png"`) en lugar de llevarlas adentro; la línea de comandos, el servidor MCP y
   la aplicación de escritorio (cuando el sistema le abre el archivo) las leen solo de esa carpeta.
 - Aplicación de escritorio: al exportar un PDF muestra **dónde quedó guardado**, con *Abrir carpeta*; las agendas se abren con doble clic en un `.agenda.json` o soltándolas sobre la ventana, y cerrar nunca pierde el último cambio.
+- **El tamaño de la hoja desde el principio**: la pantalla de agenda nueva muestra el papel (o la pantalla de la tableta), cómo se encuaderna y el tamaño que queda cada página. *Archivo/Edición → Tamaño de la hoja…* lo cambia después y puede llevar tus elementos a la página nueva en un solo paso de Deshacer.
 
 ### Un asistente de IA dentro de la aplicación
 
-- Una píldora discreta al pie de la página (**Ctrl+J**): pedí un cambio con tus palabras
+- Un botón redondo en la esquina de abajo a la derecha (**Ctrl+J**): pedí un cambio con tus palabras
   («agrandá las notas de esta página», «un registro de hábitos cada mes»). El asistente lee
   la agenda, propone **un** cambio y lo ves en la página antes de **Aplicarlo** o
   **Descartarlo**; un cambio aplicado es un solo paso de deshacer. No queda nada guardado al cerrar.
@@ -248,6 +253,7 @@ Para usarla en el navegador, mirá [Cómo usarla](#cómo-usarla).
   operativo (Llavero, DPAPI, libsecret) y los pedidos salen por la aplicación; en la web vive
   en memoria, o cifrada en el navegador si elegís recordarla. Los ajustes están en
   *Archivo → Asistente de IA…* o en el engranaje de la píldora.
+- **Versión 2.4.1**: el asistente queda como un botón redondo en la esquina de abajo a la derecha. Con un servidor local la lista de modelos se busca sola (una lista para elegir, no un campo que filtra), y una dirección sin `/v1` se ofrece corregida. Pedir otra cosa con una propuesta a la vista la **ajusta** (la próxima propuesta se suma y Aplicar confirma todo en un paso), y la tarjeta muestra cada cambio con su valor de antes y el nuevo.
 
 ### Diseñar con un modelo de inteligencia artificial
 

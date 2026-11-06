@@ -212,7 +212,7 @@ extracted `AppRun`:
 
 ```sh
 cd ~/Apps
-./heritage-studio-2.4.0-linux-x86_64.AppImage --appimage-extract   # creates ~/Apps/squashfs-root
+./heritage-studio-2.4.1-linux-x86_64.AppImage --appimage-extract   # creates ~/Apps/squashfs-root
 ```
 
 This also starts faster and needs no FUSE. Do not use `--appimage-extract-and-run` (or the
@@ -270,8 +270,8 @@ a **View** menu with **Reload** and **Toggle Developer Tools**.
 2. Push a tag that starts with `v`:
 
    ```sh
-   git tag v2.4.0
-   git push origin v2.4.0
+   git tag v2.4.1
+   git push origin v2.4.1
    ```
 
 3. The **Desktop apps** workflow builds the three systems and creates the GitHub Release

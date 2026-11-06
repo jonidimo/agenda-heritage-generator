@@ -112,6 +112,10 @@ selbst baust. Wenn du sie lieber im Browser nutzen willst, siehe [Lokal ausführ
 - **Symbole und Formen**: eine Bibliothek mit 96 Symbolen (Lucide), in jeder Sprache durchsuchbar und in jeder Farbe einfärbbar, und fünfzehn Formen: Rechteck, Ellipse, Linie mit Pfeilen oder Punkten, Pfeil, Dreieck, Raute, Polygon (3 bis 24 Seiten), Stern (3 bis 24 Zacken), Herz, Ring, Bogen oder Kreissektor, Sprechblase, Banner, Kreuz und ein freier SVG-Pfad. Die Kontur bleibt innerhalb des Kastens, und es werden nur die Einstellungen der jeweiligen Form angezeigt.
 - **Ein Bild auf jedem Monatsdeckblatt** statt des Stickers, für einen Monat oder für alle.
 - **Ebenen**: Ein Panel listet die Elemente der Seite von oben nach unten auf; nach oben, nach unten, ganz nach hinten, umbenennen, ausblenden und mit dem Darunterliegenden verschmelzen (Multiplizieren, Negativ multiplizieren, Abdunkeln, Aufhellen). Strg+↑ und Strg+↓ verschieben das gewählte Element.
+- **Ebenenmenü und Sperren**: Rechtsklick auf eine Zeile in Ebenen zum Duplizieren, Sperren oder Entsperren, Umbenennen, In den Vordergrund, In den Hintergrund oder Löschen. Ein gesperrtes Element lässt sich auswählen, aber nicht ziehen, skalieren, mit den Pfeilen verschieben oder löschen (Strg+Alt+L). Unter der Liste Deckkraft, Füllmethode und Sperre des gewählten Elements.
+- **Formen**: Füllung als Farbfeld mit einer Schaltfläche *Keine Füllung*, Deckkraft von 5 bis 100 %, und jedes eigene Element dreht sich von 0 bis 360°.
+- **Ressourcen / Vektoren**: Jedes Bild, SVG oder Symbol mit einem Klick auf die Seite legen oder als **Stempel- und Strichpinsel** nutzen: ein Klick setzt eine Kopie; Ziehen setzt Kopien entlang des Strichs (Größe, Abstand, gerade / folgt dem Strich / zufällig, Variation, Farbe). Jeder Strich ist ein Element und ein Rückgängig-Schritt.
+- **Vollbild (F11)**: nur die Seite, ohne Seitenleisten; F11 oder Esc bringen sie wie zuvor zurück.
 - **Ausgeblendete Elemente gehen nie verloren**: Bearbeiten → *Ausgeblendete Elemente anzeigen* listet sie auf und holt jedes einzeln zurück. **Auf die Auswahl zoomen** mit Strg+Umschalt+2; die Fußzeile zählt die Warnungen der aktuellen Seite, und Miniaturansichten zeigen einen Punkt.
 - **Tastenkürzel** für alles, in der App aufgelistet (F1) und neben jedem Menüeintrag, mit den Menüs Datei, Bearbeiten und Ansicht.
 
@@ -240,10 +244,11 @@ selbst baust. Wenn du sie lieber im Browser nutzen willst, siehe [Lokal ausführ
   MCP-Server und die Desktop-App (wenn das System die Datei öffnet) lesen sie nur aus diesem
   Ordner.
 - Desktop-App: Nach dem Export eines PDFs zeigt sie, **wo es gespeichert wurde**, mit *Ordner öffnen*; Planer öffnen sich per Doppelklick auf eine `.agenda.json` oder indem du sie auf das Fenster ziehst, und beim Schließen geht nie die letzte Änderung verloren.
+- **Die Blattgröße von Anfang an**: Der Bildschirm für einen neuen Planer zeigt das Papier (oder den Tablet-Bildschirm), die Bindung und die daraus folgende Seitengröße. *Datei/Bearbeiten → Blattgröße…* ändert sie später und kann eigene Elemente in einem Rückgängig-Schritt an die neue Seite anpassen.
 
 ### Ein KI-Assistent in der App
 
-- Eine unauffällige Pille am unteren Seitenrand (**Strg+J**): Bitte mit deinen eigenen Worten
+- Eine runde Schaltfläche unten rechts (**Strg+J**): Bitte mit deinen eigenen Worten
   um eine Änderung („mach die Notizen auf dieser Seite größer“, „jeden Monat einen
   Habit-Tracker“). Der Assistent liest den Planer, schlägt **eine** Änderung vor, und du
   siehst sie auf der Seite, bevor du sie **übernimmst** oder **verwirfst**; eine übernommene
@@ -255,6 +260,7 @@ selbst baust. Wenn du sie lieber im Browser nutzen willst, siehe [Lokal ausführ
   Betriebssystem (Schlüsselbund, DPAPI, libsecret), und Anfragen laufen über die App; auf der
   Website bleibt er im Arbeitsspeicher oder verschlüsselt im Browser, wenn du ihn dir merken
   lässt. Einstellungen unter *Datei → KI-Assistent…* oder über das Zahnrad an der Pille.
+- **Version 2.4.1**: Der Assistent sitzt als runde Schaltfläche unten rechts. Bei einem lokalen Server wird die Modellliste selbst geholt (eine Auswahlliste, kein filterndes Feld), und eine Adresse ohne `/v1` wird korrigiert angeboten. Wer etwas anderes verlangt, während ein Vorschlag sichtbar ist, **verfeinert** ihn (der nächste Vorschlag kommt hinzu, Übernehmen bestätigt alles in einem Schritt), und die Karte zeigt jede Änderung mit altem und neuem Wert.
 
 ### Mit einem KI-Modell gestalten
 

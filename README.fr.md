@@ -113,6 +113,10 @@ l’application vous-même. Pour l’utiliser plutôt dans le navigateur, voir [
 - **Icônes et formes** : une bibliothèque de 96 icônes (Lucide), consultable dans toutes les langues et teintée de n’importe quelle couleur, et quinze formes : rectangle, ellipse, ligne avec flèches ou points, flèche, triangle, losange, polygone (3 à 24 côtés), étoile (3 à 24 branches), cœur, anneau, arc ou secteur, bulle de dialogue, bannière, croix et un tracé SVG libre. Le trait reste à l’intérieur du cadre et seuls les réglages de chaque forme sont affichés.
 - **Une image sur chaque couverture de mois** à la place de l’autocollant, pour un mois ou pour tous.
 - **Calques** : un panneau liste les éléments de la page de haut en bas ; monter, descendre, envoyer à l’arrière-plan, renommer, masquer et fondre avec ce qui se trouve dessous (produit, superposition claire, obscurcir, éclaircir). Ctrl+↑ et Ctrl+↓ déplacent l’élément choisi.
+- **Menu des calques et verrouillage** : clic droit sur une ligne de Calques pour dupliquer, verrouiller ou déverrouiller, renommer, mettre au premier plan, envoyer à l’arrière-plan ou supprimer. Un élément verrouillé se sélectionne mais ne se fait pas glisser, ne se redimensionne pas, ne bouge pas avec les flèches et ne se supprime pas (Ctrl+Alt+L). Sous la liste, l’opacité, la fusion et le verrouillage de l’élément choisi.
+- **Formes** : remplissage en pastille de couleur avec un bouton *Sans remplissage*, opacité de 5 à 100 %, et tout élément personnel tourne de 0 à 360°.
+- **Ressources / Vecteurs** : toute image, tout SVG ou toute icône se pose sur la page d’un clic, ou devient un **pinceau tampon et tracé** : un clic laisse une copie ; glisser laisse des copies le long du tracé (taille, espacement, droit / suit le tracé / aléatoire, variation, couleur). Chaque tracé est un élément et une étape d’annulation.
+- **Plein écran (F11)** : la page seule, sans les panneaux latéraux ; F11 ou Échap les remettent comme avant.
 - **Les éléments masqués ne sont jamais perdus** : Édition → *Afficher les éléments masqués* les liste et les rétablit un par un. **Zoom sur la sélection** avec Ctrl+Maj+2 ; le pied de page compte les avertissements de la page en cours, et les miniatures affichent un point.
 - **Raccourcis clavier** pour tout, listés dans l’application (F1) et à côté de chaque élément de menu, avec les menus Fichier, Édition et Affichage.
 
@@ -240,10 +244,11 @@ l’application vous-même. Pour l’utiliser plutôt dans le navigateur, voir [
   l’application de bureau (quand le système ouvre le fichier) les lisent uniquement depuis ce
   dossier.
 - Application de bureau : après l’export d’un PDF, elle indique **où il a été enregistré**, avec *Ouvrir le dossier* ; les agendas s’ouvrent par un double-clic sur un `.agenda.json` ou en le déposant sur la fenêtre, et la fermeture ne perd jamais la dernière modification.
+- **Le format de la feuille dès le départ** : l’écran de nouvel agenda montre le papier (ou l’écran de la tablette), la reliure et la taille de chaque page. *Fichier/Édition → Format de la feuille…* le change ensuite et peut adapter vos éléments à la nouvelle page en une seule étape d’annulation.
 
 ### Un assistant IA dans l’application
 
-- Une pastille discrète en bas de la page (**Ctrl+J**) : demandez une modification avec vos
+- Un bouton rond en bas à droite (**Ctrl+J**) : demandez une modification avec vos
   propres mots (« agrandis les notes de cette page », « un suivi d’habitudes chaque mois »).
   L’assistant lit l’agenda, propose **une** modification, et vous la voyez sur la page avant de
   l’**Appliquer** ou de l’**Ignorer** ; une modification appliquée correspond à une seule étape
@@ -256,6 +261,7 @@ l’application vous-même. Pour l’utiliser plutôt dans le navigateur, voir [
   l’application ; sur le site web, elle reste en mémoire, ou chiffrée dans le navigateur si vous
   choisissez de la mémoriser. Réglages dans *Fichier → Assistant IA…* ou via l’engrenage de la
   pastille.
+- **Version 2.4.1** : l’assistant tient dans un bouton rond en bas à droite. Avec un serveur local, la liste des modèles se récupère toute seule (une liste à choisir, pas un champ qui filtre), et une adresse sans `/v1` est proposée corrigée. Demander autre chose pendant qu’une proposition est affichée l’**ajuste** (la proposition suivante s’ajoute et Appliquer confirme tout en une étape), et la carte montre chaque changement avec l’ancienne et la nouvelle valeur.
 
 ### Concevez avec un modèle d’IA
 

@@ -106,6 +106,10 @@ instead, see [Run it](#run-it).
 - **Icons and shapes**: a library of 96 icons (Lucide), searchable in every language and tinted any colour, and fifteen shapes: rectangle, ellipse, line with arrows or dots, arrow, triangle, diamond, polygon (3 to 24 sides), star (3 to 24 points), heart, ring, arc or sector, speech bubble, banner, cross and a free SVG path. The stroke stays inside the box and only the settings of each shape are shown.
 - **An image on each month cover** instead of the sticker, for one month or for all of them.
 - **Layers**: a panel lists the page's elements from top to bottom; raise, lower, send to the back, rename, hide, and blend with what is underneath (multiply, screen, darken, lighten). Ctrl+↑ and Ctrl+↓ move the chosen element.
+- **Layer menu and lock**: right-click a row in Layers to duplicate, lock or unlock, rename, bring to the front, send to the back, or delete. A locked element can be selected but not dragged, resized, nudged or deleted (Ctrl+Alt+L). Under the list, the chosen element's opacity, blend and lock.
+- **Shapes**: fill as a colour swatch with a *No fill* button, opacity from 5 to 100 %, and every element of your own rotates from 0 to 360°.
+- **Assets / Vectors**: place any image, SVG or icon on the page with one click, or use it as a **stamp and stroke brush**: a click leaves one copy; dragging leaves copies along the stroke (size, spacing, upright / following the stroke / random, variation, colour). Each stroke is one element and one undo step.
+- **Full screen (F11)**: just the page, without the side panels; F11 or Esc brings them back as they were.
 - **Hidden elements are never lost**: Edit → *Show hidden elements* lists them and brings each one back. **Zoom to the selection** with Ctrl+Shift+2; the page footer counts the warnings of the current page, and thumbnails show a dot.
 - **Keyboard shortcuts** for everything, listed in the app (F1) and beside each menu item, with File, Edit and View menus.
 
@@ -223,10 +227,11 @@ instead, see [Run it](#run-it).
   "images/logo.png"`) instead of carrying them inside; the command line, the MCP server and
   the desktop app (when the system opens the file) read them from that folder only.
 - Desktop app: after exporting a PDF it shows **where it was saved**, with *Open folder*; planners open by double-clicking a `.agenda.json` or by dropping it on the window, and closing never loses the last change.
+- **Sheet size from the start**: the new-planner screen shows the paper (or the tablet screen), how it is bound and the resulting page size. *File/Edit → Sheet size…* changes it later and can scale your own elements to the new page in one undo step.
 
 ### An AI assistant inside the app
 
-- A discreet pill at the foot of the page (**Ctrl+J**): ask for a change in your own words
+- A round button in the bottom-right corner (**Ctrl+J**): ask for a change in your own words
   («make the notes on this page bigger», «a habit tracker every month»). The assistant reads
   the planner, proposes **one** change, and you see it on the page before you **Apply** or
   **Discard** it; an applied change is a single undo step. Nothing is kept once you close it.
@@ -237,6 +242,7 @@ instead, see [Run it](#run-it).
   (Keychain, DPAPI, libsecret) and requests go out through the app; on the website it lives
   in memory, or encrypted in the browser if you choose to remember it. Settings in
   *File → AI assistant…* or the gear on the pill.
+- **Version 2.4.1**: the assistant sits as a round button in the bottom-right corner. With a local server the model list is fetched by itself (a choice list, not a filtered field), and an address without `/v1` is offered with it. Asking for something else while a proposal is on screen **refines** it (the next proposal adds to it and Apply confirms everything as one step), and the card shows each change with its old and new values.
 
 ### Design with an AI model
 
