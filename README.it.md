@@ -14,6 +14,8 @@ in segnature piegate e cucite a mano.**
 
 </div>
 
+**Provala online:** [jonidimo.github.io/agenda-heritage-generator](https://jonidimo.github.io/agenda-heritage-generator/) (sempre l’ultima versione, senza installare nulla).
+
 Heritage Studio è nato come un’unica agenda artigianale per il 2026. Oggi è un’app che
 costruisce il libro completo per qualsiasi anno: calendario, festività, registri delle
 abitudini e pagine di pianificazione basate sulle scienze comportamentali. Dispone le

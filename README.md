@@ -14,6 +14,8 @@ folded into signatures and sewn by hand.**
 
 </div>
 
+**Try it online:** [jonidimo.github.io/agenda-heritage-generator](https://jonidimo.github.io/agenda-heritage-generator/) (always the latest version, nothing to install).
+
 Heritage Studio began as one handmade planner for 2026. It is now an app that builds
 the whole book for any year: calendar, holidays, habit trackers and planning pages based
 on behavioural science. It lays the pages out on sheets ready for a duplex printer, so

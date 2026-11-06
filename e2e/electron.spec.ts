@@ -27,7 +27,15 @@ test.beforeEach(async () => {
 });
 
 test.afterEach(async () => {
-  await app?.close();
+  // Una aplicación que no termina de cerrarse no debe colgar la prueba: se la cierra a la fuerza pasado un rato.
+  const closing = app?.close().catch(() => undefined);
+  const running = app;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const forced = new Promise<void>((resolve) => {
+    timer = setTimeout(() => (running?.process().kill('SIGKILL'), resolve()), 20_000);
+  });
+  await Promise.race([closing, forced]);
+  clearTimeout(timer);
   app = null;
   await rm(profile, { recursive: true, force: true });
 });
@@ -138,9 +146,13 @@ test('al exportar un PDF se ve dónde quedó, y «Abrir carpeta» solo abre lo q
   const { electronApp, win } = await launchWithPlanner();
   const out = join(profile, 'salida');
   await mkdir(out, { recursive: true });
-  // El «Guardar como» del sistema se reemplaza por una ruta fija.
-  await electronApp.evaluate(({ session }, dir) => {
+  // El «Guardar como» del sistema se reemplaza por una ruta fija, y mostrar una carpeta se anota en lugar de abrir el
+  // explorador del sistema (en un runner sin escritorio deja procesos colgados que impiden cerrar la aplicación).
+  await electronApp.evaluate(({ session, shell }, dir) => {
     session.defaultSession.on('will-download', (_event, item) => item.setSavePath(`${dir}/${item.getFilename()}`));
+    const seen: string[] = [];
+    (globalThis as unknown as { __shown: string[] }).__shown = seen;
+    shell.showItemInFolder = (path: string) => void seen.push(path);
   }, out);
   await win.getByRole('button', { name: 'Impresión', exact: true }).click();
   await win.getByRole('button', { name: 'Hoja de calibración' }).click();
@@ -162,6 +174,7 @@ test('al exportar un PDF se ve dónde quedó, y «Abrir carpeta» solo abre lo q
   // Y el botón de la pantalla llega al mismo lugar sin errores.
   await box.getByRole('button', { name: 'Abrir carpeta' }).click();
   await expect(box).toBeVisible();
+  await expect.poll(() => electronApp.evaluate((_, file) => (globalThis as unknown as { __shown: string[] }).__shown.filter((p) => p === file).length, saved)).toBeGreaterThanOrEqual(1);
 });
 
 test('un archivo de agenda pasado a la aplicación («Abrir con…», doble clic) se abre solo', async () => {
