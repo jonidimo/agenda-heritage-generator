@@ -255,7 +255,7 @@ export function PrintPanel() {
               )}
             </>
           )}
-          {doc && (
+          {doc && doc.pageCount > 0 && (
             <Button
               variant="ghost"
               onClick={() =>

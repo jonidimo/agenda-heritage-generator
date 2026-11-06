@@ -81,7 +81,7 @@ export class Resources {
   }
 
   /** De qué partes del diseño salió lo último que se aseguró: si no cambiaron, no hay nada nuevo que cargar. */
-  private ensured: { theme: Design['theme']; customBlocks: Design['customBlocks']; country: string | null; assets: Design['assets']; icons: number } | null = null;
+  private ensured: { theme: Design['theme']; customBlocks: Design['customBlocks']; country: string | null; assets: Design['assets']; icons: string } | null = null;
 
   /** Carga lo que necesita un diseño (caras del tema, datos del país, recursos). */
   async ensureFor(design: Design): Promise<void> {
@@ -90,7 +90,9 @@ export class Resources {
     const prev = this.ensured;
     const country = design.holidays.country;
     // Los íconos por nombre (`icon:<id>`) pueden aparecer en cualquier parte: se cuentan aparte.
-    const icons = effectiveAssets(design).length;
+    const icons = effectiveAssets(design)
+      .map((a) => a.id)
+      .join('|');
     if (prev && prev.theme === design.theme && prev.customBlocks === design.customBlocks && prev.country === country && prev.assets === design.assets && prev.icons === icons) return;
     let changed = false;
     // Si algo falla (una descarga, un archivo), no se da por asegurado: el próximo cambio lo reintenta.

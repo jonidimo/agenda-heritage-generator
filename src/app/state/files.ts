@@ -89,18 +89,20 @@ async function adopt(assets: Array<{ id: string; bytes: Uint8Array }>, fonts: Ar
   useStore.getState().bumpResources(resources.version);
 }
 
-export type Imported = { kind: 'design'; design: Design } | { kind: 'template'; template: TemplateRecord } | { kind: 'backup'; designs: number; templates: number };
+/** Lo que se abrió; una agenda trae los avisos para la persona (se muestran después de abrirla). */
+export type Imported = { kind: 'design'; design: Design; notices: string[] } | { kind: 'template'; template: TemplateRecord } | { kind: 'backup'; designs: number; templates: number };
 
-async function importDesignObject(data: unknown): Promise<Design> {
+async function importDesignObject(data: unknown): Promise<{ design: Design; notices: string[] }> {
   const { design, assets, fonts } = await importDesignData(data);
   await adopt(assets, fonts);
   await saveDesign(design);
-  // Guardado por una versión más nueva: lo que esta no entiende se descartó al abrirlo y se perdería al guardarlo.
-  if (isNewerVersion(design.writtenBy, __APP_VERSION__)) useStore.getState().setNotice(tNow('file.newerVersion', { name: design.name, version: design.writtenBy, current: __APP_VERSION__ }));
+  const notices: string[] = [];
+  // Guardado por una versión más nueva: lo que esta no entiende se descartó al abrirlo y se perdería al guardarlo (va primero).
+  if (isNewerVersion(design.writtenBy, __APP_VERSION__)) notices.push(tNow('file.newerVersion', { name: design.name, version: design.writtenBy, current: __APP_VERSION__ }));
   // Imágenes guardadas junto al archivo (por ruta): desde acá no se puede leer esa carpeta.
   const unread = design.assets.filter((a) => a.path && !assets.some((x) => x.id === a.id));
-  if (unread.length > 0) useStore.getState().setNotice(tNow(unread.length === 1 ? 'file.pathAssetsOne' : 'file.pathAssets', { name: unread[0]!.name, path: unread[0]!.path ?? '', n: unread.length }));
-  return design;
+  if (unread.length > 0) notices.push(tNow(unread.length === 1 ? 'file.pathAssetsOne' : 'file.pathAssets', { name: unread[0]!.name, path: unread[0]!.path ?? '', n: unread.length }));
+  return { design, notices };
 }
 
 async function importTemplateObject(raw: { id?: string; name?: string; description?: string; createdAt?: string; design: unknown }): Promise<TemplateRecord> {
@@ -128,7 +130,7 @@ export async function importText(text: string): Promise<Imported> {
     return { kind: 'backup', designs: d, templates: t };
   }
   if (raw.kind === 'heritage-template') return { kind: 'template', template: await importTemplateObject(raw as { design: unknown }) };
-  return { kind: 'design', design: await importDesignObject(raw) };
+  return { kind: 'design', ...(await importDesignObject(raw)) };
 }
 
 /** Elige un archivo y lo abre (si es una agenda, «Guardar» vuelve a escribir en él). */

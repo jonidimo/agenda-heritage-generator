@@ -277,6 +277,9 @@ export function shortcutsFor(e: KeyLike, typing: boolean): Shortcut[] {
   return SHORTCUTS.filter((s) => s.run && (!typing || s.typing === true) && s.chords.some((c) => matchesChord(c, e)));
 }
 
+/** Los atajos que abren algo sobre la página: con un diálogo abierto no corren. */
+const OPENS_DIALOG: ReadonlySet<string> = new Set(['search.open', 'help.shortcuts', 'ai.focus']);
+
 /** Engancha el oyente único de teclado. Devuelve la función que lo desengancha. */
 export function installShortcuts(): () => void {
   const onKey = (e: KeyboardEvent): void => {
@@ -287,6 +290,8 @@ export function installShortcuts(): () => void {
     // Con un diálogo abierto, solo las teclas que valen escribiendo (zoom, buscar, ayuda): nada se mueve detrás.
     const modal = document.querySelector('[aria-modal="true"]') !== null;
     for (const s of shortcutsFor(e, isTyping(e.target) || modal)) {
+      // Un diálogo no abre otro encima (buscar, la ayuda, el asistente): Esc cerraría los dos juntos.
+      if (modal && OPENS_DIALOG.has(s.id)) continue;
       if (s.run!(e) !== false) {
         e.preventDefault();
         return;

@@ -165,7 +165,7 @@ export function Inspector({ doc }: { doc: AgendaDocument }) {
             {!block.editable && <p className="text-[12px] text-ink-soft">{t('insp.locked')}</p>}
             {block.editable && block.role === 'writing' && <WritingFields page={page} scope={scope} setScope={setScope} />}
             {block.editable && block.role === 'watermark' && <WatermarkFields id={block.id.slice(3)} />}
-            {block.id === 'cover.sticker' && page.type === 'monthCover' && <CoverImageFields page={page} doc={doc} />}
+            {block.id === 'cover.sticker' && page.type === 'monthCover' && <CoverImageFields key={page.key} page={page} doc={doc} />}
             {block.editable && block.role === 'custom' && <CustomFields id={block.id.slice(7)} theme={doc.ctx.theme} block={block} months={doc.ctx.cal.months.map((m) => ({ value: m.key, label: `${m.name} ${m.y}` }))} />}
             {block.editable && block.role !== 'watermark' && block.role !== 'custom' && (
               <>
@@ -441,10 +441,12 @@ function CoverImageFields({ page, doc }: { page: PageModel; doc: AgendaDocument 
   if (!sectionId || !monthKey) return null;
   const key = scopeAll ? 'default' : monthKey;
   const current = images?.[key] ?? '';
-  const choose = (assetId: string): void => setMonthCoverImage(sectionId, key, assetId || null);
+  const choose = (assetId: string, coalesce?: string): void => setMonthCoverImage(sectionId, key, assetId || null, coalesce);
+  // Subir y usar la imagen es un solo paso de «Deshacer».
   const upload = async (): Promise<void> => {
-    const id = await uploadOne(IMAGE_ACCEPT, (name) => t('assets.unsupported', { name }));
-    if (id) choose(id);
+    const step = `mcover:${sectionId}:${key}:upload`;
+    const id = await uploadOne(IMAGE_ACCEPT, (name) => t('assets.unsupported', { name }), step);
+    if (id) choose(id, step);
   };
   return (
     <div className="mb-2" data-testid="cover-image">
@@ -480,8 +482,9 @@ export function WatermarkFields({ id }: { id: string }) {
   const drag = (k: 'width' | 'opacity' | 'rotation' | 'minStrokePt'): Scrubbing<number> => scrub<number>((v) => watermarkRecipe(id, k, v), `wm:${id}:${k}`);
   /** Sube una imagen nueva y la usa en esta marca de agua. */
   const uploadAndUse = async (): Promise<void> => {
-    const id = await uploadOne('image/*,.svg', (name) => t('assets.unsupported', { name }));
-    if (id) set('assetId', id);
+    // Subir y usar la imagen es un solo paso de «Deshacer».
+    const asset = await uploadOne('image/*,.svg', (name) => t('assets.unsupported', { name }), `wm:${id}:assetId`);
+    if (asset) set('assetId', asset);
   };
   return (
     <div>
@@ -560,7 +563,7 @@ export function WatermarkFields({ id }: { id: string }) {
       </Field>
       {raster ? (
         <div className="mb-1">
-          <Button onClick={() => void grayscaleCopy(wm.assetId, (name) => t('wm.grayName', { name })).then((copy) => copy && set('assetId', copy))}>{t('wm.grayCopy')}</Button>
+          <Button onClick={() => void grayscaleCopy(wm.assetId, (name) => t('wm.grayName', { name }), `wm:${id}:assetId`).then((copy) => copy && set('assetId', copy))}>{t('wm.grayCopy')}</Button>
           <p className="mt-1 text-[11px] leading-snug text-ink-soft">{t('wm.grayCopyHint')}</p>
         </div>
       ) : (

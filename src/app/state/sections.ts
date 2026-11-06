@@ -16,7 +16,7 @@ export type Repeat = SectionItem['repeat'];
 /** Dónde está una sección: en la lista principal o dentro de «Meses». */
 export type SectionPath = { list: 'top'; index: number } | { list: 'month'; index: number };
 
-const update = (recipe: (d: Draft<Design>) => void): void => useStore.getState().update(recipe);
+const update = (recipe: (d: Draft<Design>) => void, coalesce?: string): void => useStore.getState().update(recipe, coalesce);
 const monthsOf = (d: Draft<Design>) => d.sections.find((s) => s.type === 'months');
 
 /** Se puede repetir dentro de los meses: todo menos lo que solo tiene sentido al principio (portada, índice…). */
@@ -156,7 +156,7 @@ export function monthCoverImageRecipe(sectionId: string, monthKey: string, asset
   };
 }
 
-export const setMonthCoverImage = (sectionId: string, monthKey: string, assetId: string | null): void => update(monthCoverImageRecipe(sectionId, monthKey, assetId));
+export const setMonthCoverImage = (sectionId: string, monthKey: string, assetId: string | null, coalesce?: string): void => update(monthCoverImageRecipe(sectionId, monthKey, assetId), coalesce);
 
 /* ---------- Agregar y quitar secciones (para armar una agenda desde cero) ---------- */
 

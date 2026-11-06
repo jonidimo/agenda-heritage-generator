@@ -24,7 +24,7 @@ function applyImported(r: Imported): void {
     st.setDesign(r.design);
     st.setShowWelcome(false);
     st.setShowLibrary(false);
-    st.setNotice(null);
+    st.setNotice(r.notices.length > 0 ? r.notices.join(' ') : null);
   } else if (r.kind === 'template') st.setNotice(t('file.templateAdded', { name: r.template.name }));
   else st.setNotice(t('file.restored', { designs: r.designs, templates: r.templates }));
 }

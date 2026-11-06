@@ -30,7 +30,7 @@ function IconPicker({ onPick }: { onPick: (id: string | null) => void }) {
       <p className="mt-1 text-[11px] text-ink-soft" aria-live="polite">
         {t('icons.count', { n: found.length })}
       </p>
-      <div className="mt-2 grid max-h-[50vh] grid-cols-[repeat(auto-fill,minmax(4.5rem,1fr))] gap-1.5 overflow-y-auto" data-testid="icon-grid">
+      <div className="mt-2 grid max-h-[calc(50*var(--vh))] grid-cols-[repeat(auto-fill,minmax(4.5rem,1fr))] gap-1.5 overflow-y-auto" data-testid="icon-grid">
         {found.map((icon) => (
           <button
             key={icon.id}

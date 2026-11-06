@@ -43,7 +43,8 @@ export interface UploadResult {
  * Agrega archivos como recursos de la agenda abierta. Si mientras se procesan se abre otra
  * agenda, no se le agregan a esa (los bytes quedan y se limpian si nadie los usa).
  */
-export async function addAssetFiles(files: Iterable<File>, unsupported: (name: string) => string): Promise<UploadResult> {
+/** `coalesce`: la clave de historial del cambio que va a usar la imagen (así subirla y usarla es un solo «Deshacer»). */
+export async function addAssetFiles(files: Iterable<File>, unsupported: (name: string) => string, coalesce?: string): Promise<UploadResult> {
   const out: UploadResult = { ids: [], messages: [] };
   const designId = useStore.getState().design?.id;
   for (const file of files) {
@@ -66,7 +67,7 @@ export async function addAssetFiles(files: Iterable<File>, unsupported: (name: s
       resources.assetInfos.set(id, info);
       await saveAsset(id, bytes);
       if (useStore.getState().design?.id !== designId) continue;
-      useStore.getState().update((d) => void d.assets.push({ ...ref, width: info.width, height: info.height, ...(info.pages ? { pages: info.pages } : {}) }));
+      useStore.getState().update((d) => void d.assets.push({ ...ref, width: info.width, height: info.height, ...(info.pages ? { pages: info.pages } : {}) }), coalesce);
       resources.bump();
       useStore.getState().bumpResources(resources.version);
       out.ids.push(id);
@@ -98,10 +99,10 @@ export const IMAGE_ACCEPT = 'image/*,.svg,.pdf,application/pdf';
  * identificador; los avisos (formato no admitido) van a la barra de avisos. Lo usan la marca de
  * agua, los elementos de imagen y los ornamentos.
  */
-export async function uploadOne(accept: string, unsupported: (name: string) => string): Promise<string | null> {
+export async function uploadOne(accept: string, unsupported: (name: string) => string, coalesce?: string): Promise<string | null> {
   const files = await pickFiles(accept, false);
   if (files.length === 0) return null;
-  const r = await addAssetFiles(files, unsupported);
+  const r = await addAssetFiles(files, unsupported, coalesce);
   if (r.messages.length > 0) useStore.getState().setNotice(r.messages.join(' '));
   return r.ids[0] ?? null;
 }

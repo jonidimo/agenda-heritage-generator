@@ -1,7 +1,7 @@
 /** La barra superior se mide a sí misma: baja de nivel si no entra y vuelve a subir con margen. */
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
-import { fitStep, LEVEL_HYSTERESIS, overflowGroups, TOP_LEVEL, type FitState, type TopbarLevel } from '../../src/app/state/topbarLayout';
+import { fitStep, followContent, LEVEL_HYSTERESIS, overflowGroups, TOP_LEVEL, type FitState, type TopbarLevel } from '../../src/app/state/topbarLayout';
 
 /** Una barra simulada: cada nivel necesita este ancho. */
 const NEED: Record<TopbarLevel, number> = { 3: 1500, 2: 1250, 1: 1000, 0: 0 };
@@ -44,6 +44,16 @@ describe('nivel de la barra', () => {
       // Los bordes de cada nivel, que el azar casi nunca toca.
       { examples: [[1249, 300], [1499, 300], [999, 2400], [1250, 1249], [1524, 1523]] },
     );
+  });
+
+  it('si el contenido se achica (un nombre más corto), lo que necesitaban los niveles de arriba baja igual y se puede volver a subir', () => {
+    const dropped: FitState = { level: 2, need: { 3: 1500 }, seen: 1200 };
+    const shorter = followContent(dropped, 1100);
+    expect(shorter.need[3]).toBe(1400);
+    expect(fitStep(shorter, 1100, 1450).level).toBe(3);
+    // Sin cambio de contenido, nada se mueve; la primera medida solo se anota.
+    expect(followContent(shorter, 1100)).toBe(shorter);
+    expect(followContent({ level: 3, need: {} }, 900)).toMatchObject({ seen: 900 });
   });
 
   it('lo que pasa al menú «⋯» en cada nivel', () => {

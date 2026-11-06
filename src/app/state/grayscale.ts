@@ -9,7 +9,7 @@ import { useStore } from './store';
 import { addAssetFiles } from './uploads';
 
 /** Hace la copia y devuelve la id de la imagen nueva (o `null` si no hay bytes de esa imagen). */
-export async function grayscaleCopy(assetId: string, name: (original: string) => string): Promise<string | null> {
+export async function grayscaleCopy(assetId: string, name: (original: string) => string, coalesce?: string): Promise<string | null> {
   const asset = useStore.getState().design?.assets.find((a) => a.id === assetId);
   const bytes = resources.assetBytes.get(assetId);
   if (!asset || !bytes || asset.kind !== 'raster') return null;
@@ -27,6 +27,6 @@ export async function grayscaleCopy(assetId: string, name: (original: string) =>
   const png = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'));
   if (!png) return null;
   const file = new File([png], `${name(asset.name.replace(/\.[a-z0-9]+$/i, ''))}.png`, { type: 'image/png' });
-  const r = await addAssetFiles([file], (n) => n);
+  const r = await addAssetFiles([file], (n) => n, coalesce);
   return r.ids[0] ?? null;
 }

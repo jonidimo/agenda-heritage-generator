@@ -126,13 +126,14 @@ function Row({
     finished.current = false;
     setRenaming(blockLabel(t, block.id, block.label, block.renamed));
   };
-  const finishRename = (save: boolean): void => {
+  const finishRename = (save: boolean, byKey: boolean): void => {
     if (finished.current || renaming === null) return;
     finished.current = true;
     if (save) renameBlock(page, block.id, scope, renaming);
     setRenaming(null);
-    // El campo desaparece: el foco vuelve a la fila para seguir con el teclado.
-    requestAnimationFrame(() => nameButton.current?.focus());
+    // Con Enter o Esc el campo desaparece y el foco vuelve a la fila (para seguir con el teclado); si
+    // se salió con el mouse a otro lugar, el foco queda donde la persona lo puso.
+    if (byKey) requestAnimationFrame(() => nameButton.current?.focus());
   };
   const pick = (): void =>
     select({
@@ -172,13 +173,13 @@ function Row({
             autoFocus
             onKeyDown={(e) => {
               // Enter guarda, Esc deja el nombre como estaba; los dos devuelven el foco a la fila.
-              if (e.key === "Enter") finishRename(true);
-              else if (e.key === "Escape") finishRename(false);
+              if (e.key === "Enter") finishRename(true, true);
+              else if (e.key === "Escape") finishRename(false, true);
               else return;
               e.preventDefault();
               e.stopPropagation();
             }}
-            onBlur={() => finishRename(true)}
+            onBlur={() => finishRename(true, false)}
           />
         </div>
       ) : (

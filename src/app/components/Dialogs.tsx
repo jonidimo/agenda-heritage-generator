@@ -379,7 +379,7 @@ export function LibraryDialog() {
       const r = await importText(await f.text());
       if (r.kind === 'design') {
         setDesign(r.design);
-        setNotice(null);
+        setNotice(r.notices.length > 0 ? r.notices.join(' ') : null);
         setShow(false);
       } else if (r.kind === 'template') {
         setInfo(t('file.templateAdded', { name: r.template.name }));

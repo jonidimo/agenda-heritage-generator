@@ -21,11 +21,31 @@ export interface FitState {
   level: TopbarLevel;
   /** Cuánto ancho necesitó cada nivel la última vez que no entró. */
   need: Partial<Record<TopbarLevel, number>>;
+  /** Lo que medía el contenido del nivel actual la última vez (para seguir sus cambios). */
+  seen?: number;
+}
+
+/**
+ * Si el contenido del nivel actual cambió de ancho (otro nombre, otro idioma, otro tamaño de la
+ * interfaz), los niveles más completos cambian lo mismo: sus anchos guardados se corren esa diferencia.
+ * Así un nombre que se acorta deja volver a subir sin esperar a que la ventana crezca.
+ */
+export function followContent(state: FitState, measured: number): FitState {
+  if (state.seen === undefined) return { ...state, seen: measured };
+  const delta = measured - state.seen;
+  if (Math.abs(delta) < 1) return state;
+  const need: FitState['need'] = {};
+  for (const [k, v] of Object.entries(state.need)) {
+    const lvl = Number(k) as TopbarLevel;
+    if (v !== undefined) need[lvl] = lvl > state.level ? v + delta : v;
+  }
+  return { level: state.level, need, seen: measured };
 }
 
 /** Con lo que se midió: el contenido pide `scrollWidth` y hay `clientWidth`. */
 export function fitStep(state: FitState, scrollWidth: number, clientWidth: number): FitState {
   const { level, need } = state;
+  // Al cambiar de nivel, lo medido era de otro contenido: se vuelve a medir.
   if (scrollWidth > clientWidth + 1 && level > 0) return { level: (level - 1) as TopbarLevel, need: { ...need, [level]: scrollWidth } };
   if (level < TOP_LEVEL) {
     const up = (level + 1) as TopbarLevel;
@@ -59,15 +79,20 @@ export function useTopbarLevel(ref: RefObject<HTMLElement | null>): TopbarLevel 
   const [state, setState] = useState<FitState>({ level: TOP_LEVEL, need: {} });
   const last = useRef(state);
   last.current = state;
-  // Después de cada dibujo: si no entra, un nivel menos (se repite hasta que entra). Sin lista de
-  // dependencias a propósito: cualquier cambio de la barra (un nombre más largo, otro idioma) puede no
-  // entrar; y no hay cadena infinita, porque solo baja de nivel y el nivel 0 no baja más.
+  // Después de cada dibujo: si no entra, un nivel menos; si entra y el de arriba también entraría, uno
+  // más (así un salto grande de ancho sube de a un nivel por dibujo hasta donde entra). Sin lista de
+  // dependencias a propósito: cualquier cambio de la barra (un nombre, otro idioma) puede cambiar lo que
+  // entra. No hay cadena infinita: al bajar se guarda lo que necesitaba el nivel, y no se vuelve a subir
+  // con ese ancho (falta el margen de `LEVEL_HYSTERESIS`).
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useLayoutEffect(() => {
     const el = ref.current;
     if (!el) return;
-    const next = fitStep(last.current, neededWidth(el), el.clientWidth);
-    if (next.level < last.current.level) setState(next);
+    const measured = neededWidth(el);
+    const followed = followContent(last.current, measured);
+    const next = fitStep(followed, measured, el.clientWidth);
+    if (next.level !== followed.level) setState({ level: next.level, need: next.need });
+    else if (followed !== last.current) setState(followed);
   });
   // Al cambiar el ancho: probar un nivel más (si no entra, el efecto de arriba lo baja de nuevo).
   useLayoutEffect(() => {
@@ -77,7 +102,10 @@ export function useTopbarLevel(ref: RefObject<HTMLElement | null>): TopbarLevel 
     const ro = new ResizeObserver(() => {
       if (el.clientWidth === width) return;
       width = el.clientWidth;
-      setState((s) => fitStep(s, neededWidth(el), el.clientWidth));
+      setState((s) => {
+        const next = fitStep(s, neededWidth(el), el.clientWidth);
+        return next.level === s.level ? next : { level: next.level, need: next.need };
+      });
     });
     ro.observe(el);
     return () => ro.disconnect();
