@@ -34,7 +34,8 @@ function notesOf(doc: AgendaDocument): LayoutNote[] {
 
 /**
  * Los avisos de `after` que `before` no tenía. Sin `before` (una agenda nueva) son todos los de `after`.
- * Nunca falla: si la agenda no se puede maquetar, el aviso es ese error y no impide el cambio.
+ * No falla por la maquetación: si la agenda no se puede maquetar, el aviso es ese error y no impide el
+ * cambio. Solo una cancelación (`AbortError` de `open`) sigue hacia arriba.
  */
 export async function newLayoutWarnings(open: Open, before: Design | null, after: Design): Promise<LayoutFeedback> {
   try {
@@ -43,6 +44,8 @@ export async function newLayoutWarnings(open: Open, before: Design | null, after
     const fresh = notesOf((await open(after)).doc).filter((n) => !known.has(identity(n)));
     return { notes: fresh.slice(0, MAX_NOTES), omitted: Math.max(0, fresh.length - MAX_NOTES) };
   } catch (err) {
+    // Detener el turno no es un problema de maquetación: sigue hacia arriba.
+    if ((err as { name?: unknown } | null)?.name === 'AbortError') throw err;
     return { notes: [{ page: 0, key: '', code: 'layoutError', message: `No se pudo revisar la maquetación: ${(err as Error).message}` }], omitted: 0 };
   }
 }

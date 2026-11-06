@@ -2,11 +2,11 @@
  * Ajustes del asistente de IA: con qué proveedor y modelo trabaja, la clave de API, si puede mirar las
  * páginas y si la píldora se ve. La clave se guarda aparte de los ajustes (ver `state/ai/keys.ts`).
  */
-import { OPENAI_PRESETS, PROVIDER_IDS, PROVIDERS, isLocalUrl, presetOf, type OpenAiPreset } from '@core/ai/providers';
+import { OPENAI_PRESETS, PROVIDER_IDS, PROVIDERS, isLocalUrl, isOfficialBase, presetOf, type OpenAiPreset } from '@core/ai/providers';
 import { AiError } from '@core/ai/errors';
 import type { AiProviderId } from '@core/ai/messages';
-import { useEffect, useId, useState } from 'react';
-import { useT, type UiKey } from '../../i18n/ui';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { plural, useT, type UiKey } from '../../i18n/ui';
 import { useAssistant } from '../../state/ai/assistant';
 import { forgetAll, getKey, hasKey, setKey } from '../../state/ai/keys';
 import { activeProvider } from '../../state/ai/settings';
@@ -15,7 +15,11 @@ import { isDesktopShell } from '../../state/desktopBridge';
 import { Modal } from '../Dialogs';
 import { Button, Field, Segmented, Select, TextInput, Toggle } from '../ui';
 
-const PROVIDER_LABEL: Record<AiProviderId, UiKey> = { anthropic: 'ai.provider.anthropic', gemini: 'ai.provider.gemini', openai: 'ai.provider.openai' };
+const PROVIDER_LABEL: Record<AiProviderId, UiKey> = {
+  anthropic: 'ai.provider.anthropic',
+  gemini: 'ai.provider.gemini',
+  openai: 'ai.provider.openai',
+};
 const PRESET_LABEL: Record<OpenAiPreset['id'], UiKey> = {
   openai: 'ai.preset.openai',
   openrouter: 'ai.preset.openrouter',
@@ -26,7 +30,12 @@ const PRESET_LABEL: Record<OpenAiPreset['id'], UiKey> = {
   custom: 'ai.preset.custom',
 };
 
-type Check = { state: 'idle' } | { state: 'busy' } | { state: 'ok'; n: number } | { state: 'error'; message: string };
+type Check = { state: 'idle' } | { state: 'busy'; auto: boolean } | { state: 'ok'; n: number; suggestedBase?: string } | { state: 'error'; message: string };
+
+/** Lo que se elige en la lista para escribir un nombre a mano. */
+const OTHER = '\u0000other';
+/** Cuánto esperar después de la última tecla antes de buscar los modelos de una dirección nueva. */
+const DETECT_DELAY_MS = 600;
 
 export function AssistantSettings({ onClose }: { onClose: () => void }) {
   const t = useT();
@@ -52,19 +61,27 @@ export function AssistantSettings({ onClose }: { onClose: () => void }) {
   }, [desk, provider]);
   const [models, setModels] = useState<string[]>([]);
   const [check, setCheck] = useState<Check>({ state: 'idle' });
-  const listId = useId();
+  const [typing, setTyping] = useState(false);
   const local = provider === 'openai' && baseUrl !== '' && isLocalUrl(baseUrl);
+  const official = isOfficialBase(adapter, baseUrl);
   const preset = presetOf(baseUrl);
+  const detecting = useRef<AbortController | null>(null);
 
   useEffect(() => {
     if (!desk) setStored(hasKey(provider));
     setDraftKey('');
     setModels([]);
+    setTyping(false);
     setCheck({ state: 'idle' });
   }, [desk, provider, baseUrl]);
-
   const setProviderField = (field: 'model' | 'baseUrl', value: string): void =>
-    update((s) => ({ ...s, perProvider: { ...s.perProvider, [s.provider]: { ...s.perProvider[s.provider], [field]: value } } }));
+    update((s) => ({
+      ...s,
+      perProvider: {
+        ...s.perProvider,
+        [s.provider]: { ...s.perProvider[s.provider], [field]: value },
+      },
+    }));
 
   const saveKey = async (): Promise<void> => {
     setKeyError(null);
@@ -90,24 +107,79 @@ export function AssistantSettings({ onClose }: { onClose: () => void }) {
     setStored(false);
   };
 
+  const errorText = useCallback((err: unknown): string => (err instanceof AiError ? `${t(`ai.err.${err.kind}` as UiKey)} ${err.message}` : String(err)), [t]);
+
+  /** Busca los modelos de la dirección elegida; si hay uno solo y no se eligió ninguno, queda elegido. */
+  const detect = useCallback(
+    async (auto: boolean): Promise<void> => {
+      detecting.current?.abort();
+      const ac = new AbortController();
+      detecting.current = ac;
+      setCheck({ state: 'busy', auto });
+      try {
+        const { listModels } = await import('../../state/ai/engine');
+        const found = await listModels(provider, baseUrl, ac.signal);
+        if (ac.signal.aborted) return;
+        setModels(found.models);
+        setCheck({
+          state: 'ok',
+          n: found.models.length,
+          ...(found.suggestedBase ? { suggestedBase: found.suggestedBase } : {}),
+        });
+        const only = found.models.length === 1 ? found.models[0] : undefined;
+        if (only && !model)
+          update((s) => ({
+            ...s,
+            perProvider: {
+              ...s.perProvider,
+              [s.provider]: { ...s.perProvider[s.provider], model: only },
+            },
+          }));
+      } catch (err) {
+        if (ac.signal.aborted) return;
+        setCheck({ state: 'error', message: errorText(err) });
+      } finally {
+        if (detecting.current === ac) detecting.current = null;
+      }
+    },
+    [provider, baseUrl, model, update, errorText],
+  );
+
+  // Un servidor local (o un servicio con la clave ya puesta) se consulta solo, un rato después de dejar de escribir la dirección.
+  const autoDetect = provider === 'openai' && !official && (local || stored);
+  const detectRef = useRef(detect);
+  detectRef.current = detect;
+  useEffect(() => {
+    if (!autoDetect) return;
+    const timer = setTimeout(() => void detectRef.current(true), DETECT_DELAY_MS);
+    return () => {
+      clearTimeout(timer);
+      detecting.current?.abort();
+    };
+  }, [autoDetect, baseUrl, provider]);
+
   const verify = async (): Promise<void> => {
     if (draftKey.trim()) await saveKey();
-    setCheck({ state: 'busy' });
-    try {
-      const { listModels } = await import('../../state/ai/engine');
-      const found = await listModels(provider, baseUrl, new AbortController().signal);
-      setModels(found);
-      setCheck({ state: 'ok', n: found.length });
-    } catch (err) {
-      setCheck({ state: 'error', message: err instanceof AiError ? `${t(`ai.err.${err.kind}` as UiKey)} ${err.message}` : String(err) });
-    }
+    await detect(false);
   };
+
+  // La lista: los modelos que dio el servidor y, solo en la dirección oficial, los sugeridos de siempre.
+  const options = [...new Set([...(official ? adapter.suggestedModels : []), ...models])];
+  if (model && !options.includes(model)) options.unshift(model);
+  const listed = options.length > 0 && !typing;
 
   return (
     <Modal title={t('ai.settings.title')} onClose={onClose}>
       <div className="space-y-2" data-testid="ai-settings">
         <Field label={t('ai.settings.provider')}>
-          <Segmented value={provider} onChange={(p) => update((s) => ({ ...s, provider: p }))} options={PROVIDER_IDS.map((p) => ({ value: p, label: t(PROVIDER_LABEL[p]) }))} />
+          <Segmented
+            value={provider}
+            onChange={(p) => update((s) => ({ ...s, provider: p }))}
+            options={PROVIDER_IDS.map((p) => ({
+              value: p,
+              label: t(PROVIDER_LABEL[p]),
+            }))}
+          />
         </Field>
         {provider === 'openai' && (
           <Field label={t('ai.settings.preset')}>
@@ -118,7 +190,10 @@ export function AssistantSettings({ onClose }: { onClose: () => void }) {
                 const next = OPENAI_PRESETS.find((p) => p.id === id)!;
                 if (next.id !== 'custom') setProviderField('baseUrl', next.baseUrl);
               }}
-              options={OPENAI_PRESETS.map((p) => ({ value: p.id, label: t(PRESET_LABEL[p.id]) }))}
+              options={OPENAI_PRESETS.map((p) => ({
+                value: p.id,
+                label: t(PRESET_LABEL[p.id]),
+              }))}
             />
           </Field>
         )}
@@ -127,19 +202,28 @@ export function AssistantSettings({ onClose }: { onClose: () => void }) {
             <TextInput value={baseUrl} placeholder={adapter.defaultBase} ariaLabel={t('ai.settings.baseUrl')} onChange={(v) => setProviderField('baseUrl', v)} />
           </Field>
         )}
-        <Field label={t('ai.settings.model')}>
-          <input
-            className="w-full rounded-md border border-line bg-white px-2 py-1 text-[12.5px] focus:border-accent focus:outline-none"
-            list={listId}
-            value={model}
-            aria-label={t('ai.settings.model')}
-            onChange={(e) => setProviderField('model', e.target.value)}
-          />
-          <datalist id={listId}>
-            {[...new Set([...adapter.suggestedModels, ...models])].map((m) => (
-              <option key={m} value={m} />
-            ))}
-          </datalist>
+        <Field label={t('ai.settings.model')} hint={!model ? t(official ? 'ai.settings.modelDefault' : 'ai.settings.modelPick') : undefined}>
+          {listed ? (
+            <Select
+              value={model}
+              ariaLabel={t('ai.settings.model')}
+              onChange={(v) => (v === OTHER ? setTyping(true) : setProviderField('model', v))}
+              options={[
+                ...(model
+                  ? []
+                  : [
+                      {
+                        value: '',
+                        label: official ? adapter.defaultModel : t('ai.settings.modelChoose'),
+                      },
+                    ]),
+                ...options.map((m) => ({ value: m, label: m })),
+                { value: OTHER, label: t('ai.settings.modelOther') },
+              ]}
+            />
+          ) : (
+            <TextInput value={model} placeholder={official ? adapter.defaultModel : t('ai.settings.modelTyped')} ariaLabel={t('ai.settings.model')} onChange={(v) => setProviderField('model', v)} />
+          )}
         </Field>
         {local ? (
           <p className="text-[11.5px] text-ink-soft">{t('ai.settings.localNoKey')}</p>
@@ -167,7 +251,11 @@ export function AssistantSettings({ onClose }: { onClose: () => void }) {
             </div>
           </Field>
         )}
-        {keyError && <p className="text-[11.5px] text-warn" role="alert">{keyError}</p>}
+        {keyError && (
+          <p className="text-[11.5px] text-warn" role="alert">
+            {keyError}
+          </p>
+        )}
         {desk && deskStatus && !local && (
           <p className={deskStatus.encryption.available && !deskStatus.encryption.weak ? 'text-[11.5px] text-ink-soft' : 'text-[11.5px] text-warn'} data-testid="ai-key-storage">
             {!deskStatus.encryption.available ? t('ai.settings.noEncryption') : deskStatus.encryption.weak ? t('ai.settings.storedWeak') : t('ai.settings.storedEncrypted')}
@@ -190,9 +278,17 @@ export function AssistantSettings({ onClose }: { onClose: () => void }) {
         <Toggle label={t('view.aiPill')} checked={settings.pill} onChange={(v) => update((s) => ({ ...s, pill: v }))} />
         {provider !== 'anthropic' && <p className="text-[11px] text-ink-soft">{t('ai.settings.corsHint')}</p>}
         <div className="flex items-center justify-end gap-2 pt-1">
-          <span className="mr-auto text-[11.5px]" role="status">
-            {check.state === 'busy' && t('ai.settings.checking')}
-            {check.state === 'ok' && <span className="text-accent">{t('ai.settings.verified', { n: check.n })}</span>}
+          <span className="mr-auto text-[11.5px]" role="status" data-testid="ai-check">
+            {check.state === 'busy' && t(check.auto ? 'ai.settings.detecting' : 'ai.settings.checking')}
+            {check.state === 'ok' && <span className={check.n > 0 ? 'text-accent' : 'text-warn'}>{check.n > 0 ? plural(t, 'ai.settings.verified', check.n) : t('ai.settings.noModels')}</span>}
+            {check.state === 'ok' && check.suggestedBase && (
+              <span className="mt-0.5 block text-ink">
+                {t('ai.settings.useV1', { url: check.suggestedBase })}{' '}
+                <button type="button" className="font-semibold text-accent underline" onClick={() => setProviderField('baseUrl', check.suggestedBase!)} data-testid="ai-use-v1">
+                  {t('ai.settings.useV1Button')}
+                </button>
+              </span>
+            )}
             {check.state === 'error' && <span className="text-warn">{check.message}</span>}
           </span>
           <Button variant="outline" onClick={() => void verify()} disabled={check.state === 'busy'}>

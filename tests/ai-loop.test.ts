@@ -159,6 +159,26 @@ describe('herramientas', () => {
     expect(await executeTool('get_design_part', { pointer: '/no/existe' }, host())).toMatchObject({ isError: true });
   });
 
+  it('la revisión de la propuesta maqueta con el ritmo del anfitrión, y detenerla corta el turno', async () => {
+    const paced: number[] = [];
+    const patch = [{ op: 'replace', path: '/theme/comfort', value: 'wide' }];
+    const out = await executeTool('propose_change', { patch, summary: 'x' }, host({ pace: async (d) => void paced.push(d.pageCount) }));
+    expect('proposal' in out).toBe(true);
+    // Dos agendas: la de antes y la de después.
+    expect(paced).toHaveLength(2);
+    const stop = host({ pace: async () => Promise.reject(Object.assign(new Error('Cancelado.'), { name: 'AbortError' })) });
+    await expect(executeTool('propose_change', { patch, summary: 'x' }, stop)).rejects.toMatchObject({ kind: 'aborted' });
+  });
+
+  it('con un borrador de trabajo, los avisos nuevos se cuentan contra la agenda confirmada', async () => {
+    const draft = { ...design, name: 'Borrador' };
+    const seenBefore: string[] = [];
+    const h = host({ design: () => draft, baseline: () => design, documentFor: (d) => (seenBefore.push(d.name), new AgendaDocument(d, doc.resources, {}, { reuse: doc })) });
+    const out = await executeTool('propose_change', { patch: [{ op: 'replace', path: '/theme/comfort', value: 'wide' }], summary: 'x' }, h);
+    expect('proposal' in out && out.proposal.design.name).toBe('Borrador');
+    expect(seenBefore[0]).toBe(design.name);
+  });
+
   it('la propuesta dice qué claves se ignoraron y qué avisos nuevos aparecen', async () => {
     const out = await executeTool('propose_change', { patch: [{ op: 'add', path: '/inventada', value: 1 }], summary: 'x' }, host());
     expect('proposal' in out && out.proposal.ignored).toEqual(['/inventada']);

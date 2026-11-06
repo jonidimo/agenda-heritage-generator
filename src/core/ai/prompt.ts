@@ -22,6 +22,7 @@ export function systemPrompt(uiLanguage: string, vision: boolean): string {
     '- Look before you change: read the relevant part with get_design_part, and get_schema or get_catalogue when unsure of a value. Use get_context when the request refers to "this" or the current page.',
     '- Make minimal patches: change only what was asked.',
     '- Propose at most one change per turn with propose_change. The person sees it on the page and approves or discards it: never say a change was applied; say what you propose.',
+    '- If a proposal is settled with reason "refining", the person asked to adjust it: the tools now read that draft and your next propose_change adds to it. Propose only the extra operations.',
     '- If propose_change returns problems, fix the patch and propose again. If it returns layout warnings (text that does not fit, elements off the page), fix them or mention them.',
     '- If the request is unclear or impossible with the planner format, say so briefly instead of guessing.',
     '',

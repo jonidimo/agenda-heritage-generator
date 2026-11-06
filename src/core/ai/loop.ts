@@ -120,11 +120,17 @@ export async function runTurn(input: TurnInput): Promise<TurnOutcome> {
   throw new AiError('rounds', `El modelo no terminó en ${MAX_ROUNDS} vueltas.`);
 }
 
-export type ProposalDecision = { applied: true; revision: number } | { applied: false; reason: 'discarded' | 'stale' | 'cancelled' };
+export type ProposalDecision = { applied: true; revision: number } | { applied: false; reason: 'discarded' | 'stale' | 'cancelled' | 'refining' };
+
+/** Lo que se le dice al modelo cuando la persona pide ajustar la propuesta en lugar de decidir. */
+const REFINING_NOTE =
+  'The person wants to adjust this proposal before deciding. It is kept as the working draft: get_design_part, render_page and the pages now show the draft, and your next propose_change applies on top of it (send only the extra operations; the person approves the combined change).';
 
 /** Le cuenta al modelo qué decidió la persona sobre la propuesta (y las respuestas de su misma ronda). */
 export function settleProposal(history: readonly AiMessage[], pending: PendingProposal, decision: ProposalDecision): AiMessage[] {
-  const text = JSON.stringify(decision.applied ? { applied: true, revision: decision.revision } : { applied: false, reason: decision.reason });
+  const text = JSON.stringify(
+    decision.applied ? { applied: true, revision: decision.revision } : decision.reason === 'refining' ? { applied: false, reason: 'refining', note: REFINING_NOTE } : { applied: false, reason: decision.reason },
+  );
   const result: AiToolResult = { callId: pending.callId, name: pending.name, content: [{ type: 'text', text }] };
   const last = history.at(-1);
   // El resultado va en el orden de las llamadas de esa ronda.

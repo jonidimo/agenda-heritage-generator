@@ -8,6 +8,8 @@
  *   confirma como un solo paso de «Deshacer» (con la bandera de siempre).
  * - Si la persona cambia la agenda mientras una propuesta espera, la propuesta queda vieja: ya no se
  *   aplica (pisaría lo que hizo), se ofrece volver a pedirla.
+ * - Pedir otra cosa con una propuesta a la vista la **ajusta**: queda como borrador de trabajo, el modelo
+ *   lo lee y su próxima propuesta se suma encima; «Aplicar» confirma todo junto en un solo paso.
  * - La conversación es de la sesión: vive en memoria y empieza de nuevo al cambiar de agenda, de
  *   proveedor, de modelo o el permiso de mirar las páginas.
  */
@@ -18,13 +20,14 @@ import type { AiErrorKind } from '@core/ai/errors';
 import { trimHistory } from '@core/ai/budget';
 import { AiError } from '@core/ai/errors';
 import type { AiMessage } from '@core/ai/messages';
-import type { Proposal } from '@core/ai/tools';
+import type { Design } from '@core/design/schema';
+import type { JsonPatchOp } from '@core/util/jsonPatch';
 import type { LayoutNote } from '@core/document/feedback';
 import { create } from 'zustand';
 import { prefs } from '../prefs';
 import { useStore } from '../store';
 import { tNow } from '../tNow';
-import type { PendingProposal, TurnEvent } from './engine';
+import type { PendingProposal, ProposalDecision, TurnEvent } from './engine';
 import { activeProvider, sessionKey, type AiSettings } from './settings';
 
 export type AssistantStatus = 'idle' | 'working' | 'awaiting' | 'error';
@@ -34,7 +37,7 @@ export interface Turn {
   request: string;
   /** Lo que contestó el modelo (o el resumen de lo que propuso). */
   reply: string;
-  outcome: 'answer' | 'proposed' | 'applied' | 'discarded' | 'stale' | 'error' | 'cancelled';
+  outcome: 'answer' | 'proposed' | 'refined' | 'applied' | 'discarded' | 'stale' | 'error' | 'cancelled';
 }
 
 export interface ShownProposal {
@@ -45,7 +48,10 @@ export interface ShownProposal {
   warnings: LayoutNote[];
   omittedWarnings: number;
   ignored: string[];
-  ops: Array<{ op: string; path: string }>;
+  /** Las operaciones de la propuesta (las de los ajustes anteriores primero), con su valor. */
+  ops: JsonPatchOp[];
+  /** Cuántas propuestas se sumaron en esta (1 si no se ajustó). */
+  rounds: number;
   baseRevision: number;
   /** La agenda cambió desde que se propuso: ya no se puede aplicar. */
   stale: boolean;
@@ -87,7 +93,12 @@ interface AssistantState {
 /* ---------- Lo que no se dibuja: la conversación y lo pendiente ---------- */
 
 let history: AiMessage[] = [];
-let pending: { proposal: Proposal; pending: PendingProposal } | null = null;
+/**
+ * Lo que se ve en la tarjeta: el diseño propuesto (con los ajustes ya sumados) y, si el modelo espera la
+ * decisión, su llamada abierta. Sin llamada abierta es un borrador que quedó de un ajuste que terminó en
+ * una respuesta: se puede aplicar, descartar o seguir ajustando.
+ */
+let current: { design: Design; call: PendingProposal | null } | null = null;
 let abort: AbortController | null = null;
 let session = '';
 let lastRequest = '';
@@ -129,18 +140,22 @@ function keyOriginOf(p: AiProviderId, s: AiSettings): string {
 const engine = () => import('./engine');
 
 export const useAssistant = create<AssistantState>((set, get) => {
-  /** Le cuenta al modelo qué pasó con la propuesta pendiente, y la quita de la página si sigue ahí. */
-  const settlePending = async (decision: Parameters<Awaited<ReturnType<typeof engine>>['settle']>[2], shownId = get().proposal?.id): Promise<void> => {
-    if (!pending) return;
+  /**
+   * Le cuenta al modelo qué pasó con la propuesta pendiente y la quita de la página si sigue ahí. Con
+   * `keep` (ajustar) el diseño queda como borrador y se sigue viendo.
+   */
+  const settlePending = async (decision: ProposalDecision, shownId = get().proposal?.id, keep = false): Promise<void> => {
+    if (!current) return;
     // La vista previa se quita en el momento (antes de esperar al motor): la persona ya decidió.
-    if (shownId !== undefined && useStore.getState().previewKey === previewKeyOf(shownId)) useStore.getState().clearPreview();
-    const settling = pending;
-    pending = null;
+    if (!keep && shownId !== undefined && useStore.getState().previewKey === previewKeyOf(shownId)) useStore.getState().clearPreview();
+    const call = current.call;
+    current = keep ? { design: current.design, call: null } : null;
+    if (!call) return;
     const started = epoch;
     const { settle } = await engine();
     // Si mientras tanto se limpió la conversación, la respuesta a la propuesta ya no tiene a quién ir.
     if (started !== epoch) return;
-    history = settle(history, settling.pending, decision);
+    history = settle(history, call, decision);
   };
 
   const markLast = (outcome: Turn['outcome'], reply?: string): void =>
@@ -181,22 +196,39 @@ export const useAssistant = create<AssistantState>((set, get) => {
       const request = (text ?? get().draft).trim();
       if (!request || get().status === 'working') return;
       if (!useStore.getState().design) return;
-      // Pedir otra cosa con una propuesta a la vista es dejarla pasar.
-      if (pending) {
-        await settlePending({ applied: false, reason: 'discarded' });
-        markLast('discarded');
+      const cfg = activeProvider(get().settings);
+      // Un servidor local u otro servicio no tiene un modelo «de siempre»: hay que elegir uno.
+      if (!cfg.model) {
+        set({ status: 'error', reply: null, error: { kind: 'notFound', message: tNow('ai.noModel') } });
+        return;
+      }
+      // Pedir otra cosa con una propuesta a la vista es ajustarla (si sigue valiendo); una vieja se deja pasar.
+      const before = get().proposal;
+      const refining = current && before && !before.stale ? { design: current.design, shown: before } : null;
+      if (refining) {
+        await settlePending({ applied: false, reason: 'refining' }, before!.id, true);
+        markLast('refined');
+      } else if (current) {
+        await settlePending({ applied: false, reason: before?.stale ? 'stale' : 'discarded' });
+        markLast(before?.stale ? 'stale' : 'discarded');
       }
       lastRequest = request;
-      // La agenda como estaba al pedir: si la persona la cambia mientras el modelo trabaja, la propuesta llega vieja.
-      const startRevision = useStore.getState().revision;
+      // La agenda como estaba al pedir (o la que tenía de base la propuesta que se ajusta): si la persona la
+      // cambia mientras el modelo trabaja, la propuesta llega vieja.
+      const startRevision = refining ? refining.shown.baseRevision : useStore.getState().revision;
       const ac = new AbortController();
       abort = ac;
       const turnId = nextTurn++;
       set((s) => ({ status: 'working', activity: tNow('ai.thinking'), reply: null, error: null, proposal: null, draft: text === undefined ? '' : s.draft, turns: [...s.turns, { id: turnId, request, reply: '', outcome: 'answer' } satisfies Turn].slice(-20) }));
-      const cfg = activeProvider(get().settings);
+      /** Si el ajuste no termina en otra propuesta, la de antes vuelve a la tarjeta (sigue en la página). */
+      const restore = (): void => {
+        if (!refining || !current || current.design !== refining.design) return;
+        const stale = useStore.getState().revision !== refining.shown.baseRevision;
+        set({ proposal: { ...refining.shown, stale } });
+      };
       try {
         const { turn } = await engine();
-        const out = await turn({ ...cfg, vision: get().settings.vision, history, text: request, signal: ac.signal, onEvent: (e) => abort === ac && set({ activity: activityOf(e) }) });
+        const out = await turn({ ...cfg, vision: get().settings.vision, draft: refining?.design ?? null, history, text: request, signal: ac.signal, onEvent: (e) => abort === ac && set({ activity: activityOf(e) }) });
         if (abort !== ac) return;
         abort = null;
         // En memoria queda lo que entra en un pedido (las páginas vistas hace mucho no se guardan para siempre).
@@ -204,14 +236,18 @@ export const useAssistant = create<AssistantState>((set, get) => {
         if (out.kind === 'answer') {
           set({ status: 'idle', activity: null, reply: out.text || tNow('ai.noAnswer') });
           markLast('answer', out.text);
+          restore();
+          if (get().proposal) set({ status: 'awaiting' });
           return;
         }
         const id = String(nextProposal++);
         const st = useStore.getState();
-        pending = { proposal: out.proposal, pending: out.pending };
+        const replaced = refining ? previewKeyOf(refining.shown.id) : null;
+        current = { design: out.proposal.design, call: out.pending };
         const stale = st.revision !== startRevision;
         // Una propuesta armada sobre la agenda de antes desharía lo que la persona cambió: no se muestra sobre la página.
         if (!stale) st.preview(() => out.proposal.design, previewKeyOf(id));
+        else if (replaced && st.previewKey === replaced) st.clearPreview();
         set({
           status: 'awaiting',
           activity: null,
@@ -222,7 +258,8 @@ export const useAssistant = create<AssistantState>((set, get) => {
             warnings: out.proposal.warnings,
             omittedWarnings: out.proposal.omittedWarnings,
             ignored: out.proposal.ignored,
-            ops: out.proposal.patch.map((o) => ({ op: o.op, path: o.path })),
+            ops: [...(refining?.shown.ops ?? []), ...out.proposal.patch],
+            rounds: (refining?.shown.rounds ?? 0) + 1,
             baseRevision: startRevision,
             stale,
           },
@@ -235,24 +272,27 @@ export const useAssistant = create<AssistantState>((set, get) => {
         if (err.kind === 'aborted') {
           set({ status: 'idle', activity: null });
           markLast('cancelled');
+          restore();
+          if (get().proposal) set({ status: 'awaiting' });
           return;
         }
         set({ status: 'error', activity: null, error: { kind: err.kind, message: err.message } });
         markLast('error', err.message);
+        restore();
       }
     },
 
     async apply() {
       const shown = get().proposal;
       const st = useStore.getState();
-      if (!shown || !pending) return;
+      if (!shown || !current) return;
       if (shown.stale || st.revision !== shown.baseRevision) {
         set({ proposal: { ...shown, stale: true } });
         return;
       }
-      const design = pending.proposal.design;
+      const design = current.design;
       // Primero se quita la propuesta: confirmar sube la revisión y no tiene que verse como un cambio ajeno.
-      set({ proposal: null, status: 'idle' });
+      set({ proposal: null, status: 'idle', error: null });
       st.commit(() => design, previewKeyOf(shown.id));
       const after = useStore.getState();
       after.setAiNotice({ text: tNow('ai.applied', { summary: shown.summary }), revision: after.revision });
@@ -264,20 +304,22 @@ export const useAssistant = create<AssistantState>((set, get) => {
       const shown = get().proposal;
       if (!shown) return;
       const stale = shown.stale;
-      set({ proposal: null, status: 'idle' });
+      set({ proposal: null, status: 'idle', error: null });
       await settlePending({ applied: false, reason: stale ? 'stale' : 'discarded' }, shown.id);
       markLast(stale ? 'stale' : 'discarded');
     },
 
     showAgain() {
       const shown = get().proposal;
-      if (!shown || shown.stale || !pending) return;
-      const design = pending.proposal.design;
+      if (!shown || shown.stale || !current) return;
+      const design = current.design;
       useStore.getState().preview(() => design, previewKeyOf(shown.id));
     },
 
     async retry() {
-      if (get().proposal) await get().discard();
+      // Un ajuste que falló se vuelve a pedir sobre la misma propuesta; una propuesta vieja se deja pasar.
+      const shown = get().proposal;
+      if (shown && (shown.stale || !get().error)) await get().discard();
       if (lastRequest) await get().send(lastRequest);
     },
 
@@ -290,7 +332,7 @@ export const useAssistant = create<AssistantState>((set, get) => {
       }
     },
 
-    dismiss: () => set({ reply: null, error: null, status: get().status === 'error' ? 'idle' : get().status }),
+    dismiss: () => set({ reply: null, error: null, status: get().status === 'error' ? (get().proposal ? 'awaiting' : 'idle') : get().status }),
 
     clear() {
       get().stop();
@@ -309,7 +351,7 @@ function resetSession(): void {
   if (a.proposal && useStore.getState().previewKey === previewKeyOf(a.proposal.id)) useStore.getState().clearPreview();
   epoch++;
   history = [];
-  pending = null;
+  current = null;
   useAssistant.setState({ proposal: null, reply: null, error: null, status: 'idle', turns: [] });
 }
 

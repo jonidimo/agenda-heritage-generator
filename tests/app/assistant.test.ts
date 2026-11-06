@@ -33,9 +33,11 @@ beforeEach(async () => {
     return new Response(JSON.stringify(next.body), { status: next.status ?? 200, headers: { 'content-type': 'application/json' } });
   });
   useStore.setState({ design: null, past: [], future: [], aiNotice: null, revision: 0, previewDesign: null, previewBase: null, previewKey: null, pageIndex: 0 });
-  useAssistant.setState({ settings: { ...AI_SETTINGS_DEFAULT, vision: false }, proposal: null, reply: null, error: null, status: 'idle', turns: [] });
+  useAssistant.setState({ settings: { ...AI_SETTINGS_DEFAULT, provider: 'anthropic', vision: false }, proposal: null, reply: null, error: null, status: 'idle', turns: [] });
   useStore.getState().setDesign(fresh());
   uninstall = installAssistant();
+  // La conversación vive en el módulo: cada prueba empieza con una limpia.
+  useAssistant.getState().clear();
   await setKey('anthropic', 'sk-test', false);
 });
 
@@ -139,6 +141,70 @@ describe('propuestas', () => {
     const a = useAssistant.getState();
     expect(a.proposal).toBeNull();
     expect(a.turns).toEqual([]);
+  });
+});
+
+describe('ajustar una propuesta', () => {
+  const proposePatch = (patch: unknown[], summary: string, id: string): Reply =>
+    anthropicReply([{ type: 'tool_use', id, name: 'propose_change', input: { patch, summary } }]);
+
+  it('pedir otra cosa con una propuesta a la vista la ajusta: se suma encima y Aplicar confirma todo en un paso', async () => {
+    script.push(proposePatch([{ op: 'replace', path: '/theme/comfort', value: 'wide' }], 'Más amplio', 'p1'));
+    await useAssistant.getState().send('Letra más grande');
+    expect(useAssistant.getState().proposal!.rounds).toBe(1);
+    // El ajuste: el modelo lee el borrador (la comodidad ya está en «wide») y propone algo más.
+    script.push(
+      anthropicReply([{ type: 'tool_use', id: 'g1', name: 'get_design_part', input: { path: '/theme/comfort' } }]),
+      proposePatch([{ op: 'replace', path: '/name', value: 'Agenda ajustada' }], 'Y con otro nombre', 'p2'),
+    );
+    await useAssistant.getState().send('Y cambiale el nombre');
+    // Lo que recibió el modelo: la propuesta anterior quedó como borrador («refining»), no descartada.
+    const sent = JSON.stringify(seen[1]!.body.messages);
+    expect(sent).toContain('refining');
+    expect(sent).not.toContain('discarded');
+    // La herramienta de lectura vio el borrador.
+    expect(JSON.stringify(seen[2]!.body.messages)).toContain('wide');
+    const a = useAssistant.getState();
+    expect(a.proposal).toMatchObject({ summary: 'Y con otro nombre', rounds: 2, stale: false });
+    expect(a.proposal!.ops.map((o) => o.path)).toEqual(['/theme/comfort', '/name']);
+    expect(a.turns.map((t) => t.outcome)).toEqual(['refined', 'proposed']);
+    const st = useStore.getState();
+    expect(st.design!.theme.comfort).toBe('normal');
+    expect(st.previewDesign).toMatchObject({ name: 'Agenda ajustada', theme: { comfort: 'wide' } });
+    const past = st.past.length;
+    await useAssistant.getState().apply();
+    const after = useStore.getState();
+    expect(after.design).toMatchObject({ name: 'Agenda ajustada', theme: { comfort: 'wide' } });
+    expect(after.past.length).toBe(past + 1);
+    after.undo();
+    expect(useStore.getState().design).toMatchObject({ theme: { comfort: 'normal' } });
+    expect(useStore.getState().design!.name).not.toBe('Agenda ajustada');
+  });
+
+  it('si el ajuste termina en una respuesta, la propuesta de antes sigue a la vista y se puede aplicar', async () => {
+    script.push(proposePatch([{ op: 'replace', path: '/theme/comfort', value: 'compact' }], 'Más apretado', 'p1'));
+    await useAssistant.getState().send('Más apretado');
+    script.push(anthropicReply([{ type: 'text', text: '¿Cuánto más apretado?' }], 'end_turn'));
+    await useAssistant.getState().send('Un poco más');
+    const a = useAssistant.getState();
+    expect(a.reply).toBe('¿Cuánto más apretado?');
+    expect(a.status).toBe('awaiting');
+    expect(a.proposal).toMatchObject({ summary: 'Más apretado', stale: false });
+    expect(useStore.getState().previewDesign!.theme.comfort).toBe('compact');
+    await useAssistant.getState().apply();
+    expect(useStore.getState().design!.theme.comfort).toBe('compact');
+  });
+
+  it('una propuesta vieja no se ajusta: se deja pasar', async () => {
+    script.push(proposePatch([{ op: 'replace', path: '/theme/comfort', value: 'wide' }], 'Más amplio', 'p1'));
+    await useAssistant.getState().send('Letra más grande');
+    useStore.getState().update((d) => {
+      d.name = 'Cambio a mano';
+    });
+    script.push(anthropicReply([{ type: 'text', text: 'Listo.' }], 'end_turn'));
+    await useAssistant.getState().send('Otra cosa');
+    expect(JSON.stringify(seen[1]!.body.messages)).toContain('stale');
+    expect(useAssistant.getState().proposal).toBeNull();
   });
 });
 

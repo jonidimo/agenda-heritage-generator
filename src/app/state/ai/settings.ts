@@ -2,7 +2,7 @@
  * Los ajustes del asistente de IA que se guardan en este equipo (nunca la clave: ver `keys.ts`). Cada
  * proveedor recuerda su modelo y su dirección, así cambiar de proveedor y volver no pierde nada.
  */
-import { PROVIDERS } from '@core/ai/providers';
+import { PROVIDERS, isOfficialBase } from '@core/ai/providers';
 import type { AiProviderId } from '@core/ai/messages';
 import { z } from 'zod';
 
@@ -25,20 +25,28 @@ export const AiSettingsZ = z.object({
 });
 export type AiSettings = z.infer<typeof AiSettingsZ>;
 
-const initial = (id: AiProviderId): ProviderSettings => ({ model: PROVIDERS[id].defaultModel, baseUrl: '' });
+/** Sin modelo elegido: vale el de siempre del proveedor (si la dirección es la oficial). */
+const initial = (): ProviderSettings => ({ model: '', baseUrl: '' });
 
 export const AI_SETTINGS_DEFAULT: AiSettings = {
-  provider: 'anthropic',
-  perProvider: { anthropic: initial('anthropic'), gemini: initial('gemini'), openai: initial('openai') },
+  provider: 'openai',
+  perProvider: { anthropic: initial(), gemini: initial(), openai: initial() },
   vision: true,
   remember: false,
   pill: true,
 };
 
-/** El modelo y la dirección que valen para el proveedor elegido (un modelo vacío usa el de siempre). */
+/**
+ * El modelo y la dirección que valen para el proveedor elegido. Un modelo vacío usa el de siempre, pero
+ * solo en la dirección oficial: un servidor local u otro servicio no tiene «gpt-5-mini», así que ahí sin
+ * modelo elegido queda vacío (y un modelo sugerido de OpenAI que quedó guardado de antes no cuenta).
+ */
 export function activeProvider(s: AiSettings): { provider: AiProviderId; model: string; baseUrl: string } {
   const p = s.perProvider[s.provider];
-  return { provider: s.provider, model: p.model || PROVIDERS[s.provider].defaultModel, baseUrl: p.baseUrl };
+  const adapter = PROVIDERS[s.provider];
+  const official = isOfficialBase(adapter, p.baseUrl);
+  const model = official ? p.model || adapter.defaultModel : p.model === adapter.defaultModel || adapter.suggestedModels.includes(p.model) ? '' : p.model;
+  return { provider: s.provider, model, baseUrl: p.baseUrl };
 }
 
 /** Lo que define una sesión del asistente: si cambia, la conversación empieza de nuevo. */

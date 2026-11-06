@@ -8,6 +8,7 @@
  * página, esquema, catálogo, revisión), así un modelo que aprendió una aprendió la otra.
  */
 import { z } from 'zod';
+import { AiError } from './errors';
 import { designCatalogue, designJsonSchema, schemaPart } from '../design/jsonSchema';
 import { applyDesignPatch } from '../design/patch';
 import type { Design } from '../design/schema';
@@ -56,6 +57,16 @@ export interface ToolHost {
    * que la interfaz no se trabe con una agenda de cientos de páginas). Sin ella, la revisión las maqueta de una.
    */
   layoutAll?: (() => Promise<void>) | undefined;
+  /**
+   * Maquetar una agenda cualquiera (la de antes o la de después de una propuesta) cediendo el hilo entre
+   * tandas; puede fallar con `AbortError` si la persona detiene el turno. Sin ella se maqueta de una.
+   */
+  pace?: ((doc: AgendaDocument) => Promise<void>) | undefined;
+  /**
+   * La agenda confirmada, cuando `design()` es un borrador de trabajo (una propuesta que la persona pidió
+   * ajustar): los avisos nuevos se cuentan contra ella, no contra el borrador.
+   */
+  baseline?: (() => Design | null) | undefined;
 }
 
 /** Un cambio listo para que la persona lo vea y lo apruebe. */
@@ -207,9 +218,10 @@ const TOOLS = [
       const open = async (d: Design): Promise<{ doc: AgendaDocument }> => {
         const doc = host.documentFor(d);
         if (!doc) throw new Error('la agenda no se puede armar ahora');
+        await host.pace?.(doc);
         return { doc };
       };
-      const layout = await newLayoutWarnings(open, current, result.design);
+      const layout = await newLayoutWarnings(open, host.baseline?.() ?? current, result.design);
       const proposal: Proposal = { design: result.design, patch, summary: input.summary, warnings: layout.notes, omittedWarnings: layout.omitted, ignored: result.stripped };
       return { proposal, content: json({ ok: true, pendingApproval: true, warnings: layout.notes, ignoredKeys: result.stripped }) };
     },
@@ -248,7 +260,7 @@ export function toolSpecs(host: ToolHost): AiToolSpec[] {
 
 export const isReadOnlyTool = (name: string): boolean => ALL.find((t) => t.name === name)?.readOnly ?? false;
 
-/** Ejecuta una llamada. No lanza: todo problema vuelve como un resultado de error que el modelo puede leer. */
+/** Ejecuta una llamada. Solo lanza si se detuvo el turno (`AiError` «aborted»): todo otro problema vuelve como un resultado de error que el modelo puede leer. */
 export async function executeTool(name: string, input: unknown, host: ToolHost): Promise<ToolOutcome> {
   const tool = ALL.find((t) => t.name === name && (!t.available || t.available(host)));
   if (!tool) return fail(`No existe la herramienta «${name}».`);
@@ -257,6 +269,8 @@ export async function executeTool(name: string, input: unknown, host: ToolHost):
   try {
     return await tool.run(parsed.data, host);
   } catch (err) {
+    // Detener el turno corta la herramienta: no es un error que el modelo tenga que leer.
+    if ((err as { name?: unknown } | null)?.name === 'AbortError') throw new AiError('aborted', 'Cancelado.');
     return fail(err instanceof Error ? err.message : String(err));
   }
 }

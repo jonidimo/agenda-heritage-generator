@@ -129,3 +129,19 @@ input[type='checkbox'] {
   background: rgb(37 99 235 / 0.28);
   color: transparent;
 }
+
+/* El asistente se despliega desde su botón de la esquina: se desliza un poco y aparece. */
+@keyframes dock-in {
+  from {
+    opacity: 0;
+    transform: translateX(12px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.dock-in {
+  transform-origin: right center;
+  animation: dock-in 160ms ease-out;
+}

@@ -1802,6 +1802,8 @@ test.describe('asistente de IA', () => {
     await page.locator('header').getByRole('button', { name: 'Archivo', exact: true }).click();
     await page.getByRole('menuitem', { name: 'Asistente de IA…' }).click();
     const dialog = page.getByTestId('ai-settings');
+    // Lo de siempre es lo compatible con OpenAI: estas pruebas usan Claude.
+    await dialog.getByRole('button', { name: 'Claude', exact: true }).click();
     await dialog.getByLabel('Clave de API').fill('sk-ant-prueba');
     await dialog.getByRole('button', { name: 'Comprobar y cargar modelos' }).click();
     await expect(dialog.getByText('Funciona: 2 modelos disponibles.')).toBeVisible();
@@ -1817,10 +1819,13 @@ test.describe('asistente de IA', () => {
     await configure(page);
     const pill = page.getByTestId('assistant-pill');
     await expect(pill).toBeVisible();
-    // Plegada no ocupa una fila: es una cápsula chica sobre el lienzo.
+    // Plegada es un botón redondo en la esquina de abajo a la derecha: no tapa el lomo del centro.
     const box = (await pill.boundingBox())!;
     expect(box.height).toBeLessThanOrEqual(40);
-    expect(box.width).toBeLessThan(400);
+    expect(box.width).toBeLessThanOrEqual(40);
+    const desk = (await page.locator('.desk').boundingBox())!;
+    expect(box.x).toBeGreaterThan(desk.x + desk.width * 0.75);
+    expect(box.y + box.height).toBeGreaterThan(desk.y + desk.height - 80);
     await page.keyboard.press('Control+j');
     const input = page.getByTestId('assistant-input');
     await expect(input).toBeFocused();
@@ -1845,6 +1850,40 @@ test.describe('asistente de IA', () => {
     await page.locator('.desk').click({ position: { x: 5, y: 5 } });
     await page.keyboard.press('Control+z');
     await expect.poll(() => page.evaluate<string>('globalThis.__agenda.getState().design.theme.comfort')).toBe('normal');
+  });
+
+  test('desplegado, el campo se abre hacia la izquierda desde la esquina sin cruzar el centro del lienzo', async ({ page }) => {
+    await openQuiet(page);
+    await page.locator('.desk').click({ position: { x: 5, y: 5 } });
+    await page.keyboard.press('Control+j');
+    const form = page.getByTestId('assistant').getByRole('search');
+    await expect(form).toBeVisible();
+    const f = (await form.boundingBox())!;
+    const desk = (await page.locator('.desk').boundingBox())!;
+    expect(f.x + f.width).toBeGreaterThan(desk.x + desk.width - 60);
+    expect(f.x).toBeGreaterThan(desk.x + desk.width / 2 - 40);
+  });
+
+  test('un servidor local: los modelos aparecen solos en una lista, y sin /v1 se propone la dirección correcta', async ({ page }) => {
+    await openQuiet(page);
+    await page.route('http://localhost:8080/**', async (route) => {
+      const url = route.request().url();
+      if (route.request().method() === 'OPTIONS') return route.fulfill({ status: 204, headers: { 'access-control-allow-origin': '*', 'access-control-allow-headers': '*' } });
+      if (url === 'http://localhost:8080/v1/models') return route.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify({ data: [{ id: 'qwen3-27b' }] }) });
+      return route.fulfill({ status: 404, contentType: 'text/html', headers: { 'access-control-allow-origin': '*' }, body: '<h1>404</h1>' });
+    });
+    await page.locator('header').getByRole('button', { name: 'Archivo', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Asistente de IA…' }).click();
+    const dialog = page.getByTestId('ai-settings');
+    await dialog.getByLabel('Dirección de la API').fill('http://localhost:8080');
+    // Sin tocar «Comprobar»: la dirección sin /v1 no contesta, la otra sí, y se ofrece.
+    await expect(dialog.getByTestId('ai-use-v1')).toBeVisible();
+    await dialog.getByTestId('ai-use-v1').click();
+    await expect(dialog.getByLabel('Dirección de la API')).toHaveValue('http://localhost:8080/v1');
+    await expect(dialog.getByTestId('ai-check')).toContainText('un modelo disponible');
+    // El único modelo quedó elegido, en una lista (no un campo que filtra por lo escrito).
+    await expect(dialog.getByRole('combobox', { name: 'Modelo' })).toHaveValue('qwen3-27b');
+    await page.screenshot({ path: 'test-results/assistant-local-models.png' });
   });
 
   test('Esc descarta la propuesta y la página vuelve a como estaba', async ({ page }) => {

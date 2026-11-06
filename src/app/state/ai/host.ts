@@ -73,31 +73,57 @@ function setView(req: { view?: string | undefined; mode?: 'design' | 'print' | u
   return done.length > 0 ? `Listo: ${done.join(', ')}.` : 'No se pidió ningún cambio.';
 }
 
+const abortError = (): Error => Object.assign(new Error('Cancelado.'), { name: 'AbortError' });
+
+/** Maqueta una agenda de a tandas, cediendo el hilo: la interfaz sigue respondiendo (y «Detener» también). */
+async function paced(doc: AgendaDocument, signal: AbortSignal | undefined): Promise<void> {
+  for (let i = 0; i < doc.pageCount; i++) {
+    if (signal?.aborted) throw abortError();
+    try {
+      doc.pageWarnings(i);
+    } catch {
+      // Una página que no se puede maquetar se informa en la revisión: acá solo se adelanta el trabajo.
+    }
+    if (i % LAYOUT_BATCH === LAYOUT_BATCH - 1) await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+}
+
+export interface HostOptions {
+  vision: boolean;
+  /** El turno: si se detiene, la maquetación en curso se corta. */
+  signal?: AbortSignal | undefined;
+  /** Una propuesta que la persona pidió ajustar: las herramientas leen y cambian esto, no la agenda confirmada. */
+  draft?: Design | null | undefined;
+}
+
 /** El anfitrión de las herramientas; con `vision`, también puede dibujar páginas. */
-export function appToolHost(vision: boolean): ToolHost {
+export function appToolHost({ vision, signal, draft }: HostOptions): ToolHost {
+  let draftDoc: AgendaDocument | null = null;
+  const doc = (): AgendaDocument | null => {
+    if (!draft) return currentDocument();
+    draftDoc ??= documentFor(draft);
+    return draftDoc;
+  };
   return {
     context,
-    design: () => useStore.getState().design,
-    document: currentDocument,
+    design: () => draft ?? useStore.getState().design,
+    document: doc,
     documentFor,
     render: vision
       ? async (index, width) => {
-          const doc = currentDocument();
-          if (!doc) throw new Error('La agenda no se puede armar ahora.');
-          return renderPagePng(doc, index, width);
+          const d = doc();
+          if (!d) throw new Error('La agenda no se puede armar ahora.');
+          return renderPagePng(d, index, width);
         }
       : undefined,
     reveal,
     setView,
     catalogueExtra: () => ({ fonts: resources.fonts.families() }),
     layoutAll: async () => {
-      const doc = currentDocument();
-      if (!doc) return;
-      // De a tandas, cediendo el hilo: la interfaz sigue respondiendo (y «Detener» también).
-      for (let i = 0; i < doc.pageCount; i++) {
-        doc.page(i);
-        if (i % LAYOUT_BATCH === LAYOUT_BATCH - 1) await new Promise((resolve) => setTimeout(resolve, 0));
-      }
+      const d = doc();
+      if (d) await paced(d, signal);
     },
+    pace: (d) => paced(d, signal),
+    ...(draft ? { baseline: () => useStore.getState().design } : {}),
   };
 }

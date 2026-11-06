@@ -1,12 +1,13 @@
 /**
- * El asistente de IA al pie del lienzo: una píldora discreta que flota sobre la página (no ocupa una
- * fila). Plegada dice «Pedile al asistente…»; al tocarla o con Ctrl+J se abre el campo. Lo que el
- * asistente propone o contesta aparece en una tarjeta encima de la píldora, con «Aplicar» y
- * «Descartar»; el cambio se ve en la página mientras tanto.
+ * El asistente de IA en la esquina de abajo a la derecha del lienzo: plegado es un botón redondo con
+ * el ícono (no tapa el lomo ni los números de página del centro); al tocarlo o con Ctrl+J se despliega
+ * hacia la izquierda el campo para escribir. Lo que el asistente propone o contesta aparece en una
+ * tarjeta encima, con «Aplicar» y «Descartar»; el cambio se ve en la página mientras tanto.
  */
 import clsx from 'clsx';
 import { AlertTriangle, ArrowUp, ChevronDown, ChevronUp, History, Settings2, Sparkles, Square, X } from 'lucide-react';
-import { useEffect, useRef, type FormEvent, type KeyboardEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
+import { describeOps, type OpDescription, type OpStep } from '@core/ai/describe';
 import { createPortal } from 'react-dom';
 import { plural, useT, type UiKey } from '../../i18n/ui';
 import { useAssistant, type ShownProposal, type Turn } from '../../state/ai/assistant';
@@ -36,7 +37,7 @@ export function AssistantDock({ footer }: { footer: boolean }) {
     <ErrorBoundary
       resetKeys={[]}
       fallback={(e) => (
-        <div className={clsx('absolute left-1/2 z-20 -translate-x-1/2 rounded-full border border-line bg-paper/90 px-3 py-1.5 text-[12px] text-warn shadow-sm', footer ? 'bottom-12' : 'bottom-4')} role="alert">
+        <div className={clsx('absolute right-6 z-20 max-w-[calc(100%-3rem)] rounded-full border border-line bg-paper/90 px-3 py-1.5 text-[12px] text-warn shadow-sm', footer ? 'bottom-14' : 'bottom-5')} role="alert">
           {t('ai.crashed')} {e.message}
         </div>
       )}
@@ -84,62 +85,62 @@ function Dock({ footer }: { footer: boolean }) {
   };
 
   return (
-    <div className={clsx('pointer-events-none absolute inset-x-0 z-20 flex justify-center px-4', footer ? 'bottom-12' : 'bottom-4')} data-testid="assistant">
-      <div className="relative flex w-full max-w-[560px] flex-col items-center gap-2">
-        <Cards />
-        {a.open ? (
-          <form onSubmit={submit} className="pointer-events-auto flex w-full items-center gap-1 rounded-full border border-line bg-paper/90 py-1 pr-1 pl-3 shadow-md backdrop-blur" role="search" aria-label={t('ai.title')}>
-            <Sparkles size={15} className={clsx('shrink-0 text-accent', working && 'animate-pulse motion-reduce:animate-none')} aria-hidden="true" />
-            <input
-              ref={input}
-              value={a.draft}
-              onChange={(e) => a.setDraft(e.target.value)}
-              onKeyDown={onKey}
-              placeholder={working ? (a.activity ?? t('ai.thinking')) : t('ai.placeholder')}
-              aria-label={t('ai.placeholder')}
-              maxLength={2000}
-              // Solo lectura (no deshabilitado) mientras trabaja: así conserva el foco y Esc lo puede detener.
-              readOnly={working}
-              aria-busy={working}
-              className="min-w-0 flex-1 bg-transparent py-1 text-[13px] text-ink placeholder:text-ink-soft focus:outline-none read-only:opacity-80"
-              data-testid="assistant-input"
-            />
-            <IconRound label={t('ai.history')} onClick={() => a.setShowHistory(!a.showHistory)} pressed={a.showHistory} disabled={a.turns.length === 0}>
-              <History size={14} />
+    <div className={clsx('pointer-events-none absolute right-6 z-20 flex w-[min(440px,calc(100%-3rem))] flex-col items-end gap-2', footer ? 'bottom-14' : 'bottom-5')} data-testid="assistant">
+      <Cards />
+      {a.open ? (
+        <form onSubmit={submit} className="dock-in pointer-events-auto flex w-full items-center gap-1 rounded-full border border-line bg-paper/95 py-1 pr-1 pl-3 shadow-md backdrop-blur" role="search" aria-label={t('ai.title')}>
+          <Sparkles size={15} className={clsx('shrink-0 text-accent', working && 'animate-pulse motion-reduce:animate-none')} aria-hidden="true" />
+          <input
+            ref={input}
+            value={a.draft}
+            onChange={(e) => a.setDraft(e.target.value)}
+            onKeyDown={onKey}
+            placeholder={working ? (a.activity ?? t('ai.thinking')) : t('ai.placeholder')}
+            aria-label={t('ai.placeholder')}
+            maxLength={2000}
+            // Solo lectura (no deshabilitado) mientras trabaja: así conserva el foco y Esc lo puede detener.
+            readOnly={working}
+            aria-busy={working}
+            className="min-w-0 flex-1 bg-transparent py-1 text-[13px] text-ink placeholder:text-ink-soft focus:outline-none read-only:opacity-80"
+            data-testid="assistant-input"
+          />
+          <IconRound label={t('ai.history')} onClick={() => a.setShowHistory(!a.showHistory)} pressed={a.showHistory} disabled={a.turns.length === 0}>
+            <History size={14} />
+          </IconRound>
+          <IconRound label={t('ai.settings')} onClick={() => a.setShowSettings(true)}>
+            <Settings2 size={14} />
+          </IconRound>
+          {working ? (
+            <IconRound label={t('ai.stop')} onClick={() => a.stop()} strong>
+              <Square size={12} fill="currentColor" />
             </IconRound>
-            <IconRound label={t('ai.settings')} onClick={() => a.setShowSettings(true)}>
-              <Settings2 size={14} />
+          ) : (
+            <IconRound label={t('ai.send')} submit strong disabled={a.draft.trim() === ''}>
+              <ArrowUp size={15} />
             </IconRound>
-            {working ? (
-              <IconRound label={t('ai.stop')} onClick={() => a.stop()} strong>
-                <Square size={12} fill="currentColor" />
-              </IconRound>
-            ) : (
-              <IconRound label={t('ai.send')} submit strong disabled={a.draft.trim() === ''}>
-                <ArrowUp size={15} />
-              </IconRound>
-            )}
-            <IconRound label={t('ai.collapse')} onClick={collapse}>
-              <ChevronDown size={14} />
-            </IconRound>
-          </form>
-        ) : (
-          <button
-            type="button"
-            onClick={() => a.focus()}
-            className="pointer-events-auto inline-flex h-9 items-center gap-2 rounded-full border border-line bg-paper/85 px-3.5 text-[12.5px] text-ink-soft shadow-sm backdrop-blur hover:border-accent/60 hover:text-ink"
-            data-testid="assistant-pill"
-          >
-            <Sparkles size={14} className={clsx('text-accent', working && 'animate-pulse motion-reduce:animate-none')} aria-hidden="true" />
-            <span>{working ? (a.activity ?? t('ai.thinking')) : a.proposal ? t('ai.waiting') : t('ai.placeholder')}</span>
-            <kbd className="rounded border border-line bg-white/70 px-1 text-[10.5px] font-semibold text-ink-soft">{shortcutHint('ai.focus', t)}</kbd>
-          </button>
-        )}
-        {/* Lo que va pasando, para los lectores de pantalla. */}
-        <span className="sr-only" aria-live="polite">
-          {working ? a.activity : a.proposal ? a.proposal.summary : (a.reply ?? '')}
-        </span>
-      </div>
+          )}
+          <IconRound label={t('ai.collapse')} onClick={collapse}>
+            <ChevronDown size={14} />
+          </IconRound>
+        </form>
+      ) : (
+        <button
+          type="button"
+          onClick={() => a.focus()}
+          aria-label={`${working ? (a.activity ?? t('ai.thinking')) : a.proposal ? t('ai.waiting') : t('ai.placeholder')} (${shortcutHint('ai.focus', t)})`}
+          title={`${t('ai.placeholder')} (${shortcutHint('ai.focus', t)})`}
+          className="pointer-events-auto relative inline-flex h-10 w-10 items-center justify-center rounded-full border border-line bg-paper/90 text-accent shadow-md backdrop-blur transition-transform hover:scale-105 hover:border-accent/60 motion-reduce:transition-none"
+          data-testid="assistant-pill"
+        >
+          {working && <span className="absolute inset-0 animate-ping rounded-full border-2 border-accent/40 motion-reduce:animate-none" aria-hidden="true" />}
+          <Sparkles size={18} aria-hidden="true" />
+          {a.proposal && !working && <span className="absolute top-0.5 right-0.5 h-2.5 w-2.5 rounded-full border-2 border-paper bg-warn" aria-hidden="true" />}
+        </button>
+      )}
+      {/* Lo que va pasando, para los lectores de pantalla. */}
+      <span className="sr-only" aria-live="polite">
+        {working ? a.activity : a.proposal ? a.proposal.summary : (a.reply ?? '')}
+      </span>
       {a.showSettings && createPortal(<AssistantSettings onClose={() => a.setShowSettings(false)} />, document.body)}
     </div>
   );
@@ -165,7 +166,7 @@ function IconRound(props: { label: string; children: React.ReactNode; onClick?: 
   );
 }
 
-const cardCls = 'pointer-events-auto w-full rounded-xl border border-line bg-paper/95 p-3 text-[12.5px] text-ink shadow-lg backdrop-blur';
+const cardCls = 'dock-in pointer-events-auto w-full rounded-xl border border-line bg-paper/95 p-3 text-[12.5px] text-ink shadow-lg backdrop-blur';
 
 /** La tarjeta de encima de la píldora: el historial, la propuesta, la respuesta o el error. */
 function Cards() {
@@ -173,7 +174,9 @@ function Cards() {
   return (
     <>
       {a.showHistory && a.turns.length > 0 && <HistoryCard turns={a.turns} />}
-      {a.proposal ? <ProposalCard p={a.proposal} /> : a.error ? <ErrorCard /> : a.reply ? <ReplyCard text={a.reply} /> : null}
+      {/* Un ajuste que falló deja a la vista el error y, debajo, la propuesta que se quería ajustar. */}
+      {a.error && <ErrorCard />}
+      {a.proposal ? <ProposalCard p={a.proposal} /> : !a.error && a.reply ? <ReplyCard text={a.reply} /> : null}
     </>
   );
 }
@@ -204,19 +207,14 @@ function ProposalCard({ p }: { p: ShownProposal }) {
             </li>
           ))}
           {p.warnings.length + p.omittedWarnings > 6 && <li className="text-[11px] text-ink-soft">+{p.warnings.length + p.omittedWarnings - 6}</li>}
-          {p.ignored.length > 0 && <li className="rounded-full bg-black/5 px-2 py-0.5 text-[11px] text-ink-soft" title={p.ignored.join(', ')}>{t('ai.ignored', { keys: p.ignored.slice(0, 3).join(', ') })}</li>}
+          {p.ignored.length > 0 && (
+            <li className="rounded-full bg-black/5 px-2 py-0.5 text-[11px] text-ink-soft" title={p.ignored.join(', ')}>
+              {t('ai.ignored', { keys: p.ignored.slice(0, 3).join(', ') })}
+            </li>
+          )}
         </ul>
       )}
-      <details className="mt-2 text-[11.5px] text-ink-soft">
-        <summary className="cursor-pointer select-none">{plural(t, 'ai.changes', p.ops.length)}</summary>
-        <ul className="mt-1 max-h-32 overflow-auto font-mono text-[10.5px]">
-          {p.ops.map((o, i) => (
-            <li key={i}>
-              {o.op} {o.path}
-            </li>
-          ))}
-        </ul>
-      </details>
+      <OpsList p={p} />
       {p.stale ? (
         <div className="mt-2 flex items-center gap-2">
           <p className="flex-1 text-warn">{t('ai.stale')}</p>
@@ -243,6 +241,68 @@ function ProposalCard({ p }: { p: ShownProposal }) {
         </div>
       )}
     </section>
+  );
+}
+
+const OP_KEYS: Record<OpDescription['op'], UiKey> = { add: 'ai.op.add', replace: 'ai.op.replace', remove: 'ai.op.remove', move: 'ai.op.move', copy: 'ai.op.copy', test: 'ai.op.test' };
+/** Las partes de la agenda con nombre propio en la interfaz; el resto se muestra tal cual. */
+const PATH_KEYS: Record<string, UiKey> = {
+  theme: 'ai.path.theme',
+  customPages: 'ai.path.customPages',
+  blocks: 'ai.path.blocks',
+  props: 'ai.path.props',
+  overrides: 'ai.path.overrides',
+  sections: 'ai.path.sections',
+  calendar: 'ai.path.calendar',
+  watermarks: 'ai.path.watermarks',
+  assets: 'ai.path.assets',
+  binding: 'ai.path.binding',
+  page: 'ai.path.page',
+  fonts: 'ai.path.fonts',
+};
+
+function pathText(t: ReturnType<typeof useT>, path: readonly OpStep[]): string {
+  return path
+    .map((s) => (s.item ? `«${s.item}»` : s.key === '-' ? t('ai.path.end') : /^\d+$/.test(s.key) ? `#${Number(s.key) + 1}` : PATH_KEYS[s.key] ? t(PATH_KEYS[s.key]!) : s.key))
+    .join(' › ');
+}
+
+/** Lo que cambia la propuesta, operación por operación, con los valores (se calcula al abrirlo). */
+function OpsList({ p }: { p: ShownProposal }) {
+  const t = useT();
+  const [open, setOpen] = useState(false);
+  const base = useStore((s) => s.design);
+  const described = useMemo(() => (open ? describeOps(base, p.ops) : []), [open, base, p.ops]);
+  return (
+    <details className="mt-2 text-[11.5px] text-ink-soft" onToggle={(e) => setOpen(e.currentTarget.open)} data-testid="ai-ops">
+      <summary className="cursor-pointer select-none">
+        {plural(t, 'ai.changes', p.ops.length)}
+        {p.rounds > 1 ? ` · ${t('ai.rounds', { n: p.rounds })}` : ''}
+      </summary>
+      <ol className="mt-1 max-h-56 space-y-1 overflow-auto pr-1">
+        {described.map((d, i) => (
+          <li key={i} className="rounded-md bg-black/[0.03] px-1.5 py-1">
+            <p className="text-ink">
+              <span className="font-semibold">{t(OP_KEYS[d.op])}</span> {pathText(t, d.path)}
+              {d.from ? ` ← ${pathText(t, d.from)}` : ''}
+            </p>
+            {(d.before !== undefined || d.after !== undefined) && (
+              <p className="font-mono text-[10.5px] break-all">
+                {d.before !== undefined && <span className="line-through opacity-70">{d.before}</span>}
+                {d.before !== undefined && d.after !== undefined && ' → '}
+                {d.after !== undefined && <span className="text-ink">{d.after}</span>}
+              </p>
+            )}
+            {d.detail && (
+              <details>
+                <summary className="cursor-pointer text-[10.5px] select-none">{t('ai.showValue')}</summary>
+                <pre className="mt-0.5 max-h-40 overflow-auto rounded bg-white/70 p-1 font-mono text-[10px] whitespace-pre-wrap text-ink">{d.detail}</pre>
+              </details>
+            )}
+          </li>
+        ))}
+      </ol>
+    </details>
   );
 }
 
@@ -301,6 +361,7 @@ const OUTCOME_KEYS: Record<Turn['outcome'], UiKey> = {
   applied: 'ai.outcome.applied',
   discarded: 'ai.outcome.discarded',
   stale: 'ai.outcome.stale',
+  refined: 'ai.outcome.refined',
   error: 'ai.outcome.error',
   cancelled: 'ai.outcome.cancelled',
 };

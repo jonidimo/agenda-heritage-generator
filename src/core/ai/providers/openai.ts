@@ -105,9 +105,12 @@ export const openai: ProviderAdapter = {
   },
 
   parseModels(json: unknown): string[] {
-    return asArray(asRecord(json, 'modelos').data)
-      .map((m) => (m && typeof m === 'object' ? (m as { id?: unknown }).id : undefined))
-      .filter((id): id is string => typeof id === 'string')
-      .sort();
+    const r = asRecord(json, 'modelos');
+    // `data: [{ id }]` es lo de OpenAI (y llama.cpp, LM Studio, vLLM); `models: [{ name | model }]`, lo de Ollama y otros.
+    const ids = [
+      ...asArray(r.data).map((m) => (m && typeof m === 'object' ? (m as { id?: unknown }).id : undefined)),
+      ...asArray(r.models).map((m) => (m && typeof m === 'object' ? ((m as { name?: unknown; model?: unknown }).name ?? (m as { model?: unknown }).model) : undefined)),
+    ];
+    return [...new Set(ids.filter((id): id is string => typeof id === 'string' && id.trim() !== '').map((id) => id.trim()))].sort();
   },
 };

@@ -10,7 +10,8 @@ import type { ProviderAdapter } from './types';
 
 export const PROVIDERS: Readonly<Record<AiProviderId, ProviderAdapter>> = { anthropic, gemini, openai };
 
-export const PROVIDER_IDS = Object.keys(PROVIDERS) as AiProviderId[];
+/** En este orden se ofrecen: primero lo compatible con OpenAI, que es también lo que usan los modelos locales. */
+export const PROVIDER_IDS: readonly AiProviderId[] = ['openai', 'anthropic', 'gemini'];
 
 export const isProviderId = (v: unknown): v is AiProviderId => typeof v === 'string' && Object.hasOwn(PROVIDERS, v);
 
@@ -35,6 +36,12 @@ export const OPENAI_PRESETS: readonly OpenAiPreset[] = [
 export function presetOf(baseUrl: string | undefined): OpenAiPreset {
   const clean = (baseUrl ?? '').trim().replace(/\/+$/, '');
   return OPENAI_PRESETS.find((p) => p.baseUrl !== '' && p.baseUrl === clean) ?? (clean === '' ? OPENAI_PRESETS[0]! : OPENAI_PRESETS.at(-1)!);
+}
+
+/** ¿Es la dirección oficial del proveedor (o la de siempre, vacía)? Solo ahí valen sus modelos sugeridos. */
+export function isOfficialBase(adapter: ProviderAdapter, baseUrl: string | undefined): boolean {
+  const clean = (baseUrl ?? '').trim().replace(/\/+$/, '');
+  return clean === '' || clean === adapter.defaultBase;
 }
 
 /** ¿Es una dirección de esta misma computadora? (Un modelo local no necesita clave.) */
