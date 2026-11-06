@@ -764,6 +764,7 @@ export const de: Record<UiKey, string> = {
   'ai.settings.model': 'Modell',
   'ai.settings.localNoKey': 'Ein Modell, das auf diesem Computer läuft, braucht keinen Schlüssel.',
   'ai.settings.key': 'API-Schlüssel',
+  'ai.badKey': 'Der Schlüssel enthält Zeichen, die nicht zu einem Schlüssel gehören (prüfe, ob nichts anderes eingefügt wurde).',
   'ai.settings.keyHint': 'Du findest ihn auf deiner Kontoseite beim Anbieter.',
   'ai.settings.keyStored': 'Ein Schlüssel ist hinterlegt. Gib einen anderen ein, um ihn zu ersetzen.',
   'ai.settings.saveKey': 'Speichern',

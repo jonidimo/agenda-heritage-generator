@@ -13,12 +13,19 @@ import path from 'node:path';
 
 export const PROVIDER_IDS = /** @type {const} */ (['anthropic', 'gemini', 'openai']);
 
-/** Where each provider's API lives (a key is sent only there, or to an address saved in the settings). */
-export const PROVIDER_HOSTS = {
-  anthropic: ['api.anthropic.com'],
-  gemini: ['generativelanguage.googleapis.com'],
-  openai: ['api.openai.com', 'openrouter.ai', 'api.groq.com', 'api.mistral.ai'],
+/**
+ * Where each provider's API lives when no address is saved. A key goes to exactly one origin: this one,
+ * or the origin of the address saved for that provider (and changing that address forgets the key, so a
+ * key typed for one service never travels to another).
+ */
+export const DEFAULT_ORIGINS = {
+  anthropic: 'https://api.anthropic.com',
+  gemini: 'https://generativelanguage.googleapis.com',
+  openai: 'https://api.openai.com',
 };
+
+/** What an API key may look like: printable ASCII without spaces (nothing that can break a header). */
+export const KEY_PATTERN = /^[\x21-\x7e]+$/;
 
 /** How each provider expects the key. */
 export const AUTH = {
@@ -40,8 +47,25 @@ export const isProviderId = (v) => typeof v === 'string' && /** @type {readonly 
 const isLocalHost = (host) => host === 'localhost' || host === '127.0.0.1' || host === '[::1]';
 
 /**
- * Whether the main process may send `provider`'s key to `url`: http(s) only, to that provider's own hosts
- * (https), or to the origin of the address the person saved for it (a local model, a compatible service).
+ * The one origin a provider's key may go to: the saved address's (https, or http on this computer), or
+ * the provider's own. `null` when the saved address is not acceptable.
+ * @param {ProviderId} provider @param {string | undefined} savedBase
+ */
+export function keyOrigin(provider, savedBase) {
+  if (!savedBase) return DEFAULT_ORIGINS[provider];
+  let base;
+  try {
+    base = new URL(savedBase);
+  } catch {
+    return null;
+  }
+  if (base.username || base.password) return null;
+  if (base.protocol !== 'https:' && !(base.protocol === 'http:' && isLocalHost(base.hostname))) return null;
+  return base.origin;
+}
+
+/**
+ * Whether the main process may send `provider`'s key to `url`: only to its one origin (see `keyOrigin`).
  * @param {ProviderId} provider @param {string} url @param {string | undefined} savedBase
  */
 export function aiTargetAllowed(provider, url, savedBase) {
@@ -52,16 +76,9 @@ export function aiTargetAllowed(provider, url, savedBase) {
     return false;
   }
   if (target.username || target.password) return false;
-  if (target.protocol === 'https:' && PROVIDER_HOSTS[provider].includes(target.hostname)) return true;
-  if (!savedBase) return false;
-  let base;
-  try {
-    base = new URL(savedBase);
-  } catch {
-    return false;
-  }
-  if (base.protocol !== 'https:' && !(base.protocol === 'http:' && isLocalHost(base.hostname))) return false;
-  return target.origin === base.origin;
+  if (target.protocol !== 'https:' && target.protocol !== 'http:') return false;
+  const origin = keyOrigin(provider, savedBase);
+  return origin !== null && target.origin === origin;
 }
 
 /**
@@ -162,7 +179,7 @@ export class AiSettingsStore {
     };
   }
 
-  /** @param {ProviderId} provider @param {string | null} key */
+  /** @param {ProviderId} provider @param {string | null} key A key already checked against `KEY_PATTERN` (or `null`). */
   async setKey(provider, key) {
     const data = await this.load();
     const next = { ...data, keys: { ...data.keys } };
@@ -176,13 +193,25 @@ export class AiSettingsStore {
     await this.save(next);
   }
 
-  /** @param {ProviderId} provider @param {string} base An address already checked by `cleanBaseUrl`. */
+  /**
+   * Saves the address for a provider. If its origin changes, the provider's key is forgotten: a key is
+   * for one service, and the person types the new service's key (the page cannot redirect a saved key).
+   * @param {ProviderId} provider @param {string} base An address already checked by `cleanBaseUrl`.
+   * @returns {Promise<boolean>} Whether the key was forgotten.
+   */
   async setBaseUrl(provider, base) {
     const data = await this.load();
-    const next = { ...data, baseUrls: { ...data.baseUrls } };
+    const next = { ...data, baseUrls: { ...data.baseUrls }, keys: { ...data.keys } };
+    const before = keyOrigin(provider, data.baseUrls[provider]);
     if (base === '') delete next.baseUrls[provider];
     else next.baseUrls[provider] = base;
+    const forget = keyOrigin(provider, next.baseUrls[provider]) !== before && (typeof next.keys[provider] === 'string' || this.volatile.has(provider));
+    if (forget) {
+      delete next.keys[provider];
+      this.volatile.delete(provider);
+    }
     await this.save(next);
+    return forget;
   }
 
   /** @param {ProviderId} provider @returns {Promise<string | null>} */

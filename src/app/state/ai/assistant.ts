@@ -11,7 +11,11 @@
  * - La conversación es de la sesión: vive en memoria y empieza de nuevo al cambiar de agenda, de
  *   proveedor, de modelo o el permiso de mirar las páginas.
  */
+import type { AiProviderId } from '@core/ai/messages';
+import { PROVIDER_IDS, PROVIDERS } from '@core/ai/providers';
+import { isDesktopShell } from '../desktopBridge';
 import type { AiErrorKind } from '@core/ai/errors';
+import { trimHistory } from '@core/ai/budget';
 import { AiError } from '@core/ai/errors';
 import type { AiMessage } from '@core/ai/messages';
 import type { Proposal } from '@core/ai/tools';
@@ -89,6 +93,8 @@ let session = '';
 let lastRequest = '';
 let nextTurn = 1;
 let nextProposal = 1;
+/** Sube con «Limpiar» y con cada sesión nueva: lo que termina de una conversación vieja no toca la nueva. */
+let epoch = 0;
 
 const previewKeyOf = (id: string): string => `ai:${id}`;
 
@@ -111,6 +117,15 @@ function activityOf(e: TurnEvent): string {
   return tNow(ACTIVITY[e.name] ?? 'ai.act.reading', { n: typeof page === 'number' ? page : '' });
 }
 
+/** El único origen al que va la clave de un proveedor con estos ajustes. */
+function keyOriginOf(p: AiProviderId, s: AiSettings): string {
+  try {
+    return new URL(s.perProvider[p].baseUrl || PROVIDERS[p].defaultBase).origin;
+  } catch {
+    return '';
+  }
+}
+
 const engine = () => import('./engine');
 
 export const useAssistant = create<AssistantState>((set, get) => {
@@ -121,7 +136,10 @@ export const useAssistant = create<AssistantState>((set, get) => {
     if (shownId !== undefined && useStore.getState().previewKey === previewKeyOf(shownId)) useStore.getState().clearPreview();
     const settling = pending;
     pending = null;
+    const started = epoch;
     const { settle } = await engine();
+    // Si mientras tanto se limpió la conversación, la respuesta a la propuesta ya no tiene a quién ir.
+    if (started !== epoch) return;
     history = settle(history, settling.pending, decision);
   };
 
@@ -148,9 +166,15 @@ export const useAssistant = create<AssistantState>((set, get) => {
     setShowHistory: (showHistory) => set({ showHistory }),
     setShowSettings: (showSettings) => set({ showSettings }),
     updateSettings(recipe) {
-      const settings = recipe(get().settings);
+      const before = get().settings;
+      const settings = recipe(before);
       prefs.ai.write(settings);
       set({ settings });
+      // Una clave es de un servicio: si cambia la dirección a la que va, se olvida (en el escritorio lo hace el proceso principal).
+      if (!isDesktopShell()) {
+        const moved = PROVIDER_IDS.filter((p) => keyOriginOf(p, before) !== keyOriginOf(p, settings));
+        if (moved.length > 0) void import('./keys').then((k) => Promise.all(moved.map((p) => k.setKey(p, null, false))));
+      }
     },
 
     async send(text) {
@@ -163,6 +187,8 @@ export const useAssistant = create<AssistantState>((set, get) => {
         markLast('discarded');
       }
       lastRequest = request;
+      // La agenda como estaba al pedir: si la persona la cambia mientras el modelo trabaja, la propuesta llega vieja.
+      const startRevision = useStore.getState().revision;
       const ac = new AbortController();
       abort = ac;
       const turnId = nextTurn++;
@@ -173,7 +199,8 @@ export const useAssistant = create<AssistantState>((set, get) => {
         const out = await turn({ ...cfg, vision: get().settings.vision, history, text: request, signal: ac.signal, onEvent: (e) => abort === ac && set({ activity: activityOf(e) }) });
         if (abort !== ac) return;
         abort = null;
-        history = out.history;
+        // En memoria queda lo que entra en un pedido (las páginas vistas hace mucho no se guardan para siempre).
+        history = trimHistory(out.history);
         if (out.kind === 'answer') {
           set({ status: 'idle', activity: null, reply: out.text || tNow('ai.noAnswer') });
           markLast('answer', out.text);
@@ -182,7 +209,9 @@ export const useAssistant = create<AssistantState>((set, get) => {
         const id = String(nextProposal++);
         const st = useStore.getState();
         pending = { proposal: out.proposal, pending: out.pending };
-        st.preview(() => out.proposal.design, previewKeyOf(id));
+        const stale = st.revision !== startRevision;
+        // Una propuesta armada sobre la agenda de antes desharía lo que la persona cambió: no se muestra sobre la página.
+        if (!stale) st.preview(() => out.proposal.design, previewKeyOf(id));
         set({
           status: 'awaiting',
           activity: null,
@@ -194,8 +223,8 @@ export const useAssistant = create<AssistantState>((set, get) => {
             omittedWarnings: out.proposal.omittedWarnings,
             ignored: out.proposal.ignored,
             ops: out.proposal.patch.map((o) => ({ op: o.op, path: o.path })),
-            baseRevision: st.revision,
-            stale: false,
+            baseRevision: startRevision,
+            stale,
           },
         });
         markLast('proposed', out.proposal.summary);
@@ -266,6 +295,7 @@ export const useAssistant = create<AssistantState>((set, get) => {
     clear() {
       get().stop();
       void get().discard();
+      epoch++;
       history = [];
       set({ turns: [], reply: null, error: null, showHistory: false });
     },
@@ -277,6 +307,7 @@ function resetSession(): void {
   const a = useAssistant.getState();
   a.stop();
   if (a.proposal && useStore.getState().previewKey === previewKeyOf(a.proposal.id)) useStore.getState().clearPreview();
+  epoch++;
   history = [];
   pending = null;
   useAssistant.setState({ proposal: null, reply: null, error: null, status: 'idle', turns: [] });

@@ -12,7 +12,7 @@ import { readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { app, BrowserWindow, dialog, Menu, net, protocol, safeStorage, screen, session, shell } from 'electron';
-import { AiSettingsStore, AUTH, aiTargetAllowed, cleanBaseUrl, isProviderId, MAX_KEY_LENGTH, parseChatRequest } from './lib/ai.mjs';
+import { AiSettingsStore, AUTH, aiTargetAllowed, cleanBaseUrl, isProviderId, KEY_PATTERN, MAX_KEY_LENGTH, parseChatRequest } from './lib/ai.mjs';
 import { agendaFileFromArgv, MAX_OPEN_BYTES } from './lib/args.mjs';
 import { inlineAssetPaths } from './lib/assets.mjs';
 import { createCloseGuard } from './lib/closing.mjs';
@@ -43,7 +43,7 @@ protocol.registerSchemesAsPrivileged([
 const notFound = () => new Response('Not found', { status: 404, headers: { 'content-type': 'text/plain' } });
 
 /** @param {unknown} data @param {number} [status] */
-const json = (data, status = 200) => new Response(JSON.stringify(data), { status, headers: { 'content-type': 'application/json' } });
+const json = (data, status = 200, extra = {}) => new Response(JSON.stringify(data), { status, headers: { 'content-type': 'application/json', ...extra } });
 
 /** What was saved to disk from the page (PDFs), so it can say where and open them. */
 const downloads = new DownloadLog();
@@ -131,8 +131,9 @@ async function aiConfig(request) {
   }
   if (b.keys && typeof b.keys === 'object') {
     for (const [p, v] of Object.entries(b.keys)) {
-      if (!isProviderId(p) || (v !== null && (typeof v !== 'string' || v.length > MAX_KEY_LENGTH))) return json({ error: 'key' }, 400);
-      await ai().setKey(p, v);
+      const key = typeof v === 'string' ? v.replace(/\s+/g, '') : v;
+      if (!isProviderId(p) || (key !== null && (typeof key !== 'string' || key.length > MAX_KEY_LENGTH || (key !== '' && !KEY_PATTERN.test(key))))) return json({ error: 'key' }, 400);
+      await ai().setKey(p, key);
     }
   }
   return json(await ai().status());
@@ -155,7 +156,8 @@ async function aiChat(request) {
   }
   const req = parseChatRequest(body);
   if (!req.ok) return json({ error: { message: `Pedido no válido (${req.error}).` } }, 400);
-  if (!aiTargetAllowed(req.provider, req.url, await ai().baseUrl(req.provider))) return json({ error: { message: 'Esa dirección no es la del proveedor ni la que se guardó en los ajustes.' } }, 403);
+  // `x-heritage-error` tells the page what failed here (not at the provider): it is not the provider's answer.
+  if (!aiTargetAllowed(req.provider, req.url, await ai().baseUrl(req.provider))) return json({ error: { message: 'Esa dirección no es la del proveedor ni la que se guardó en los ajustes.' } }, 403, { 'x-heritage-error': 'target' });
   const key = await ai().getKey(req.provider);
   const local = ['localhost', '127.0.0.1', '[::1]'].includes(new URL(req.url).hostname);
   if (!key && !local) return json({ error: { message: 'Falta la clave de API.' } }, 401);
@@ -164,10 +166,13 @@ async function aiChat(request) {
   let upstream;
   try {
     // Never follow a redirect: the key would travel to wherever it points.
-    upstream = await net.fetch(req.url, { method: req.method, headers, ...(req.payload !== undefined ? { body: req.payload } : {}), redirect: 'error', signal: AbortSignal.timeout(AI_TIMEOUT_MS) });
+    // «Detener» in the page cancels the upstream request too (when Electron passes the cancellation on).
+    const signal = request.signal ? AbortSignal.any([request.signal, AbortSignal.timeout(AI_TIMEOUT_MS)]) : AbortSignal.timeout(AI_TIMEOUT_MS);
+    upstream = await net.fetch(req.url, { method: req.method, headers, ...(req.payload !== undefined ? { body: req.payload } : {}), redirect: 'error', signal });
   } catch (err) {
     const timeout = /** @type {{ name?: string }} */ (err).name === 'TimeoutError';
-    return json({ error: { message: timeout ? 'El proveedor no contestó a tiempo.' : `No se pudo conectar con el proveedor: ${err instanceof Error ? err.message : String(err)}` } }, timeout ? 504 : 502);
+    // A fixed text: the network error could repeat request details (a header value is the key).
+    return json({ error: { message: timeout ? 'El proveedor no contestó a tiempo.' : 'No se pudo conectar con el proveedor (sin red, la dirección no existe o un certificado no es válido).' } }, timeout ? 504 : 502, { 'x-heritage-error': timeout ? 'timeout' : 'network' });
   }
   const out = new Headers({ 'content-type': upstream.headers.get('content-type') ?? 'application/json' });
   const retry = upstream.headers.get('retry-after');

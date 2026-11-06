@@ -98,8 +98,10 @@ function Dock({ footer }: { footer: boolean }) {
               placeholder={working ? (a.activity ?? t('ai.thinking')) : t('ai.placeholder')}
               aria-label={t('ai.placeholder')}
               maxLength={2000}
-              disabled={working}
-              className="min-w-0 flex-1 bg-transparent py-1 text-[13px] text-ink placeholder:text-ink-soft focus:outline-none disabled:opacity-80"
+              // Solo lectura (no deshabilitado) mientras trabaja: así conserva el foco y Esc lo puede detener.
+              readOnly={working}
+              aria-busy={working}
+              className="min-w-0 flex-1 bg-transparent py-1 text-[13px] text-ink placeholder:text-ink-soft focus:outline-none read-only:opacity-80"
               data-testid="assistant-input"
             />
             <IconRound label={t('ai.history')} onClick={() => a.setShowHistory(!a.showHistory)} pressed={a.showHistory} disabled={a.turns.length === 0}>

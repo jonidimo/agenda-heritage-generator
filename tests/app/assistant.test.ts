@@ -100,6 +100,38 @@ describe('propuestas', () => {
     expect(useStore.getState().design!.name).toBe('Otro nombre');
   });
 
+  it('«Limpiar» con una propuesta a la vista deja una conversación sana (sin respuestas sueltas)', async () => {
+    script.push(proposeComfort('wide'));
+    await useAssistant.getState().send('Letra más grande');
+    useAssistant.getState().clear();
+    await new Promise((r) => setTimeout(r, 0));
+    script.push(anthropicReply([{ type: 'text', text: 'Hola.' }], 'end_turn'));
+    await useAssistant.getState().send('Hola');
+    const messages = seen[1]!.body.messages as Array<{ role: string; content: Array<Record<string, unknown>> }>;
+    expect(messages).toHaveLength(1);
+    expect(messages[0]!.content.some((b) => b.type === 'tool_result')).toBe(false);
+  });
+
+  it('una respuesta vacía del modelo no queda en la conversación', async () => {
+    useAssistant.getState().clear();
+    script.push(anthropicReply([], 'end_turn'));
+    await useAssistant.getState().send('Hola');
+    script.push(anthropicReply([{ type: 'text', text: 'Ahora sí.' }], 'end_turn'));
+    await useAssistant.getState().send('¿Y?');
+    const messages = seen[1]!.body.messages as Array<{ role: string; content: unknown[] }>;
+    expect(messages.every((m) => m.content.length > 0)).toBe(true);
+    expect(messages.map((m) => m.role)).toEqual(['user']);
+  });
+
+  it('si la persona cambia la agenda mientras el modelo trabaja, la propuesta llega vieja y no se muestra', async () => {
+    script.push(proposeComfort('wide'));
+    const sending = useAssistant.getState().send('Letra más grande');
+    useStore.getState().update((d) => void (d.name = 'Cambiado mientras'));
+    await sending;
+    expect(useAssistant.getState().proposal!.stale).toBe(true);
+    expect(useStore.getState().previewDesign).toBeNull();
+  });
+
   it('otra agenda empieza una conversación nueva', async () => {
     script.push(proposeComfort('wide'));
     await useAssistant.getState().send('Letra más grande');

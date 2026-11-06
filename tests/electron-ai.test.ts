@@ -63,11 +63,14 @@ describe('claves', () => {
 });
 
 describe('destinos', () => {
-  it('la clave va a las direcciones del proveedor por https, o a la que se guardó en los ajustes', () => {
+  it('la clave va a un solo origen: el del proveedor por https, o el de la dirección guardada', () => {
     expect(aiTargetAllowed('anthropic', 'https://api.anthropic.com/v1/messages', undefined)).toBe(true);
     expect(aiTargetAllowed('anthropic', 'http://api.anthropic.com/v1/messages', undefined)).toBe(false);
     expect(aiTargetAllowed('anthropic', 'https://generativelanguage.googleapis.com/x', undefined)).toBe(false);
-    expect(aiTargetAllowed('openai', 'https://openrouter.ai/api/v1/chat/completions', undefined)).toBe(true);
+    // Otro servicio compatible recibe la clave solo si es la dirección guardada (y la clave se escribió para él).
+    expect(aiTargetAllowed('openai', 'https://openrouter.ai/api/v1/chat/completions', undefined)).toBe(false);
+    expect(aiTargetAllowed('openai', 'https://openrouter.ai/api/v1/chat/completions', 'https://openrouter.ai/api/v1')).toBe(true);
+    expect(aiTargetAllowed('openai', 'https://api.openai.com/v1/models', 'https://openrouter.ai/api/v1')).toBe(false);
     expect(aiTargetAllowed('openai', 'http://localhost:11434/v1/chat/completions', undefined)).toBe(false);
     expect(aiTargetAllowed('openai', 'http://localhost:11434/v1/chat/completions', 'http://localhost:11434/v1')).toBe(true);
     expect(aiTargetAllowed('openai', 'http://localhost:9999/v1/chat/completions', 'http://localhost:11434/v1')).toBe(false);
@@ -79,8 +82,8 @@ describe('destinos', () => {
     expect(aiTargetAllowed('openai', 'file:///etc/passwd', undefined)).toBe(false);
   });
 
-  it('ninguna dirección generada escapa de la lista ni de la guardada (propiedades)', () => {
-    const allowedOrigins = new Set(['https://api.openai.com', 'https://openrouter.ai', 'https://api.groq.com', 'https://api.mistral.ai', 'https://mi.servicio.example']);
+  it('ninguna dirección generada escapa del origen guardado (propiedades)', () => {
+    const allowedOrigins = new Set(['https://mi.servicio.example']);
     fc.assert(
       fc.property(fc.webUrl({ withQueryParameters: true, withFragments: true }), (url) => {
         if (aiTargetAllowed('openai', url, 'https://mi.servicio.example/v1')) expect(allowedOrigins.has(new URL(url).origin)).toBe(true);
@@ -95,6 +98,20 @@ describe('destinos', () => {
     expect(cleanBaseUrl('ftp://x')).toBeNull();
     expect(cleanBaseUrl('https://a:b@x.example')).toBeNull();
     expect(cleanBaseUrl('no es una dirección')).toBeNull();
+  });
+});
+
+describe('una clave es de un servicio', () => {
+  it('cambiar la dirección a otro origen olvida la clave; la misma dirección con otra ruta, no', async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), 'ai-origen-'));
+    const store = new AiSettingsStore({ file: path.join(dir, 'ai.json'), fs: fsp, safeStorage: fakeSafe() });
+    await store.setKey('openai', 'sk-openai');
+    expect(await store.setBaseUrl('openai', 'https://api.openai.com/v1')).toBe(false);
+    expect(await store.getKey('openai')).toBe('sk-openai');
+    expect(await store.setBaseUrl('openai', 'https://api.groq.com/openai/v1')).toBe(true);
+    expect(await store.getKey('openai')).toBeNull();
+    expect((await store.status()).hasKey.openai).toBe(false);
+    await rm(dir, { recursive: true, force: true });
   });
 });
 

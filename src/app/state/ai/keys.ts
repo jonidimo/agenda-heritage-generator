@@ -10,6 +10,7 @@
  * En la aplicación de escritorio las claves no pasan por acá: las guarda el proceso principal, cifradas
  * por el sistema (ver `electron/lib/ai.mjs`).
  */
+import { tNow } from '../tNow';
 import type { AiProviderId } from '@core/ai/messages';
 import { createStore, del, get, set, type UseStore } from 'idb-keyval';
 
@@ -51,7 +52,9 @@ export const hasKey = (p: AiProviderId): boolean => memory.has(p);
 
 /** Pone (o con `null`, quita) la clave de un proveedor. Con `remember`, también la guarda cifrada. */
 export async function setKey(p: AiProviderId, key: string | null, remember: boolean): Promise<void> {
-  const clean = key?.trim() ?? '';
+  // Una clave es texto imprimible sin espacios: un salto de línea pegado por error rompería la cabecera.
+  const clean = key?.replace(/\s+/g, '') ?? '';
+  if (clean && !/^[\x21-\x7e]+$/.test(clean)) throw new Error(tNow('ai.badKey'));
   if (clean) memory.set(p, clean);
   else memory.delete(p);
   try {

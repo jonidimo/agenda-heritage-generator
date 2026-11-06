@@ -764,6 +764,7 @@ export const fr: Record<UiKey, string> = {
   'ai.settings.model': 'Modèle',
   'ai.settings.localNoKey': 'Un modèle qui tourne sur cet ordinateur n’a pas besoin de clé.',
   'ai.settings.key': 'Clé d’API',
+  'ai.badKey': 'La clé contient des caractères qui ne font pas partie d’une clé (vérifiez que rien d’autre n’a été collé).',
   'ai.settings.keyHint': 'Vous l’obtenez sur la page de votre compte chez le fournisseur.',
   'ai.settings.keyStored': 'Une clé est enregistrée. Saisissez-en une autre pour la remplacer.',
   'ai.settings.saveKey': 'Enregistrer',

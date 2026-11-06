@@ -32,7 +32,7 @@ async function readJson(res: Response): Promise<unknown> {
   }
 }
 
-/** Manda un pedido con la clave del proveedor. Un modelo local (OpenAI compatible en esta computadora) no la necesita. */
+/** Manda un pedido con la clave del proveedor (nunca sigue una redirección: la clave viajaría a donde apunte). Un modelo local (OpenAI compatible en esta computadora) no la necesita. */
 export async function sendWeb(provider: AiProviderId, wire: WireRequest, signal: AbortSignal): Promise<unknown> {
   const adapter = PROVIDERS[provider];
   const key = getKey(provider);
@@ -40,7 +40,7 @@ export async function sendWeb(provider: AiProviderId, wire: WireRequest, signal:
   const headers: Record<string, string> = { ...wire.headers, ...(key ? { [adapter.auth.header]: `${adapter.auth.prefix}${key}` } : {}) };
   let res: Response;
   try {
-    res = await fetch(wire.url, { method: wire.method, headers, ...(wire.body !== undefined ? { body: wire.body } : {}), signal: withTimeout(signal), credentials: 'omit', referrerPolicy: 'no-referrer', cache: 'no-store' });
+    res = await fetch(wire.url, { method: wire.method, headers, ...(wire.body !== undefined ? { body: wire.body } : {}), signal: withTimeout(signal), credentials: 'omit', referrerPolicy: 'no-referrer', cache: 'no-store', redirect: 'error' });
   } catch (err) {
     if (signal.aborted) throw new AiError('aborted', 'Cancelado.');
     if ((err as { name?: string }).name === 'TimeoutError') throw new AiError('timeout', 'El proveedor no contestó a tiempo.');

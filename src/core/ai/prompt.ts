@@ -34,5 +34,6 @@ export function systemPrompt(uiLanguage: string, vision: boolean): string {
 
 /** El bloque de contexto que acompaña cada pedido de la persona. */
 export function contextBlock(ctx: AiContext): string {
-  return `<context>\n${JSON.stringify(ctx)}\n</context>`;
+  // Los textos de la agenda (nombres, títulos) no pueden cerrar el bloque ni abrir otro: «<» y «>» van escapados.
+  return `<context>\n${JSON.stringify(ctx).replace(/</g, '\\u003c').replace(/>/g, '\\u003e')}\n</context>`;
 }

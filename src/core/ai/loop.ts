@@ -82,6 +82,11 @@ export async function runTurn(input: TurnInput): Promise<TurnOutcome> {
     const json = input.sleep ? await withRetry(() => send(wire, signal), signal, input.sleep) : await send(wire, signal).catch((err: unknown) => Promise.reject(fetchFailure(err)));
     const reply = parseReply(adapter, json);
     if (reply.stop === 'refusal') throw new AiError('refusal', reply.text || 'El modelo no quiso hacer este pedido.');
+    if (reply.toolCalls.length === 0 && reply.text.trim() === '') {
+      // Una respuesta vacía no se guarda: los proveedores rechazan un mensaje sin contenido en el pedido siguiente.
+      if (reply.stop === 'length') throw new AiError('length', 'La respuesta se cortó por larga.');
+      return { kind: 'answer', text: '', history: [...input.history] };
+    }
     messages.push({ role: 'assistant', text: reply.text, toolCalls: reply.toolCalls, ...(reply.raw ? { raw: reply.raw } : {}) });
     if (reply.toolCalls.length === 0) {
       if (reply.stop === 'length') throw new AiError('length', 'La respuesta se cortó por larga.');

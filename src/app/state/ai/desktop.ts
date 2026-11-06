@@ -56,6 +56,15 @@ export async function sendDesktop(provider: AiProviderId, wire: WireRequest, sig
   } catch {
     if (res.ok) throw new AiError('protocol', 'El proveedor no contestó con JSON.');
   }
-  if (!res.ok) throw httpError(res.status, json, res.headers);
+  if (!res.ok) {
+    // Lo que falló en el proceso principal (no en el proveedor) viene marcado: no es un error del servidor.
+    const local = res.headers.get('x-heritage-error');
+    const message = (json as { error?: { message?: unknown } } | null)?.error?.message;
+    const text = typeof message === 'string' ? message : `HTTP ${res.status}`;
+    if (local === 'network') throw new AiError('network', text);
+    if (local === 'timeout') throw new AiError('timeout', text);
+    if (local === 'target') throw new AiError('badRequest', text);
+    throw httpError(res.status, json, res.headers);
+  }
   return json;
 }
