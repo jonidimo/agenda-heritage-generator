@@ -21,6 +21,7 @@ import { pageToSvg } from '../core/render/svg';
 import { toBase64 } from '../core/resources';
 import type { FontRegistry } from '../core/text/fonts';
 import { applyJsonPatch, type JsonPatchOp } from '../core/util/jsonPatch';
+import { JsonPatchOpZ } from '../core/util/jsonPatchSchema';
 import { checkDesignData, checkDesignJson, type CheckResult } from '../node/check';
 import { fullCatalogue, loadFonts, openNodeDocument } from '../node/env';
 import type { Rasterizer } from './resvg';
@@ -61,11 +62,7 @@ const source = {
   app: z.boolean().optional().describe('La agenda que está abierta ahora en la aplicación de escritorio (en lugar de path o design). Ver app_status'),
 };
 
-const patchOp = z.union([
-  z.object({ op: z.enum(['add', 'replace', 'test']), path: z.string(), value: z.unknown() }),
-  z.object({ op: z.literal('remove'), path: z.string() }),
-  z.object({ op: z.enum(['move', 'copy']), from: z.string(), path: z.string() }),
-]);
+const patchOp = JsonPatchOpZ;
 
 /** Lo que cambia según desde dónde corre el servidor (el código fuente o el paquete de la aplicación de escritorio). */
 export interface ServerResources {

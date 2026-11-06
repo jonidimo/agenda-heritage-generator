@@ -8,6 +8,7 @@
  */
 import { z } from 'zod';
 import type { JsonPatchOp } from '../util/jsonPatch';
+import { JsonPatchOpZ } from '../util/jsonPatchSchema';
 
 /** Los métodos que existen (los mismos que reenvía el intermediario). */
 export const LIVE_METHOD_NAMES = ['design.info', 'design.get', 'design.patch', 'view.reveal', 'library.list', 'design.open', 'design.load'] as const;
@@ -27,11 +28,7 @@ export const LIVE_CODES = {
   notFound: -32014,
 } as const;
 
-const patchOp = z.union([
-  z.object({ op: z.enum(['add', 'replace', 'test']), path: z.string().max(500), value: z.unknown() }),
-  z.object({ op: z.literal('remove'), path: z.string().max(500) }),
-  z.object({ op: z.enum(['move', 'copy']), from: z.string().max(500), path: z.string().max(500) }),
-]);
+const patchOp = JsonPatchOpZ;
 
 /** Parámetros de cada método (lo que la página acepta). */
 export const LiveParams = {
