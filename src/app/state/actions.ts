@@ -13,7 +13,7 @@ import type { Rect } from '@core/util/geometry';
 import type { BlendMode } from '@core/design/blend';
 import type { HiddenElement } from '@core/document/hidden';
 import { moveInOrder, restackOne, type StackMove } from '@core/layout/stack';
-import { blockBounds, findOverride as appliedOverride } from '@core/document/layout';
+import { blockBounds, findOverride as appliedOverride, mirroredScaleShift } from '@core/document/layout';
 import { deformable } from '@core/layout/handles';
 import { axisScales, deformScales, MIN_BOX, naturalBox, storeAdjust, visualToBox, type BoxAdjust } from '@core/layout/box';
 import { alignDeltas, centerGroupDeltas, distributeDeltas, tidyGridDeltas, unionRect, type AlignMode, type Delta } from '@core/layout/align';
@@ -366,9 +366,10 @@ export function deformRecipe(page: PageModel, block: Block, visual: Rect, scope:
     // Con caja, el lugar ya está en el dibujo; sin ella, el ancho y el alto ajustados ya están en `bbox` pero el lugar no.
     const natural = naturalBox(pivot, block.box ? was : { dx: 0, dy: 0, dw: was.dw, dh: was.dh });
     const target = { x: visual.x, y: visual.y, w: pivot.w, h: pivot.h };
-    const shown = storeAdjust(natural, target, false);
-    const stored = storeAdjust(natural, target, sc === 'type' && mirrored);
     const { sx, sy } = deformScales(visual, pivot);
+    const shown = storeAdjust(natural, target, false);
+    // El ajuste «por tipo» en una página espejada escala desde el borde derecho (ver `mirroredScaleShift`).
+    const stored = storeAdjust(natural, { ...target, x: target.x + mirroredScaleShift(pivot.w, sx, sc === 'type' && mirrored) }, sc === 'type' && mirrored);
     const apply = (o: Draft<BlockOverride>, a: BoxAdjust): void => {
       o.dx = r2(a.dx);
       o.dy = r2(a.dy);
@@ -404,7 +405,9 @@ export function resizeBoxRecipe(page: PageModel, block: Block, box: Rect, scope:
     const natural = naturalBox(seen, was);
     const target = { x: box.x, y: box.y, w: Math.max(MIN_BOX, box.w), h: Math.max(MIN_BOX, box.h) };
     const shown = storeAdjust(natural, target, false);
-    const stored = storeAdjust(natural, target, sc === 'type' && mirrored);
+    // Con escala, el ajuste «por tipo» en una página espejada crece desde el borde derecho (ver `mirroredScaleShift`).
+    const typeScale = findOverride(d, page, block.id, 'type')?.scale ?? 1;
+    const stored = storeAdjust(natural, { ...target, x: target.x + mirroredScaleShift(target.w, typeScale, sc === 'type' && mirrored) }, sc === 'type' && mirrored);
     upsertOverride(
       d,
       page,

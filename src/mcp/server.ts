@@ -15,13 +15,13 @@ import { themeFile, themeFromDesign } from '../core/design/themeFile';
 import { EXPORT_KINDS } from '../core/document';
 import { documentSummary } from '../core/document/summary';
 import type { LiveDesign, LiveInfo, LiveLibraryItem, LiveOpened, LivePatchResult, LiveReveal } from '../core/live/protocol';
-import { blockBounds } from '../core/document/layout';
+import { newLayoutWarnings } from '../core/document/feedback';
+import { listPages, pageRenderInfo } from '../core/document/inspect';
 import { pageToSvg } from '../core/render/svg';
 import { toBase64 } from '../core/resources';
 import type { FontRegistry } from '../core/text/fonts';
 import { applyJsonPatch, type JsonPatchOp } from '../core/util/jsonPatch';
 import { checkDesignData, checkDesignJson, type CheckResult } from '../node/check';
-import { newLayoutWarnings } from './feedback';
 import { fullCatalogue, loadFonts, openNodeDocument } from '../node/env';
 import type { Rasterizer } from './resvg';
 import { AppLink } from './live';
@@ -127,6 +127,9 @@ export function createServer(opts: ServerOptions): McpServer {
 
   const open = async (design: Design) => openNodeDocument(design, await sharedFonts());
 
+  /** Un archivo escrito por este servidor dice qué versión lo escribió (la aplicación avisa si ella es más vieja). */
+  const stamp = <T,>(design: T): T => (typeof design === 'object' && design !== null && !Array.isArray(design) ? { ...design, writtenBy: opts.version } : design);
+
   /* ---------- Referencia ---------- */
 
   server.registerTool(
@@ -184,7 +187,7 @@ export function createServer(opts: ServerOptions): McpServer {
         return text({ opened, summary: documentSummary(doc, errors) });
       }
       if (!out) return text(design);
-      const full = await ws.write(out, `${JSON.stringify(design, null, 2)}\n`, { extensions: DESIGN_EXT, overwrite: overwrite === true });
+      const full = await ws.write(out, `${JSON.stringify(stamp(design), null, 2)}\n`, { extensions: DESIGN_EXT, overwrite: overwrite === true });
       const { doc, errors } = await open(design);
       return text({ path: ws.show(full), summary: documentSummary(doc, errors) });
     },
@@ -205,7 +208,7 @@ export function createServer(opts: ServerOptions): McpServer {
       const next = applyJsonPatch(parseJson(body, path!), patch as JsonPatchOp[]);
       const check = checkDesignData(next);
       if (!check.design) return { ...text({ written: false, issues: check.issues }), isError: true };
-      await ws.write(full, `${JSON.stringify(next, null, 2)}\n`, { extensions: DESIGN_EXT, overwrite: true });
+      await ws.write(full, `${JSON.stringify(stamp(next), null, 2)}\n`, { extensions: DESIGN_EXT, overwrite: true });
       // Los avisos de maquetación que el cambio produjo (texto que no entra, fuera de la página…).
       const layout = await newLayoutWarnings(open, checkDesignJson(body).design, check.design);
       return text({ written: true, path: ws.show(full), issues: check.issues, warnings: layout.notes, ...(layout.omitted > 0 ? { omittedWarnings: layout.omitted } : {}) });
@@ -311,10 +314,7 @@ export function createServer(opts: ServerOptions): McpServer {
     async ({ type, offset, limit, ...input }) => {
       const { design } = await load(input);
       const { doc } = await open(design);
-      const all = doc.plan.pages.filter((p) => !type || p.type === type);
-      const from = offset ?? 0;
-      const pages = all.slice(from, from + (limit ?? 100)).map((p) => ({ page: p.index + 1, key: p.key, type: p.type, side: p.side, title: doc.pageLabel(p.index) }));
-      return text({ total: all.length, offset: from, pages });
+      return text(listPages(doc, { type, offset, limit }));
     },
   );
 
@@ -332,18 +332,7 @@ export function createServer(opts: ServerOptions): McpServer {
       if (page > doc.pageCount) throw new Error(`La agenda tiene ${doc.pageCount} páginas.`);
       const model = doc.page(page - 1);
       const svg = pageToSvg(model, { fonts: doc.ctx.fonts, assetHref }, { background: '#ffffff' });
-      const box = (r: { x: number; y: number; w: number; h: number }) => [r.x, r.y, r.w, r.h].map((v) => Math.round(v * 10) / 10);
-      const info = {
-        page,
-        key: model.key,
-        type: model.type,
-        side: model.side,
-        size: { w: model.w, h: model.h },
-        // Cajas como [x, y, ancho, alto] en mm desde la esquina superior izquierda de esta página.
-        content: box(model.content),
-        blocks: model.blocks.map((b) => ({ id: b.id, label: b.label, box: box(blockBounds(b)) })),
-        warnings: doc.pageWarnings(page - 1).map((w) => w.message),
-      };
+      const info = pageRenderInfo(doc, page - 1);
       let png: Uint8Array;
       try {
         png = await opts.rasterize(svg, width ?? 800);

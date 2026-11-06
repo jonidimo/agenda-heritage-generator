@@ -162,6 +162,8 @@ export function buildCalendar(opts: CalendarOptions, sources: CalendarSources): 
   const months: MonthInfo[] = [];
   const allWeeks: WeekInfo[] = [];
   const seenWeeks = new Set<number>();
+  /** Semanas de meses ocultos que tienen días de otro mes (ver más abajo). */
+  const straddling: WeekInfo[] = [];
   let simpleCounter = 0;
 
   for (let i = 0; i < opts.monthCount; i++) {
@@ -197,9 +199,25 @@ export function buildCalendar(opts: CalendarOptions, sources: CalendarSources): 
       weeks.push(week);
       // Un mes oculto sigue ocupando sus semanas en la cuenta (para que la numeración no cambie), pero no figura.
       if (!hidden.has(monthKey(y, m))) allWeeks.push(week);
+      else if (row.some((d) => d.m !== m || d.y !== y)) straddling.push(week);
     }
     if (!hidden.has(monthKey(y, m))) months.push({ key: monthKey(y, m), y, m, name: names[m - 1] ?? '', days, weeks, grid });
   }
+
+  // Una semana de borde de un mes oculto que tiene días de un mes visible vecino (el 29 de febrero en la
+  // semana del 1 de marzo, con marzo oculto) pasa a ese mes: si no, esos días quedarían sin página semanal.
+  // Conserva su clave y su número (los ajustes por semana y la numeración no cambian).
+  const byKey = new Map(months.map((mo) => [mo.key, mo]));
+  for (const week of straddling) {
+    const other = week.days.find((d) => d.m !== week.owner.m || d.y !== week.owner.y)!;
+    const neighbour = byKey.get(monthKey(other.y, other.m));
+    if (!neighbour) continue;
+    const moved: WeekInfo = { ...week, owner: { y: neighbour.y, m: neighbour.m } };
+    neighbour.weeks.push(moved);
+    neighbour.weeks.sort((a, b) => a.days[0]!.n - b.days[0]!.n);
+    allWeeks.push(moved);
+  }
+  allWeeks.sort((a, b) => a.days[0]!.n - b.days[0]!.n);
 
   return {
     options: opts,

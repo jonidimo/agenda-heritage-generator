@@ -4,7 +4,7 @@ import { primsToSvg, GlyphSink } from '@core/render/svg';
 import { isProblem } from '@core/layout/prims';
 import { AlertTriangle, ChevronLeft, ChevronRight, RefreshCw } from 'lucide-react';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { pageTitle, useT } from '../../i18n/ui';
+import { pageTitle, plural, useT } from '../../i18n/ui';
 import { assetHref } from '../../state/assetUrls';
 import { pageStep, spreadOf } from '../../state/paging';
 import { activeView, useStore } from '../../state/store';
@@ -115,7 +115,7 @@ export function Canvas({ committed, live }: { committed: AgendaDocument; live: A
               onClick={() => void reveal({ inspector: true, selector: '[data-reveal="preflight"]', focus: false }).then((found) => found && useStore.getState().requestPreflight())}
               className="ml-2 inline-flex items-center gap-1 rounded-md px-2 py-0.5 font-semibold text-warn hover:bg-warn/10"
             >
-              <AlertTriangle size={13} /> {t('foot.warnings', { n: problems })}
+              <AlertTriangle size={13} /> {plural(t, 'foot.warnings', problems)}
             </button>
           )}
         </div>

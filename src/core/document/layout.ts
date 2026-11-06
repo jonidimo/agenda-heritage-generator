@@ -47,6 +47,19 @@ export function overrideMatrix(bbox: Rect, o: Pick<BlockOverride, 'dx' | 'dy' | 
   );
 }
 
+/** ¿Este ajuste se espeja en esta página? Los «por tipo» en las páginas izquierdas de tipos que caen a ambos lados. */
+function isMirrored(doc: { mirrorTypes?: ReadonlySet<string> | undefined }, plan: { side: 'recto' | 'verso'; type: string }, o: Pick<BlockOverride, 'pageKey'>): boolean {
+  return o.pageKey === null && plan.side === 'verso' && (doc.mirrorTypes?.has(plan.type) ?? false);
+}
+
+/**
+ * Cuánto se corre a la izquierda un bloque escalado en una página espejada para que la escala crezca
+ * desde su borde derecho: lo que la escala le agrega al ancho de su caja (`width` es el de la caja sin escalar).
+ */
+export function mirroredScaleShift(width: number, scale: number, mirrored: boolean): number {
+  return mirrored && scale !== 1 ? width * (scale - 1) : 0;
+}
+
 /** Caja final de un bloque (con su transformación): la que se ve al seleccionarlo. */
 export function blockBounds(b: Block): Rect {
   const box = b.box ?? b.bbox;
@@ -436,7 +449,7 @@ export function layoutPage(
   const adjuster: BoxAdjuster = (id) => {
     const o = findOverride(inputs.overrides, plan, id);
     if (!o || o.hidden) return undefined;
-    const mirror = o.pageKey === null && plan.side === 'verso' && (doc.mirrorTypes?.has(plan.type) ?? false);
+    const mirror = isMirrored(doc, plan, o);
     return { dx: mirror ? -(o.dx + o.dw) : o.dx, dy: o.dy, dw: o.dw, dh: o.dh };
   };
   const ctx = new LayoutContext(doc, geom, pageTheme(doc, inputs.styles, plan), pageWritingStyle(inputs.styles, plan), adjuster);
@@ -481,6 +494,10 @@ export function layoutPage(
       // Con caja, el lugar ya está en el dibujo (la sección lo dibujó adentro): la matriz solo escala y gira.
       const pivot = b.box ?? b.bbox;
       let m = overrideMatrix(pivot, { dx: b.box ? 0 : a.dx, dy: b.box ? 0 : a.dy, scale: o.scale, scaleY: o.scaleY, rotation: o.rotation });
+      // Espejado en una página izquierda: la escala crece hacia afuera también acá, así que queda fijo el
+      // borde derecho (el del lomo) y no el izquierdo; si no, la página izquierda no sería el espejo de la derecha.
+      const shift = mirroredScaleShift(pivot.w, o.scale, isMirrored(doc, plan, o));
+      if (shift !== 0) m = compose(translate(-shift, 0), m);
       const bounds = transformRect(m, pivot);
       // Mantener dentro de la página.
       const dx = bounds.x < 0 ? -bounds.x : bounds.x + bounds.w > geom.w ? geom.w - bounds.x - bounds.w : 0;

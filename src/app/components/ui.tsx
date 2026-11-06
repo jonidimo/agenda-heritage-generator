@@ -78,7 +78,16 @@ export function Field(props: { label: string; children: ReactNode; hint?: string
 
 const inputCls = 'w-full rounded-md border border-line bg-white px-2 py-1.5 text-[12.5px] text-ink outline-none focus:border-accent focus:ring-2 focus:ring-accent/20';
 
-export function TextInput(props: { value: string; onChange: (v: string) => void; placeholder?: string; type?: string; onBlur?: () => void; ariaLabel?: string }) {
+export function TextInput(props: {
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+  type?: string;
+  onBlur?: () => void;
+  ariaLabel?: string;
+  onKeyDown?: (e: KeyboardEvent<HTMLInputElement>) => void;
+  autoFocus?: boolean;
+}) {
   return (
     <input
       className={inputCls}
@@ -88,6 +97,10 @@ export function TextInput(props: { value: string; onChange: (v: string) => void;
       aria-label={props.ariaLabel}
       onChange={(e) => props.onChange(e.target.value)}
       onBlur={props.onBlur}
+      onKeyDown={props.onKeyDown}
+      // Solo donde el campo aparece por un pedido explícito (renombrar): el foco va adonde se va a escribir.
+      autoFocus={props.autoFocus}
+      onFocus={props.autoFocus ? (e) => e.currentTarget.select() : undefined}
     />
   );
 }

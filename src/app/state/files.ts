@@ -7,6 +7,7 @@
 import { duplicateForYear } from '@core/design/defaults';
 import { parseDesign, type Design } from '@core/design/schema';
 import { newId } from '@core/util/hash';
+import { isNewerVersion } from '@core/util/version';
 import { download, fileBase } from './exporter';
 import {
   exportDesignFile,
@@ -22,6 +23,7 @@ import {
 } from './persist';
 import { resources } from './resources';
 import { useStore } from './store';
+import { tNow } from './tNow';
 import { pickFiles } from './uploads';
 
 interface FileHandle {
@@ -93,6 +95,8 @@ async function importDesignObject(data: unknown): Promise<Design> {
   const { design, assets, fonts } = await importDesignData(data);
   await adopt(assets, fonts);
   await saveDesign(design);
+  // Guardado por una versión más nueva: lo que esta no entiende se descartó al abrirlo y se perdería al guardarlo.
+  if (isNewerVersion(design.writtenBy, __APP_VERSION__)) useStore.getState().setNotice(tNow('file.newerVersion', { name: design.name, version: design.writtenBy, current: __APP_VERSION__ }));
   return design;
 }
 

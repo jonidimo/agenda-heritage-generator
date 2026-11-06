@@ -129,7 +129,12 @@ export async function removeLiveInfo(dataDir) {
 }
 
 /**
- * Reads a `live.json`; `null` if there is none, it is not valid, or the app that wrote it is gone.
+ * Reads a `live.json`; `null` if there is none or it is not valid.
+ *
+ * Whether the app that wrote it is still running is NOT decided here: from a sandbox, a container or a
+ * Flatpak the host's process ids are not visible (`process.kill(pid, 0)` fails with ESRCH even though
+ * the app is open), so only a connection can tell. A file left by an app that crashed is harmless: its
+ * endpoint does not answer and the connection fails at once (see `findLiveApps` and the MCP's opener).
  * @param {string} file
  * @returns {Promise<LiveInfo | null>}
  */
@@ -142,30 +147,37 @@ export async function readLiveInfo(file) {
   }
   if (!raw || typeof raw !== 'object') return null;
   const { protocol, endpoint, token, pid, version } = /** @type {Record<string, unknown>} */ (raw);
-  if (typeof protocol !== 'number' || typeof endpoint !== 'string' || typeof token !== 'string' || typeof pid !== 'number') return null;
-  try {
-    process.kill(pid, 0);
-  } catch (err) {
-    // EPERM: it exists but is not ours to signal; ESRCH: it is gone.
-    if (/** @type {NodeJS.ErrnoException} */ (err).code !== 'EPERM') return null;
-  }
+  if (typeof protocol !== 'number' || typeof endpoint !== 'string' || endpoint === '' || typeof token !== 'string' || token === '' || typeof pid !== 'number') return null;
   return { protocol, endpoint, token, pid, version: typeof version === 'string' ? version : '' };
 }
 
 /**
- * Finds the running app: the file named by `AGENDA_APP_LINK`, or the `live.json` of the usual data folders.
+ * Every `live.json` that could belong to a running app, in the order they should be tried: the file
+ * named by `AGENDA_APP_LINK`, or the ones in the usual data folders. More than one can exist (a stale
+ * file in one folder, the running app in another), so the caller tries to connect to each.
  * @param {{ env?: Record<string, string | undefined>, platform?: NodeJS.Platform, home?: string }} [where]
+ * @returns {Promise<LiveInfo[]>}
  */
-export async function findLiveApp(where = {}) {
+export async function findLiveApps(where = {}) {
   const env = where.env ?? process.env;
   const platform = where.platform ?? process.platform;
   const home = where.home ?? os.homedir();
   const files = env[LIVE_LINK_ENV] ? [env[LIVE_LINK_ENV]] : dataDirs(env, platform, home).map((dir) => path.join(dir, LIVE_INFO_FILE));
+  /** @type {LiveInfo[]} */
+  const out = [];
   for (const file of files) {
     const info = await readLiveInfo(file);
-    if (info) return info;
+    if (info) out.push(info);
   }
-  return null;
+  return out;
+}
+
+/**
+ * The first `live.json` found (see `findLiveApps`), or `null`.
+ * @param {{ env?: Record<string, string | undefined>, platform?: NodeJS.Platform, home?: string }} [where]
+ */
+export async function findLiveApp(where = {}) {
+  return (await findLiveApps(where))[0] ?? null;
 }
 
 /* ---------- Frames ---------- */

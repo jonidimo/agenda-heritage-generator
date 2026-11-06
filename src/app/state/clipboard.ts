@@ -71,12 +71,27 @@ export function cutSelection(data?: DataTransfer | null): boolean {
   return true;
 }
 
+/**
+ * De dónde sale lo que se pega: los elementos que trae el portapapeles (`payload`), los que se copiaron en
+ * esta ventana (`internal`), o nada porque el portapapeles trae otra cosa (`foreign`). Copiar desde el menú
+ * Edición no puede escribir el formato propio (solo el texto), así que un portapapeles que trae exactamente
+ * el texto de lo último copiado acá es esa copia.
+ */
+export function pasteSource(data: { types: readonly string[]; getData(type: string): string } | null | undefined, internalText: string | null): 'payload' | 'internal' | 'foreign' {
+  if (!data) return 'internal';
+  if (data.getData(CLIPBOARD_MIME)) return 'payload';
+  if (data.types.length === 0) return 'internal';
+  const onlyText = data.types.every((t) => t === 'text/plain');
+  return onlyText && internalText !== null && data.getData('text/plain') === internalText ? 'internal' : 'foreign';
+}
+
 /** Pega en la página de la selección (o la actual). Los datos del evento mandan sobre la copia en memoria. */
 export function pasteSelection(data?: DataTransfer | null): boolean {
   let copies = internal;
-  const raw = data?.getData(CLIPBOARD_MIME);
+  const source = pasteSource(data, internal.length > 0 ? textOf(internal) : null);
   // Pegar algo de otra aplicación no es pegar lo último que se copió acá.
-  if (data && !raw && data.types.length > 0) return false;
+  if (source === 'foreign') return false;
+  const raw = source === 'payload' ? data?.getData(CLIPBOARD_MIME) : undefined;
   if (raw) {
     try {
       const parsed = PayloadZ.safeParse(JSON.parse(raw));

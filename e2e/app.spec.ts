@@ -1677,3 +1677,100 @@ test.describe('imágenes y fuentes', () => {
     await expect(page.getByRole('tab', { name: 'Fuentes', exact: true })).toHaveAttribute('aria-selected', 'true');
   });
 });
+
+test.describe('arreglos de la 2.4', () => {
+  test('una capa se renombra con el teclado: F2 abre el campo, Enter guarda y Esc deja todo como estaba', async ({ page }) => {
+    await openQuiet(page);
+    await toWeek(page);
+    await settled(page);
+    await page.getByRole('button', { name: 'Capas', exact: true }).click();
+    const row = page.getByTestId('layer-row').filter({ has: page.getByRole('button', { name: 'Ocultar en la página' }) }).first();
+    const id = (await row.getAttribute('data-block-id'))!;
+    const name = row.locator('button[title^="Renombrar"]');
+    await name.focus();
+    await page.keyboard.press('F2');
+    const field = row.getByRole('textbox', { name: 'Nombre' });
+    await expect(field).toBeFocused();
+    await page.keyboard.press('Control+A');
+    await page.keyboard.type('Con teclado');
+    await page.keyboard.press('Enter');
+    await expect(row).toContainText('Con teclado');
+    // El foco vuelve a la fila: se puede seguir con el teclado.
+    await expect(name).toBeFocused();
+    const label = () => page.evaluate<string | null>(`globalThis.__agenda.getState().design.overrides.find((o) => o.blockId === ${JSON.stringify(id)})?.label ?? null`);
+    expect(await label()).toBe('Con teclado');
+    await page.keyboard.press('F2');
+    await page.keyboard.press('Control+A');
+    await page.keyboard.type('No va');
+    await page.keyboard.press('Escape');
+    await expect(row).toContainText('Con teclado');
+    expect(await label()).toBe('Con teclado');
+  });
+
+  test('copiar desde el menú Edición y pegar con Ctrl+V pega los elementos', async ({ page, context }) => {
+    await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+    await openQuiet(page);
+    await toWeek(page);
+    await settled(page);
+    await selectBlock(page, 'week.notes');
+    const count = () => page.evaluate<number>('globalThis.__agenda.getState().design.customBlocks.length');
+    const before = await count();
+    await page.getByRole('button', { name: 'Edición', exact: true }).click();
+    await page.getByRole('menuitem', { name: /^Copiar/ }).click();
+    // Lo que el menú escribió en el portapapeles es el texto de lo copiado: Ctrl+V lo reconoce y pega los elementos.
+    await page.locator('.desk').click({ position: { x: 5, y: 5 } });
+    await page.keyboard.press('Control+V');
+    await expect.poll(count).toBe(before + 1);
+  });
+
+  test('en una página izquierda espejada, deformar «por tipo» deja el elemento donde se soltó y la derecha queda espejada', async ({ page }) => {
+    await openQuiet(page);
+    // El resumen del año cae a los dos lados (páginas 8 y 9): sus ajustes «por tipo» se espejan en la izquierda.
+    await page.evaluate('globalThis.__agenda.getState().goToPage(7)');
+    const spread = async () =>
+      page.evaluate<{ verso: string | null; recto: string | null }>(`(() => {
+        const pages = [...document.querySelectorAll('.desk [data-page-type="yearOverview"]')];
+        const pick = (odd) => pages.find((el) => Number(el.getAttribute('data-page-index')) % 2 === (odd ? 1 : 0))?.getAttribute('data-page-key') ?? null;
+        return { verso: pick(true), recto: pick(false) };
+      })()`);
+    await expect.poll(async () => { const s = await spread(); return Boolean(s.verso && s.recto); }).toBe(true);
+    const { verso, recto } = await spread();
+    await settled(page);
+    // La caja del elemento es la de sus tiradores (el dibujo de las letras puede ser más chico).
+    const boxOf = async (key: string) => {
+      await page.evaluate(`globalThis.__agenda.getState().setSelection({ pageKey: ${JSON.stringify(key)}, pageType: 'yearOverview', blockId: 'header.title', role: 'content' }, ['header.title'])`);
+      const pageBox = (await page.locator(`.desk [data-page-key="${key}"]`).first().boundingBox())!;
+      const nw = (await page.locator(`[data-page-key="${key}"] [data-handle="nw"]`).first().boundingBox())!;
+      const se = (await page.locator(`[data-page-key="${key}"] [data-handle="se"]`).first().boundingBox())!;
+      const cx = (b: { x: number; width: number }) => b.x + b.width / 2;
+      const cy = (b: { y: number; height: number }) => b.y + b.height / 2;
+      return { left: cx(nw) - pageBox.x, top: cy(nw) - pageBox.y, right: cx(se) - pageBox.x, bottom: cy(se) - pageBox.y, pw: pageBox.width, se: { x: cx(se), y: cy(se) } };
+    };
+    const v0 = await boxOf(verso!);
+    const r0 = await boxOf(recto!);
+    await page.evaluate(`globalThis.__agenda.getState().update((d) => { d.overrides.push({ pageType: 'yearOverview', pageKey: null, blockId: 'header.title', dx: 6, dy: 4, dw: 0, dh: 0, scale: 0.8, scaleY: null, deform: true, rotation: 0, opacity: 1, hidden: false }); }, 'e2e')`);
+    // Sin imán: que nada corra el punto donde se suelta.
+    await page.evaluate('globalThis.__agenda.setState({ snap: false })');
+    await page.evaluate(`globalThis.__agenda.getState().setSelection({ pageKey: ${JSON.stringify(verso)}, pageType: 'yearOverview', blockId: 'header.title', role: 'content' }, ['header.title'])`);
+    const handle = page.locator(`[data-page-key="${verso}"] [data-handle="se"]`).first();
+    await expect(handle).toBeVisible();
+    const h = (await handle.boundingBox())!;
+    const x = h.x + h.width / 2;
+    const y = h.y + h.height / 2;
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    await page.mouse.move(x - 12, y - 6, { steps: 10 });
+    await page.mouse.up();
+    await expect.poll(() => page.evaluate<number>(`globalThis.__agenda.getState().design.overrides.find((o) => o.blockId === 'header.title').scale`)).toBeLessThan(0.79);
+    const v = await boxOf(verso!);
+    // La esquina que se arrastró quedó donde se soltó el mouse.
+    expect(Math.abs(v.se.x - (x - 12))).toBeLessThan(2);
+    expect(Math.abs(v.se.y - (y - 6))).toBeLessThan(2);
+    const r = await boxOf(recto!);
+    // La derecha es el espejo de la izquierda: lo que se corrió el borde del lomo en una se corrió igual en la
+    // otra (en sentido contrario, porque el lomo está del otro lado), y el tamaño cambió en la misma proporción.
+    expect(Math.abs(r.left - r0.left - (v0.right - v.right))).toBeLessThan(1.5);
+    expect(Math.abs(r.top - r0.top - (v.top - v0.top))).toBeLessThan(1.5);
+    expect(Math.abs((r.right - r.left) / (r0.right - r0.left) - (v.right - v.left) / (v0.right - v0.left))).toBeLessThan(0.02);
+  });
+});

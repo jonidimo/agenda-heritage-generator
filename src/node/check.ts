@@ -5,8 +5,10 @@
  */
 import { Ajv2020, type ErrorObject, type ValidateFunction } from 'ajv/dist/2020.js';
 import { designJsonSchema } from '../core/design/jsonSchema';
+import { migrateDesignInput } from '../core/design/migrations';
 import { DesignZ, type Design } from '../core/design/schema';
 import { pageFormat } from '../core/document/context';
+import { escapePointerKey } from '../core/util/jsonPatch';
 
 export interface CheckIssue {
   /** Puntero JSON al valor (`/sections/3/options/variant`; `/` es la raíz). */
@@ -94,7 +96,13 @@ function schemaErrors(errors: readonly ErrorObject[]): ErrorObject[] {
  * impiden; el resto, lo que se ignoraría o corregiría (los mensajes del esquema, en castellano,
  * reemplazan a los del validador interno cuando hablan del mismo valor).
  */
-export function checkDesignData(raw: unknown): CheckResult {
+export function checkDesignData(input: unknown): CheckResult {
+  let raw: unknown;
+  try {
+    raw = migrateDesignInput(input);
+  } catch (err) {
+    return { design: null, issues: [{ path: '/schemaVersion', message: (err as Error).message, severity: 'error' }] };
+  }
   const parsed = DesignZ.safeParse(raw);
   const blocking = parsed.success ? [] : parsed.error.issues.map((i) => ({ path: pointer(i.path), message: i.message }));
   const failing = new Set(blocking.map((i) => i.path));
@@ -103,7 +111,7 @@ export function checkDesignData(raw: unknown): CheckResult {
     ? []
     : schemaErrors(validate.errors ?? []).map((e) => {
         // Lo que falta se señala en su propio lugar (como lo hace el validador del programa).
-        const path = (e.keyword === 'required' ? `${e.instancePath}/${escapeKey(String((e.params as { missingProperty: string }).missingProperty))}` : e.instancePath) || '/';
+        const path = (e.keyword === 'required' ? `${e.instancePath}/${escapePointerKey(String((e.params as { missingProperty: string }).missingProperty))}` : e.instancePath) || '/';
         const adjusted = !failing.has(path);
         return { path, message: describe(e, adjusted), severity: adjusted ? 'adjusted' : 'error' };
       });
@@ -139,10 +147,9 @@ function offPageElements(design: Design): CheckIssue[] {
   return out;
 }
 
-const escapeKey = (k: string): string => k.replace(/~/g, '~0').replace(/\//g, '~1');
 
 /** Puntero JSON (RFC 6901) de una ruta del validador del programa. */
-const pointer = (path: readonly PropertyKey[]): string => `/${path.map((k) => escapeKey(String(k))).join('/')}`;
+const pointer = (path: readonly PropertyKey[]): string => `/${path.map((k) => escapePointerKey(String(k))).join('/')}`;
 
 /** Revisa el texto de un archivo `.agenda.json`. */
 export function checkDesignJson(text: string): CheckResult {

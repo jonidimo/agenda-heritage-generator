@@ -182,6 +182,7 @@ export async function listUserFonts(): Promise<Array<{ id: string; bytes: Uint8A
 export async function exportDesignFile(d: Design, assetBytes: ReadonlyMap<string, Uint8Array>, userFonts: ReadonlyMap<string, { bytes: Uint8Array; spec: FontSpec }>): Promise<Blob> {
   const withData = {
     ...d,
+    writtenBy: __APP_VERSION__,
     assets: d.assets.map((a) => (a.builtin ? a : { ...a, data: assetBytes.get(a.id) ? toBase64(assetBytes.get(a.id)!) : (a.data ?? null) })),
     userFonts: [...userFonts.entries()].map(([id, f]) => ({ id, spec: f.spec, data: toBase64(f.bytes) })),
   };

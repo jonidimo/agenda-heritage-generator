@@ -4,6 +4,7 @@ import net from 'node:net';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { openRunningApp } from '../src/mcp/live';
 import { connectLive, createLiveBroker, findLiveApp, LIVE_ERRORS, LIVE_INFO_FILE, LIVE_PROTOCOL, LiveError, newToken, readLiveInfo, removeLiveInfo, writeLiveInfo } from '../electron/lib/live.mjs';
 
 const posix = process.platform !== 'win32';
@@ -182,15 +183,47 @@ describe('live.json', () => {
     expect(await readLiveInfo(file)).toBeNull();
   });
 
-  it('un archivo de una aplicación que ya no corre, o dañado, se ignora', async () => {
+  it('un archivo dañado se ignora; uno con un proceso que no se ve se lee igual (en un sandbox el PID del anfitrión no existe)', async () => {
     const file = path.join(dir, LIVE_INFO_FILE);
-    await writeFile(file, JSON.stringify({ protocol: 1, endpoint: 'e', token: 't', pid: 2 ** 22 + 12345, version: '' }));
-    expect(await readLiveInfo(file)).toBeNull();
+    // Un PID que no existe en este espacio de procesos: desde un contenedor, la aplicación abierta se ve así.
+    const foreign = { protocol: 1, endpoint: 'e', token: 't', pid: 2 ** 22 + 12345, version: '' };
+    await writeFile(file, JSON.stringify(foreign));
+    expect(await readLiveInfo(file)).toEqual(foreign);
     await writeFile(file, 'no es json');
     expect(await readLiveInfo(file)).toBeNull();
     await writeFile(file, JSON.stringify({ endpoint: 1 }));
     expect(await readLiveInfo(file)).toBeNull();
+    await writeFile(file, JSON.stringify({ ...foreign, token: '' }));
+    expect(await readLiveInfo(file)).toBeNull();
     expect(await readLiveInfo(path.join(dir, 'nada.json'))).toBeNull();
+  });
+
+  it('con un live.json que quedó de una sesión anterior, el MCP lo dice rápido; con la aplicación abierta, se conecta', async () => {
+    const saved = process.env.AGENDA_APP_LINK;
+    process.env.AGENDA_APP_LINK = path.join(dir, LIVE_INFO_FILE);
+    try {
+      const endpoint = endpointFor('viejo');
+      // Lo que deja un corte de luz: el archivo de conexión y, en Linux y macOS, el archivo del socket sin nadie detrás.
+      if (posix) await writeFile(endpoint, '');
+      await writeLiveInfo(dir, { protocol: LIVE_PROTOCOL, endpoint, token: 'viejo', pid: 2 ** 22 + 777, version: '' });
+      const t0 = Date.now();
+      expect(await openRunningApp()).toEqual({ stale: true });
+      expect(Date.now() - t0).toBeLessThan(2_000);
+      // La aplicación vuelve a abrir: reemplaza el socket abandonado y escribe su archivo.
+      const token = newToken();
+      const broker = await createLiveBroker({ endpoint, token, handler: async () => 'vivo' });
+      closers.push(() => broker.close());
+      await writeLiveInfo(dir, { protocol: LIVE_PROTOCOL, endpoint, token, pid: process.pid, version: '' });
+      const conn = await openRunningApp();
+      expect(conn && 'request' in conn).toBe(true);
+      if (conn && 'request' in conn) {
+        closers.push(() => conn.close());
+        expect(await conn.request('design.info')).toBe('vivo');
+      }
+    } finally {
+      if (saved === undefined) delete process.env.AGENDA_APP_LINK;
+      else process.env.AGENDA_APP_LINK = saved;
+    }
   });
 
   it('se encuentra por AGENDA_APP_LINK o en la carpeta de datos habitual', async () => {

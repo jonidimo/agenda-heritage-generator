@@ -14,7 +14,9 @@ import { ELEMENT_KINDS } from './customBlocks';
 // registraba una violación en cada arranque. Tiene que fijarse antes del primer `z.object`.
 z.config({ jitless: true });
 
-export const SCHEMA_VERSION = 1;
+import { migrateDesignInput, SCHEMA_VERSION } from './migrations';
+
+export { SCHEMA_VERSION };
 
 export const HolidayTypeZ = z.enum(['public', 'bank', 'school', 'optional', 'observance']);
 
@@ -513,6 +515,8 @@ export const DesignZ = z.object({
   name: z.string().default('Mi agenda'),
   createdAt: z.string().default(() => new Date().toISOString()),
   updatedAt: z.string().default(() => new Date().toISOString()),
+  /** Versión de la aplicación que guardó el archivo (vacío si no se sabe): para avisar si la que lo abre es más vieja. */
+  writtenBy: z.string().max(40).catch('').default(''),
   locale: z.string().default('es-AR'),
   calendar: CalendarZ,
   holidays: HolidaysZ,
@@ -548,8 +552,16 @@ export function designDefaults(): Design {
   return defaults;
 }
 
+/**
+ * Lleva el archivo a la versión actual del formato y lo valida (ver `migrations.ts`). Es la entrada de
+ * todo lo que viene de afuera: archivos, la biblioteca guardada, un modelo de lenguaje.
+ */
+export function safeParseDesign(input: unknown): ReturnType<typeof DesignZ.safeParse> {
+  return DesignZ.safeParse(migrateDesignInput(input));
+}
+
 export function parseDesign(input: unknown): Design {
-  const res = DesignZ.safeParse(input);
+  const res = safeParseDesign(input);
   if (res.success) return res.data;
   const msg = res.error.issues
     .slice(0, 8)

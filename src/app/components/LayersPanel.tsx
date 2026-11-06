@@ -12,7 +12,7 @@ import {
   Lock,
   RotateCcw,
 } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { blockLabel } from "../i18n/messages";
 import { useT, type UiKey } from "../i18n/ui";
 import {
@@ -118,6 +118,22 @@ function Row({
   const t = useT();
   const select = useStore((s) => s.setSelection);
   const [renaming, setRenaming] = useState<string | null>(null);
+  const nameButton = useRef<HTMLButtonElement>(null);
+  /** Guardar con Enter y después perder el foco no guarda dos veces; Esc no guarda nada. */
+  const finished = useRef(false);
+  const startRename = (): void => {
+    if (!block.editable) return;
+    finished.current = false;
+    setRenaming(blockLabel(t, block.id, block.label, block.renamed));
+  };
+  const finishRename = (save: boolean): void => {
+    if (finished.current || renaming === null) return;
+    finished.current = true;
+    if (save) renameBlock(page, block.id, scope, renaming);
+    setRenaming(null);
+    // El campo desaparece: el foco vuelve a la fila para seguir con el teclado.
+    requestAnimationFrame(() => nameButton.current?.focus());
+  };
   const pick = (): void =>
     select({
       pageKey: page.key,
@@ -153,10 +169,16 @@ function Row({
             value={renaming}
             ariaLabel={t("layers.name")}
             onChange={setRenaming}
-            onBlur={() => {
-              renameBlock(page, block.id, scope, renaming);
-              setRenaming(null);
+            autoFocus
+            onKeyDown={(e) => {
+              // Enter guarda, Esc deja el nombre como estaba; los dos devuelven el foco a la fila.
+              if (e.key === "Enter") finishRename(true);
+              else if (e.key === "Escape") finishRename(false);
+              else return;
+              e.preventDefault();
+              e.stopPropagation();
             }}
+            onBlur={() => finishRename(true)}
           />
         </div>
       ) : (
@@ -164,8 +186,15 @@ function Row({
           type="button"
           className="min-w-0 flex-1 truncate text-left"
           title={t("layers.rename")}
+          ref={nameButton}
           onClick={pick}
-          onDoubleClick={() => block.editable && setRenaming(blockLabel(t, block.id, block.label, block.renamed))}
+          onDoubleClick={startRename}
+          onKeyDown={(e) => {
+            // F2 renombra, como en los administradores de archivos.
+            if (e.key !== "F2") return;
+            e.preventDefault();
+            startRename();
+          }}
         >
           {blockLabel(t, block.id, block.label, block.renamed)}
         </button>
@@ -298,6 +327,14 @@ export function StackFields({
           placeholder={blockLabel(t, block.id, block.label, block.renamed)}
           ariaLabel={t("layers.name")}
           onChange={setDraft}
+          onKeyDown={(e) => {
+            // Enter guarda (al soltar el foco); Esc descarta lo escrito.
+            if (e.key === "Enter") e.currentTarget.blur();
+            else if (e.key === "Escape") {
+              setDraft(null);
+              e.stopPropagation();
+            }
+          }}
           onBlur={() => {
             if (draft !== null) renameBlock(page, block.id, scope, draft);
             setDraft(null);

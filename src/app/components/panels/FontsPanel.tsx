@@ -1,7 +1,7 @@
 /** Fuentes: las de la aplicación y las propias, qué caracteres les faltan y dónde se usa cada una. */
 import { Trash2, Type } from 'lucide-react';
 import { useMemo, useRef, useState } from 'react';
-import { useT, type UiKey } from '../../i18n/ui';
+import { plural, useT, type UiKey } from '../../i18n/ui';
 import { addFontFiles, fontCoverage, fontUses, removeUserFamily } from '../../state/fonts';
 import { resources } from '../../state/resources';
 import { useStore } from '../../state/store';
@@ -80,7 +80,7 @@ export function FontsPanel() {
                 )}
                 {use && (use.roles.length > 0 || use.blocks > 0) && (
                   <div className="text-[11px] text-ink-soft">
-                    {t('fonts.usedIn', { where: [...use.roles.map((r) => t(`role.${r}` as UiKey)), ...(use.blocks > 0 ? [t('fonts.blocks', { n: use.blocks })] : [])].join(', ') })}
+                    {t('fonts.usedIn', { where: [...use.roles.map((r) => t(`role.${r}` as UiKey)), ...(use.blocks > 0 ? [plural(t, 'fonts.blocks', use.blocks)] : [])].join(', ') })}
                   </div>
                 )}
                 {missing && (missing.length === 0 ? <div className="text-[11px] text-accent">✓ {t('fonts.coverageOk')}</div> : <div className="text-[11px] text-warn">{t('fonts.missing', { chars: missing.slice(0, 20).join(' ') })}</div>)}

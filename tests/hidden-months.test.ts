@@ -48,4 +48,36 @@ describe('meses ocultos', () => {
     const week = (doc: typeof all.doc, key: string) => doc.ctx.cal.weeks.find((w) => w.key === key)?.number;
     expect(week(some.doc, '2027-W20')).toBe(week(all.doc, '2027-W20'));
   });
+
+  it('los días de un mes visible que caen en una semana del mes oculto siguen teniendo página semanal', async () => {
+    // Marzo de 2028 empieza un miércoles: la semana del 28 de febrero al 5 de marzo es de marzo (su jueves es el 2),
+    // y la del 27 de marzo al 2 de abril también. Con marzo oculto, el 28 y 29 de febrero y el 1 y 2 de abril se perdían.
+    const make = (hidden: string[]) =>
+      openDocument(
+        parseDesign({ ...createDesign('heritage', { year: 2028, locale: 'es-AR', country: 'AR' }), calendar: { year: 2028, weekStart: 'monday', numbering: 'iso', hiddenMonths: hidden } }),
+      );
+    const all = await make([]);
+    const some = await make(['2028-03']);
+    const weekOf = (doc: typeof all.doc, iso: string) => doc.ctx.cal.weeks.find((w) => w.days.some((d) => d.iso === iso));
+    for (const [iso, month] of [['2028-02-29', 2], ['2028-04-01', 4]] as const) {
+      const week = weekOf(some.doc, iso);
+      expect(week, iso).toBeDefined();
+      expect(week!.owner.m).toBe(month);
+      // La misma clave y el mismo número que sin ocultar nada: los ajustes por semana siguen valiendo.
+      expect(week!.key).toBe(weekOf(all.doc, iso)!.key);
+      expect(week!.number).toBe(weekOf(all.doc, iso)!.number);
+      const pages = some.doc.plan.pages.filter((p) => p.params?.week === week!.key);
+      expect(pages.length, iso).toBeGreaterThan(0);
+      for (const p of pages) expect(p.group).toBe(`month:2028-0${month}`);
+    }
+    // Las semanas siguen en orden de fecha, dentro de cada mes y en la lista de todas.
+    const starts = some.doc.ctx.cal.weeks.map((w) => w.days[0]!.n);
+    expect([...starts].sort((a, b) => a - b)).toEqual(starts);
+    for (const m of some.doc.ctx.cal.months) {
+      const s = m.weeks.map((w) => w.days[0]!.n);
+      expect([...s].sort((a, b) => a - b)).toEqual(s);
+    }
+    // Ningún día de marzo tiene semana propia: solo los que comparten semana con febrero o abril.
+    expect(some.doc.ctx.cal.weeks.filter((w) => w.days.every((d) => d.m === 3))).toHaveLength(0);
+  });
 });

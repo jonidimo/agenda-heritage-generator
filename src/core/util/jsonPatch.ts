@@ -98,6 +98,17 @@ function canonical(v: unknown): unknown {
   return v;
 }
 
+/**
+ * El valor al que apunta un puntero JSON (RFC 6901; `''` es el documento entero). Lanza un error
+ * legible si el camino no existe. No copia: quien lo use para cambiar algo tiene que copiarlo antes.
+ */
+export function getAtPointer(doc: unknown, pointer: string): unknown {
+  return get(doc, parsePointer(pointer));
+}
+
+/** Escapa una clave para usarla dentro de un puntero JSON (`a/b` → `a~1b`, `~` → `~0`). */
+export const escapePointerKey = (key: string): string => key.replace(/~/g, '~0').replace(/\//g, '~1');
+
 /** Aplica las operaciones sobre una copia del documento y la devuelve. */
 export function applyJsonPatch<T>(doc: T, ops: readonly JsonPatchOp[]): T {
   let out: unknown = structuredClone(doc);

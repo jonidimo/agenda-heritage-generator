@@ -14,6 +14,17 @@ import { resources } from './resources';
 import { nextPageOf } from './sections';
 import { useStore, type Panel } from './store';
 
+/**
+ * Un valor para un selector de atributo entre comillas (`[data-font="…"]`). El nombre de una fuente
+ * propia puede traer comillas o barras invertidas: sin escaparlas, el selector no vale y la búsqueda no
+ * encuentra el lugar.
+ */
+export function cssAttrValue(value: string): string {
+  if (typeof CSS !== 'undefined' && typeof CSS.escape === 'function') return CSS.escape(value);
+  // Sin `CSS.escape` (fuera de un navegador): lo mínimo para que el texto quede entre comillas.
+  return value.replace(/[\\"]/g, '\\$&').replace(/\n/g, '\\a ');
+}
+
 export type SearchKind = 'setting' | 'panel' | 'section' | 'page' | 'element' | 'asset' | 'font';
 
 export interface SearchItem {
@@ -78,7 +89,7 @@ export function buildSearchIndex(lang: UiLang, t: (k: UiKey, v?: Record<string, 
   }
   // Las imágenes y las fuentes de la agenda: llevan a su panel y a ella.
   for (const a of design.assets) if (!a.builtin) add({ kind: 'asset', label: a.name, where: panelName('assets'), go: () => void reveal({ panel: 'assets', text: a.name }) });
-  for (const family of resources.fonts.families()) add({ kind: 'font', label: family, where: panelName('fonts'), go: () => void reveal({ panel: 'fonts', selector: `[data-font="${family.replace(/"/g, '\\"')}"]` }) });
+  for (const family of resources.fonts.families()) add({ kind: 'font', label: family, where: panelName('fonts'), go: () => void reveal({ panel: 'fonts', selector: `[data-font="${cssAttrValue(family)}"]` }) });
   // Los elementos propios de toda la agenda (no solo los de la página actual): llevan a su página y quedan elegidos.
   for (const cb of design.customBlocks) {
     const target = cb.pageKey ? doc.indexOfKey(cb.pageKey) : doc.plan.pages.findIndex((p) => p.type === cb.pageType);

@@ -37,7 +37,7 @@ import { LayersPanel, StackFields } from './LayersPanel';
 import { ELEMENT_KINDS, ELEMENT_LABELS, elementProps, elementSize, isElementKind, type ElementKind } from '../state/elements';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { blockLabel, warningText } from '../i18n/messages';
-import { sectionName, uiText, useT } from '../i18n/ui';
+import { plural, sectionName, uiText, useT } from '../i18n/ui';
 import { IMAGE_ACCEPT, uploadOne } from '../state/uploads';
 import {
   addCustomBlock,
@@ -894,7 +894,7 @@ function Preflight({ doc }: { doc: AgendaDocument }) {
             <p className="mb-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px]">
               {warnings.length > 0 ? (
                 <span className="flex items-center gap-1.5 text-warn">
-                  <AlertTriangle size={14} /> {t('pre.count', { n: warnings.length })}
+                  <AlertTriangle size={14} /> {plural(t, 'pre.count', warnings.length)}
                 </span>
               ) : (
                 <span className="flex items-center gap-1.5 text-accent">
@@ -903,7 +903,7 @@ function Preflight({ doc }: { doc: AgendaDocument }) {
               )}
               {notes.length > 0 && (
                 <span className="flex items-center gap-1.5 text-ink-soft">
-                  <Info size={14} /> {t('pre.notes', { n: notes.length })}
+                  <Info size={14} /> {plural(t, 'pre.notes', notes.length)}
                 </span>
               )}
             </p>

@@ -7,18 +7,18 @@
  * `{ ok, result }` o `{ ok: false, code, message }`. Si la persona no lo permitió (Archivo → «Permitir
  * que un modelo de IA edite la agenda abierta»), solo contesta `design.info`.
  */
-import { DesignZ } from '@core/design/schema';
-import { LIVE_CODES, LIVE_METHOD_NAMES, LiveParams, type LiveDesign, type LiveInfo, type LiveIssue, type LiveLibraryItem, type LiveMethodName, type LiveOpened, type LivePatchResult, type LiveReveal } from '@core/live/protocol';
+import { applyDesignPatch, issuesOf } from '@core/design/patch';
+import { LIVE_CODES, LIVE_METHOD_NAMES, LiveParams, type LiveDesign, type LiveInfo, type LiveLibraryItem, type LiveMethodName, type LiveOpened, type LivePatchResult, type LiveReveal } from '@core/live/protocol';
 import { toBase64 } from '@core/resources';
-import { applyJsonPatch, JsonPatchError, type JsonPatchOp } from '@core/util/jsonPatch';
+import type { JsonPatchOp } from '@core/util/jsonPatch';
 import { newId } from '@core/util/hash';
-import { translate } from '../i18n/ui';
 import { importText } from './files';
-import { jumpToPage } from './navigation';
 import { listDesigns, loadDesign } from './persist';
 import { resources } from './resources';
+import { revealTarget, type RevealRequest } from './revealTarget';
 import { currentDocument } from './selectionContext';
 import { flushSave, useStore } from './store';
+import { tNow as t } from './tNow';
 
 export type LiveEnvelope = { ok: true; result: unknown } | { ok: false; code: number; message: string };
 
@@ -30,8 +30,6 @@ class LiveFailure extends Error {
     super(message);
   }
 }
-
-const t = (key: Parameters<typeof translate>[1], vars?: Record<string, string | number>): string => translate(useStore.getState().uiLang, key, vars);
 
 const plain = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 
@@ -68,48 +66,27 @@ function getDesign(params: { assets?: boolean | undefined } | undefined): LiveDe
   return { revision: s.revision, design: out };
 }
 
-const issuesOf = (error: { issues: ReadonlyArray<{ path: ReadonlyArray<PropertyKey>; message: string }> }): LiveIssue[] =>
-  error.issues.slice(0, 50).map((i) => ({ path: `/${i.path.map(String).join('/')}`, message: i.message }));
-
 function patchDesign(params: { patch: JsonPatchOp[]; baseRevision?: number | undefined }): LivePatchResult {
   const s = useStore.getState();
   const current = requireOpen();
   if (params.baseRevision !== undefined && params.baseRevision !== s.revision) {
     throw new LiveFailure(LIVE_CODES.conflict, `La agenda cambió en la aplicación (revisión ${s.revision}, se esperaba la ${params.baseRevision}): volvé a leerla antes de cambiarla.`);
   }
-  let next: unknown;
-  try {
-    next = applyJsonPatch(plain(current), params.patch);
-  } catch (err) {
-    const message = err instanceof JsonPatchError || err instanceof Error ? err.message : String(err);
-    return { applied: false, reason: 'invalid', issues: [{ path: '', message }] };
-  }
-  const parsed = DesignZ.safeParse(next);
-  if (!parsed.success) return { applied: false, reason: 'invalid', issues: issuesOf(parsed.error) };
-  // La identidad de la agenda no se cambia desde afuera: otra id sería otra agenda en la biblioteca.
-  if (parsed.data.id !== current.id) return { applied: false, reason: 'invalid', issues: [{ path: '/id', message: 'No se puede cambiar la identidad de la agenda abierta.' }] };
+  const result = applyDesignPatch(current, params.patch);
+  if (!result.ok) return { applied: false, reason: 'invalid', issues: result.issues };
   // Una clave única por pedido: cada cambio de un modelo es su propio paso de «Deshacer».
-  s.update(() => parsed.data, `live:${Date.now()}:${Math.random()}`);
+  s.update(() => result.design, `live:${Date.now()}:${Math.random()}`);
   const after = useStore.getState();
   after.setAiNotice({ text: t('live.changed'), revision: after.revision });
   return { applied: true, revision: after.revision };
 }
 
-function reveal(params: { page?: number | undefined; key?: string | undefined; blockId?: string | undefined }): LiveReveal {
+function reveal(params: RevealRequest): LiveReveal {
   requireOpen();
-  const doc = currentDocument();
-  if (!doc) throw new LiveFailure(LIVE_CODES.noDesign, 'La agenda no se puede armar ahora.');
-  const index = params.key !== undefined ? doc.indexOfKey(params.key) : params.page !== undefined ? params.page - 1 : useStore.getState().pageIndex;
-  if (index < 0 || index >= doc.pageCount) throw new LiveFailure(LIVE_CODES.notFound, `No existe esa página (la agenda tiene ${doc.pageCount}).`);
-  jumpToPage(index);
-  const page = doc.page(index);
-  const block = params.blockId !== undefined ? page.blocks.find((b) => b.id === params.blockId) : undefined;
-  if (block) {
-    const st = useStore.getState();
-    st.setSelection({ pageKey: page.key, pageType: page.type, blockId: block.id, role: block.role });
-    st.setInspectorOpen(true);
-  }
-  return { page: index + 1, key: page.key, selected: block !== undefined };
+  const out = revealTarget(params);
+  if (out.ok) return { page: out.page, key: out.key, selected: out.selected };
+  if (out.reason === 'noDocument') throw new LiveFailure(LIVE_CODES.noDesign, 'La agenda no se puede armar ahora.');
+  throw new LiveFailure(LIVE_CODES.notFound, `No existe esa página (la agenda tiene ${out.pageCount}).`);
 }
 
 async function library(): Promise<LiveLibraryItem[]> {

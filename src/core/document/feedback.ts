@@ -3,8 +3,8 @@
  * qué avisos aparecieron que antes no estaban (texto que no entra, elementos fuera de la página,
  * superposiciones). Así el modelo corrige solo, sin que alguien tenga que mirar las páginas.
  */
-import type { Design } from '../core/design/schema';
-import type { AgendaDocument } from '../core/document';
+import type { Design } from '../design/schema';
+import type { AgendaDocument } from './index';
 
 export interface LayoutNote {
   /** Número de página, desde 1. */
