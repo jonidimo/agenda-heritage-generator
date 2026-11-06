@@ -405,6 +405,11 @@ function createWindow() {
     },
   });
   win.on('close', (event) => closing.onClose(event));
+  // La pantalla completa de la página (F11) es la de la ventana: al salir de una, sale también la otra
+  // (algunos administradores de ventanas no la devuelven solos).
+  win.on('leave-html-full-screen', () => {
+    if (win.isFullScreen()) win.setFullScreen(false);
+  });
   win.on('closed', () => {
     revealer.dispose();
     mainWindow = null;

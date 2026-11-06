@@ -113,6 +113,9 @@ interface StoreState {
   setSearchOpen(b: boolean): void;
   showShortcuts: boolean;
   setShowShortcuts(b: boolean): void;
+  /** Pantalla completa: sin barra lateral ni inspector (su estado no se toca: vuelven como estaban). */
+  focusMode: boolean;
+  setFocusMode(b: boolean): void;
   /** El diálogo «Tamaño de la hoja». */
   showPaper: boolean;
   setShowPaper(b: boolean): void;
@@ -312,6 +315,7 @@ export const useStore = create<StoreState>((set, get) => ({
   searchOpen: false,
   showShortcuts: false,
   showPaper: false,
+  focusMode: false,
   showHidden: false,
   preflightRequest: 0,
   liveLink: prefs.liveLink.read(),
@@ -422,6 +426,7 @@ export const useStore = create<StoreState>((set, get) => ({
   setLastExport: (lastExport) => set({ lastExport }),
   setShowShortcuts: (showShortcuts) => set({ showShortcuts }),
   setShowPaper: (showPaper) => set({ showPaper }),
+  setFocusMode: (focusMode) => set({ focusMode }),
   setShowHidden: (showHidden) => set({ showHidden }),
   setLiveLink(liveLink) {
     prefs.liveLink.write(liveLink);

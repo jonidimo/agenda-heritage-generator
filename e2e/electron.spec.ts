@@ -91,6 +91,19 @@ test('el zoom con el teclado llega a la página (el menú de la aplicación no l
   await expect.poll(() => win.evaluate<boolean>('globalThis.__agenda.getState().fit')).toBe(true);
 });
 
+test('F11 pone la ventana en pantalla completa de verdad (sin paneles) y F11 la devuelve', async () => {
+  const { electronApp, win } = await launchWithPlanner();
+  const fullScreen = () => electronApp.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.isFullScreen() ?? false);
+  await win.locator('.desk').click({ position: { x: 5, y: 5 } });
+  await win.keyboard.press('F11');
+  await expect.poll(() => win.evaluate<boolean>('globalThis.__agenda.getState().focusMode')).toBe(true);
+  await expect.poll(fullScreen, { timeout: 10_000 }).toBe(true);
+  await expect(win.locator('[data-inspector]')).toBeHidden();
+  await win.keyboard.press('F11');
+  await expect.poll(fullScreen, { timeout: 10_000 }).toBe(false);
+  await expect(win.locator('[data-inspector]')).toBeVisible();
+});
+
 test('«Acerca de» muestra la carpeta de datos de la aplicación de escritorio', async () => {
   const { win } = await launchWithPlanner();
   await win.getByRole('button', { name: 'Archivo' }).click();

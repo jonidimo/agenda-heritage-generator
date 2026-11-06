@@ -1038,6 +1038,7 @@ export const fr: Record<UiKey, string> = {
   'sc.view.zoom100': 'Taille réelle (100 %)',
   'sc.view.cycle': 'Changer de vue (page, double page, feuille, livre)',
   'sc.view.sidebar': 'Afficher ou masquer le panneau latéral',
+  'sc.view.fullscreen': 'Plein écran (la page seule)',
   'sc.view.guides': 'Repères de marges',
   'sc.view.snap': 'Magnétisme',
   'sc.view.links': 'Afficher les liens',

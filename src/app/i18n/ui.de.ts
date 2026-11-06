@@ -1038,6 +1038,7 @@ export const de: Record<UiKey, string> = {
   'sc.view.zoom100': 'Originalgröße (100 %)',
   'sc.view.cycle': 'Ansicht wechseln (Seite, Doppelseite, Bogen, Buch)',
   'sc.view.sidebar': 'Seitenleiste ein- oder ausblenden',
+  'sc.view.fullscreen': 'Vollbild (nur die Seite)',
   'sc.view.guides': 'Randhilfslinien',
   'sc.view.snap': 'Einrasten',
   'sc.view.links': 'Links anzeigen',

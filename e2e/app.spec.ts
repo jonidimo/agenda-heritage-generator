@@ -1964,6 +1964,32 @@ test.describe('asistente de IA', () => {
   });
 });
 
+test.describe('pantalla completa', () => {
+  test('F11 deja solo la página (sin barra lateral ni inspector) y otra vez F11 los devuelve como estaban', async ({ page }) => {
+    await openQuiet(page);
+    const inspector = page.locator('[data-inspector]');
+    await expect(inspector).toBeVisible();
+    const sidebar = page.getByRole('button', { name: 'Estilo' }).first();
+    await expect(sidebar).toBeVisible();
+    const deskBefore = (await page.locator('.desk').boundingBox())!;
+    await page.locator('.desk').click({ position: { x: 5, y: 5 } });
+    await page.keyboard.press('F11');
+    await expect(inspector).toBeHidden();
+    await expect(sidebar).toBeHidden();
+    const deskFull = (await page.locator('.desk').boundingBox())!;
+    expect(deskFull.width).toBeGreaterThan(deskBefore.width + 200);
+    await page.screenshot({ path: 'test-results/fullscreen.png' });
+    await page.keyboard.press('F11');
+    await expect(inspector).toBeVisible();
+    await expect(sidebar).toBeVisible();
+    // También desde el menú Ver.
+    await page.locator('header').getByRole('button', { name: 'Ver', exact: true }).click();
+    await page.getByRole('menuitem', { name: /Pantalla completa/ }).click();
+    await expect(inspector).toBeHidden();
+    expect(await page.evaluate<boolean>('globalThis.__agenda.getState().sidebarOpen')).toBe(true);
+  });
+});
+
 test.describe('zoom con la rueda y barra superior', () => {
   test('Ctrl + rueda acerca y aleja la página dejando quieto el punto bajo el cursor; sin Ctrl la rueda desplaza', async ({ page }) => {
     await openQuiet(page);

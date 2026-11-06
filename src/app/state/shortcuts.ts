@@ -6,6 +6,7 @@
  * Una tecla «Mod» es Ctrl, o ⌘ en un Mac. Nunca se toma una tecla mientras se escribe en un campo
  * (salvo las marcadas `typing`), y Ctrl con Alt es AltGr en varias distribuciones: no cuenta como Ctrl.
  */
+import { toggleFullscreen } from './fullscreen';
 import { movable } from './movable';
 import { focusAssistant } from './ai/assistant';
 import { blockBounds } from '@core/document/layout';
@@ -268,6 +269,7 @@ export const SHORTCUTS: readonly Shortcut[] = [
   { id: 'view.sidebar', group: 'view', chords: [{ key: 'b', mod: true }], run: () => state().setSidebarOpen(!state().sidebarOpen) },
   { id: 'view.guides', group: 'view', chords: [{ key: "'", mod: true }], run: () => state().toggleGuides() },
   { id: 'view.snap', group: 'view', chords: [{ key: ';', mod: true, shift: 'any' }], run: () => state().toggleSnap() },
+  { id: 'view.fullscreen', group: 'view', typing: true, chords: [{ key: 'F11' }], run: () => toggleFullscreen() },
   { id: 'view.links', group: 'view', chords: [{ key: 'l', mod: true, shift: true }], run: () => state().setShowLinks(!state().showLinks) },
 
   { id: 'nav.next', group: 'navigate', chords: [{ key: 'PageDown' }, { key: 'ArrowRight' }], run: (e) => (e.key === 'ArrowRight' && state().selection ? false : page(1)) },

@@ -7,6 +7,7 @@ import { Canvas } from './components/canvas/Canvas';
 import { ContextMenuHost } from './components/ContextMenu';
 import { AboutDialog, HiddenDialog, LibraryDialog, SaveTemplateDialog, ShortcutsDialog, WelcomeDialog } from './components/Dialogs';
 import { PaperDialog } from './components/PaperDialog';
+import { installFullscreen } from './state/fullscreen';
 import { ErrorBoundary, ViewError } from './components/ErrorBoundary';
 import { installFileDrop, openAnyFile } from './state/fileActions';
 import { Inspector } from './components/Inspector';
@@ -121,6 +122,7 @@ export function App() {
   const showAbout = useStore((s) => s.showAbout);
   const showShortcuts = useStore((s) => s.showShortcuts);
   const showPaper = useStore((s) => s.showPaper);
+  const focusMode = useStore((s) => s.focusMode);
   const showHidden = useStore((s) => s.showHidden);
   const setShowWelcome = useStore((s) => s.setShowWelcome);
   const sidebarOpen = useStore((s) => s.sidebarOpen);
@@ -264,17 +266,19 @@ export function App() {
 
   // Soltar un archivo de agenda sobre la ventana lo abre.
   useEffect(() => installFileDrop(), []);
+  // Salir de la pantalla completa por el sistema (Esc, F11 del navegador) devuelve los paneles.
+  useEffect(() => installFullscreen(), []);
 
   return (
     <div className="flex h-full flex-col">
       <Topbar />
       <div className="relative flex min-h-0 flex-1">
-        {sidebarOpen && design && (
+        {sidebarOpen && !focusMode && design && (
           <div className="absolute inset-y-0 left-0 z-30 w-[calc(92*var(--vw))] max-w-[360px] shadow-xl md:static md:max-w-none md:shrink-0 md:shadow-none" style={desktop ? { width: panelSizes.left } : undefined}>
             <Sidebar />
           </div>
         )}
-        {sidebarOpen && design && desktop && (
+        {sidebarOpen && !focusMode && design && desktop && (
           <Splitter
             orientation="vertical"
             label={t('panel.resize.left')}
@@ -287,7 +291,7 @@ export function App() {
           />
         )}
         <main className="relative flex min-h-0 min-w-0 flex-1 flex-col">
-          {doc && doc.pageCount > 0 && !large && !sheetOpen && (
+          {doc && doc.pageCount > 0 && !large && !sheetOpen && !focusMode && (
             <button
               type="button"
               className="absolute top-3 right-3 z-20 flex items-center gap-1.5 rounded-full bg-accent px-3 py-1.5 text-[12px] font-semibold text-white shadow-lg"
@@ -362,7 +366,7 @@ export function App() {
             )
           )}
         </main>
-        {doc && doc.pageCount > 0 && large && (
+        {doc && doc.pageCount > 0 && large && !focusMode && (
           <>
             <Splitter
               orientation="vertical"

@@ -1,5 +1,5 @@
 /** Los menús «Edición» y «Ver» de la barra superior, con las teclas de cada acción a la derecha. */
-import { Copy, Crosshair, Eye, EyeOff, Link2, MousePointer2, PanelLeft, Redo2, Scissors, SquareDashedMousePointer, Undo2, Type, ZoomIn, ZoomOut, Keyboard, Sparkles, Ruler } from 'lucide-react';
+import { Copy, Crosshair, Eye, EyeOff, Link2, MousePointer2, PanelLeft, Redo2, Scissors, SquareDashedMousePointer, Undo2, Type, ZoomIn, ZoomOut, Keyboard, Sparkles, Ruler, Maximize } from 'lucide-react';
 import { useAssistant } from '../state/ai/assistant';
 import { copySelection, cutSelection, duplicateSelection, pasteSelection } from '../state/clipboard';
 import { currentDocument, selectionContext } from '../state/selectionContext';
@@ -9,6 +9,7 @@ import { activeView, useStore, viewsOf, type View } from '../state/store';
 import type { UiKey } from '../i18n/ui';
 import type { MenuItem } from './ContextMenu';
 import { clampPage } from '../state/paging';
+import { toggleFullscreen } from '../state/fullscreen';
 
 type T = (key: UiKey, vars?: Record<string, string | number>) => string;
 
@@ -79,6 +80,7 @@ export function viewMenu(t: T): MenuItem[] {
     { separator: true },
     ...VIEW_LABELS.filter(([v]) => viewsOf(st.mode, screen).includes(v)).map(([v, key]): MenuItem => ({ label: t(key), checked: activeView(st) === v, onSelect: () => st.setView(v) })),
     { separator: true },
+    { label: t('sc.view.fullscreen'), icon: <Maximize size={14} />, checked: st.focusMode, hint: shortcutHint('view.fullscreen', t), onSelect: () => toggleFullscreen() },
     { label: t('sc.view.sidebar'), icon: <PanelLeft size={14} />, checked: st.sidebarOpen, hint: shortcutHint('view.sidebar', t), onSelect: () => st.setSidebarOpen(!st.sidebarOpen) },
     { label: t('sc.view.guides'), checked: st.guides, hint: shortcutHint('view.guides', t), onSelect: () => st.toggleGuides() },
     { label: t('sc.view.snap'), checked: st.snap, hint: shortcutHint('view.snap', t), onSelect: () => st.toggleSnap() },
