@@ -57,11 +57,11 @@ evita que npm escriba en el canal que usan el cliente y el servidor.
 | Herramienta | Qué hace |
 | --- | --- |
 | `create_design` | Agenda nueva desde una plantilla (`heritage`, `heritage-norma` (con dedicatoria), `clara` (letra grande), `minimal`) para un año, idioma, país y nombre. Con `out` escribe el archivo; con `app: true` la abre en la aplicación de escritorio. |
-| `update_design` | Cambia un archivo (`path`) o la agenda abierta en la aplicación de escritorio (`app: true`) con operaciones [JSON Patch](https://datatracker.ietf.org/doc/html/rfc6902) (`add`, `remove`, `replace`, `move`, `copy`, `test`). Todo o nada; si el resultado no abriría, no se cambia nada. |
+| `update_design` | Cambia un archivo (`path`) o la agenda abierta en la aplicación de escritorio (`app: true`) con operaciones [JSON Patch](https://datatracker.ietf.org/doc/html/rfc6902) (`add`, `remove`, `replace`, `move`, `copy`, `test`). Todo o nada; si el resultado no abriría, no se cambia nada. Con `out`, el resultado se escribe en otro archivo y `path` queda como estaba. En todas las herramientas, `path` es siempre el archivo que se lee y `out` el que se escribe. |
 | `check_design` | Lista lo que el programa ignoraría o corregiría en el archivo (claves desconocidas, colores no válidos, valores fuera de la lista o del rango) y resume la agenda armada: páginas, hojas, cuadernillos, enlaces y avisos (textos que no entran, imágenes que faltan, enlaces rotos) con sus páginas. |
 | `list_pages` | Las páginas, con su número, clave, tipo y título (se puede filtrar por tipo). |
 | `render_page` | Dibuja una página tal como se imprime y la devuelve como imagen PNG, con su lado (derecha o izquierda), su zona de contenido, sus bloques (id, nombre y caja en mm) y sus avisos. |
-| `export_pdf` | Escribe un PDF: `pages` (para tableta, con enlaces y marcadores), `imposed` (pliegos para imprimir doble faz y doblar en cuadernillos), `fronts`/`backs`, `signature`, `calibration`, `sewing`, `cover`, `separate`. |
+| `export_pdf` | Escribe un PDF (`out`) del tipo que dice `kind` (se sigue aceptando `mode`): `pages` (para tableta, con enlaces y marcadores), `imposed` (pliegos para imprimir doble faz y doblar en cuadernillos), `fronts`/`backs`, `signature`, `calibration`, `sewing`, `cover`, `separate`. |
 | `export_theme` | Guarda el estilo de la agenda como archivo de tema `.tema.json` (letras, colores, líneas, ornamentos y sus imágenes) para importarlo en la aplicación. |
 | `list_catalogue` | Tipos de sección con sus opciones y valores posibles, temas, plantillas, fuentes integradas, ornamentos, usos y dibujos de línea, armonías de color, tipos de elemento, tipos de página y variables de texto. |
 | `get_schema` | El esquema JSON, entero o por partes (`"theme.tokens.lines"`, `"sections"`, `"customBlocks"`…). |
@@ -97,7 +97,7 @@ npm run -s agenda -- schema --out agenda.schema.json   # esquema JSON (draft 202
 npm run -s agenda -- catalog --out catalogo.json       # qué significa cada nombre y opción
 npm run agenda -- new --template heritage --year 2027 --locale es-AR --out mi.agenda.json
 npm run -s agenda -- check mi.agenda.json              # problemas y resumen (--json, --strict)
-npm run pdf -- mi.agenda.json --mode pages --out mi.pdf
+npm run pdf -- mi.agenda.json --kind pages --out mi.pdf
 ```
 
 Pasale al modelo el esquema y el catálogo junto con tu pedido, y pedile que responda con el
@@ -122,7 +122,7 @@ Todo campo tiene valor por defecto: alcanza con escribir lo que cambia. Las medi
 | `persona` | Nombre, título, dedicatoria y una frase por mes. |
 | `sections` | Las páginas de la agenda, en orden (ver la sección 4). |
 | `pageTemplates` | Páginas que se diseñan una vez y se repiten (ver la sección 5). |
-| `customPages` | Páginas sueltas: una imagen, una página de un PDF, un texto o un fondo para escribir. |
+| `customPages` | Páginas sueltas: una imagen, una página de un PDF, un texto o un fondo para escribir. `after` es la clave de cualquier página (de `list_pages`), así que una página puede ir entre dos semanas: `"after": "week:2027-W12:right"`. |
 | `customBlocks` | Elementos propios en un tipo de página o en una página: `text`, `image`, `lines`, `dots`, `grid`, `rect`, `line` y los compuestos `table` (`rows`, `cols`, `header`, `headers`), `checklist` (`items`, `columns`, `shape`, `labels`), `habits` (`rows`, `days`, `names`), `finance` (`lines`, `total`, `title`), `minical` (`month`: `auto` o `AAAA-MM`; sus días llevan a su página), `quadrants` (`titles`, `style`), `notes` (`title`, `style`, `frame`), `timeline` (`from`, `to`, `step` en minutos), `rating` (`count`, `shape`, `text`) `shape` (`shape`: `rect`, `ellipse`, `line`, `arrow`, `triangle`, `diamond`, `polygon` con `sides` de 3 a 24, `star` con `points` de 3 a 24 e `inner`, `heart`, `ring`, `arc`, `bubble`, `banner`, `cross`, o `path` con un `d` de SVG dibujado en una caja de 0 a 100; además `fill`, `strokeColor`, `strokePt`, `dash`, `opacity` y los parámetros propios de cada forma, que lista `shapes` en el catálogo; el trazo queda dentro de la caja) y `qr` (`text`: una dirección web, `mailto:`, `tel:` o cualquier texto; `ecc`: `L`, `M`, `Q` o `H`; `color`; `link: false` para que no sea tocable en el PDF; se dibuja como el cuadrado más grande que entra en la caja); los compuestos también aceptan `paper: true` (fondo blanco). Un texto se dibuja a su `props.size` (puntos) salvo que `props.fit` no sea `false`: entonces se achica hasta entrar en la caja; `props.autoHeight: true` toma su alto de sus renglones (`h` no se usa). El tipo `drawing` se crea copiando un elemento del programa en la aplicación: no se escribe a mano. Dejá cada caja dentro de la página: `check_design` avisa las que no lo están. |
 | `watermarks` | Imágenes en muchas páginas (dónde, tamaño, opacidad, espejadas en las páginas izquierdas). |
 | `overrides` | Mueve, escala, gira u oculta un bloque del programa en un tipo de página o en una página. `dw` y `dh` (mm) cambian el ancho y el alto de su caja y el contenido se vuelve a acomodar adentro (el texto reparte sus renglones, las áreas de escritura suman o quitan renglones). `scale` y `scaleY` lo escalan (un `scaleY` distinto lo deforma); con `deform: true` la caja no se reacomoda: el dibujo se estira. `layer` fija su orden de apilado (mayor, más arriba), `label` lo renombra y `blend` es `normal`, `multiply`, `screen`, `darken` o `lighten`. |
@@ -221,7 +221,8 @@ del panel Estilo lo suma a tus temas, para usarlo en otras agendas.
 ## 7. Consejos para buenos resultados
 
 - Empezá desde una plantilla y cambiá de a poco. Cada cambio se valida con el mismo validador que
-  usa la aplicación.
+  usa la aplicación. El esquema JSON se genera de ese validador al correr, así que los dos nunca
+  dicen cosas distintas.
 - Letra de 7 pt o más y renglones de 6 mm o más (8 mm para letra grande). Mejor tinta oscura
   sobre papel: la mayoría de las agendas se imprime en láser monocromo.
 - Después de cada cambio, mirá una página izquierda y una derecha: los elementos se espejan en las

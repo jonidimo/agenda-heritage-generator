@@ -129,7 +129,7 @@ npm run agenda -- info designs/norma-2027.agenda.json
 ```
 
 ```bash
-npm run pdf -- designs/norma-2027.agenda.json --mode imposed --out output/norma-2027-print.pdf
+npm run pdf -- designs/norma-2027.agenda.json --kind imposed --out output/norma-2027-print.pdf
 ```
 
 Modes: `imposed`, `pages`, `fronts`, `backs`, `signature --signature N`, `calibration`,

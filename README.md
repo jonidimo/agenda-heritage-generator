@@ -325,7 +325,7 @@ npm run agenda -- check designs/my-2028.agenda.json
 ```
 
 ```bash
-npm run pdf -- designs/my-2028.agenda.json --mode imposed --out output/my-2028-print.pdf
+npm run pdf -- designs/my-2028.agenda.json --kind imposed --out output/my-2028-print.pdf
 ```
 
 `check` lists what would be ignored or corrected in a file and the warnings of the built

@@ -57,11 +57,11 @@ matters: it keeps npm from printing anything on the channel the client and the s
 | Tool | What it does |
 | --- | --- |
 | `create_design` | New planner from a template (`heritage`, `heritage-norma` (with a dedication), `clara` (large print), `minimal`) for a year, language, country and name. With `out` it writes the file; with `app: true` it opens it in the desktop app instead. |
-| `update_design` | Changes a file (`path`) or the planner open in the desktop app (`app: true`) with [JSON Patch](https://datatracker.ietf.org/doc/html/rfc6902) operations (`add`, `remove`, `replace`, `move`, `copy`, `test`). All or nothing; if the result would not open, nothing is changed. |
+| `update_design` | Changes a file (`path`) or the planner open in the desktop app (`app: true`) with [JSON Patch](https://datatracker.ietf.org/doc/html/rfc6902) operations (`add`, `remove`, `replace`, `move`, `copy`, `test`). All or nothing; if the result would not open, nothing is changed. With `out`, the result is written to another file and `path` stays as it was. Across all tools, `path` is always the file that is read and `out` the file that is written. |
 | `check_design` | Lists what the program would ignore or correct in the file (unknown keys, invalid colours, values outside the list or range), and summarizes the built planner: pages, sheets, signatures, links and warnings (text that does not fit, missing images, broken links) with their pages. |
 | `list_pages` | The pages, with their number, key, type and title (filter by type). |
 | `render_page` | Draws one page exactly as it prints and returns it as a PNG image, with its side (right or left), its content area, its blocks (id, name and box in mm) and its warnings. |
-| `export_pdf` | Writes a PDF: `pages` (for tablets, with links and bookmarks), `imposed` (sheets to print double-sided and fold into signatures), `fronts`/`backs`, `signature`, `calibration`, `sewing`, `cover`, `separate`. |
+| `export_pdf` | Writes a PDF (`out`) of the kind in `kind` (`mode` is still accepted): `pages` (for tablets, with links and bookmarks), `imposed` (sheets to print double-sided and fold into signatures), `fronts`/`backs`, `signature`, `calibration`, `sewing`, `cover`, `separate`. |
 | `export_theme` | Saves the planner's style as a `.tema.json` theme file (fonts, colours, lines, ornaments and their images) to import in the app. |
 | `list_catalogue` | Section types with their options and allowed values, themes, templates, built-in fonts, ornaments, line uses and patterns, colour harmonies, element kinds, page types and text variables. |
 | `get_schema` | The JSON Schema, whole or by part (`"theme.tokens.lines"`, `"sections"`, `"customBlocks"`…). |
@@ -96,7 +96,7 @@ npm run -s agenda -- schema --out agenda.schema.json   # JSON Schema (draft 2020
 npm run -s agenda -- catalog --out catalogue.json      # what each name and option means
 npm run agenda -- new --template heritage --year 2027 --locale en-US --out my.agenda.json
 npm run -s agenda -- check my.agenda.json              # problems and summary (--json, --strict)
-npm run pdf -- my.agenda.json --mode pages --out my.pdf
+npm run pdf -- my.agenda.json --kind pages --out my.pdf
 ```
 
 Give the schema and the catalogue to the model together with your request, and ask it to answer
@@ -121,7 +121,7 @@ sizes in **points**, colours are `#rrggbb`.
 | `persona` | Name, title, dedication and one phrase per month. |
 | `sections` | The planner's pages, in order (see section 4). |
 | `pageTemplates` | Pages you design once and repeat (see section 5). |
-| `customPages` | One-off pages: an image, a PDF page, a text or a writing background. |
+| `customPages` | One-off pages: an image, a PDF page, a text or a writing background. `after` is the key of any page (from `list_pages`), so a page can go between two weeks: `"after": "week:2027-W12:right"`. |
 | `customBlocks` | Your own elements on a page type or on one page: `text`, `image`, `lines`, `dots`, `grid`, `rect`, `line`, and the composite kinds `table` (`rows`, `cols`, `header`, `headers`), `checklist` (`items`, `columns`, `shape`, `labels`), `habits` (`rows`, `days`, `names`), `finance` (`lines`, `total`, `title`), `minical` (`month`: `auto` or `YYYY-MM`; its days link to their pages), `quadrants` (`titles`, `style`), `notes` (`title`, `style`, `frame`), `timeline` (`from`, `to`, `step` in minutes), `rating` (`count`, `shape`, `text`) `shape` (`shape`: one of `rect`, `ellipse`, `line`, `arrow`, `triangle`, `diamond`, `polygon` with `sides` 3–24, `star` with `points` 3–24 and `inner`, `heart`, `ring`, `arc`, `bubble`, `banner`, `cross`, or `path` with an SVG `d` drawn in a 0–100 box; plus `fill`, `strokeColor`, `strokePt`, `dash`, `opacity` and each shape's own parameters, listed under `shapes` in the catalogue; the stroke stays inside the box) and `qr` (`text`: a web address, `mailto:`, `tel:` or any text; `ecc`: `L`, `M`, `Q` or `H`; `color`; `link: false` to make it not tappable in the PDF; it draws as the largest square that fits the box); composite kinds also take `paper: true` (white background). A text element draws at its `props.size` (points) unless `props.fit` is not `false`, which shrinks it to fit the box; `props.autoHeight: true` takes its height from its lines (`h` is ignored). The `drawing` kind is made by copying a built-in element in the app: do not write it by hand. Keep every box inside the page: `check_design` reports the ones that are not. |
 | `watermarks` | Images on many pages (where, size, opacity, mirrored on left pages). |
 | `overrides` | Moves, scales, rotates or hides a built-in block on a page type or one page. `dw` and `dh` (mm) change the width and height of its box and the content is laid out again inside it (text wraps, writing areas gain or lose lines). `scale` and `scaleY` scale it (a different `scaleY` deforms it); with `deform: true` the box is not laid out again: the drawing is stretched. `layer` sets its stacking order (higher is on top), `label` renames it and `blend` is `normal`, `multiply`, `screen`, `darken` or `lighten`. |
@@ -219,7 +219,8 @@ panel adds it to your themes so you can use it in other planners.
 ## 7. Advice for good results
 
 - Start from a template and change little at a time. Every change is checked against the same
-  validator the app uses.
+  validator the app uses. The JSON Schema is generated from that validator at run time, so the
+  two never disagree.
 - Keep text at 7 pt or more and writing lines at 6 mm or more (8 mm for large print). Prefer
   dark ink on paper: most planners are printed on monochrome laser printers.
 - After each change look at a left page and a right page. Elements are mirrored on left pages.

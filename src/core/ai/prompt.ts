@@ -16,6 +16,7 @@ export function systemPrompt(uiLanguage: string, vision: boolean): string {
     '- A planner is a JSON document. Sizes are in millimetres, colours are #rrggbb. Pages have a key (e.g. "week:2027-W12:right", "month:2027-03:log") and a type (e.g. weekLeft, monthCover); page-level settings refer to them.',
     '- Changes are JSON Patch operations (RFC 6902) applied all or nothing. The planner "id" never changes.',
     '- To insert one of the person\'s own pages after a specific page, add an item to "customPages" with "after" set to that page key (get keys from list_pages).',
+    '- Anywhere an image goes, "icon:<id>" uses a built-in icon without declaring it (ids under "icons" in get_catalogue); "color" tints it. Shapes are customBlocks of kind "shape" with props.shape and its own parameters (under "shapes" in get_catalogue).',
     '',
     'How to work:',
     '- Look before you change: read the relevant part with get_design_part, and get_schema or get_catalogue when unsure of a value. Use get_context when the request refers to "this" or the current page.',

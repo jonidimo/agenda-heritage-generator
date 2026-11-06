@@ -344,7 +344,7 @@ npm run agenda -- check designs/minha-2028.agenda.json
 ```
 
 ```bash
-npm run pdf -- designs/minha-2028.agenda.json --mode imposed --out output/minha-2028-imprimir.pdf
+npm run pdf -- designs/minha-2028.agenda.json --kind imposed --out output/minha-2028-imprimir.pdf
 ```
 
 `check` lista o que seria ignorado ou corrigido num arquivo e os avisos da agenda montada.

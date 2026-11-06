@@ -58,7 +58,7 @@ const text = (value: unknown): ToolResult => ({ content: [{ type: 'text', text: 
 
 /** Una agenda: por archivo (`path`) o escrita en el pedido (`design`). */
 const source = {
-  path: z.string().optional().describe('Archivo .agenda.json, relativo a la carpeta de trabajo'),
+  path: z.string().optional().describe('Archivo que se lee (.agenda.json), relativo a la carpeta de trabajo'),
   design: z.record(z.string(), z.unknown()).optional().describe('La agenda escrita directamente (en lugar de path)'),
   app: z.boolean().optional().describe('La agenda que está abierta ahora en la aplicación de escritorio (en lugar de path o design). Ver app_status'),
 };
@@ -180,7 +180,7 @@ export function createServer(opts: ServerOptions): McpServer {
         locale: z.string().regex(/^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$/).optional().describe('Idioma y país, p. ej. es-AR, en-US, pt-BR, it-IT'),
         country: z.string().regex(/^[A-Z]{2}$/).nullable().optional().describe('Feriados de este país (código ISO); null: sin feriados. Por defecto, el del idioma.'),
         name: z.string().max(120).optional().describe('Nombre de la persona (portada, dedicatoria)'),
-        out: z.string().optional().describe('Archivo a crear (.agenda.json)'),
+        out: z.string().optional().describe('Archivo que se escribe (.agenda.json), relativo a la carpeta de trabajo'),
         overwrite: z.boolean().optional(),
         app: z.boolean().optional().describe('Abrirla en la aplicación de escritorio en lugar de guardarla en un archivo'),
       },
@@ -205,20 +205,30 @@ export function createServer(opts: ServerOptions): McpServer {
     {
       title: 'Cambiar agenda',
       description:
-        'Cambia una agenda con operaciones JSON Patch (RFC 6902: add, remove, replace, move, copy, test; rutas como "/calendar/weekStart" o "/sections/-"): un archivo .agenda.json («path») o la agenda abierta en la aplicación de escritorio («app: true»; el cambio es un solo paso que la persona puede deshacer y se rechaza si ella la modificó mientras tanto: volvé a leerla). Se aplica todo o nada; si después la agenda no abre, no se toca. Devuelve los problemas que quedan y los avisos de maquetación que el cambio produjo («warnings»: texto que no entra, elementos que salen de la página o se superponen, con su página): revisalos antes de seguir.',
-      inputSchema: { path: z.string().optional().describe('Archivo .agenda.json'), app: z.boolean().optional().describe('La agenda abierta en la aplicación de escritorio'), patch: z.array(patchOp).min(1).max(500) },
+        'Cambia una agenda con operaciones JSON Patch (RFC 6902: add, remove, replace, move, copy, test; rutas como "/calendar/weekStart" o "/sections/-"): un archivo .agenda.json («path») o la agenda abierta en la aplicación de escritorio («app: true»; el cambio es un solo paso que la persona puede deshacer y se rechaza si ella la modificó mientras tanto: volvé a leerla). Se aplica todo o nada; si después la agenda no abre, no se toca. Devuelve los problemas que quedan y los avisos de maquetación que el cambio produjo («warnings»: texto que no entra, elementos que salen de la página o se superponen, con su página): revisalos antes de seguir. Con «out», el resultado se escribe en otro archivo y «path» queda como estaba.',
+      inputSchema: {
+        path: z.string().optional().describe('Archivo que se lee (.agenda.json), relativo a la carpeta de trabajo; sin «out», el cambio se guarda en él'),
+        out: z.string().optional().describe('Archivo que se escribe (.agenda.json) con el resultado, en lugar de pisar «path»'),
+        overwrite: z.boolean().optional().describe('Con «out»: reemplazar el archivo si ya existe'),
+        app: z.boolean().optional().describe('La agenda abierta en la aplicación de escritorio'),
+        patch: z.array(patchOp).min(1).max(500),
+      },
     },
-    async ({ path, app, patch }) => {
+    async ({ path, out, overwrite, app, patch }) => {
       if ((path === undefined) === (app !== true)) throw new Error('Indicá «path» (un archivo) o «app: true» (la agenda abierta en la aplicación), una de las dos.');
-      if (app === true) return updateInApp(patch as JsonPatchOp[]);
+      if (app === true) {
+        if (out !== undefined) throw new Error('«out» va con «path»: la agenda abierta en la aplicación se cambia en la aplicación.');
+        return updateInApp(patch as JsonPatchOp[]);
+      }
       const { full, text: body } = await ws.read(path!, DESIGN_EXT);
       const next = applyJsonPatch(parseJson(body, path!), patch as JsonPatchOp[]);
       const check = checkDesignData(next);
       if (!check.design) return { ...text({ written: false, issues: check.issues }), isError: true };
-      await ws.write(full, `${JSON.stringify(stamp(next), null, 2)}\n`, { extensions: DESIGN_EXT, overwrite: true });
+      const target = out === undefined ? full : out;
+      const written = await ws.write(target, `${JSON.stringify(stamp(next), null, 2)}\n`, { extensions: DESIGN_EXT, overwrite: out === undefined || overwrite === true });
       // Los avisos de maquetación que el cambio produjo (texto que no entra, fuera de la página…).
       const layout = await newLayoutWarnings((d) => open(d, dirname(full)), checkDesignJson(body).design, check.design);
-      return text({ written: true, path: ws.show(full), issues: check.issues, warnings: layout.notes, ...(layout.omitted > 0 ? { omittedWarnings: layout.omitted } : {}) });
+      return text({ written: true, path: ws.show(written), issues: check.issues, warnings: layout.notes, ...(layout.omitted > 0 ? { omittedWarnings: layout.omitted } : {}) });
     },
   );
 
@@ -383,19 +393,23 @@ export function createServer(opts: ServerOptions): McpServer {
     {
       title: 'Exportar PDF',
       description:
-        'Genera un PDF de la agenda: pages (páginas sueltas, con enlaces y marcadores, para tableta), imposed (pliegos para imprimir doble faz y doblar en cuadernillos), fronts/backs (frentes o dorsos, para dúplex manual), signature (un cuadernillo), calibration (hoja de prueba de la impresora), sewing (plantilla de perforado), cover (tapa), separate (secciones «aparte»).',
+        'Genera un PDF de la agenda (el tipo va en «kind»): pages (páginas sueltas, con enlaces y marcadores, para tableta), imposed (pliegos para imprimir doble faz y doblar en cuadernillos), fronts/backs (frentes o dorsos, para dúplex manual), signature (un cuadernillo), calibration (hoja de prueba de la impresora), sewing (plantilla de perforado), cover (tapa), separate (secciones «aparte»).',
       inputSchema: {
         ...source,
-        mode: z.enum(EXPORT_KINDS),
-        signature: z.number().int().min(1).optional().describe('Con mode=signature: el cuadernillo, desde 1'),
-        out: z.string().describe('Archivo PDF a escribir'),
+        kind: z.enum(EXPORT_KINDS).optional().describe('Qué PDF: pages, imposed, fronts, backs, signature, calibration, sewing, cover o separate'),
+        mode: z.enum(EXPORT_KINDS).optional().describe('Nombre anterior de «kind» (se sigue aceptando)'),
+        signature: z.number().int().min(1).optional().describe('Con kind=signature: el cuadernillo, desde 1'),
+        out: z.string().describe('Archivo que se escribe (.pdf), relativo a la carpeta de trabajo'),
       },
     },
-    async ({ mode, signature, out, ...input }) => {
-      if (mode === 'signature' && signature === undefined) throw new Error('Con mode=signature indicá el cuadernillo en «signature» (1, 2, 3…).');
+    async ({ kind: given, mode, signature, out, ...input }) => {
+      if (given !== undefined && mode !== undefined && given !== mode) throw new Error('Indicá el tipo de PDF con «kind» (o con «mode», su nombre anterior), no con los dos distintos.');
+      const kind = given ?? mode;
+      if (kind === undefined) throw new Error(`Indicá qué PDF con «kind»: ${EXPORT_KINDS.join(', ')}.`);
+      if (kind === 'signature' && signature === undefined) throw new Error('Con kind=signature indicá el cuadernillo en «signature» (1, 2, 3…).');
       const { design, baseDir } = await load(input);
       const { doc, bytes } = await open(design, baseDir);
-      const pdf = await doc.exportPdf(mode, { assetBytes: (id) => bytes.get(id), ...(signature !== undefined ? { signature: signature - 1 } : {}) });
+      const pdf = await doc.exportPdf(kind, { assetBytes: (id) => bytes.get(id), ...(signature !== undefined ? { signature: signature - 1 } : {}) });
       const full = await ws.write(out, pdf, { extensions: ['.pdf'], overwrite: true });
       return text({ path: ws.show(full), bytes: pdf.length, pages: doc.pageCount });
     },
@@ -406,7 +420,7 @@ export function createServer(opts: ServerOptions): McpServer {
     {
       title: 'Exportar tema',
       description: 'Guarda el estilo de la agenda (tema base, comodidad, letras, colores, líneas y ornamentos, con sus imágenes) como archivo .tema.json, para importarlo en la aplicación (panel Estilo → «Importar tema…») y usarlo en otras agendas.',
-      inputSchema: { ...source, name: z.string().min(1).max(80), description: z.string().max(400).optional(), out: z.string().describe('Archivo a escribir (.tema.json)'), overwrite: z.boolean().optional() },
+      inputSchema: { ...source, name: z.string().min(1).max(80), description: z.string().max(400).optional(), out: z.string().describe('Archivo que se escribe (.tema.json), relativo a la carpeta de trabajo'), overwrite: z.boolean().optional() },
     },
     async ({ name, description, out, overwrite, ...input }) => {
       const { design, baseDir } = await load(input);

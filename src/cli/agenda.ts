@@ -8,7 +8,7 @@
  *   npm run agenda -- check designs/mi-agenda-2027.agenda.json [--json] [--strict]
  *   npm run agenda -- schema --out agenda.schema.json
  *   npm run agenda -- catalog [--out catalogo.json]
- *   npm run pdf -- designs/mi-agenda-2027.agenda.json --mode imposed --out output/mi-agenda-imprimir.pdf
+ *   npm run pdf -- designs/mi-agenda-2027.agenda.json --kind imposed --out output/mi-agenda-imprimir.pdf
  *   npm run agenda -- svg designs/mi-agenda-2027.agenda.json --page 12 --out output/p12.svg
  *
  * Modos de PDF: pages, imposed, fronts, backs, signature (--signature N),
@@ -88,12 +88,13 @@ async function cmdCheck(path: string): Promise<void> {
 
 async function cmdPdf(path: string): Promise<void> {
   const design = await readDesignFile(path);
-  const mode = (flag('mode', 'imposed') as ExportKind) ?? 'imposed';
+  // `--kind` (como el servidor MCP), o `--mode`, su nombre anterior.
+  const mode = (flag('kind') ?? flag('mode', 'imposed')) as ExportKind;
   if (!EXPORT_KINDS.includes(mode)) throw new Error(`Modo desconocido: ${mode}. Opciones: ${EXPORT_KINDS.join(', ')}`);
   const sigFlag = flag('signature');
   const signature = sigFlag === undefined ? undefined : Number(sigFlag);
   if (mode === 'signature' && (signature === undefined || !Number.isInteger(signature) || signature < 1))
-    throw new Error('Con --mode signature indicá el cuadernillo con --signature N (1, 2, 3…).');
+    throw new Error('Con --kind signature indicá el cuadernillo con --signature N (1, 2, 3…).');
   const { doc, bytes } = await openNodeDocument(design, await allFonts(), { baseDir: dirname(resolve(path)) });
   const t0 = Date.now();
   const pdf = await doc.exportPdf(mode, {
@@ -119,7 +120,7 @@ async function cmdSvg(path: string): Promise<void> {
 const USAGE: Record<string, string> = {
   info: 'agenda info <diseño.agenda.json>',
   check: 'agenda check <diseño.agenda.json> [--json] [--strict]',
-  pdf: 'agenda pdf <diseño.agenda.json> [--mode imposed|pages|…] [--out archivo.pdf]',
+  pdf: 'agenda pdf <diseño.agenda.json> [--kind imposed|pages|…] [--out archivo.pdf]',
   svg: 'agenda svg <diseño.agenda.json> --page N',
 };
 
