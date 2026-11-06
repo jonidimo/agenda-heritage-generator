@@ -379,7 +379,7 @@ export function Badge(props: { children: ReactNode; tone?: 'strong' | 'moderate'
  * largos) pasan a la fila siguiente en lugar de salirse del panel. Con ícono, en pantallas muy
  * chicas se ve solo el ícono; sin ícono el texto se ve siempre.
  */
-export function Segmented<T extends string>(props: { value: T; onChange: (v: T) => void; options: Array<{ value: T; label: string; icon?: ReactNode }> }) {
+export function Segmented<T extends string>(props: { value: T; onChange: (v: T) => void; options: Array<{ value: T; label: string; icon?: ReactNode }>; compact?: boolean }) {
   return (
     <div className="inline-flex max-w-full flex-wrap rounded-lg border border-line bg-white/60 p-0.5">
       {props.options.map((o) => (
@@ -396,7 +396,8 @@ export function Segmented<T extends string>(props: { value: T; onChange: (v: T) 
           )}
         >
           {o.icon}
-          <span className={o.icon ? 'hidden sm:inline' : undefined}>{o.label}</span>
+          {/* Compacta: solo el ícono (el nombre queda para los lectores de pantalla y en el título). */}
+          <span className={o.icon ? (props.compact ? 'sr-only' : 'hidden sm:inline') : undefined}>{o.label}</span>
         </button>
       ))}
     </div>

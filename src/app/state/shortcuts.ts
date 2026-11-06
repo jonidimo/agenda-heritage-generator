@@ -268,7 +268,7 @@ export const SHORTCUTS: readonly Shortcut[] = [
   ...PANEL_ORDER.map((panel, i): Shortcut => ({ id: `panel.${panel}`, group: 'panels', typing: true, chords: digit(i + 1), run: () => openPanel(panel) })),
 
   { id: 'ai.focus', group: 'help', typing: true, chords: [{ key: 'j', mod: true }], run: () => (state().design ? focusAssistant() : false) },
-  { id: 'search.open', group: 'help', typing: true, chords: [{ key: 'f', mod: true }, { key: 'k', mod: true }, { key: '/', shift: 'any' }], run: (e) => (e.key === '/' && isTyping(e.target) ? false : state().setSearchOpen(true)) },
+  { id: 'search.open', group: 'help', typing: true, chords: [{ key: 'k', mod: true }, { key: 'f', mod: true }, { key: '/', shift: 'any' }], run: (e) => (e.key === '/' && isTyping(e.target) ? false : state().setSearchOpen(true)) },
   { id: 'help.shortcuts', group: 'help', typing: true, chords: [{ key: 'F1' }, { key: '/', mod: true }, { key: '?', shift: 'any' }], run: (e) => (e.key === '?' && isTyping(e.target) ? false : state().setShowShortcuts(true)) },
 ];
 

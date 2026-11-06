@@ -1871,3 +1871,64 @@ test.describe('asistente de IA', () => {
     await expect(page.getByTestId('assistant-input')).toBeFocused();
   });
 });
+
+test.describe('zoom con la rueda y barra superior', () => {
+  test('Ctrl + rueda acerca y aleja la página dejando quieto el punto bajo el cursor; sin Ctrl la rueda desplaza', async ({ page }) => {
+    await openQuiet(page);
+    await settled(page);
+    // Desde un zoom en el que la página ya desborda la ventana (si entra entera, queda centrada y no hay qué anclar).
+    await page.evaluate('globalThis.__agenda.getState().setZoom(2, false)');
+    await page.waitForTimeout(300);
+    const target = page.locator('.desk [data-page-index]').first();
+    const box = (await target.boundingBox())!;
+    const x = box.x + box.width * 0.3;
+    const y = box.y + box.height * 0.4;
+    // Qué punto de la página (fracción de su ancho y alto) está bajo el cursor.
+    const under = async () => {
+      const b = (await target.boundingBox())!;
+      return { fx: (x - b.x) / b.width, fy: (y - b.y) / b.height, w: b.width };
+    };
+    const before = await under();
+    await page.mouse.move(x, y);
+    await page.keyboard.down('Control');
+    await page.mouse.wheel(0, -100);
+    await page.keyboard.up('Control');
+    await expect.poll(async () => (await state(page)).zoom).toBeCloseTo(2.4, 2);
+    expect((await state(page)).fit).toBe(false);
+    const after = await under();
+    expect(after.w).toBeGreaterThan(before.w * 1.1);
+    expect(Math.abs(after.fx - before.fx) * after.w).toBeLessThan(3);
+    expect(Math.abs(after.fy - before.fy) * after.w).toBeLessThan(3);
+    // El navegador no agrandó la interfaz.
+    expect(await page.evaluate<number>('visualViewport.scale')).toBe(1);
+    expect(await page.evaluate<string>('document.documentElement.style.zoom')).toBe('');
+    // Sin Ctrl, la rueda no cambia el zoom.
+    await page.mouse.wheel(0, 200);
+    await page.waitForTimeout(200);
+    expect((await state(page)).zoom).toBeCloseTo(2.4, 2);
+  });
+
+  test('el buscador se ve en la barra y abre la búsqueda; en una ventana angosta el zoom pasa al menú «⋯»', async ({ page }) => {
+    await page.setViewportSize({ width: 1600, height: 900 });
+    await openQuiet(page);
+    const field = page.getByTestId('search-field');
+    await expect(field).toBeVisible();
+    await expect(field).toContainText('Ctrl+K');
+    await field.click();
+    await expect(page.getByRole('combobox', { name: 'Buscar (Ctrl+K)' })).toBeFocused();
+    await page.keyboard.press('Escape');
+    // Ninguna zona de la barra pisa a otra.
+    const overlaps = () =>
+      page.evaluate<boolean>(`(() => {
+        const z = [...document.querySelectorAll('header [data-zone]')].map((e) => e.getBoundingClientRect());
+        return z.some((a, i) => z.some((b, j) => i < j && a.left < b.right - 1 && b.left < a.right - 1 && a.top < b.bottom - 1 && b.top < a.bottom - 1));
+      })()`);
+    expect(await overlaps()).toBe(false);
+    await page.setViewportSize({ width: 900, height: 900 });
+    await expect(page.getByTestId('search-field')).toBeHidden();
+    expect(await overlaps()).toBe(false);
+    await page.locator('header').getByRole('button', { name: 'Más', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Acercar' }).click();
+    await expect.poll(async () => (await state(page)).zoom).toBeGreaterThan(1.1);
+  });
+});

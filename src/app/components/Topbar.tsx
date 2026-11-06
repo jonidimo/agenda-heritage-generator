@@ -1,5 +1,5 @@
-import { Archive, ArrowLeft, Eye, Keyboard, Pencil, PenTool, ArrowRight, BookOpen, Search, Columns2, File, FileDown, FolderOpen, Grid3x3, Info, LayoutTemplate, Link2, Magnet, Maximize, PanelLeft, Printer, Redo2, Ruler, Save, Sparkles, Undo2, Upload, ZoomIn, ZoomOut } from 'lucide-react';
-import { useEffect } from 'react';
+import { Archive, ArrowLeft, Eye, Keyboard, Pencil, PenTool, ArrowRight, BookOpen, Search, Columns2, File, FileDown, FolderOpen, Grid3x3, Info, LayoutTemplate, Link2, Magnet, Maximize, MoreHorizontal, PanelLeft, Printer, Redo2, Ruler, Save, Sparkles, Undo2, Upload, ZoomIn, ZoomOut } from 'lucide-react';
+import { useEffect, useRef } from 'react';
 import { backupAll, openAnyFile, saveCurrent } from '../state/fileActions';
 import { openMenuAt, type MenuItem } from './ContextMenu';
 import { editMenu, viewMenu } from './topMenus';
@@ -13,9 +13,11 @@ import { goBack, goForward } from '../state/navigation';
 import { isDesktopShell, revealFile } from '../state/desktopBridge';
 import { useAssistant } from '../state/ai/assistant';
 import { SearchPalette } from './SearchPalette';
+import { SearchField } from './SearchField';
+import { overflowGroups, useTopbarLevel } from '../state/topbarLayout';
 
 /** Un botón de la barra que abre un menú justo debajo; el menú se arma al abrirlo, con lo que haya en ese momento. */
-function MenuButton({ label, icon, build }: { label: string; icon: React.ReactNode; build: () => MenuItem[] }) {
+function MenuButton({ label, icon, build, showLabel = true }: { label: string; icon: React.ReactNode; build: () => MenuItem[]; showLabel?: boolean }) {
   return (
     <button
       type="button"
@@ -28,7 +30,7 @@ function MenuButton({ label, icon, build }: { label: string; icon: React.ReactNo
       }}
     >
       {icon}
-      <span className="hidden xl:inline">{label}</span>
+      {showLabel && <span>{label}</span>}
     </button>
   );
 }
@@ -94,16 +96,87 @@ export function Topbar() {
   }, []);
   const setShowLinks = useStore((s) => s.setShowLinks);
 
-  return (
-    <header className="flex flex-wrap items-center gap-2 border-b border-line bg-paper px-2 py-1.5">
+  const header = useRef<HTMLElement | null>(null);
+  const level = useTopbarLevel(header);
+  /** Los menús con su nombre (nivel 3); modo y vistas con su nombre (nivel 2 o más). */
+  const labels = level >= 3;
+  const viewLabels = level >= 2;
+  const overflow = overflowGroups(level);
+  const narrow = level === 0;
+
+  const history = (
+    <div className="flex items-center" role="group" aria-label={t('top.history')}>
+      <IconButton label={t('top.back')} onClick={goBack} disabled={!canBack}>
+        <ArrowLeft size={17} />
+      </IconButton>
+      <IconButton label={t('top.forward')} onClick={goForward} disabled={!canForward}>
+        <ArrowRight size={17} />
+      </IconButton>
+    </div>
+  );
+  const zoom = (
+    <div className="flex items-center" role="group" aria-label={t('top.zoomGroup')}>
+      <IconButton label={t('top.zoomOut')} onClick={() => zoomBy(1 / ZOOM.step)}>
+        <ZoomOut size={17} />
+      </IconButton>
+      <IconButton label={t('top.fit')} onClick={zoomFit} active={fit}>
+        <Maximize size={16} />
+      </IconButton>
+      <IconButton label={t('top.zoomIn')} onClick={() => zoomBy(ZOOM.step)}>
+        <ZoomIn size={17} />
+      </IconButton>
+    </div>
+  );
+  const toggles = (
+    <div className="flex items-center" role="group" aria-label={t('top.helpers')}>
+      <IconButton label={t('top.guides')} onClick={toggleGuides} active={guides}>
+        <Ruler size={16} />
+      </IconButton>
+      <IconButton label={t('top.snap')} onClick={toggleSnap} active={snap}>
+        <Magnet size={16} />
+      </IconButton>
+      <IconButton label={t('top.links')} onClick={() => setShowLinks(!showLinks)} active={showLinks}>
+        <Link2 size={17} />
+      </IconButton>
+    </div>
+  );
+  /** Lo que no entra en una barra angosta: el historial, el zoom y las ayudas de vista, en un menú. */
+  const moreMenu = (): MenuItem[] => [
+    ...(overflow.includes('history')
+      ? [
+          { label: t('top.back'), icon: <ArrowLeft size={14} />, disabled: !canBack, onSelect: goBack },
+          { label: t('top.forward'), icon: <ArrowRight size={14} />, disabled: !canForward, onSelect: goForward },
+          { separator: true as const },
+        ]
+      : []),
+    ...(overflow.includes('zoom')
+      ? [
+          { label: t('top.zoomIn'), icon: <ZoomIn size={14} />, hint: shortcutHint('view.zoomIn', t), onSelect: () => zoomBy(ZOOM.step) },
+          { label: t('top.zoomOut'), icon: <ZoomOut size={14} />, hint: shortcutHint('view.zoomOut', t), onSelect: () => zoomBy(1 / ZOOM.step) },
+          { label: t('top.fit'), icon: <Maximize size={14} />, checked: fit, hint: shortcutHint('view.zoomFit', t), onSelect: zoomFit },
+          { separator: true as const },
+        ]
+      : []),
+    ...(overflow.includes('toggles')
+      ? [
+          { label: t('top.guides'), icon: <Ruler size={14} />, checked: guides, onSelect: toggleGuides },
+          { label: t('top.snap'), icon: <Magnet size={14} />, checked: snap, onSelect: toggleSnap },
+          { label: t('top.links'), icon: <Link2 size={14} />, checked: showLinks, onSelect: () => setShowLinks(!showLinks) },
+        ]
+      : []),
+  ];
+  const sep = <span role="separator" aria-orientation="vertical" className="mx-1 h-5 w-px shrink-0 bg-line" />;
+
+  const left = (
+    <div data-zone="left" className="flex w-max shrink-0 items-center gap-1">
       <IconButton label={t('top.menu')} onClick={() => setSidebarOpen(!sidebarOpen)} active={sidebarOpen}>
         <PanelLeft size={18} />
       </IconButton>
-      <button type="button" onClick={() => setShowLibrary(true)} className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-[12.5px] font-semibold hover:bg-black/5" title={t('top.library')}>
+      <button type="button" onClick={() => setShowLibrary(true)} className="inline-flex shrink-0 items-center gap-1.5 rounded-md px-2 py-1 text-[12.5px] font-semibold hover:bg-black/5" title={t('top.library')} aria-label={t('top.library')}>
         <FolderOpen size={16} />
-        <span className="hidden xl:inline">{t('top.library')}</span>
+        {labels && <span>{t('top.library')}</span>}
       </button>
-      <MenuButton label={t('file.menu')} icon={<Save size={16} />} build={() => [
+      <MenuButton showLabel={labels} label={t('file.menu')} icon={<Save size={16} />} build={() => [
             { label: t('file.save'), icon: <Save size={14} />, hint: shortcutHint('file.save', t), disabled: !design, onSelect: () => void saveCurrent(false) },
             { label: t('file.saveAs'), icon: <FileDown size={14} />, hint: shortcutHint('file.saveAs', t), disabled: !design, onSelect: () => void saveCurrent(true) },
             { label: t('file.open'), icon: <Upload size={14} />, hint: shortcutHint('file.open', t), onSelect: () => void openAnyFile() },
@@ -125,29 +198,18 @@ export function Topbar() {
             { label: t('file.shortcuts'), icon: <Keyboard size={14} />, hint: shortcutHint('help.shortcuts', t), onSelect: () => setShowShortcuts(true) },
             { label: t('file.about'), icon: <Info size={14} />, onSelect: () => setShowAbout(true) },
           ]} />
-      <MenuButton label={t('menu.edit')} icon={<Pencil size={16} />} build={() => editMenu(t)} />
-      <MenuButton label={t('menu.view')} icon={<Eye size={16} />} build={() => viewMenu(t)} />
+      <MenuButton showLabel={labels} label={t('menu.edit')} icon={<Pencil size={16} />} build={() => editMenu(t)} />
+      <MenuButton showLabel={labels} label={t('menu.view')} icon={<Eye size={16} />} build={() => viewMenu(t)} />
       {design && (
         <input
           aria-label={t('top.name')}
-          className="min-w-[120px] flex-1 rounded-md border border-transparent bg-transparent px-2 py-1 text-[13px] font-semibold hover:border-line focus:border-accent focus:bg-white focus:outline-none sm:max-w-[200px]"
+          className="max-w-[220px] min-w-[80px] truncate rounded-md [field-sizing:content] border border-transparent bg-transparent px-2 py-1 text-[13px] font-semibold hover:border-line focus:border-accent focus:bg-white focus:outline-none"
           value={design.name}
           onChange={(e) => update((d) => void (d.name = e.target.value), 'name')}
         />
       )}
-      <IconButton label={`${t('search.open')} (${shortcutHint('search.open', t)})`} onClick={() => setSearching(true)}>
-        <Search size={17} />
-      </IconButton>
-      {searching && <SearchPalette onClose={() => setSearching(false)} />}
-      <div className="flex items-center">
-        <IconButton label={t('top.back')} onClick={goBack} disabled={!canBack}>
-          <ArrowLeft size={17} />
-        </IconButton>
-        <IconButton label={t('top.forward')} onClick={goForward} disabled={!canForward}>
-          <ArrowRight size={17} />
-        </IconButton>
-      </div>
-      <div className="flex items-center">
+      {sep}
+      <div className="flex shrink-0 items-center" role="group" aria-label={t('top.undoGroup')}>
         <IconButton label={`${t('top.undo')} (${shortcutHint('edit.undo', t)})`} onClick={undo} disabled={!canUndo}>
           <Undo2 size={17} />
         </IconButton>
@@ -155,52 +217,71 @@ export function Topbar() {
           <Redo2 size={17} />
         </IconButton>
       </div>
-      <div className="mx-auto flex items-center gap-2">
-        <Segmented<Mode>
-          value={mode}
-          onChange={setMode}
-          options={[
-            { value: 'design', label: t('mode.design'), icon: <PenTool size={14} /> },
-            { value: 'print', label: t('mode.print'), icon: <Printer size={14} /> },
-          ]}
-        />
-        <Segmented<View>
-          value={view}
-          onChange={setView}
-          options={viewsOf(mode, screen).map((v) => ({ value: v, label: t(`view.${v}`), icon: VIEW_ICONS[v] }))}
-        />
-      </div>
-      <div className="flex items-center">
-        <IconButton label={t('top.zoomOut')} onClick={() => zoomBy(1 / ZOOM.step)}>
-          <ZoomOut size={17} />
+      {!overflow.includes('history') && history}
+    </div>
+  );
+
+  const center = (
+    <div data-zone="center" className="flex w-max shrink-0 items-center gap-2" role="group" aria-label={t('top.viewGroup')}>
+      <Segmented<Mode>
+        value={mode}
+        onChange={setMode}
+        compact={!viewLabels}
+        options={[
+          { value: 'design', label: t('mode.design'), icon: <PenTool size={14} /> },
+          { value: 'print', label: t('mode.print'), icon: <Printer size={14} /> },
+        ]}
+      />
+      <Segmented<View> value={view} onChange={setView} compact={!viewLabels} options={viewsOf(mode, screen).map((v) => ({ value: v, label: t(`view.${v}`), icon: VIEW_ICONS[v] }))} />
+    </div>
+  );
+
+  const right = (
+    <div data-zone="right" className="flex w-max shrink-0 items-center justify-end gap-1">
+      {narrow ? (
+        <IconButton label={t('search.open')} onClick={() => setSearching(true)}>
+          <Search size={17} />
         </IconButton>
-        <IconButton label={t('top.fit')} onClick={zoomFit} active={fit}>
-          <Maximize size={16} />
-        </IconButton>
-        <IconButton label={t('top.zoomIn')} onClick={() => zoomBy(ZOOM.step)}>
-          <ZoomIn size={17} />
-        </IconButton>
-        <IconButton label={t('top.guides')} onClick={toggleGuides} active={guides}>
-          <Ruler size={16} />
-        </IconButton>
-        <IconButton label={t('top.snap')} onClick={toggleSnap} active={snap}>
-          <Magnet size={16} />
-        </IconButton>
-        <IconButton label={t('top.links')} onClick={() => setShowLinks(!showLinks)} active={showLinks}>
-          <Link2 size={17} />
-        </IconButton>
-      </div>
+      ) : (
+        <SearchField wide={labels} label={t('search.open')} placeholder={t('search.short')} hint={shortcutHint('search.open', t) ?? ''} onOpen={() => setSearching(true)} />
+      )}
+      {sep}
+      {!overflow.includes('zoom') && zoom}
+      {!overflow.includes('toggles') && toggles}
+      {overflow.length > 0 && <MenuButton showLabel={false} label={t('top.more')} icon={<MoreHorizontal size={17} />} build={moreMenu} />}
       <button
         type="button"
         onClick={() => {
           setPanel('print');
           setSidebarOpen(true);
         }}
-        className="inline-flex items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-[12.5px] font-semibold text-white hover:bg-[#435c31]"
+        title={t('top.export')}
+        aria-label={t('top.export')}
+        className="ml-1 inline-flex shrink-0 items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-[12.5px] font-semibold text-white hover:bg-[#435c31]"
       >
         <Printer size={15} />
-        <span className="hidden sm:inline">{t('top.export')}</span>
+        {!narrow && <span>{t('top.export')}</span>}
       </button>
+    </div>
+  );
+
+  return (
+    // `overflow-hidden`: mientras la barra se mide, lo que no entra no agranda la página (en un teléfono, el
+    // navegador agrandaría la ventana de maquetación y la aplicación se creería en una pantalla grande).
+    <header
+      ref={header}
+      data-level={level}
+      className={
+        narrow
+          ? 'flex flex-wrap items-center gap-x-2 gap-y-1 overflow-hidden border-b border-line bg-paper px-2 py-1.5'
+          : // Tres zonas: archivo y edición a la izquierda, modo y vista al centro del espacio libre, buscar, zoom y exportar a la derecha.
+            'grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 overflow-hidden border-b border-line bg-paper px-2 py-1.5'
+      }
+    >
+      {left}
+      <div className="flex min-w-0 justify-center">{center}</div>
+      {right}
+      {searching && <SearchPalette onClose={() => setSearching(false)} />}
     </header>
   );
 }

@@ -15,6 +15,8 @@ import { Thumb } from './Thumb';
 import { jumpToPage } from '../../state/navigation';
 import { reveal } from '../../state/reveal';
 import { registerViewport } from '../../state/viewport';
+import { currentUiZoom } from '../../state/uiScale';
+import { anchorOf, anchorScroll, wheelZoomFactor, type ZoomAnchor } from '../../state/wheelZoom';
 import { AssistantDock } from '../assistant/AssistantDock';
 
 function useSize(): [React.RefObject<HTMLDivElement | null>, { w: number; h: number }] {
@@ -53,6 +55,51 @@ export function Canvas({ committed, live }: { committed: AgendaDocument; live: A
     view === 'page' || singleSpread ? { w: live.format.w, h: live.format.h } : view === 'spread' ? { w: live.format.w * 2, h: live.format.h } : { w: live.format.sheetW, h: live.format.sheetH };
   const fitScale = Math.max(0.5, Math.min((size.w - pad) / contentMm.w, (size.h - pad - 40) / contentMm.h));
   const scale = fit ? fitScale : fitScale * zoom;
+
+  // Ctrl + rueda (o el pellizco del panel táctil) acerca o aleja la página dejando quieto el punto bajo
+  // el cursor. Los movimientos de un mismo cuadro se juntan en un solo cambio de zoom.
+  const anchor = useRef<ZoomAnchor | null>(null);
+  useEffect(() => {
+    const desk = ref.current;
+    if (!desk) return;
+    let pending = 1;
+    let frame = 0;
+    const onWheel = (e: WheelEvent): void => {
+      const factor = wheelZoomFactor(e);
+      if (factor === null) return;
+      // Sin esto el navegador (o Electron) agranda toda la interfaz.
+      e.preventDefault();
+      const content = desk.firstElementChild;
+      if (!anchor.current && content) anchor.current = anchorOf(e.clientX, e.clientY, content.getBoundingClientRect());
+      pending *= factor;
+      if (frame) return;
+      frame = requestAnimationFrame(() => {
+        frame = 0;
+        const f = pending;
+        pending = 1;
+        const before = useStore.getState().zoom;
+        useStore.getState().zoomBy(f);
+        // En el tope del zoom no cambia la escala: no hay nada que reacomodar.
+        if (useStore.getState().zoom === before && !useStore.getState().fit) anchor.current = null;
+      });
+    };
+    desk.addEventListener('wheel', onWheel, { passive: false });
+    return () => {
+      desk.removeEventListener('wheel', onWheel);
+      if (frame) cancelAnimationFrame(frame);
+    };
+  }, [ref]);
+  // Con la escala nueva ya dibujada (antes de mostrarla), se desplaza para que el punto siga bajo el cursor.
+  useLayoutEffect(() => {
+    const a = anchor.current;
+    const desk = ref.current;
+    const content = desk?.firstElementChild;
+    if (!a || !desk || !content) return;
+    anchor.current = null;
+    const { dx, dy } = anchorScroll(a, content.getBoundingClientRect(), currentUiZoom());
+    desk.scrollLeft += dx;
+    desk.scrollTop += dy;
+  }, [scale, ref]);
 
   // El lienzo le dice a los atajos de encuadre dónde está y a qué escala se dibuja.
   useEffect(() => {

@@ -85,10 +85,10 @@ function Dock({ footer }: { footer: boolean }) {
 
   return (
     <div className={clsx('pointer-events-none absolute inset-x-0 z-20 flex justify-center px-4', footer ? 'bottom-12' : 'bottom-4')} data-testid="assistant">
-      <div className="pointer-events-auto relative flex w-full max-w-[560px] flex-col items-center gap-2">
+      <div className="relative flex w-full max-w-[560px] flex-col items-center gap-2">
         <Cards />
         {a.open ? (
-          <form onSubmit={submit} className="flex w-full items-center gap-1 rounded-full border border-line bg-paper/90 py-1 pr-1 pl-3 shadow-md backdrop-blur" role="search" aria-label={t('ai.title')}>
+          <form onSubmit={submit} className="pointer-events-auto flex w-full items-center gap-1 rounded-full border border-line bg-paper/90 py-1 pr-1 pl-3 shadow-md backdrop-blur" role="search" aria-label={t('ai.title')}>
             <Sparkles size={15} className={clsx('shrink-0 text-accent', working && 'animate-pulse motion-reduce:animate-none')} aria-hidden="true" />
             <input
               ref={input}
@@ -125,7 +125,7 @@ function Dock({ footer }: { footer: boolean }) {
           <button
             type="button"
             onClick={() => a.focus()}
-            className="inline-flex h-9 items-center gap-2 rounded-full border border-line bg-paper/85 px-3.5 text-[12.5px] text-ink-soft shadow-sm backdrop-blur hover:border-accent/60 hover:text-ink"
+            className="pointer-events-auto inline-flex h-9 items-center gap-2 rounded-full border border-line bg-paper/85 px-3.5 text-[12.5px] text-ink-soft shadow-sm backdrop-blur hover:border-accent/60 hover:text-ink"
             data-testid="assistant-pill"
           >
             <Sparkles size={14} className={clsx('text-accent', working && 'animate-pulse motion-reduce:animate-none')} aria-hidden="true" />
@@ -163,7 +163,7 @@ function IconRound(props: { label: string; children: React.ReactNode; onClick?: 
   );
 }
 
-const cardCls = 'w-full rounded-xl border border-line bg-paper/95 p-3 text-[12.5px] text-ink shadow-lg backdrop-blur';
+const cardCls = 'pointer-events-auto w-full rounded-xl border border-line bg-paper/95 p-3 text-[12.5px] text-ink shadow-lg backdrop-blur';
 
 /** La tarjeta de encima de la píldora: el historial, la propuesta, la respuesta o el error. */
 function Cards() {
