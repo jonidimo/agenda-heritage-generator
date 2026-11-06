@@ -90,6 +90,8 @@ export function findBlockLinks(list: readonly BlockLink[], page: { key: string; 
 
 export function categoryOn(s: LinkSettings, cat: LinkCategory): boolean {
   switch (cat) {
+    case 'web':
+      return true;
     case 'days':
       return s.days;
     case 'months':

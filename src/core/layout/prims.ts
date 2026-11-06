@@ -154,8 +154,8 @@ export type LinkTarget =
   | { kind: 'page'; key: string }
   | { kind: 'url'; href: string };
 
-/** Familias de enlaces automáticos: cada una se activa o no en los ajustes de enlaces. */
-export type LinkCategory = 'days' | 'months' | 'up' | 'toc' | 'pageNumber';
+/** Familias de enlaces automáticos: cada una se activa o no en los ajustes de enlaces (`web`, las direcciones de internet impresas, siempre que haya enlaces). */
+export type LinkCategory = 'days' | 'months' | 'up' | 'toc' | 'pageNumber' | 'web';
 
 /** Zona tocable de un bloque, en mm de página antes de la transformación del bloque. */
 export interface LinkArea {
@@ -268,7 +268,9 @@ export type WarningCode =
   /** Informativo: un texto (feriado, fecha propia) se abrevió con «…» para entrar. */
   | 'abbreviated'
   /** Un enlace elegido a mano lleva a una página que ya no existe o a una dirección no válida. */
-  | 'brokenLink';
+  | 'brokenLink'
+  /** El texto de un código QR no entra ni en el código más grande. */
+  | 'qrTooLong';
 
 export interface PageWarning {
   code: WarningCode;

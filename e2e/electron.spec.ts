@@ -184,7 +184,8 @@ test('un archivo de agenda pasado a la aplicación («Abrir con…», doble clic
   const win = await electronApp.firstWindow();
   await expect.poll(() => win.evaluate<string | null>('globalThis.__agenda?.getState().design?.name ?? null'), { timeout: 60_000 }).toBe('Desde el sistema');
   expect(await win.evaluate<number>('globalThis.__agenda.getState().design.calendar.year')).toBe(2031);
-  await expect(win.locator('[data-page-index]').first()).toBeVisible({ timeout: 60_000 });
+  // El archivo no trae secciones: se abre una agenda sin páginas, con lo que se puede hacer para empezar.
+  await expect(win.getByTestId('no-pages')).toBeVisible({ timeout: 60_000 });
 });
 
 test('cerrar la ventana espera a que termine el guardado pendiente', async () => {

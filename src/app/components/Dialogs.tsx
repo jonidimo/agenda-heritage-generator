@@ -1,5 +1,6 @@
 /** Biblioteca de agendas y asistente de nueva agenda. */
-import { createDesign, duplicateForYear, TEMPLATES, type TemplateId } from '@core/design/defaults';
+import { createDesign, duplicateForYear, NOTEBOOK_DEFAULT_PAGES, NOTEBOOK_STYLES, TEMPLATES, type NotebookStyle, type TemplateId } from '@core/design/defaults';
+import { OPTION_COUNT } from '@core/sections/options';
 import type { Design } from '@core/design/schema';
 import { countryName } from '@core/holidays';
 import { monthNames, regionOf, regionWeekInfo } from '@core/calendar/locale';
@@ -19,6 +20,7 @@ import { dataFolderFor } from '../state/platform';
 import { resources } from '../state/resources';
 import { useStore } from '../state/store';
 import { Button, Field, NumberInput, Select, TextArea, TextInput, Toggle } from './ui';
+import { clampPage } from '../state/paging';
 
 const FOCUSABLE = 'button:not([disabled]), [href], input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
@@ -88,6 +90,10 @@ export function WelcomeDialog() {
   const [country, setCountry] = useState(() => homeCountry(langOf(useStore.getState().uiLang), userRegion) ?? '');
   const [name, setName] = useState('');
   const [weekStart, setWeekStart] = useState<'auto' | 'monday' | 'sunday' | 'saturday'>('auto');
+  // Un cuaderno: cuántas páginas y de qué estilo. Sin fechas, no hay calendario que ajustar.
+  const [notePages, setNotePages] = useState(NOTEBOOK_DEFAULT_PAGES);
+  const [noteStyle, setNoteStyle] = useState<NotebookStyle>('dots');
+  const undated = TEMPLATES.find((x) => x.id === template)?.undated === true;
   const [startMonth, setStartMonth] = useState(1);
   const [monthCount, setMonthCount] = useState(12);
   const locale = localeFor(lang, country || null);
@@ -104,8 +110,8 @@ export function WelcomeDialog() {
       setShow(false);
       return;
     }
-    const d = createDesign(template as TemplateId, { year, locale, country: country || null, ...(name.trim() ? { name: name.trim() } : {}) });
-    setDesign(calendar(d));
+    const d = createDesign(template as TemplateId, { year, locale, country: country || null, ...(name.trim() ? { name: name.trim() } : {}), ...(template === 'notebook' ? { pages: notePages, style: noteStyle } : {}) });
+    setDesign(undated ? d : calendar(d));
     setShow(false);
   };
 
@@ -153,10 +159,23 @@ export function WelcomeDialog() {
           />
         </Field>
       </div>
+      {template === 'notebook' && (
+        <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.6fr)] items-end gap-2" data-testid="notebook-options">
+          <Field label={t('welcome.notebookPages')}>
+            <NumberInput value={notePages} min={1} max={OPTION_COUNT.max} integer onChange={(v) => setNotePages(Math.min(OPTION_COUNT.max, Math.max(1, Math.round(v))))} />
+          </Field>
+          <Field label={t('welcome.notebookStyle')}>
+            <Select value={noteStyle} onChange={setNoteStyle} options={NOTEBOOK_STYLES.map((v) => ({ value: v, label: t(`val.${v}` as UiKey) }))} />
+          </Field>
+        </div>
+      )}
+      {!undated && (
       <Field label={t('welcome.country')} hint={t('welcome.countryHint')}>
         <Select value={country} onChange={setCountry} options={[{ value: '', label: '—' }, ...countries]} />
       </Field>
+      )}
       {/* Los controles se alinean por abajo: un rótulo largo puede ocupar dos líneas sin descolocar a los demás. */}
+      {!undated && (
       <div className="grid grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_minmax(0,0.9fr)] items-end gap-2">
         <Field label={t('cal.weekStart')}>
           <Select
@@ -175,6 +194,7 @@ export function WelcomeDialog() {
           <NumberInput value={monthCount} min={1} max={24} integer onChange={(v) => setMonthCount(Math.min(24, Math.max(1, Math.round(v))))} />
         </Field>
       </div>
+      )}
       <Field label={t('welcome.name')}>
         <TextInput value={name} onChange={setName} />
       </Field>
@@ -537,8 +557,8 @@ export function HiddenDialog() {
   const pageIndex = useStore((s) => s.pageIndex);
   const found = useMemo(() => {
     const doc = design ? currentDocument() : null;
-    if (!doc) return null;
-    const index = Math.min(pageIndex, doc.pageCount - 1);
+    if (!doc || doc.pageCount === 0) return null;
+    const index = clampPage(pageIndex, doc.pageCount);
     try {
       return { page: doc.page(index), items: doc.hidden(index) };
     } catch {

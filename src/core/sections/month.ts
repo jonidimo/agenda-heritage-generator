@@ -13,6 +13,7 @@ import { TABULAR_FEATURES } from '../text/shape';
 import { ptToMm, type Rect } from '../util/geometry';
 import { abbreviated, checklist, headed, label, monthTitle, nextMonthName, order } from './common';
 import { opt, param, type PagePlan, type PagePlanDraft, type SectionModule } from './types';
+import { assetPrims } from '../document/assets';
 
 function monthOf(ctx: LayoutContext, page: PagePlan): MonthInfo {
   const m = page.params?.month as { y: number; m: number } | undefined;
@@ -37,6 +38,17 @@ const south = (ctx: LayoutContext): boolean => isSouthern(ctx.doc.design.holiday
 const showMoon = (ctx: LayoutContext, where: 'monthLog' | 'monthGrid'): boolean => ctx.doc.design.astronomy.moonPhases && ctx.doc.design.astronomy.showIn.includes(where);
 
 /* ---------- Portada mensual ---------- */
+
+/**
+ * La imagen de la portada de un mes: la de ese mes («2027-03») o, si no tiene, la de todos («default»).
+ * Lo que no es un texto se ignora.
+ */
+export function coverImageFor(images: unknown, monthKey: string): string | undefined {
+  if (!images || typeof images !== 'object' || Array.isArray(images)) return undefined;
+  const map = images as Record<string, unknown>;
+  const pick = (v: unknown): string | undefined => (typeof v === 'string' && v.trim() !== '' ? v : undefined);
+  return pick(map[monthKey]) ?? pick(map.default);
+}
 
 export const monthCover: SectionModule = {
   type: 'monthCover',
@@ -67,9 +79,16 @@ export const monthCover: SectionModule = {
       const size = Math.max(30, Math.min(70 * scaleK, c.w * 0.62, avail));
       const natural = centerIn({ x: c.x, y, w: c.w, h: size }, size, size);
       const box = ctx.rect('cover.sticker', natural);
-      const p: Prim[] = [rect(box, { stroke: ctx.stroke('hair', 'rule', { use: 'frame', dash: [1.2, 1] }) })];
-      p.push(...ctx.textIn(ctx.s.monthCover.sticker, inset(box, 2), { role: 'label', size: 'labelSmall', upper: true, tracking: true, align: 'center', valign: 'middle', color: '#e2e2e2', fit: true }).prims);
-      ctx.add('cover.sticker', 'Espacio para sticker', p);
+      // Una imagen propia para este mes (o para todos): va en el lugar del sticker, sin el recuadro punteado.
+      const imageId = coverImageFor(param<unknown>(page, 'images', undefined), month.key);
+      const info = imageId ? ctx.doc.assets.get(imageId) : undefined;
+      if (imageId && !info) ctx.warn('missingAsset', `La portada de ${month.name} usa una imagen que no está en esta agenda: se deja el recuadro.`, { name: imageId });
+      if (info) ctx.add('cover.sticker', 'Imagen de la portada', assetPrims(info, box, { fit: 'contain', minStrokePt: 0.25 }));
+      else {
+        const p: Prim[] = [rect(box, { stroke: ctx.stroke('hair', 'rule', { use: 'frame', dash: [1.2, 1] }) })];
+        p.push(...ctx.textIn(ctx.s.monthCover.sticker, inset(box, 2), { role: 'label', size: 'labelSmall', upper: true, tracking: true, align: 'center', valign: 'middle', color: '#e2e2e2', fit: true }).prims);
+        ctx.add('cover.sticker', 'Espacio para sticker', p);
+      }
       y = natural.y + natural.h + 6;
     }
     if (fieldsOn) {

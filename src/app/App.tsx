@@ -26,6 +26,7 @@ import { useDocument } from './state/doc';
 import { collectUnusedAssets, listDesigns, loadDesign } from './state/persist';
 import { resources } from './state/resources';
 import { installClipboard } from './state/clipboard';
+import { EmptyPages } from './components/EmptyPages';
 import { isDesktopShell } from './state/desktopBridge';
 import { PROVIDER_IDS } from '@core/ai/providers';
 import { installAssistant } from './state/ai/assistant';
@@ -283,7 +284,7 @@ export function App() {
           />
         )}
         <main className="relative flex min-h-0 min-w-0 flex-1 flex-col">
-          {doc && !large && !sheetOpen && (
+          {doc && doc.pageCount > 0 && !large && !sheetOpen && (
             <button
               type="button"
               className="absolute top-3 right-3 z-20 flex items-center gap-1.5 rounded-full bg-accent px-3 py-1.5 text-[12px] font-semibold text-white shadow-lg"
@@ -348,13 +349,17 @@ export function App() {
           ) : !ready || !doc ? (
             <div className="desk flex flex-1 items-center justify-center text-[13px] text-ink-soft">{error ?? t('app.loading')}</div>
           ) : (
-            <>
-              <CanvasArea doc={doc} live={live ?? doc} />
-              <Navigator doc={doc} />
-            </>
+            doc.pageCount === 0 ? (
+              <EmptyPages doc={doc} />
+            ) : (
+              <>
+                <CanvasArea doc={doc} live={live ?? doc} />
+                <Navigator doc={doc} />
+              </>
+            )
           )}
         </main>
-        {doc && large && (
+        {doc && doc.pageCount > 0 && large && (
           <>
             <Splitter
               orientation="vertical"
@@ -372,7 +377,7 @@ export function App() {
             </aside>
           </>
         )}
-        {doc && !large && sheetOpen && (
+        {doc && doc.pageCount > 0 && !large && sheetOpen && (
           <div className="fixed inset-x-0 bottom-0 z-40 flex h-[calc(52*var(--vh))] flex-col rounded-t-xl border-t border-line bg-paper shadow-2xl" role="dialog" aria-label={t('insp.title')}>
             <div className="flex shrink-0 justify-end border-b border-line px-2 py-1">
               <button type="button" className="rounded p-1 hover:bg-black/5" aria-label={t('common.close')} onClick={() => setSheetOpen(false)}>

@@ -20,6 +20,7 @@ export const ELEMENT_LABELS: Record<ElementKind, UiKey> = {
   notes: 'el.kind.notes',
   timeline: 'el.kind.timeline',
   rating: 'el.kind.rating',
+  qr: 'el.kind.qr',
 };
 
 export function isElementKind(kind: string): kind is ElementKind {
@@ -48,6 +49,9 @@ export function elementSize(kind: ElementKind, contentW: number): { w: number; h
       return { w: wide(70), h: 110 };
     case 'rating':
       return { w: wide(70), h: 9 };
+    case 'qr':
+      // 25 mm de lado: se lee bien impreso con un texto de hasta unas 100 letras.
+      return { w: wide(25), h: 25 };
   }
 }
 
@@ -73,5 +77,7 @@ export function elementProps(kind: ElementKind, t: T): Record<string, unknown> {
       return { label, from: PROP_DEFAULTS.hourFrom, to: PROP_DEFAULTS.hourTo, step: PROP_DEFAULTS.hourStep };
     case 'rating':
       return { label, count: PROP_DEFAULTS.ratingCount, shape: 'star' };
+    case 'qr':
+      return { label, text: '', ecc: 'M' };
   }
 }

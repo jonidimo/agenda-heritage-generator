@@ -45,6 +45,11 @@ export const pt: AgendaStrings = {
       contested: 'Evidência controversa',
     },
     continued: '(continua)',
+    credits: {
+      madeBy: 'Feita com Heritage Studio, de',
+      source: 'Código-fonte',
+      online: 'Online',
+    },
   },
   toc: {
     title: 'Índice',
@@ -205,6 +210,9 @@ export const pt: AgendaStrings = {
     person: 'Agenda de {name} {year}',
     clara: 'Agenda {year} · Leitura clara',
     minimal: 'Agenda {year} · Mínima',
+    notebook: 'Caderno',
+    notebookPerson: 'Caderno de {name}',
+    blank: 'Agenda em branco',
   },
   gift: {
     title: 'Arquitetura do Tempo',

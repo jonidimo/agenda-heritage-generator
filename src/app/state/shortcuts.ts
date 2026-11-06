@@ -261,7 +261,7 @@ export const SHORTCUTS: readonly Shortcut[] = [
   { id: 'nav.next', group: 'navigate', chords: [{ key: 'PageDown' }, { key: 'ArrowRight' }], run: (e) => (e.key === 'ArrowRight' && state().selection ? false : page(1)) },
   { id: 'nav.prev', group: 'navigate', chords: [{ key: 'PageUp' }, { key: 'ArrowLeft' }], run: (e) => (e.key === 'ArrowLeft' && state().selection ? false : page(-1)) },
   { id: 'nav.first', group: 'navigate', chords: [{ key: 'Home' }], run: () => (state().design ? void state().goToPage(0) : false) },
-  { id: 'nav.last', group: 'navigate', chords: [{ key: 'End' }], run: () => (currentDocument() ? void state().goToPage(currentDocument()!.pageCount - 1) : false) },
+  { id: 'nav.last', group: 'navigate', chords: [{ key: 'End' }], run: () => ((currentDocument()?.pageCount ?? 0) > 0 ? void state().goToPage(currentDocument()!.pageCount - 1) : false) },
   { id: 'nav.back', group: 'navigate', chords: [{ key: 'ArrowLeft', alt: true }], run: () => goBack() },
   { id: 'nav.forward', group: 'navigate', chords: [{ key: 'ArrowRight', alt: true }], run: () => goForward() },
 

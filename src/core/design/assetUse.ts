@@ -10,6 +10,7 @@ import type { Prim } from '../layout/prims';
 export type AssetUse =
   | { kind: 'watermark'; id: string }
   | { kind: 'cover' }
+  | { kind: 'monthCover'; sectionId: string; months: string[] }
   | { kind: 'block'; id: string; pageType: string; pageKey: string | null; label: string }
   | { kind: 'page'; id: string; title: string }
   | { kind: 'template'; id: string; title: string }
@@ -51,11 +52,21 @@ const drawingImages = (props: Record<string, unknown>): string[] => {
   return d ? imagesOf(d.prims as Prim[]) : [];
 };
 
+/** Las portadas de mes (en «Meses» o sueltas) con sus imágenes por mes (`options.images`). */
+function monthCovers(design: Design): Array<{ id: string; images: Record<string, unknown> }> {
+  const items = design.sections.flatMap((s) => [s, ...(s.items ?? [])]);
+  return items.filter((i) => i.type === 'monthCover' && i.options.images && typeof i.options.images === 'object' && !Array.isArray(i.options.images)).map((i) => ({ id: i.id, images: i.options.images as Record<string, unknown> }));
+}
+
 /** Todos los lugares de la agenda que usan la imagen, en el orden en que se muestran. */
 export function assetUses(design: Design, id: string): AssetUse[] {
   const out: AssetUse[] = [];
   for (const w of design.watermarks) if (w.assetId === id) out.push({ kind: 'watermark', id: w.id });
   if (design.cover.imageAssetId === id) out.push({ kind: 'cover' });
+  for (const mc of monthCovers(design)) {
+    const months = Object.entries(mc.images).flatMap(([k, v]) => (v === id ? [k] : []));
+    if (months.length > 0) out.push({ kind: 'monthCover', sectionId: mc.id, months });
+  }
   for (const c of design.customBlocks) {
     const uses = c.kind === 'image' ? c.props.assetId === id : c.kind === 'drawing' && drawingImages(c.props).includes(id);
     if (uses) out.push({ kind: 'block', id: c.id, pageType: c.pageType, pageKey: c.pageKey, label: String(c.props.label ?? '') });
@@ -77,6 +88,14 @@ export function removeAssetFrom(d: Design, id: string): void {
   d.assets = d.assets.filter((a) => a.id !== id);
   d.watermarks = d.watermarks.filter((w) => w.assetId !== id);
   if (d.cover.imageAssetId === id) d.cover.imageAssetId = null;
+  // Las portadas de mes que la usaban vuelven al recuadro del sticker.
+  for (const item of d.sections.flatMap((s) => [s, ...(s.items ?? [])])) {
+    const images = item.type === 'monthCover' ? item.options.images : undefined;
+    if (!images || typeof images !== 'object' || Array.isArray(images)) continue;
+    const map = images as Record<string, unknown>;
+    for (const [k, v] of Object.entries(map)) if (v === id) delete map[k];
+    if (Object.keys(map).length === 0) delete item.options.images;
+  }
   const gone = new Set<string>();
   for (const c of d.customBlocks) {
     if (c.kind === 'image' && c.props.assetId === id) gone.add(c.id);

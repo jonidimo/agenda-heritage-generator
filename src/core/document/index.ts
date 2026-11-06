@@ -71,7 +71,7 @@ export class AgendaDocument {
     const prev = options.reuse?.planOptions.only === planOptions.only ? options.reuse : undefined;
     this.ctx = createDocContext(design, resources, prev);
     this.format = pageFormat(design);
-    const reusePlan = prev !== undefined && samePlanInputs(prev.design, design) && prev.ctx.cal === this.ctx.cal && prev.ctx.strings === this.ctx.strings;
+    const reusePlan = prev !== undefined && samePlanInputs(prev.design, design) && prev.ctx.cal === this.ctx.cal && prev.ctx.strings === this.ctx.strings && samePlanMetrics(prev.ctx, this.ctx);
     if (prev && reusePlan) {
       this.plan = prev.plan;
       this.ctx.pages = prev.ctx.pages;
@@ -250,6 +250,7 @@ export class AgendaDocument {
     const title = `${d.name}`;
     const base = { fonts: this.ctx.fonts, assetBytes: opts.assetBytes, info: { title, author: d.persona.name, subject: 'Agenda', keywords: 'agenda, planner' }, ...(opts.onProgress ? { onProgress: opts.onProgress } : {}) };
     const toInput = (r: SheetRender): PdfPageInput => ({ w: r.w, h: r.h, prims: r.prims });
+    if (this.pageCount === 0 && kind !== 'calibration' && kind !== 'sewing') throw new Error('La agenda no tiene páginas: agregá secciones o páginas propias antes de exportarla.');
     if (kind !== 'pages' && this.screen) throw new Error(`El PDF «${kind}» es para imprimir y encuadernar: la agenda está hecha para leer en pantalla. Cambiá el destino a «Encuadernación» o exportá las páginas.`);
     switch (kind) {
       case 'pages': {
@@ -319,6 +320,17 @@ export class AgendaDocument {
 const verified = new WeakMap<PageModel, PageWarning[]>();
 
 /** ¿El contexto de maquetación es el mismo salvo el diseño? (tema, textos, calendario, recursos y formato.) */
+/**
+ * Lo que mide la planificación al repartir texto en páginas (la guía): el tamaño de página, los márgenes
+ * y la tipografía. Un color nuevo no cambia el reparto; otro papel, otros márgenes u otra letra, sí.
+ */
+function samePlanMetrics(a: DocContext, b: DocContext): boolean {
+  if (a.pageW !== b.pageW || a.pageH !== b.pageH || a.fonts !== b.fonts) return false;
+  if (a.theme === b.theme) return true;
+  const metrics = (t: DocContext['theme']): string => JSON.stringify([t.fonts, t.fallbacks, t.sizes, t.tracking, t.margins, t.minTextPt]);
+  return metrics(a.theme) === metrics(b.theme);
+}
+
 function sameLayoutContext(a: DocContext, b: DocContext): boolean {
   return (
     a.theme === b.theme &&

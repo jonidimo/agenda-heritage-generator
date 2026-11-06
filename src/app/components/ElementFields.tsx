@@ -1,9 +1,11 @@
 /** Campos del panel de los elementos compuestos (tabla, lista, hábitos, finanzas, minicalendario…). */
-import { CHECK_SHAPES, NOTE_STYLES, PROP_DEFAULTS, PROP_RANGES, QUADRANT_STYLES, RATING_FORMS, stringList, type ElementKind } from '@core/design/customBlocks';
-import { CalendarCheck, CalendarDays, Clock, LayoutGrid, ListChecks, StickyNote, Star, Table2, Wallet } from 'lucide-react';
+import { CHECK_SHAPES, NOTE_STYLES, PROP_DEFAULTS, PROP_RANGES, QR_ECC_LEVELS, QR_MAX_CHARS, QUADRANT_STYLES, RATING_FORMS, stringList, type ElementKind } from '@core/design/customBlocks';
+import { safeUrl } from '@core/document/links';
+import { qrEncode } from '@core/util/qr';
+import { CalendarCheck, CalendarDays, Clock, LayoutGrid, ListChecks, QrCode, StickyNote, Star, Table2, Wallet } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { useT, type UiKey } from '../i18n/ui';
-import { Field, NumberInput, Segmented, Select, TextArea, TextInput, Toggle } from './ui';
+import { ColorInput, Field, NumberInput, Segmented, Select, TextArea, TextInput, Toggle } from './ui';
 
 /** El ícono de cada tipo (botones de agregar y menús). */
 export const ELEMENT_ICONS: Record<ElementKind, ReactNode> = {
@@ -16,6 +18,7 @@ export const ELEMENT_ICONS: Record<ElementKind, ReactNode> = {
   notes: <StickyNote size={14} />,
   timeline: <Clock size={14} />,
   rating: <Star size={14} />,
+  qr: <QrCode size={14} />,
 };
 
 export interface MonthChoice {
@@ -30,6 +33,8 @@ interface Props {
   setProp: (key: string, value: unknown) => void;
   /** Los meses de la agenda, para elegir el del minicalendario. */
   months: readonly MonthChoice[];
+  /** La tinta del tema: el color de lo que no tiene uno propio. */
+  ink: string;
 }
 
 /** Un texto por renglón: lo escrito se guarda como lista, con los renglones vacíos que deje (así se ve lo que se escribe). */
@@ -62,7 +67,7 @@ export function ElementFields(props: Props) {
   );
 }
 
-function KindFields({ kind, props: p, setProp, months }: Props) {
+function KindFields({ kind, props: p, setProp, months, ink }: Props) {
   const t = useT();
   const opt = <V extends string>(values: readonly V[], key: (v: V) => UiKey) => values.map((v) => ({ value: v, label: t(key(v)) }));
   switch (kind) {
@@ -170,5 +175,36 @@ function KindFields({ kind, props: p, setProp, months }: Props) {
           </Field>
         </>
       );
+    case 'qr':
+      return <QrFields p={p} setProp={setProp} ink={ink} />;
   }
+}
+
+/** Qué guarda el código, cuánto se corrige, de qué color y si es tocable en el PDF; con el tamaño del código que sale. */
+function QrFields({ p, setProp, ink }: { p: Record<string, unknown>; setProp: Props['setProp']; ink: string }) {
+  const t = useT();
+  const text = typeof p.text === 'string' ? p.text : '';
+  const ecc = QR_ECC_LEVELS.find((e) => e === p.ecc) ?? 'M';
+  let info = '';
+  if (text.trim() !== '') {
+    try {
+      const size = qrEncode(text, ecc).size;
+      info = t('el.qr.size', { n: size });
+    } catch {
+      info = t('el.qr.tooLong');
+    }
+  }
+  const linkable = safeUrl(text) !== null;
+  return (
+    <>
+      <Field label={t('el.qr.text')} hint={info || t('el.qr.textHint')}>
+        <TextArea value={text} rows={3} placeholder="https://" onChange={(v) => setProp('text', v.slice(0, QR_MAX_CHARS))} />
+      </Field>
+      <Field label={t('el.qr.ecc')} hint={t('el.qr.eccHint')} group>
+        <Segmented compact value={ecc} onChange={(v) => setProp('ecc', v)} options={QR_ECC_LEVELS.map((e) => ({ value: e, label: t(`el.qr.ecc.${e}` as UiKey) }))} />
+      </Field>
+      <ColorInput label={t('el.qr.color')} value={typeof p.color === 'string' ? p.color : ink} modified={typeof p.color === 'string'} onReset={() => setProp('color', undefined)} onChange={(v) => setProp('color', v)} />
+      {linkable && <Toggle label={t('el.qr.link')} checked={p.link !== false} onChange={(v) => setProp('link', v ? undefined : false)} />}
+    </>
+  );
 }

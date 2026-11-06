@@ -45,6 +45,11 @@ export const en: AgendaStrings = {
       contested: 'Contested evidence',
     },
     continued: '(continued)',
+    credits: {
+      madeBy: 'Made with Heritage Studio, by',
+      source: 'Source code',
+      online: 'Online',
+    },
   },
   toc: {
     title: 'Contents',
@@ -205,6 +210,9 @@ export const en: AgendaStrings = {
     person: '{name}’s planner {year}',
     clara: 'Planner {year} · Clear reading',
     minimal: 'Planner {year} · Minimal',
+    notebook: 'Notebook',
+    notebookPerson: '{name}’s notebook',
+    blank: 'Blank planner',
   },
   gift: {
     title: 'The Architecture of Time',

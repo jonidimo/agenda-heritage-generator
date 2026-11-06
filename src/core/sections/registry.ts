@@ -9,6 +9,9 @@ export const SECTION_MODULES: SectionModule[] = [...FRONT_SECTIONS, methodsGuide
 
 export const SECTION_REGISTRY: ReadonlyMap<string, SectionModule> = new Map(SECTION_MODULES.map((m) => [m.type, m]));
 
+/** Las secciones que una persona (o un modelo) puede poner: todas menos las internas (relleno, páginas propias). */
+export const USER_SECTION_MODULES: readonly SectionModule[] = SECTION_MODULES.filter((m) => m.type !== 'filler' && m.type !== 'custom');
+
 /** Tipos de página que existen (alcance de marcas de agua, ajustes y bloques propios). */
 export const PAGE_TYPES = [
   'titlePage',

@@ -19,7 +19,7 @@ export const TEXT_VALIGNS = ['top', 'middle', 'bottom'] as const;
 export const IMAGE_FITS = ['contain', 'cover', 'fill'] as const;
 
 /** Elementos compuestos: se dibujan completos en su caja (tablas, listas, seguimientos, calendarios…). */
-export const ELEMENT_KINDS = ['table', 'checklist', 'habits', 'finance', 'minical', 'quadrants', 'notes', 'timeline', 'rating'] as const;
+export const ELEMENT_KINDS = ['table', 'checklist', 'habits', 'finance', 'minical', 'quadrants', 'notes', 'timeline', 'rating', 'qr'] as const;
 export type ElementKind = (typeof ELEMENT_KINDS)[number];
 
 /** Estilos del área de escritura de unas notas. */
@@ -27,6 +27,10 @@ export const NOTE_STYLES = ['lines', 'dots', 'grid', 'blank'] as const;
 export const RATING_FORMS = ['star', 'circle', 'heart', 'square'] as const;
 export const CHECK_SHAPES = ['circle', 'square', 'none'] as const;
 export const QUADRANT_STYLES = ['blank', 'lines', 'dots'] as const;
+/** Corrección de errores de un QR: cuánto del código se puede perder y seguir leyéndose (7, 15, 25 o 30 %). */
+export const QR_ECC_LEVELS = ['L', 'M', 'Q', 'H'] as const;
+/** Lo más largo que se acepta escribir en un QR (en el nivel más bajo entran unos 2900 bytes). */
+export const QR_MAX_CHARS = 1500;
 
 /** Rangos de los valores numéricos (mm o pt según el caso). */
 export const PROP_RANGES = {
@@ -171,6 +175,12 @@ export function customBlockPropsSchema(kind: string): Json {
       count: { type: 'integer', minimum: PROP_RANGES.ratingCount.min, maximum: PROP_RANGES.ratingCount.max, default: PROP_DEFAULTS.ratingCount, description: 'Cantidad de figuras' },
       shape: { enum: RATING_FORMS, default: 'star' },
       text: { type: 'string', maxLength: LIST_LIMITS.chars, description: 'Rótulo a la izquierda (por defecto, ninguno)' },
+    },
+    qr: {
+      text: { type: 'string', maxLength: QR_MAX_CHARS, description: 'Lo que guarda el código: una dirección web (https://…), un correo (mailto:…), un teléfono (tel:…) o cualquier texto' },
+      ecc: { enum: QR_ECC_LEVELS, default: 'M', description: 'Corrección de errores: L 7 %, M 15 %, Q 25 %, H 30 % (más corrección, más módulos y más chicos)' },
+      color: color('Color de los módulos (por defecto, el de la tinta del tema); que contraste con el papel'),
+      link: { type: 'boolean', default: true, description: 'Si el texto es una dirección web, de correo o de teléfono, tocar el código en el PDF la abre' },
     },
     drawing: {
       w0: { type: 'number', minimum: 0.1, maximum: 2000, description: 'Ancho del dibujo al copiarlo, en mm' },

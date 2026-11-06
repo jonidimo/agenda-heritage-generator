@@ -36,3 +36,27 @@ export function normalizeColor(v: unknown): string | null {
 export function safeColor(v: unknown, fallback: string): string {
   return normalizeColor(v) ?? fallback;
 }
+
+/**
+ * El gris de un color con la misma luminosidad (pesos de Rec. 709 sobre los valores sRGB), para pasar un
+ * dibujo a escala de grises. Un valor que no es `#rgb` o `#rrggbb` se devuelve igual.
+ */
+export function grayOf(color: string): string {
+  const m = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(color.trim());
+  if (!m) return color;
+  const hex = m[1]!.length === 3 ? [...m[1]!].map((c) => c + c).join('') : m[1]!;
+  const [r, g, b] = [0, 2, 4].map((i) => Number.parseInt(hex.slice(i, i + 2), 16)) as [number, number, number];
+  const y = Math.round(0.2126 * r + 0.7152 * g + 0.0722 * b);
+  const h = Math.min(255, Math.max(0, y)).toString(16).padStart(2, '0');
+  return `#${h}${h}${h}`;
+}
+
+/** La luminosidad de cada píxel RGBA (pesos de Rec. 709, como `grayOf`), con la transparencia intacta. */
+export function grayPixels(data: Uint8ClampedArray): void {
+  for (let i = 0; i < data.length; i += 4) {
+    const y = Math.round(0.2126 * data[i]! + 0.7152 * data[i + 1]! + 0.0722 * data[i + 2]!);
+    data[i] = y;
+    data[i + 1] = y;
+    data[i + 2] = y;
+  }
+}

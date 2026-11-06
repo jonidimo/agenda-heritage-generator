@@ -8,6 +8,7 @@ import { SHORTCUTS } from '../state/shortcuts';
 import { activeView, useStore, viewsOf, type View } from '../state/store';
 import type { UiKey } from '../i18n/ui';
 import type { MenuItem } from './ContextMenu';
+import { clampPage } from '../state/paging';
 
 type T = (key: UiKey, vars?: Record<string, string | number>) => string;
 
@@ -21,9 +22,9 @@ function run(id: string): void {
 /** Cuántos elementos tiene ocultos la página actual (maqueta solo si hay alguno). */
 function hiddenCount(): number {
   const doc = currentDocument();
-  if (!doc) return 0;
+  if (!doc || doc.pageCount === 0) return 0;
   try {
-    return doc.hidden(Math.min(useStore.getState().pageIndex, doc.pageCount - 1)).length;
+    return doc.hidden(clampPage(useStore.getState().pageIndex, doc.pageCount)).length;
   } catch {
     return 0;
   }

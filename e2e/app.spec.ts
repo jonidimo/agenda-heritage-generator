@@ -1545,8 +1545,8 @@ test.describe('elementos compuestos', () => {
 
   test('cada tipo se puede agregar desde el menú de la página y queda elegido', async ({ page }) => {
     await openQuiet(page);
-    const kinds = ['table', 'checklist', 'habits', 'finance', 'minical', 'quadrants', 'notes', 'timeline', 'rating'];
-    const names = ['Tabla', 'Lista de pendientes', 'Seguimiento de hábitos', 'Finanzas', 'Minicalendario', 'Cuadrantes', 'Notas', 'Horario del día', 'Valoración'];
+    const kinds = ['table', 'checklist', 'habits', 'finance', 'minical', 'quadrants', 'notes', 'timeline', 'rating', 'qr'];
+    const names = ['Tabla', 'Lista de pendientes', 'Seguimiento de hábitos', 'Finanzas', 'Minicalendario', 'Cuadrantes', 'Notas', 'Horario del día', 'Valoración', 'Código QR'];
     for (const [i, name] of names.entries()) {
       await page.locator('[data-page-index]').first().click({ button: 'right', position: { x: 30, y: 30 } });
       await page.getByRole('menuitem', { name, exact: true }).click();
@@ -1930,5 +1930,135 @@ test.describe('zoom con la rueda y barra superior', () => {
     await page.locator('header').getByRole('button', { name: 'Más', exact: true }).click();
     await page.getByRole('menuitem', { name: 'Acercar' }).click();
     await expect.poll(async () => (await state(page)).zoom).toBeGreaterThan(1.1);
+  });
+});
+
+test.describe('2.4: empezar de cero, marcas de agua, portada del mes, QR y créditos', () => {
+  /** El asistente de nueva agenda, con la interfaz en castellano. */
+  async function welcome(page: Page): Promise<Locator> {
+    await page.addInitScript(() => localStorage.setItem('agenda-studio.uiLang', 'es'));
+    await page.goto('/');
+    const dialog = page.getByRole('dialog', { name: 'Nueva agenda' });
+    await expect(dialog).toBeVisible({ timeout: 60_000 });
+    return dialog;
+  }
+
+  test('una agenda en blanco arranca sin páginas ni errores, dice qué hacer y se arma con secciones', async ({ page }) => {
+    const errors: string[] = [];
+    page.on('pageerror', (e) => errors.push(e.message));
+    page.on('console', (m) => void (m.type() === 'error' && errors.push(m.text())));
+    const dialog = await welcome(page);
+    await dialog.getByRole('radio', { name: /En blanco/ }).check();
+    // Sin calendario: no se piden semana, meses ni país.
+    await expect(dialog.getByLabel('Cantidad de meses')).toHaveCount(0);
+    await expect(dialog.getByLabel('País (feriados)')).toHaveCount(0);
+    await dialog.getByRole('button', { name: 'Crear agenda' }).click();
+    const empty = page.getByTestId('no-pages');
+    await expect(empty).toBeVisible({ timeout: 60_000 });
+    await expect(page.locator('[data-page-index]')).toHaveCount(0);
+    await empty.getByRole('button', { name: 'Agregar sección' }).click();
+    const add = page.getByTestId('add-section');
+    await expect(add).toBeVisible();
+    await add.click();
+    await page.getByRole('menuitem', { name: 'Notas', exact: true }).click();
+    await expect(page.locator('[data-page-index]').first()).toBeVisible({ timeout: 30_000 });
+    await expect(empty).toHaveCount(0);
+    expect(await page.evaluate<string[]>('globalThis.__agenda.getState().design.sections.map((s) => s.type)')).toEqual(['notes']);
+    // Una segunda sección de notas convive con la primera (otra id, otras páginas).
+    await add.click();
+    await page.getByRole('menuitem', { name: 'Notas', exact: true }).click();
+    await expect.poll(() => page.evaluate<string[]>('globalThis.__agenda.getState().design.sections.map((s) => s.id)')).toEqual(['notes', 'notes-2']);
+    // Agregar una sección es un solo paso de «Deshacer».
+    await page.keyboard.press('Control+z');
+    await expect.poll(() => page.evaluate<number>('globalThis.__agenda.getState().design.sections.length')).toBe(1);
+    expect(errors).toEqual([]);
+  });
+
+  test('el cuaderno pide páginas y estilo, y sale sin calendario', async ({ page }) => {
+    const dialog = await welcome(page);
+    await dialog.getByRole('radio', { name: /Cuaderno/ }).check();
+    const opts = dialog.getByTestId('notebook-options');
+    await expect(opts).toBeVisible();
+    await expect(dialog.getByLabel('Cantidad de meses')).toHaveCount(0);
+    await opts.getByRole('spinbutton').fill('60');
+    await opts.getByRole('combobox').selectOption('lines');
+    await dialog.getByRole('button', { name: 'Crear agenda' }).click();
+    await expect(page.locator('[data-page-index]').first()).toBeVisible({ timeout: 60_000 });
+    const notes = await page.evaluate<{ types: string[]; options: Record<string, unknown> }>(`(() => {
+      const d = globalThis.__agenda.getState().design;
+      return { types: d.sections.map((s) => s.type), options: d.sections.find((s) => s.type === 'notes').options };
+    })()`);
+    expect(notes.types).toEqual(['titlePage', 'notes']);
+    expect(notes.options).toMatchObject({ count: 60, style: 'lines' });
+  });
+
+  test('marca de agua solo en las derechas, con fusión, y los créditos se apagan desde Métodos', async ({ page }) => {
+    await openQuiet(page);
+    await toWeek(page);
+    await settled(page);
+    await page.getByRole('tab', { name: 'Imágenes', exact: true }).click();
+    const wm = () => page.evaluate<{ side: string; blend: string }>('(() => { const w = globalThis.__agenda.getState().design.watermarks[0]; return { side: w.side, blend: w.blend }; })()');
+    await page.getByRole('button', { name: 'Derechas', exact: true }).first().click();
+    await expect.poll(async () => (await wm()).side).toBe('recto');
+    await page.getByRole('combobox', { name: 'Fusión' }).first().selectOption('multiply');
+    await expect.poll(async () => (await wm()).blend).toBe('multiply');
+    // En el pliego, la izquierda queda sin colibrí y la derecha lo tiene.
+    const sides = () =>
+      page.evaluate<{ left: number; right: number }>(`(() => {
+        const pages = [...document.querySelectorAll('.desk [data-page-index]')];
+        const count = (odd) => pages.filter((el) => Number(el.getAttribute('data-page-index')) % 2 === (odd ? 1 : 0)).reduce((n, el) => n + el.querySelectorAll('[data-block^="wm."]').length, 0);
+        return { left: count(true), right: count(false) };
+      })()`);
+    await expect.poll(sides).toEqual({ left: 0, right: 1 });
+    // Créditos del autor: encendidos por defecto, se apagan con un interruptor.
+    await page.getByRole('tab', { name: 'Métodos', exact: true }).click();
+    const credits = page.getByRole('checkbox', { name: /créditos del autor/ });
+    await expect(credits).toBeChecked();
+    await credits.uncheck();
+    await expect.poll(() => page.evaluate<boolean>('globalThis.__agenda.getState().design.methods.guide.credits')).toBe(false);
+  });
+
+  test('la portada del mes lleva una imagen propia en lugar del sticker', async ({ page }) => {
+    await openQuiet(page);
+    await page.evaluate(`globalThis.__agenda.getState().update((d) => {
+      d.assets.push({ id: 'img-mes', name: 'Imagen del mes', kind: 'vector', mime: 'image/svg+xml', width: 10, height: 10, builtin: 'watermarks/colibri.svg' });
+    }, 'e2e-asset')`);
+    // Una portada de mes a la vista y su sticker elegido.
+    await expect.poll(async () => {
+      for (let i = 0; i < 30; i++) {
+        if (await page.locator('[data-page-type="monthCover"] [data-block="cover.sticker"]').count()) return true;
+        await page.keyboard.press('PageDown');
+      }
+      return false;
+    }).toBe(true);
+    await selectBlock(page, 'cover.sticker');
+    const pick = page.getByTestId('cover-image');
+    await expect(pick).toBeVisible();
+    await pick.getByRole('button', { name: 'Todos los meses' }).click();
+    await pick.getByRole('combobox', { name: 'Imagen de la portada' }).selectOption('img-mes');
+    const images = () => page.evaluate<Record<string, string> | null>(`(() => { for (const s of globalThis.__agenda.getState().design.sections) for (const it of [s, ...(s.items ?? [])]) if (it.type === 'monthCover') return it.options.images ?? null; return null; })()`);
+    await expect.poll(images).toEqual({ default: 'img-mes' });
+    // Vuelve al sticker con «Ninguna».
+    await pick.getByRole('combobox', { name: 'Imagen de la portada' }).selectOption('');
+    await expect.poll(images).toEqual(null);
+  });
+
+  test('un código QR se agrega, guarda lo que se escribe y avisa si es demasiado largo', async ({ page }) => {
+    await openQuiet(page);
+    const last = () => page.evaluate<{ kind: string; props: Record<string, unknown> }>('(() => { const c = globalThis.__agenda.getState().design.customBlocks.at(-1); return { kind: c.kind, props: c.props }; })()');
+    await page.getByTestId('add-elements').getByRole('button', { name: 'Código QR' }).click();
+    expect((await last()).kind).toBe('qr');
+    await page.locator('textarea[placeholder="https://"]').fill('https://example.com/receta');
+    await expect.poll(async () => (await last()).props.text).toBe('https://example.com/receta');
+    await expect(page.getByText(/Código de \d+ × \d+ módulos/)).toBeVisible();
+    await page.getByRole('button', { name: 'Máxima', exact: true }).click();
+    await expect.poll(async () => (await last()).props.ecc).toBe('H');
+    // Tocable en el PDF mientras guarde una dirección; se puede apagar.
+    const link = page.getByRole('checkbox', { name: 'Tocarlo en el PDF abre la dirección' });
+    await expect(link).toBeChecked();
+    await link.uncheck();
+    await expect.poll(async () => (await last()).props.link).toBe(false);
+    await page.locator('textarea[placeholder="https://"]').fill('x'.repeat(1400));
+    await expect(page.getByText('Es demasiado texto para un código QR: acortalo.')).toBeVisible();
   });
 });

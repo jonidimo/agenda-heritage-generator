@@ -8,6 +8,7 @@ import { pageGeometry } from '../document/context';
 import { cols, takeTop } from '../layout/box';
 import { LayoutContext, type DocContext } from '../layout/context';
 import { line, type Prim } from '../layout/prims';
+import { qrPrims } from '../layout/qr';
 import { pageHeader, signifierIcon } from '../layout/widgets';
 import { ptToMm } from '../util/geometry';
 import { CATEGORY_ORDER, methodText, METHODS, type EvidenceLevel, type PlannerMethod } from '../methods/catalog';
@@ -117,6 +118,8 @@ function buildItems(ctx: LayoutContext): GuideItem[] {
   }
   for (const cm of doc.design.methods.custom) addMethod(cm.id, cm.name, [cm.text, cm.evidenceText].filter(Boolean).join(' '), cm.evidence, cm.references);
 
+  if (doc.design.methods.guide.credits) items.push(creditsItem(ctx));
+
   // Referencias.
   if (showRefs && refs.length > 0) {
     const refSize = Math.max(ctx.theme.sizes.tiny + 0.5, ctx.theme.minTextPt);
@@ -142,6 +145,59 @@ function buildItems(ctx: LayoutContext): GuideItem[] {
     });
   }
   return items;
+}
+
+/** Quién hizo el programa y dónde está su código (se puede apagar en Métodos). */
+export const AUTHOR = {
+  name: 'Jonatan Damián Dimotta Bré',
+  instagram: 'https://www.instagram.com/dimottajonatan/',
+  source: 'https://github.com/jonidimo/agenda-heritage-generator',
+  site: 'https://jonidimo.github.io/agenda-heritage-generator/',
+} as const;
+
+/** La dirección sin el esquema ni la barra final, como se lee impresa. */
+const bare = (url: string): string => url.replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, '');
+
+/**
+ * Créditos compactos: cinco renglones chicos y, al costado, un QR al código fuente del alto del texto
+ * (entra en lo que suele sobrar al final de la guía, sin sumar una hoja).
+ */
+function creditsItem(ctx: LayoutContext): GuideItem {
+  const w = ctx.content.w;
+  const size = Math.max(ctx.theme.sizes.tiny + 0.5, ctx.theme.minTextPt);
+  const lineH = ptToMm(size) * 1.3;
+  const side = lineH * 5;
+  const gap = 3;
+  const textW = Math.max(10, w - side - gap);
+  const cr = ctx.s.guide.credits;
+  const rows: { text: string; href?: string; strong?: boolean }[] = [
+    { text: cr.madeBy },
+    { text: AUTHOR.name, strong: true },
+    { text: `Instagram: ${bare(AUTHOR.instagram)}`, href: AUTHOR.instagram },
+    { text: `${cr.source}: ${bare(AUTHOR.source)}`, href: AUTHOR.source },
+    { text: `${cr.online}: ${bare(AUTHOR.site)}`, href: AUTHOR.site },
+  ];
+  return {
+    id: 'credits',
+    height: side + 5,
+    render(c, y) {
+      const top = y + 2;
+      const p: Prim[] = [line(c.content.x, y + 0.5, c.content.x + w, y + 0.5, c.stroke('hair'))];
+      const areas: { x: number; y: number; w: number; h: number; href: string }[] = [];
+      rows.forEach((r, i) => {
+        const box = { x: c.content.x, y: top + i * lineH, w: textW, h: lineH };
+        const drawn = c.textIn(r.text, box, r.strong ? { role: 'labelStrong', size, valign: 'middle', fit: true } : { role: 'body', size, valign: 'middle', fit: true, color: '#555555' });
+        p.push(...drawn.prims);
+        if (r.href) areas.push({ ...box, w: Math.min(textW, drawn.bbox.w), href: r.href });
+      });
+      const qrBox = { x: c.content.x + w - side, y: top, w: side, h: side };
+      // Corrección baja: menos módulos y más grandes, que se leen mejor impresos a este tamaño.
+      p.push(...qrPrims(AUTHOR.source, qrBox, { color: c.theme.colors.ink, ecc: 'L' }));
+      c.add('guide.credits', cr.madeBy, p);
+      for (const a of areas) c.link('guide.credits', a, { kind: 'url', href: a.href }, 'web');
+      c.link('guide.credits', qrBox, { kind: 'url', href: AUTHOR.source }, 'web');
+    },
+  };
 }
 
 function paginate(ctx: LayoutContext, items: GuideItem[]): string[][] {

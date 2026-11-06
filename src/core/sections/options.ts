@@ -44,6 +44,11 @@ export function sectionOptionFields(type: string): OptionField[] {
  */
 export const EXTRA_OPTIONS: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
   'pageTemplate.template': { type: 'string', description: 'id de un elemento de «pageTemplates»' },
+  'monthCover.images': {
+    type: 'object',
+    additionalProperties: { type: 'string', description: 'id de un elemento de «assets»' },
+    description: 'Imagen propia en lugar del sticker: por mes («2027-03») o para todos («default»); la del mes manda.',
+  },
   'vision.categories': { type: 'array', items: { type: 'string', maxLength: 80 }, description: 'Áreas de la matriz de visión (por defecto, las del idioma de la agenda)' },
 };
 

@@ -93,6 +93,7 @@ export function MethodsPanel() {
       <p className="py-2 text-[12px] leading-snug text-ink-soft">{t('methods.intro')}</p>
       <Toggle label={t('methods.evidence')} checked={design.methods.guide.evidence} onChange={(v) => update((d) => void (d.methods.guide.evidence = v))} />
       <Toggle label={t('methods.references')} checked={design.methods.guide.references} onChange={(v) => update((d) => void (d.methods.guide.references = v))} />
+      <Toggle label={t('methods.credits')} checked={design.methods.guide.credits} onChange={(v) => update((d) => void (d.methods.guide.credits = v))} />
       {CATEGORY_ORDER.map((cat) => {
         const list = METHODS.filter((m) => m.category === cat);
         if (list.length === 0) return null;

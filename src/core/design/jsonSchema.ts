@@ -11,7 +11,7 @@ import { z } from 'zod';
 import { BUILTIN_ORNAMENTS } from '../layout/ornaments';
 import { PAGE_TEXT_VARIABLES } from '../sections/common';
 import { choiceValue, EXTRA_OPTIONS, OPTION_COUNT, sectionOptionFields } from '../sections/options';
-import { PAGE_TYPES, SECTION_MODULES } from '../sections/registry';
+import { PAGE_TYPES, USER_SECTION_MODULES } from '../sections/registry';
 import { customBlockPropsSchema } from './customBlocks';
 import { TEMPLATES } from './defaults';
 import { BLOCK_BOUNDS, CustomBlockZ, DesignZ } from './schema';
@@ -20,8 +20,7 @@ import { HARMONIES, LINE_PATTERNS, LINE_USES, THEMES, tokenSchema } from './them
 type Json = Record<string, unknown>;
 
 /** Tipos internos: el relleno de paridad y las páginas propias (se agregan con `customPages`). */
-const INTERNAL = new Set(['filler', 'custom']);
-const listedModules = () => SECTION_MODULES.filter((m) => !INTERNAL.has(m.type));
+const listedModules = () => USER_SECTION_MODULES;
 
 /** Esquema de las opciones de un tipo de sección (las que no figuran, el programa las ignora). */
 function optionsSchema(type: string): Json {

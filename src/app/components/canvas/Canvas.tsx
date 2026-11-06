@@ -6,7 +6,7 @@ import { AlertTriangle, ChevronLeft, ChevronRight, RefreshCw } from 'lucide-reac
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { pageTitle, plural, useT } from '../../i18n/ui';
 import { assetHref } from '../../state/assetUrls';
-import { pageStep, spreadOf } from '../../state/paging';
+import { clampPage, pageStep, spreadOf } from '../../state/paging';
 import { activeView, useStore } from '../../state/store';
 import { IconButton } from '../ui';
 import { ErrorBoundary, ViewError } from '../ErrorBoundary';
@@ -41,7 +41,7 @@ export function Canvas({ committed, live }: { committed: AgendaDocument; live: A
   const t = useT();
   const view = useStore(activeView);
   const printing = useStore((s) => s.mode === 'print') && !live.screen;
-  const pageIndex = useStore((s) => Math.min(s.pageIndex, live.pageCount - 1));
+  const pageIndex = useStore((s) => clampPage(s.pageIndex, live.pageCount));
   const goToPage = useStore((s) => s.goToPage);
   const zoom = useStore((s) => s.zoom);
   const fit = useStore((s) => s.fit);

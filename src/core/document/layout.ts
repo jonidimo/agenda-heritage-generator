@@ -7,6 +7,7 @@ import { enumProp, IMAGE_FITS, numProp, PROP_DEFAULTS, PROP_RANGES, TEXT_ALIGNS,
 import type { BlockOverride, BlockStyle, CustomBlock, Design, PageStyle, WatermarkPlacement } from '../design/schema';
 import { fmt as fmtStr } from '../i18n';
 import { inset } from '../layout/box';
+import { grayOf } from '../util/color';
 import { adjustedSize, type BoxAdjust } from '../layout/box';
 import { LayoutContext, type BoxAdjuster, type DocContext } from '../layout/context';
 import { stretchPrims, stretchRect } from '../layout/stretch';
@@ -117,7 +118,7 @@ export function pageInputs(design: Design, plan: PagePlan): PageInputs {
   const onPage = (o: { pageType: string; pageKey: string | null }): boolean => o.pageType === plan.type && (o.pageKey === null || o.pageKey === plan.key);
   return {
     blocks: design.customBlocks.filter(onPage),
-    watermarks: design.watermarks.filter((wm) => watermarkApplies(wm, plan.type, plan.key)),
+    watermarks: design.watermarks.filter((wm) => watermarkApplies(wm, plan.type, plan.key, plan.side)),
     // Un ajuste atado a la clave de la página vale aunque su tipo haya cambiado (ver `findOverride`).
     overrides: design.overrides.filter((o) => o.pageKey === plan.key || (o.pageKey === null && o.pageType === plan.type)),
     blockStyles: design.blockStyles.filter(onPage),
@@ -133,8 +134,9 @@ export function samePageInputs(a: PageInputs, b: PageInputs): boolean {
   return a.pageNumberLink === b.pageNumberLink && sameList(a.blocks, b.blocks) && sameList(a.watermarks, b.watermarks) && sameList(a.overrides, b.overrides) && sameList(a.blockStyles, b.blockStyles) && sameList(a.styles, b.styles);
 }
 
-function watermarkApplies(wm: WatermarkPlacement, type: string, key: string): boolean {
+function watermarkApplies(wm: WatermarkPlacement, type: string, key: string, side: 'recto' | 'verso'): boolean {
   if (!wm.enabled) return false;
+  if (wm.side !== 'both' && wm.side !== side) return false;
   if (wm.exclude.includes(type) || wm.excludePages.includes(key)) return false;
   return wm.scope.includes('all') || wm.scope.includes(type);
 }
@@ -166,8 +168,10 @@ function placeWatermark(ctx: LayoutContext, wm: WatermarkPlacement): void {
   const x = anchorRight === null ? (pw - w) / 2 + wm.dx : anchorRight ? pw - wm.dx - w : wm.dx;
   const y = wm.vAnchor === 'top' ? wm.dy : wm.vAnchor === 'bottom' ? ph - wm.dy - h : (ph - h) / 2 + wm.dy;
   const mirror = wm.mirrorOnVerso && side === 'verso' && (wm.hAnchor === 'outer' || wm.hAnchor === 'inner');
-  const prims = assetPrims(info, { x, y, w, h }, { fit: 'fill', opacity: wm.opacity, rotation: wm.rotation, mirror, minStrokePt: wm.minStrokePt });
-  ctx.add(`wm.${wm.id}`, 'Marca de agua', prims, { role: 'watermark', layer: wm.layer === 'above' ? 20 : 1, bbox: { x, y, w, h } });
+  const prims = assetPrims(info, { x, y, w, h }, { fit: 'fill', opacity: wm.opacity, rotation: wm.rotation, mirror, minStrokePt: wm.minStrokePt, ...(wm.grayscale ? { recolor: grayOf } : {}) });
+  const block = ctx.add(`wm.${wm.id}`, 'Marca de agua', prims, { role: 'watermark', layer: wm.layer === 'above' ? 20 : 1, bbox: { x, y, w, h } });
+  // La fusión propia de la marca de agua (un ajuste del editor sobre el bloque, si lo hay, manda después).
+  if (wm.blend !== 'normal') block.blend = wm.blend;
 }
 
 /** Cajas aproximadas de la «tinta» de cada línea de texto (con todas las transformaciones). */

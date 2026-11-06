@@ -5,17 +5,27 @@
 import { fmt, langOf, resolveStrings } from '../i18n';
 import { isSouthern } from '../layout/widgets';
 import { DEFAULT_METHODS } from '../methods/catalog';
+import { OPTION_COUNT } from '../sections/types';
 import { newId } from '../util/hash';
 import { parseDesign, type Design, type DesignInput, type SectionItem, type SectionSpec } from './schema';
 
-export type TemplateId = 'heritage-norma' | 'heritage' | 'clara' | 'minimal';
+export type TemplateId = 'heritage-norma' | 'heritage' | 'clara' | 'minimal' | 'notebook' | 'blank';
 
-export const TEMPLATES: Array<{ id: TemplateId; name: string; description: string }> = [
+/** `undated`: sin calendario (no lleva meses ni semanas; el año queda solo para las variables de texto). */
+export const TEMPLATES: Array<{ id: TemplateId; name: string; description: string; undated?: true }> = [
   { id: 'heritage-norma', name: 'Heritage · Con dedicatoria', description: 'Para regalar: dedicatoria, una frase por mes, cumpleaños y colibrí.' },
   { id: 'heritage', name: 'Heritage', description: 'Diseño clásico, durable y legible. Semana Alastair sin horas fijas.' },
   { id: 'clara', name: 'Lectura clara', description: 'Letra grande, alto contraste y renglones amplios (personas mayores o baja visión).' },
   { id: 'minimal', name: 'Mínima', description: 'Una sola tipografía, puntos en vez de renglones, sin sombreado.' },
+  { id: 'notebook', name: 'Cuaderno', description: 'Sin calendario: portada y páginas para escribir (puntos, renglones, cuadrícula o lisas). Bitácora, recetario, libro de actas.', undated: true },
+  { id: 'blank', name: 'En blanco', description: 'Sin nada: armala desde cero con secciones, plantillas de página o páginas propias.', undated: true },
 ];
+
+/** Estilos de hoja de un cuaderno. */
+export const NOTEBOOK_STYLES = ['dots', 'lines', 'grid', 'blank'] as const;
+export type NotebookStyle = (typeof NOTEBOOK_STYLES)[number];
+/** Páginas de un cuaderno nuevo, si no se pide otra cantidad. */
+export const NOTEBOOK_DEFAULT_PAGES = 40;
 
 const item = (type: string, options: Record<string, unknown> = {}, enabled = true): SectionItem => ({ id: type, type, enabled, options, repeat: 'month' });
 const section = (type: string, options: Record<string, unknown> = {}, enabled = true): SectionSpec => ({ id: type, type, enabled, options, repeat: 'month' });
@@ -88,6 +98,9 @@ export function colibriWatermark(): Design['watermarks'][number] {
     mirrorOnVerso: true,
     layer: 'above',
     minStrokePt: 0.3,
+    side: 'both',
+    blend: 'normal',
+    grayscale: false,
   };
 }
 
@@ -116,6 +129,9 @@ export interface CreateOptions {
   locale?: string;
   country?: string | null;
   name?: string;
+  /** Cuaderno: cuántas páginas para escribir (hasta 200) y de qué estilo. */
+  pages?: number;
+  style?: NotebookStyle;
 }
 
 export function createDesign(template: TemplateId, opts: CreateOptions = {}): Design {
@@ -173,6 +189,19 @@ export function createDesign(template: TemplateId, opts: CreateOptions = {}): De
       });
     case 'minimal':
       return parseDesign({ ...base, name: named('minimal'), theme: { id: 'minimal', comfort: 'normal' }, watermarks: [] });
+    case 'notebook': {
+      const pages = Math.min(OPTION_COUNT.max, Math.max(1, Math.round(opts.pages ?? NOTEBOOK_DEFAULT_PAGES)));
+      return parseDesign({
+        ...base,
+        name: named(opts.name?.trim() ? 'notebookPerson' : 'notebook'),
+        holidays: { country: null, types: [] },
+        sections: [section('titlePage', { showName: true, showKicker: false }), section('notes', { count: pages, style: opts.style ?? 'dots' })],
+        assets: [],
+        watermarks: [],
+      });
+    }
+    case 'blank':
+      return parseDesign({ ...base, name: named('blank'), holidays: { country: null, types: [] }, sections: [], assets: [], watermarks: [] });
     default:
       return parseDesign(base);
   }

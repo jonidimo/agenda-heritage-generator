@@ -33,13 +33,16 @@ describe('nivel de la barra', () => {
   it('para cualquier ancho termina en el nivel más completo que entra, sin oscilar (propiedades)', () => {
     fc.assert(
       fc.property(fc.integer({ min: 300, max: 2400 }), fc.integer({ min: 300, max: 2400 }), (w1, w2) => {
+        // Un píxel de tolerancia, como `fitStep`: el ancho medido viene redondeado.
         const a = settle({ level: TOP_LEVEL, need: {} }, w1);
-        expect(NEED[a.level]).toBeLessThanOrEqual(w1);
+        expect(NEED[a.level]).toBeLessThanOrEqual(w1 + 1);
         const b = settle(a, w2);
-        expect(NEED[b.level]).toBeLessThanOrEqual(w2);
+        expect(NEED[b.level]).toBeLessThanOrEqual(w2 + 1);
         // Quieto: otro paso con el mismo ancho no cambia nada.
         expect(fitStep(b, NEED[b.level], w2).level).toBe(b.level);
       }),
+      // Los bordes de cada nivel, que el azar casi nunca toca.
+      { examples: [[1249, 300], [1499, 300], [999, 2400], [1250, 1249], [1524, 1523]] },
     );
   });
 

@@ -45,6 +45,11 @@ export const it: AgendaStrings = {
       contested: 'Prove discusse',
     },
     continued: '(continua)',
+    credits: {
+      madeBy: 'Realizzata con Heritage Studio, di',
+      source: 'Codice sorgente',
+      online: 'Online',
+    },
   },
   toc: {
     title: 'Indice',
@@ -205,6 +210,9 @@ export const it: AgendaStrings = {
     person: 'Agenda di {name} {year}',
     clara: 'Agenda {year} · Lettura chiara',
     minimal: 'Agenda {year} · Minimale',
+    notebook: 'Quaderno',
+    notebookPerson: 'Quaderno di {name}',
+    blank: 'Agenda vuota',
   },
   gift: {
     title: 'L’architettura del tempo',

@@ -37,7 +37,10 @@ import { LayersPanel, StackFields } from './LayersPanel';
 import { ELEMENT_KINDS, ELEMENT_LABELS, elementProps, elementSize, isElementKind, type ElementKind } from '../state/elements';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { blockLabel, warningText } from '../i18n/messages';
-import { plural, sectionName, uiText, useT } from '../i18n/ui';
+import { plural, sectionName, uiText, useT, type UiKey } from '../i18n/ui';
+import { BLEND_MODES } from '@core/design/blend';
+import { grayscaleCopy } from '../state/grayscale';
+import { setMonthCoverImage } from '../state/sections';
 import { IMAGE_ACCEPT, uploadOne } from '../state/uploads';
 import {
   addCustomBlock,
@@ -78,6 +81,7 @@ import type { TextRole } from '@core/layout/context';
 import { reveal } from '../state/reveal';
 import { resources } from '../state/resources';
 import { FontRow, useFamilies } from './FontPicker';
+import { clampPage } from '../state/paging';
 
 export function Inspector({ doc }: { doc: AgendaDocument }) {
   const t = useT();
@@ -87,7 +91,7 @@ export function Inspector({ doc }: { doc: AgendaDocument }) {
   const scope = useStore((s) => s.scope);
   const setScope = useStore((s) => s.setScope);
   const select = useStore((s) => s.select);
-  const pageIndex = useStore((s) => Math.min(s.pageIndex, doc.pageCount - 1));
+  const pageIndex = useStore((s) => clampPage(s.pageIndex, doc.pageCount));
   const selPageIndex = selection ? doc.indexOfKey(selection.pageKey) : -1;
   const page: PageModel = doc.page(selPageIndex >= 0 ? selPageIndex : pageIndex);
   const block = selection ? page.blocks.find((b) => b.id === selection.blockId) : undefined;
@@ -155,6 +159,7 @@ export function Inspector({ doc }: { doc: AgendaDocument }) {
             {!block.editable && <p className="text-[12px] text-ink-soft">{t('insp.locked')}</p>}
             {block.editable && block.role === 'writing' && <WritingFields page={page} scope={scope} setScope={setScope} />}
             {block.editable && block.role === 'watermark' && <WatermarkFields id={block.id.slice(3)} />}
+            {block.id === 'cover.sticker' && page.type === 'monthCover' && <CoverImageFields page={page} doc={doc} />}
             {block.editable && block.role === 'custom' && <CustomFields id={block.id.slice(7)} theme={doc.ctx.theme} block={block} months={doc.ctx.cal.months.map((m) => ({ value: m.key, label: `${m.name} ${m.y}` }))} />}
             {block.editable && block.role !== 'watermark' && block.role !== 'custom' && (
               <>
@@ -406,6 +411,49 @@ function watermarkRecipe<K extends keyof WatermarkPlacement>(id: string, k: K, v
   };
 }
 
+/**
+ * La imagen propia de la portada del mes, en el lugar del sticker: para este mes o para todos. La de cada
+ * mes manda sobre la de todos.
+ */
+function CoverImageFields({ page, doc }: { page: PageModel; doc: AgendaDocument }) {
+  const t = useT();
+  const assets = useStore((s) => s.design?.assets ?? []);
+  const plan = doc.plan.pages.find((p) => p.key === page.key);
+  const sectionId = plan?.section;
+  const monthKey = plan?.group.startsWith('month:') ? plan.group.slice(6) : undefined;
+  const images = useStore((s) => {
+    for (const sec of s.design?.sections ?? []) for (const it of [sec, ...(sec.items ?? [])]) if (it.id === sectionId) return it.options.images as Record<string, string> | undefined;
+    return undefined;
+  });
+  const [scopeAll, setScopeAll] = useState(() => Boolean(images?.default) && !(monthKey && images?.[monthKey]));
+  if (!sectionId || !monthKey) return null;
+  const key = scopeAll ? 'default' : monthKey;
+  const current = images?.[key] ?? '';
+  const choose = (assetId: string): void => setMonthCoverImage(sectionId, key, assetId || null);
+  const upload = async (): Promise<void> => {
+    const id = await uploadOne(IMAGE_ACCEPT, (name) => t('assets.unsupported', { name }));
+    if (id) choose(id);
+  };
+  return (
+    <div className="mb-2" data-testid="cover-image">
+      <Field label={t('mcover.image')} hint={t('mcover.imageHint')}>
+        <Segmented value={scopeAll ? 'all' : 'month'} onChange={(v) => setScopeAll(v === 'all')} options={[{ value: 'month', label: t('mcover.image.month') }, { value: 'all', label: t('mcover.image.all') }]} />
+      </Field>
+      <Select
+        value={current}
+        ariaLabel={t('mcover.image')}
+        onChange={choose}
+        options={[{ value: '', label: t('mcover.image.none') }, ...assets.filter((a) => a.kind !== 'pdf').map((a) => ({ value: a.id, label: a.name }))]}
+      />
+      <div className="mt-1">
+        <Button onClick={() => void upload()}>
+          <ImageIcon size={14} /> {t('wm.upload')}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 export function WatermarkFields({ id }: { id: string }) {
   const t = useT();
   const wm = useStore((s) => s.design?.watermarks.find((w) => w.id === id));
@@ -413,6 +461,8 @@ export function WatermarkFields({ id }: { id: string }) {
   const update = useStore((s) => s.update);
   const select = useStore((s) => s.select);
   if (!wm) return null;
+  const mirroredPosition = wm.hAnchor === 'outer' || wm.hAnchor === 'inner';
+  const raster = assets.find((a) => a.id === wm.assetId)?.kind === 'raster';
   const set = <K extends keyof typeof wm>(k: K, v: (typeof wm)[K]): void => update(watermarkRecipe(id, k, v), `wm:${id}:${String(k)}`);
   /** Un deslizador de la marca de agua: vista previa mientras se arrastra, una confirmación al soltar. */
   const drag = (k: 'width' | 'opacity' | 'rotation' | 'minStrokePt'): Scrubbing<number> => scrub<number>((v) => watermarkRecipe(id, k, v), `wm:${id}:${k}`);
@@ -470,7 +520,27 @@ export function WatermarkFields({ id }: { id: string }) {
       <Slider label={t('wm.opacity')} value={wm.opacity} min={0.05} max={1} step={0.05} {...drag('opacity')} defaultValue={WATERMARK_DEFAULTS.opacity} />
       <Slider label={t('wm.rotation')} value={wm.rotation} min={-180} max={180} step={1} {...drag('rotation')} defaultValue={WATERMARK_DEFAULTS.rotation} />
       <Slider label={t('wm.minStroke')} value={wm.minStrokePt} min={0} max={1.5} step={0.05} {...drag('minStrokePt')} defaultValue={WATERMARK_DEFAULTS.minStrokePt} />
-      <Toggle label={t('wm.mirror')} checked={wm.mirrorOnVerso} onChange={(v) => set('mirrorOnVerso', v)} />
+      <Field label={t('wm.side')}>
+        <Segmented value={wm.side} onChange={(v) => set('side', v)} options={(['both', 'recto', 'verso'] as const).map((v) => ({ value: v, label: t(`wm.side.${v}`) }))} />
+      </Field>
+      {/* El espejado en dos: la posición (el anclaje sigue al borde exterior o interior) y el dibujo. */}
+      <Toggle
+        label={t('wm.mirrorPos')}
+        checked={mirroredPosition}
+        onChange={(v) => set('hAnchor', v ? (wm.hAnchor === 'left' ? 'inner' : 'outer') : wm.hAnchor === 'inner' ? 'left' : 'right')}
+      />
+      {mirroredPosition && <Toggle label={t('wm.mirror')} hint={t('wm.mirrorHint')} checked={wm.mirrorOnVerso} onChange={(v) => set('mirrorOnVerso', v)} />}
+      <Field label={t('layers.blend')} hint={t('wm.blendHint')}>
+        <Select value={wm.blend} ariaLabel={t('layers.blend')} onChange={(v) => set('blend', v)} options={BLEND_MODES.map((m) => ({ value: m, label: t(`blend.${m}` as UiKey) }))} />
+      </Field>
+      {raster ? (
+        <div className="mb-1">
+          <Button onClick={() => void grayscaleCopy(wm.assetId, (name) => t('wm.grayName', { name })).then((copy) => copy && set('assetId', copy))}>{t('wm.grayCopy')}</Button>
+          <p className="mt-1 text-[11px] leading-snug text-ink-soft">{t('wm.grayCopyHint')}</p>
+        </div>
+      ) : (
+        <Toggle label={t('wm.grayscale')} checked={wm.grayscale} onChange={(v) => set('grayscale', v)} />
+      )}
       <Field label={t('wm.layer')}>
         <Select value={wm.layer} onChange={(v) => set('layer', v)} options={[{ value: 'above', label: t('wm.above') }, { value: 'below', label: t('wm.below') }]} />
       </Field>
@@ -528,7 +598,7 @@ function CustomFields({ id, theme, block, months }: { id: string; theme: AgendaD
           </Field>
         )}
       </div>
-      <Toggle label={t('wm.mirror')} checked={cb.mirror} onChange={(v) => set({ mirror: v }, 'mirror')} />
+      <Toggle label={t('wm.mirrorPos')} checked={cb.mirror} onChange={(v) => set({ mirror: v }, 'mirror')} />
       {cb.kind === 'text' && (
         <>
           <Field label={t('insp.text')} hint={t('insp.textHelp')}>
@@ -623,7 +693,7 @@ function CustomFields({ id, theme, block, months }: { id: string; theme: AgendaD
           <Slider label={t('insp.opacity')} value={Number(p.opacity ?? PROP_DEFAULTS.opacity)} min={PROP_RANGES.opacity.min} max={PROP_RANGES.opacity.max} step={0.05} {...dragProp('opacity')} defaultValue={PROP_DEFAULTS.opacity} />
         </>
       )}
-      {isElementKind(cb.kind) && <ElementFields kind={cb.kind} props={p} setProp={setProp} months={months} />}
+      {isElementKind(cb.kind) && <ElementFields kind={cb.kind} props={p} setProp={setProp} months={months} ink={theme.colors.ink} />}
       {(cb.kind === 'lines' || cb.kind === 'dots' || cb.kind === 'grid') && (
         <Slider label={t('style.pitch')} value={Number(p.pitch ?? pitchDefault)} min={PROP_RANGES.pitch.min} max={PROP_RANGES.pitch.max} step={0.1} {...dragProp('pitch')} modified={p.pitch !== undefined} onReset={() => setProp('pitch', undefined)} />
       )}

@@ -3,7 +3,7 @@ import type { CustomPage, SectionItem } from '@core/design/schema';
 import { choiceValue, OPTION_COUNT, sectionOptionFields } from '@core/sections/options';
 import clsx from 'clsx';
 import type { Draft } from 'immer';
-import { ArrowDown, ArrowUp, CornerDownRight, FilePlus2, LayoutTemplate, MoreHorizontal, Settings2, Trash2 } from 'lucide-react';
+import { ArrowDown, ArrowUp, CornerDownRight, FilePlus2, LayoutTemplate, MoreHorizontal, Plus, Settings2, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { sectionName, useT, type UiKey } from '../../i18n/ui';
 import { customPageHere } from '../../state/customPages';
@@ -11,7 +11,7 @@ import { useDocument } from '../../state/doc';
 import { useStore } from '../../state/store';
 import { Button, Field, Group, NumberInput, Select, TextArea, TextInput, Toggle } from '../ui';
 import { openMenuAt, type MenuItem } from '../ContextMenu';
-import { canBeOnce, canRepeat, createTemplate, deleteTemplate, moveToEdge, nextPageOf, sectionPages, setEnabled, setOnce, setRepeat, type SectionPath } from '../../state/sections';
+import { addMonthItem, addSection, canBeOnce, canRepeat, createTemplate, deleteTemplate, moveToEdge, nextPageOf, removeSection, sectionCatalogue, sectionPages, setEnabled, setOnce, setRepeat, type CatalogueEntry, type CatalogueGroup, type SectionPath } from '../../state/sections';
 import { jumpToPage } from '../../state/navigation';
 
 function OptionsForm({ type, options, onChange }: { type: string; options: Record<string, unknown>; onChange: (k: string, v: unknown) => void }) {
@@ -145,6 +145,7 @@ function ItemRow(props: { item: SectionItem; path: SectionPath; count: number; d
       for (const r of ['month', 'week', 'day'] as const) items.push({ label: t(`sections.repeat.${r}`), checked: repeats && item.repeat === r, onSelect: () => setRepeat(path, r) });
     }
     if (item.type === 'pageTemplate') items.push({ separator: true }, { label: t('ptpl.delete'), danger: true, icon: <Trash2 size={14} />, onSelect: () => deleteTemplate(String(item.options.template ?? '')) });
+    else items.push({ separator: true }, { label: t('sections.remove'), danger: true, icon: <Trash2 size={14} />, onSelect: () => removeSection(path) });
     openMenuAt(e, items);
   };
 
@@ -183,6 +184,41 @@ function ItemRow(props: { item: SectionItem; path: SectionPath; count: number; d
   );
 }
 
+const GROUP_LABEL: Record<CatalogueGroup, UiKey> = { front: 'sections.group.front', calendar: 'sections.group.calendar', back: 'sections.group.back' };
+
+/** Un botón que abre la lista de lo que se puede agregar, agrupada (lo del principio, el calendario, lo del final). */
+function AddMenuButton(props: { label: string; entries: CatalogueEntry[]; onPick: (type: string) => void; testId: string; primary?: boolean }) {
+  const t = useT();
+  const open = (e: { currentTarget: HTMLElement }): void => {
+    const r = e.currentTarget.getBoundingClientRect();
+    const items: MenuItem[] = [];
+    let group: CatalogueGroup | null = null;
+    for (const entry of props.entries) {
+      if (entry.group !== group) {
+        group = entry.group;
+        items.push({ heading: t(GROUP_LABEL[group]) });
+      }
+      items.push({ label: sectionName(t, entry.type), onSelect: () => props.onPick(entry.type) });
+    }
+    openMenuAt({ clientX: r.left, clientY: r.bottom + 4, preventDefault: () => undefined }, items);
+  };
+  return (
+    <button
+      type="button"
+      aria-haspopup="menu"
+      data-testid={props.testId}
+      disabled={props.entries.length === 0}
+      onClick={open}
+      className={clsx(
+        'inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[12.5px] font-semibold disabled:cursor-not-allowed disabled:opacity-40',
+        props.primary ? 'bg-accent text-white hover:bg-[#435c31]' : 'text-ink hover:bg-black/5',
+      )}
+    >
+      <Plus size={14} /> {props.label}
+    </button>
+  );
+}
+
 export function SectionsPanel() {
   const t = useT();
   const design = useStore((s) => s.design)!;
@@ -190,6 +226,7 @@ export function SectionsPanel() {
   const pageIndex = useStore((s) => s.pageIndex);
   const setGoToKey = useStore((s) => s.setGoToKey);
   const { doc } = useDocument();
+  const catalogue = sectionCatalogue(design);
   const move = <T,>(arr: T[], i: number, d: -1 | 1): void => {
     const j = i + d;
     if (j < 0 || j >= arr.length) return;
@@ -224,6 +261,7 @@ export function SectionsPanel() {
             {sec.type === 'months' && sec.enabled && (
               <div className="mt-0.5 mb-2 ml-5 border-l border-line pl-2">
                 <p className="py-0.5 text-[10.5px] font-semibold tracking-wider text-ink-soft uppercase">{t('sections.monthItems')}</p>
+                {(sec.items ?? []).length === 0 && <p className="py-1 text-[11.5px] text-ink-soft">{t('sections.monthEmpty')}</p>}
                 <ul>
                   {(sec.items ?? []).map((it, j) => (
                     <ItemRow
@@ -238,11 +276,16 @@ export function SectionsPanel() {
                     />
                   ))}
                 </ul>
+                <AddMenuButton label={t('sections.addMonth')} entries={catalogue.month} onPick={addMonthItem} testId="add-month-item" />
               </div>
             )}
           </div>
         ))}
       </ul>
+      {design.sections.length === 0 && <p className="py-1 text-[12px] text-ink-soft">{t('sections.empty')}</p>}
+      <div className="mt-1">
+        <AddMenuButton label={t('sections.add')} entries={catalogue.top} onPick={addSection} testId="add-section" primary />
+      </div>
 
       <Group title={t('ptpl.group')}>
         <p className="pb-2 text-[11.5px] leading-snug text-ink-soft">{t('ptpl.help')}</p>

@@ -101,6 +101,8 @@ export function PrintPanel() {
     [PaperPresetId, (typeof PAPER_PRESETS)[PaperPresetId]]
   >;
 
+  /** Sin páginas no hay nada que exportar (la hoja de calibración y la plantilla de costura sí se pueden). */
+  const empty = (doc?.pageCount ?? 0) === 0;
   return (
     <div>
       <Group title={t("print.target")}>
@@ -149,11 +151,16 @@ export function PrintPanel() {
       </Group>
 
       <Group title={t("print.exports")}>
+        {empty && (
+          <p className="mb-1.5 text-[11.5px] leading-snug text-warn" data-testid="export-empty">
+            {t("export.empty")}
+          </p>
+        )}
         <div className="grid gap-1.5">
           {screen ? (
             <Button
               variant="primary"
-              disabled={busy}
+              disabled={busy || empty}
               onClick={() => void run("pages", t("file.pages"))}
             >
               <FileDown size={14} /> {t("export.pagesScreen")}
@@ -162,7 +169,7 @@ export function PrintPanel() {
             <>
               <Button
                 variant="primary"
-                disabled={busy}
+                disabled={busy || empty}
                 onClick={() => void run("imposed", t("file.imposed"))}
               >
                 <Printer size={14} /> {t("export.imposed")}
@@ -174,7 +181,7 @@ export function PrintPanel() {
                 <Ruler size={14} /> {t("export.calibration")}
               </Button>
               <Button
-                disabled={busy}
+                disabled={busy || empty}
                 onClick={() => void run("pages", t("file.pages"))}
               >
                 <FileDown size={14} /> {t("export.pages")}
@@ -182,13 +189,13 @@ export function PrintPanel() {
               {b.duplex === "manual" && (
                 <div className="grid grid-cols-2 gap-1.5">
                   <Button
-                    disabled={busy}
+                    disabled={busy || empty}
                     onClick={() => void run("fronts", t("file.fronts"))}
                   >
                     {t("export.fronts")}
                   </Button>
                   <Button
-                    disabled={busy}
+                    disabled={busy || empty}
                     onClick={() => void run("backs", t("file.backs"))}
                   >
                     {t("export.backs")}
@@ -233,14 +240,14 @@ export function PrintPanel() {
                 </Button>
               )}
               <Button
-                disabled={busy}
+                disabled={busy || empty}
                 onClick={() => void run("cover", t("file.cover"))}
               >
                 {t("export.cover")}
               </Button>
               {doc?.hasSeparate() && (
                 <Button
-                  disabled={busy}
+                  disabled={busy || empty}
                   onClick={() => void run("separate", t("file.separate"))}
                 >
                   {t("export.separate")}

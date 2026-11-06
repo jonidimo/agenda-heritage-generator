@@ -1,6 +1,6 @@
 /**
  * Elementos compuestos (tabla, lista, hábitos, finanzas, minicalendario, cuadrantes, notas, línea de
- * horas, valoración): se dibujan completos en su caja, sin avisos en los papeles de siempre, con
+ * horas, valoración, código QR): se dibujan completos en su caja, sin avisos en los papeles de siempre, con
  * valores acomodados a sus rangos y con el minicalendario tocable.
  */
 import { describe, expect, it } from 'vitest';
@@ -20,6 +20,7 @@ const PROPS: Record<ElementKind, Record<string, unknown>> = {
   notes: { title: 'Notas', style: 'dots', frame: true },
   timeline: { from: 7, to: 21, step: 60 },
   rating: { count: 5, shape: 'star', text: 'Ánimo' },
+  qr: { text: 'https://example.com/receta?id=42', ecc: 'Q', color: '#223344' },
 };
 
 const BOX = { x: 20, y: 30, w: 80, h: 70 };
@@ -137,6 +138,30 @@ describe('elementos compuestos', () => {
       const figures = block!.prims.filter((p) => p.t === 'path' || p.t === 'circle' || p.t === 'rect');
       expect(figures).toHaveLength(7);
     }
+  });
+
+  it('código QR: un cuadrado centrado, tocable si guarda una dirección, y un aviso si no entra', async () => {
+    const { doc, idx, block } = await drawn(design('qr'));
+    const ink = primsBounds(block!.prims)!;
+    expect(ink.w).toBeCloseTo(ink.h, 1);
+    expect(ink.x - BOX.x).toBeCloseTo(BOX.x + BOX.w - (ink.x + ink.w), 1);
+    const links = doc.links(idx).filter((l) => l.blockId === 'custom.el1');
+    expect(links.map((l) => l.url)).toEqual(['https://example.com/receta?id=42']);
+    // Con el color pedido.
+    expect(block!.prims.some((p) => p.t === 'rect' && p.fill?.color === '#223344')).toBe(true);
+    // Un texto que no es una dirección, o con el enlace apagado: no hay zona tocable.
+    for (const props of [{ text: 'javascript:alert(1)' }, { text: 'https://example.com', link: false }]) {
+      const r = await drawn(design('qr', props));
+      expect(r.doc.links(r.idx).filter((l) => l.blockId === 'custom.el1')).toEqual([]);
+    }
+    // Vacío: solo el recuadro que marca dónde va, sin avisos.
+    const empty = await drawn(design('qr', { text: '  ' }));
+    expect(empty.block!.prims).toHaveLength(1);
+    expect(empty.doc.pageWarnings(empty.page.index)).toEqual([]);
+    // Más de lo que entra en un QR (con corrección máxima): recuadro y aviso.
+    const long = await drawn(design('qr', { text: 'x'.repeat(1400), ecc: 'H' }));
+    expect(long.block!.prims).toHaveLength(1);
+    expect(long.doc.pageWarnings(long.page.index).map((w) => w.code)).toContain('qrTooLong');
   });
 
   it('cada tipo entra en una hoja chica sin avisos de la revisión (A5 en LETTER y LEGAL)', async () => {

@@ -212,6 +212,8 @@ export const MethodsZ = z
       .object({
         evidence: z.boolean().default(true),
         references: z.boolean().default(true),
+        /** Créditos del autor del programa (con un QR al código fuente) antes de las referencias. */
+        credits: z.boolean().catch(true).default(true),
       })
       .prefault({}),
   })
@@ -310,10 +312,20 @@ export const WatermarkZ = z.object({
   width: num(12, 1, 1000),
   opacity: num(1, 0, 1),
   rotation: num(0, -360, 360),
+  /**
+   * Espejar el dibujo en las páginas izquierdas (con anclaje exterior o interior). La posición se espeja
+   * sola con ese anclaje; esto da vuelta además la imagen (un logo con letras quedaría al revés).
+   */
   mirrorOnVerso: z.boolean().default(true),
   layer: z.enum(['above', 'below']).default('above'),
   /** Grosor mínimo de trazo en puntos para que el dibujo vectorial no desaparezca al imprimir. */
   minStrokePt: num(0.3, 0, 5),
+  /** En qué páginas va: todas, solo las derechas (recto) o solo las izquierdas (verso). */
+  side: z.enum(['both', 'recto', 'verso']).catch('both').default('both'),
+  /** Cómo se funde con lo de abajo («multiply» hace desaparecer el fondo blanco de un logo). */
+  blend: z.enum(BLEND_MODES).catch('normal').default('normal'),
+  /** En escala de grises (los dibujos vectoriales; una imagen se convierte con una copia en grises). */
+  grayscale: z.boolean().catch(false).default(false),
 });
 export type WatermarkPlacement = z.infer<typeof WatermarkZ>;
 

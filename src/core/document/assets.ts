@@ -18,6 +18,8 @@ export interface AssetPlacement {
   minStrokePt?: number;
   /** Recortar a la caja (útil con `cover`). */
   clip?: boolean;
+  /** Cambiar los colores de un dibujo vectorial (pasarlo a grises, teñirlo). Las imágenes no se tocan. */
+  recolor?: (color: string) => string;
 }
 
 /** Caja real que ocupa el recurso dentro de `box` según el ajuste. */
@@ -43,6 +45,7 @@ export function assetPrims(info: AssetInfo | undefined, box: Rect, opts: AssetPl
     const sy = r.h / v.viewBox[3];
     const place: Matrix = composeAll(translate(r.x, r.y), scale(sx, sy), translate(-v.viewBox[0], -v.viewBox[1]));
     const minMm = ptToMm(opts.minStrokePt ?? 0);
+    const recolor = opts.recolor ?? ((c: string) => c);
     children = v.items.map((it) => {
       const total = matrixScale(compose(place, it.m)) * matrixScale(outer);
       const widthMm = it.stroke ? Math.max(it.stroke.width * total, minMm) : 0;
@@ -51,11 +54,11 @@ export function assetPrims(info: AssetInfo | undefined, box: Rect, opts: AssetPl
         d: it.d,
         m: compose(place, it.m),
         rule: it.rule,
-        ...(it.fill ? { fill: { color: it.fill.color, opacity: it.fill.opacity } } : {}),
+        ...(it.fill ? { fill: { color: recolor(it.fill.color), opacity: it.fill.opacity } } : {}),
         ...(it.stroke
           ? {
               stroke: {
-                color: it.stroke.color,
+                color: recolor(it.stroke.color),
                 // El grosor se expresa en mm de página: el dibujante lo divide por la escala local.
                 width: widthMm,
                 opacity: it.stroke.opacity,

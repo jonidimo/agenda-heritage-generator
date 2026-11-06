@@ -49,6 +49,11 @@ export const es = {
       contested: 'Evidencia discutida',
     },
     continued: '(continúa)',
+    credits: {
+      madeBy: 'Hecha con Heritage Studio, de',
+      source: 'Código fuente',
+      online: 'En línea',
+    },
   },
   toc: {
     title: 'Índice',
@@ -213,6 +218,9 @@ export const es = {
     person: 'Agenda {name} {year}',
     clara: 'Agenda {year} · Lectura clara',
     minimal: 'Agenda {year} · Mínima',
+    notebook: 'Cuaderno',
+    notebookPerson: 'Cuaderno de {name}',
+    blank: 'Agenda en blanco',
   },
   gift: {
     title: 'Arquitectura del Tiempo',

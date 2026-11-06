@@ -2,7 +2,7 @@ import { assetUses, removeAssetFrom, type AssetUse } from '@core/design/assetUse
 import { newId } from '@core/util/hash';
 import { FilePlus2, Image as ImageIcon, Stamp, Trash2, Upload } from 'lucide-react';
 import { useEffect, useReducer, useRef, useState } from 'react';
-import { sectionName, useT, type UiKey } from '../../i18n/ui';
+import { plural, sectionName, useT, type UiKey } from '../../i18n/ui';
 import { assetHref, onAssetUrlsChange } from '../../state/assetUrls';
 import { customPageHere } from '../../state/customPages';
 import { useDocument } from '../../state/doc';
@@ -41,9 +41,10 @@ export function AssetsPanel() {
    */
   const removeAsset = (id: string): void => update((d) => removeAssetFrom(d, id));
 
+  // Una marca de agua nueva no da vuelta la imagen en las páginas izquierdas: un logo con letras quedaría al revés.
   const addWatermark = (assetId: string): void =>
     update((d) =>
-      void d.watermarks.push({ id: newId('wm'), enabled: true, assetId, scope: ['all'], exclude: ['monthCover', 'titlePage', 'custom'], excludePages: [], hAnchor: 'outer', vAnchor: 'bottom', dx: 13, dy: 5, width: 14, opacity: 1, rotation: 0, mirrorOnVerso: true, layer: 'above', minStrokePt: 0.3 }),
+      void d.watermarks.push({ id: newId('wm'), enabled: true, assetId, scope: ['all'], exclude: ['monthCover', 'titlePage', 'custom'], excludePages: [], hAnchor: 'outer', vAnchor: 'bottom', dx: 13, dy: 5, width: 14, opacity: 1, rotation: 0, mirrorOnVerso: false, layer: 'above', minStrokePt: 0.3, side: 'both', blend: 'normal', grayscale: false }),
     );
 
   /** A qué página lleva un uso de la imagen (la primera donde aparece), o `undefined` si no está en una página. */
@@ -52,6 +53,7 @@ export function AssetsPanel() {
     const idx = (match: (p: (typeof pages)[number]) => boolean): number | undefined => pages.find(match)?.index;
     if (u.kind === 'block') return u.pageKey ? idx((p) => p.key === u.pageKey) : idx((p) => p.type === u.pageType);
     if (u.kind === 'page') return idx((p) => p.key === `custom:${u.id}`);
+    if (u.kind === 'monthCover') return idx((p) => p.type === 'monthCover' && (u.months.includes('default') || u.months.some((m) => p.group === `month:${m}`)));
     return undefined;
   };
   const describeUse = (u: AssetUse): string => {
@@ -60,6 +62,8 @@ export function AssetsPanel() {
         return t('assets.use.watermark');
       case 'cover':
         return t('assets.use.cover');
+      case 'monthCover':
+        return u.months.includes('default') ? t('assets.use.monthCoverAll') : plural(t, 'assets.use.monthCover', u.months.length);
       case 'block':
         return t('assets.use.block', { name: u.label || t('assets.use.element') });
       case 'page':

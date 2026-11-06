@@ -6,13 +6,14 @@
  */
 import { documentFor } from './doc';
 import { useStore } from './store';
+import { clampPage } from './paging';
 
 const LIMIT = 100;
 
 function current(): { key: string | undefined; index: number } {
   const st = useStore.getState();
   const doc = st.design ? documentFor(st.design, st.resVersion).doc : null;
-  const index = doc ? Math.min(st.pageIndex, doc.pageCount - 1) : st.pageIndex;
+  const index = doc ? clampPage(st.pageIndex, doc.pageCount) : st.pageIndex;
   return { key: doc?.plan.pages[index]?.key, index };
 }
 

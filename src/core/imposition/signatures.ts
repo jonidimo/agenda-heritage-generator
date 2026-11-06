@@ -36,6 +36,8 @@ export function planSignatures(pageCount: number, binding: Design['binding']): S
   // Para leer en pantalla no hay cuadernillos: las páginas que hay, sin completar ninguna.
   if (binding.target === 'screen') return { method: 'single', signatures: [], totalPages: P, totalSheets: Math.ceil(P / 2), padding: 0 };
   const method = binding.method;
+  // Una agenda sin páginas (recién creada en blanco) no tiene nada que imprimir: ni hojas ni relleno.
+  if (P === 0) return { method, signatures: [], totalPages: 0, totalSheets: 0, padding: 0 };
   if (method === 'single') {
     const total = Math.max(2, P + (P % 2));
     return { method, signatures: [], totalPages: total, totalSheets: total / 2, padding: total - P };

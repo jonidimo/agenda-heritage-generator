@@ -71,6 +71,9 @@ describe('lo reutilizado es idéntico a lo calculado de nuevo', () => {
     ['un color del tema', (d) => void (d.theme.tokens = { colors: { ink: '#223355' } })],
     ['la comodidad', (d) => void (d.theme.comfort = 'wide')],
     ['el estilo de escritura del tema', (d) => void (d.theme.tokens = { writing: { style: 'dots' } })],
+    // La guía reparte su texto en páginas al planificar: la letra y los márgenes cambian el reparto.
+    ['el tamaño de la letra chica del tema', (d) => void (d.theme.tokens = { sizes: { small: 9.5 } })],
+    ['los márgenes del tema', (d) => void (d.theme.tokens = { margins: { top: 22, bottom: 22, inner: 20, outer: 20 } })],
     ['el idioma', (d) => void (d.locale = 'es-MX')],
     ['el año', (d) => void (d.calendar.year = 2028)],
     ['la cantidad de meses', (d) => void (d.calendar.monthCount = 4)],

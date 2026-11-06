@@ -14,10 +14,15 @@ import {
   numProp,
   PROP_DEFAULTS,
   PROP_RANGES,
+  QR_ECC_LEVELS,
+  QR_MAX_CHARS,
   QUADRANT_STYLES,
   RATING_FORMS,
   stringList,
 } from '../design/customBlocks';
+import { safeUrl } from './links';
+import { qrPrims, qrSquare } from '../layout/qr';
+import { COLOR_PATTERN } from '../util/color';
 import { inset } from '../layout/box';
 import type { LayoutContext } from '../layout/context';
 import { line, rect, type LinkArea, type Prim } from '../layout/prims';
@@ -219,6 +224,28 @@ function drawRating(ctx: LayoutContext, p: Record<string, unknown>, box: Rect): 
   return { prims, links: [] };
 }
 
+/**
+ * Un código QR en el cuadrado más grande que entra en la caja. Sin texto, un recuadro punteado que
+ * marca dónde va; con un texto que no entra en ningún código, el mismo recuadro y un aviso.
+ */
+function drawQr(ctx: LayoutContext, p: Record<string, unknown>, box: Rect, label: string): ElementDrawing {
+  const text = typeof p.text === 'string' ? p.text.slice(0, QR_MAX_CHARS) : '';
+  const ecc = enumProp(p.ecc, QR_ECC_LEVELS, 'M');
+  const color = typeof p.color === 'string' && new RegExp(COLOR_PATTERN).test(p.color) ? p.color : ctx.theme.colors.ink;
+  const sq = qrSquare(box);
+  const placeholder = (): ElementDrawing => ({ prims: [rect(sq, { stroke: ctx.stroke('hair', 'rule', { dash: [1, 1] }) })], links: [] });
+  if (text.trim() === '') return placeholder();
+  let prims: Prim[];
+  try {
+    prims = qrPrims(text, sq, { color, ecc });
+  } catch {
+    ctx.warn('qrTooLong', `El código QR «${label}» tiene demasiado texto para un código QR.`, { label, chars: text.length });
+    return placeholder();
+  }
+  const href = p.link === false ? null : safeUrl(text);
+  return { prims, links: href ? [{ ...sq, to: { kind: 'url', href }, cat: 'web' }] : [] };
+}
+
 /** Dibuja un elemento compuesto en su caja. Con `paper`, sobre un fondo blanco que tapa lo que la página tenga debajo (puntos, renglones). */
 export function drawElement(ctx: LayoutContext, kind: ElementKind, props: Record<string, unknown>, box: Rect, page: PagePlan): ElementDrawing {
   const drawing = drawKind(ctx, kind, props, box, page);
@@ -245,5 +272,7 @@ function drawKind(ctx: LayoutContext, kind: ElementKind, props: Record<string, u
       return drawTimeline(ctx, props, box);
     case 'rating':
       return drawRating(ctx, props, box);
+    case 'qr':
+      return drawQr(ctx, props, box, typeof props.label === 'string' ? props.label : 'QR');
   }
 }
