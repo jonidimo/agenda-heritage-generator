@@ -326,6 +326,7 @@ export const WatermarkZ = z.object({
   /** Cómo se funde con lo de abajo («multiply» hace desaparecer el fondo blanco de un logo). */
   blend: z.enum(BLEND_MODES).catch('normal').default('normal'),
   /** En escala de grises (los dibujos vectoriales; una imagen se convierte con una copia en grises). */
+  /** En grises: vale para dibujos vectoriales; una foto se pasa a grises con una copia (ver el panel de la marca de agua). */
   grayscale: z.boolean().catch(false).default(false),
   /** Tiñe un dibujo vectorial (un ícono, un logo SVG) de este color; manda sobre `grayscale`. */
   color: z.string().regex(new RegExp(COLOR_PATTERN)).optional().catch(undefined),

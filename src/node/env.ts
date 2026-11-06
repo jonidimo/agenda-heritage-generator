@@ -3,7 +3,7 @@
  * (`public/` del repositorio, o la que indique `AGENDA_PUBLIC_DIR`) y abre agendas. Lo comparten la
  * línea de comandos, el servidor MCP y las pruebas, así los tres cargan los recursos de la misma manera.
  */
-import { readFile, realpath, stat } from 'node:fs/promises';
+import { open, readFile, realpath } from 'node:fs/promises';
 import { dirname, join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { designCatalogue } from '../core/design/jsonSchema';
@@ -12,7 +12,7 @@ import { AgendaDocument } from '../core/document';
 import type { SvgRenderOptions } from '../core/render/svg';
 import { facesForDesign, loadAssets, loadBuiltinFonts, loadFontManifest, loadHolidayData, toBase64, type FontManifest, type ResourceIO } from '../core/resources';
 import { FontRegistry, type FontSpec } from '../core/text/fonts';
-import { isRelativeAssetPath } from '../core/util/relpath';
+import { bytesMatchExtension, isRelativeAssetPath } from '../core/util/relpath';
 
 /** Raíz del repositorio. Solo vale al correr desde el código fuente: en el paquete del servidor MCP no existe. */
 export const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -47,45 +47,35 @@ export const ASSET_FILE_MAX_BYTES = 64 * 1024 * 1024;
 
 /**
  * Lectura de las imágenes guardadas junto a una agenda (`assets[].path`), relativas a `baseDir` (la
- * carpeta del `.agenda.json`). Se resuelven los enlaces simbólicos antes de comparar: ni «..» ni un
- * enlace llevan fuera de la carpeta.
+ * carpeta del `.agenda.json`). Se resuelven los enlaces simbólicos antes de comparar (ni «..» ni un
+ * enlace llevan fuera de la carpeta), el archivo se abre una sola vez y se lee por ese mismo descriptor
+ * con un tope, y tiene que ser lo que dice su extensión (una imagen, un PDF o una fuente).
  */
 export function folderIO(baseDir: string): ResourceIO {
   return {
     async read(path: string): Promise<Uint8Array> {
-      if (!isRelativeAssetPath(path)) throw new Error('la ruta tiene que ser relativa a la carpeta de la agenda, sin «..»');
+      if (!isRelativeAssetPath(path)) throw new Error('la ruta tiene que ser relativa a la carpeta de la agenda, a una imagen, un PDF o una fuente');
       const base = await realpath(resolve(baseDir));
       const full = await realpath(resolve(base, path)).catch(() => {
         throw new Error('no está junto a la agenda');
       });
-      if (!full.startsWith(base + sep)) throw new Error('lleva fuera de la carpeta de la agenda');
-      const info = await stat(full);
-      if (!info.isFile()) throw new Error('no es un archivo');
-      if (info.size > ASSET_FILE_MAX_BYTES) throw new Error(`pesa más de ${ASSET_FILE_MAX_BYTES / 1024 / 1024} MB`);
-      return new Uint8Array(await readFile(full));
+      const inside = base.endsWith(sep) ? base : base + sep;
+      if (!full.startsWith(inside)) throw new Error('lleva fuera de la carpeta de la agenda');
+      const handle = await open(full, 'r');
+      try {
+        const info = await handle.stat();
+        if (!info.isFile()) throw new Error('no es un archivo');
+        if (info.size > ASSET_FILE_MAX_BYTES) throw new Error(`pesa más de ${ASSET_FILE_MAX_BYTES / 1024 / 1024} MB`);
+        const bytes = new Uint8Array(info.size);
+        const { bytesRead } = await handle.read(bytes, 0, info.size, 0);
+        const got = bytes.subarray(0, bytesRead);
+        if (!bytesMatchExtension(path, got)) throw new Error('el contenido no es el de su extensión');
+        return got;
+      } finally {
+        await handle.close();
+      }
     },
   };
-}
-
-/**
- * La misma agenda con los datos de sus imágenes por ruta adentro (`data`), para mandarla a donde no hay
- * carpeta (la aplicación abierta). Las que no se pueden leer quedan como estaban y se informan.
- */
-export async function inlinePathAssets(design: Design, baseDir: string): Promise<{ design: Design; errors: string[] }> {
-  const io = folderIO(baseDir);
-  const errors: string[] = [];
-  const assets = await Promise.all(
-    design.assets.map(async (a) => {
-      if (a.data || !a.path) return a;
-      try {
-        return { ...a, data: toBase64(await io.read(a.path)) };
-      } catch (err) {
-        errors.push(`No se pudo leer «${a.name}» (${a.path}): ${(err as Error).message}`);
-        return a;
-      }
-    }),
-  );
-  return { design: { ...design, assets }, errors };
 }
 
 let manifest: Promise<FontManifest> | null = null;

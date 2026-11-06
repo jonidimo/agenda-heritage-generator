@@ -265,7 +265,7 @@ async function openPlannerFile(file) {
     return;
   }
   // Images saved next to the file (by relative path) travel inside it: the page cannot read that folder.
-  const { text } = await inlineAssetPaths(await readFile(file, 'utf8'), path.dirname(file), { realpath: fsp.realpath, stat: fsp.stat, readFile: fsp.readFile });
+  const { text } = await inlineAssetPaths(await readFile(file, 'utf8'), path.dirname(file), { realpath: fsp.realpath, open: fsp.open });
   app.addRecentDocument(file);
   await win.webContents.executeJavaScript(`window.__heritageOpen && window.__heritageOpen(${JSON.stringify(text)}, ${JSON.stringify(path.basename(file))})`);
   if (win.isMinimized()) win.restore();

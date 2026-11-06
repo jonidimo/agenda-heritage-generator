@@ -1,7 +1,8 @@
 /**
  * Formas de los elementos «forma»: quince figuras con sus parámetros, como trazados SVG en mm de
  * página. Todo es puro y determinista (los números se redondean a milésimas de mm). El trazo va por
- * dentro de la caja (se descuenta medio grosor), así la forma nunca se sale de lo que se ve elegido;
+ * dentro de la caja (se descuenta medio grosor), así la forma nunca se sale de lo que se ve elegido (salvo
+ * un trazado libre dibujado fuera de su caja de 0 a 100: se respeta lo que se dibujó);
  * los polígonos y las estrellas se estiran hasta llenar la caja (no un círculo inscrito que deja
  * aire), y la elipse y los arcos son cúbicas con el error de siempre (menos de 0,03 %).
  */

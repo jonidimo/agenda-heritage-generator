@@ -1,13 +1,13 @@
 /** La aplicación de escritorio pone adentro del archivo las imágenes guardadas junto a él, sin salir de su carpeta. */
-import { mkdir, mkdtemp, readFile, realpath, rm, stat, symlink, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, open, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { inlineAssetPaths, readInside } from '../electron/lib/assets.mjs';
 
-const fs = { realpath, stat, readFile };
+const fs = { realpath, open };
 let dir = '';
-const PNG = Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 1, 2, 3]);
+const PNG = Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3]);
 const b64 = Buffer.from(PNG).toString('base64');
 const asset = (path: string, extra: Record<string, unknown> = {}) => ({ id: path, name: path, kind: 'raster', mime: 'image/png', path, ...extra });
 
@@ -45,8 +45,17 @@ describe('imágenes por ruta al abrir un archivo', () => {
     expect((await inlineAssetPaths(plain, dir, fs)).text).toBe(plain);
   });
 
-  it('no lee un archivo enorme', async () => {
-    const big = { ...fs, stat: async () => ({ isFile: () => true, size: 65 * 1024 * 1024 }) };
+  it('no lee un archivo enorme, uno oculto ni uno disfrazado', async () => {
+    const big = { ...fs, open: async (p: string, f: 'r') => Object.assign(await open(p, f), { stat: async () => ({ isFile: () => true, size: 65 * 1024 * 1024 }) }) };
     await expect(readInside(big, join(dir, 'agenda'), 'img/a.png')).rejects.toThrow(/too large/);
+    await writeFile(join(dir, 'agenda', 'img', 'clave.png'), 'PRIVATE KEY');
+    await expect(readInside(fs, join(dir, 'agenda'), 'img/clave.png')).rejects.toThrow(/extension/);
+    await expect(readInside(fs, join(dir, 'agenda'), '.ssh/id_rsa')).rejects.toThrow(/relative/);
+  });
+
+  it('el mismo archivo usado por varias imágenes se lee una vez', async () => {
+    const text = JSON.stringify({ assets: [asset('img/a.png'), asset('img/a.png', { id: 'otra' })] });
+    const r = await inlineAssetPaths(text, join(dir, 'agenda'), fs);
+    expect(r.inlined).toBe(2);
   });
 });

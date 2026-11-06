@@ -22,7 +22,7 @@ import {
 } from '../design/customBlocks';
 import { safeUrl } from './links';
 import { qrPrims, qrSquare } from '../layout/qr';
-import { COLOR_PATTERN } from '../util/color';
+import { normalizeColor } from '../util/color';
 import { inset } from '../layout/box';
 import type { LayoutContext } from '../layout/context';
 import { line, rect, type LinkArea, type Prim } from '../layout/prims';
@@ -229,14 +229,17 @@ function drawRating(ctx: LayoutContext, p: Record<string, unknown>, box: Rect): 
  * marca dónde va; con un texto que no entra en ningún código, el mismo recuadro y un aviso.
  */
 function drawQr(ctx: LayoutContext, p: Record<string, unknown>, box: Rect, label: string): ElementDrawing {
-  const text = typeof p.text === 'string' ? p.text.slice(0, QR_MAX_CHARS) : '';
+  const text = typeof p.text === 'string' ? p.text : '';
   const ecc = enumProp(p.ecc, QR_ECC_LEVELS, 'M');
-  const color = typeof p.color === 'string' && new RegExp(COLOR_PATTERN).test(p.color) ? p.color : ctx.theme.colors.ink;
+  // El color normalizado (sin espacios, en #rrggbb): el PDF no entiende « black ».
+  const color = normalizeColor(p.color) ?? ctx.theme.colors.ink;
   const sq = qrSquare(box);
   const placeholder = (): ElementDrawing => ({ prims: [rect(sq, { stroke: ctx.stroke('hair', 'rule', { dash: [1, 1] }) })], links: [] });
   if (text.trim() === '') return placeholder();
   let prims: Prim[];
   try {
+    // Un texto más largo que el tope no se corta (el código diría otra cosa que lo escrito): se avisa.
+    if (text.length > QR_MAX_CHARS) throw new Error('largo');
     prims = qrPrims(text, sq, { color, ecc });
   } catch {
     ctx.warn('qrTooLong', `El código QR «${label}» tiene demasiado texto para un código QR.`, { label, chars: text.length });

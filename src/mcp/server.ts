@@ -7,7 +7,7 @@
  * Los archivos se leen y escriben solo dentro de la carpeta de trabajo (ver `Workspace`).
  */
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { dirname } from 'node:path';
+import { dirname, relative, resolve, sep } from 'node:path';
 import { z } from 'zod';
 import { createDesign, TEMPLATES, type TemplateId } from '../core/design/defaults';
 import { designJsonSchema, schemaPart } from '../core/design/jsonSchema';
@@ -23,6 +23,8 @@ import { toBase64 } from '../core/resources';
 import type { FontRegistry } from '../core/text/fonts';
 import { applyJsonPatch, type JsonPatchOp } from '../core/util/jsonPatch';
 import { JsonPatchOpZ } from '../core/util/jsonPatchSchema';
+import { isRelativeAssetPath } from '../core/util/relpath';
+import { isNewerVersion } from '../core/util/version';
 import { checkDesignData, checkDesignJson, type CheckResult } from '../node/check';
 import { folderIO, fullCatalogue, loadFonts, openNodeDocument } from '../node/env';
 import type { Rasterizer } from './resvg';
@@ -81,6 +83,31 @@ export interface ServerOptions extends ServerResources {
   appLink?: AppLink;
 }
 
+/** Lo que acepta la aplicación en un cambio (ver el protocolo del enlace en vivo). */
+const MAX_APP_PATCH_OPS = 500;
+/** Bytes de imágenes que se mandan como mucho en un cambio a la aplicación (cabe holgado en un mensaje del enlace). */
+const APP_PATCH_IMAGE_BYTES = 32 * 1024 * 1024;
+
+/**
+ * La agenda (todavía JSON sin revisar) con sus imágenes por ruta reescritas de la carpeta `from` a `to`,
+ * o los problemas si alguna quedaría fuera de la carpeta nueva.
+ */
+function relocatePaths(raw: unknown, from: string, to: string): { ok: true; design: unknown } | { ok: false; issues: Array<{ path: string; message: string }> } {
+  const assets = (raw as { assets?: unknown } | null)?.assets;
+  if (!Array.isArray(assets) || from === to) return { ok: true, design: raw };
+  const issues: Array<{ path: string; message: string }> = [];
+  const moved = assets.map((a: unknown, i) => {
+    if (!a || typeof a !== 'object' || typeof (a as { path?: unknown }).path !== 'string') return a;
+    const rel = relative(to, resolve(from, (a as { path: string }).path)).split(sep).join('/');
+    if (!isRelativeAssetPath(rel)) {
+      issues.push({ path: `/assets/${i}/path`, message: 'La imagen quedaría fuera de la carpeta del archivo nuevo: escribilo en la misma carpeta o en una que la contenga.' });
+      return a;
+    }
+    return { ...a, path: rel };
+  });
+  return issues.length > 0 ? { ok: false, issues } : { ok: true, design: { ...(raw as object), assets: moved } };
+}
+
 export function createServer(opts: ServerOptions): McpServer {
   const ws = new Workspace(opts.root);
   const server = new McpServer({ name: 'agenda-heritage-studio', version: opts.version }, { instructions: INSTRUCTIONS });
@@ -134,8 +161,13 @@ export function createServer(opts: ServerOptions): McpServer {
 
   const open = async (design: Design, baseDir?: string) => openNodeDocument(design, await sharedFonts(), { baseDir });
 
-  /** Un archivo escrito por este servidor dice qué versión lo escribió (la aplicación avisa si ella es más vieja). */
-  const stamp = <T,>(design: T): T => (typeof design === 'object' && design !== null && !Array.isArray(design) ? { ...design, writtenBy: opts.version } : design);
+  /** Un archivo escrito por este servidor dice qué versión lo escribió; si ya lo había escrito una más nueva, queda esa (sus claves siguen ahí). */
+  const stamp = <T,>(design: T): T => {
+    if (typeof design !== 'object' || design === null || Array.isArray(design)) return design;
+    const before = (design as { writtenBy?: unknown }).writtenBy;
+    const keep = typeof before === 'string' && isNewerVersion(before, opts.version);
+    return { ...design, writtenBy: keep ? before : opts.version };
+  };
 
   /* ---------- Referencia ---------- */
 
@@ -225,9 +257,12 @@ export function createServer(opts: ServerOptions): McpServer {
       const check = checkDesignData(next);
       if (!check.design) return { ...text({ written: false, issues: check.issues }), isError: true };
       const target = out === undefined ? full : out;
-      const written = await ws.write(target, `${JSON.stringify(stamp(next), null, 2)}\n`, { extensions: DESIGN_EXT, overwrite: out === undefined || overwrite === true });
+      // En otra carpeta, las imágenes por ruta se reescriben para seguir apuntando al mismo archivo.
+      const moved = out === undefined ? { ok: true as const, design: next } : relocatePaths(next, dirname(full), dirname(resolve(ws.root, out)));
+      if (!moved.ok) return { ...text({ written: false, issues: moved.issues }), isError: true };
+      const written = await ws.write(target, `${JSON.stringify(stamp(moved.design), null, 2)}\n`, { extensions: DESIGN_EXT, overwrite: out === undefined || overwrite === true });
       // Los avisos de maquetación que el cambio produjo (texto que no entra, fuera de la página…).
-      const layout = await newLayoutWarnings((d) => open(d, dirname(full)), checkDesignJson(body).design, check.design);
+      const layout = await newLayoutWarnings((d) => open(d, dirname(written)), checkDesignJson(body).design, checkDesignData(moved.design).design ?? check.design);
       return text({ written: true, path: ws.show(written), issues: check.issues, warnings: layout.notes, ...(layout.omitted > 0 ? { omittedWarnings: layout.omitted } : {}) });
     },
   );
@@ -244,7 +279,7 @@ export function createServer(opts: ServerOptions): McpServer {
     const check = checkDesignData(next);
     if (!check.design) return { ...text({ applied: false, issues: check.issues }), isError: true };
     // La aplicación no tiene carpeta: las imágenes por ruta (relativas a la de trabajo) le llegan con sus datos.
-    const { ops: withData, errors: assetErrors } = await pathAssetData(check.design);
+    const { ops: withData, errors: assetErrors } = await pathAssetData(check.design, MAX_APP_PATCH_OPS - patch.length);
     const sent = await appLink.request<LivePatchResult>('design.patch', { patch: [...patch, ...withData], baseRevision: got.revision });
     if (!sent.applied) return { ...text({ applied: false, issues: sent.issues }), isError: true };
     const layout = await newLayoutWarnings((d) => open(d, ws.root), before, check.design);
@@ -259,14 +294,26 @@ export function createServer(opts: ServerOptions): McpServer {
   }
 
   /** Operaciones que agregan los datos de las imágenes por ruta de una agenda (leídas de la carpeta de trabajo). */
-  async function pathAssetData(design: Design): Promise<{ ops: JsonPatchOp[]; errors: string[] }> {
+  async function pathAssetData(design: Design, room: number): Promise<{ ops: JsonPatchOp[]; errors: string[] }> {
     const io = folderIO(ws.root);
     const ops: JsonPatchOp[] = [];
     const errors: string[] = [];
+    let bytes = 0;
     for (const [i, a] of design.assets.entries()) {
       if (a.data || !a.path) continue;
+      // El parche a la aplicación tiene topes (operaciones y tamaño): lo que no entra se informa y no se manda.
+      if (ops.length >= room) {
+        errors.push(`«${a.name}» (${a.path}) no entra en este cambio: mandá menos operaciones o agregá la imagen en otro cambio.`);
+        continue;
+      }
       try {
-        ops.push({ op: 'add', path: `/assets/${i}/data`, value: toBase64(await io.read(a.path)) });
+        const data = await io.read(a.path);
+        if (bytes + data.length > APP_PATCH_IMAGE_BYTES) {
+          errors.push(`«${a.name}» (${a.path}) es demasiado grande para mandarla a la aplicación en este cambio.`);
+          continue;
+        }
+        bytes += data.length;
+        ops.push({ op: 'add', path: `/assets/${i}/data`, value: toBase64(data) });
       } catch (err) {
         errors.push(`No se pudo leer «${a.name}» (${a.path}): ${(err as Error).message}`);
       }

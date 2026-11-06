@@ -159,6 +159,9 @@ describe('elementos compuestos', () => {
     expect(empty.block!.prims).toHaveLength(1);
     expect(empty.doc.pageWarnings(empty.page.index)).toEqual([]);
     // Más de lo que entra en un QR (con corrección máxima): recuadro y aviso.
+    // Más largo que el tope del campo (aunque entraría con corrección baja): se avisa en lugar de cortarlo.
+    const capped = await drawn(design('qr', { text: 'x'.repeat(1600), ecc: 'L' }));
+    expect(capped.doc.pageWarnings(capped.page.index).map((w) => w.code)).toContain('qrTooLong');
     const long = await drawn(design('qr', { text: 'x'.repeat(1400), ecc: 'H' }));
     expect(long.block!.prims).toHaveLength(1);
     expect(long.doc.pageWarnings(long.page.index).map((w) => w.code)).toContain('qrTooLong');

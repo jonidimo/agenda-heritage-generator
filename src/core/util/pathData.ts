@@ -13,20 +13,42 @@ export const PATH_LIMITS = { chars: 8000, commands: 2000 } as const;
 
 const ARGS: Record<string, number> = { M: 2, L: 2, H: 1, V: 1, C: 6, S: 4, Q: 4, T: 2, A: 7, Z: 0 };
 
-/** Los números y comandos del texto, o `null` si hay algo que no es parte de un trazado. */
+/**
+ * Los números y comandos del texto, o `null` si hay algo que no es parte de un trazado. En un arco, las
+ * dos banderas son un solo «0» o «1» y pueden ir pegadas (`a5 5 0 1110 0`, como las escribe svgo).
+ */
 function tokenize(d: string): Array<string | number> | null {
   const out: Array<string | number> = [];
   const re = /\s*(?:([MLHVCSQTAZmlhvcsqtaz])|([-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?))\s*,?/y;
+  const flag = /\s*([01])\s*,?/y;
   let i = 0;
+  let arc = false;
+  let arg = 0;
   while (i < d.length) {
+    if (arc && (arg % 7 === 3 || arg % 7 === 4)) {
+      flag.lastIndex = i;
+      const f = flag.exec(d);
+      if (f) {
+        out.push(Number(f[1]));
+        i = flag.lastIndex;
+        arg++;
+        continue;
+      }
+    }
     re.lastIndex = i;
     const m = re.exec(d);
     if (!m || m[0].length === 0) {
       if (/^\s*$/.test(d.slice(i))) break;
       return null;
     }
-    if (m[1]) out.push(m[1]);
-    else out.push(Number(m[2]));
+    if (m[1]) {
+      out.push(m[1]);
+      arc = m[1] === 'A' || m[1] === 'a';
+      arg = 0;
+    } else {
+      out.push(Number(m[2]));
+      arg++;
+    }
     i = re.lastIndex;
   }
   return out;

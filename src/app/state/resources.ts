@@ -131,8 +131,10 @@ export class Resources {
           bytes = fromBase64(ref.data);
         }
         if (!bytes) continue;
+        // Primero se decodifica: bytes que no son una imagen no quedan guardados.
+        const info = await assetInfoFromBytes(ref, bytes);
         this.assetBytes.set(ref.id, bytes);
-        this.assetInfos.set(ref.id, await assetInfoFromBytes(ref, bytes));
+        this.assetInfos.set(ref.id, info);
         changed = true;
       } catch (err) {
         this.addError(`Recurso «${ref.name}»: ${(err as Error).message}`);

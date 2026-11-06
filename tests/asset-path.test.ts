@@ -21,7 +21,7 @@ import { checkDesignData } from '../src/node/check';
 import { sourceResources } from '../src/mcp/dev';
 import { AppLink, type AppConnection } from '../src/mcp/live';
 import { createServer } from '../src/mcp/server';
-import { folderIO, inlinePathAssets, openNodeDocument, ROOT } from '../src/node/env';
+import { folderIO, openNodeDocument, ROOT } from '../src/node/env';
 import { isRelativeAssetPath as electronRule } from '../electron/lib/assets.mjs';
 
 const run = promisify(execFile);
@@ -52,7 +52,7 @@ afterAll(async () => {
 describe('la regla de las rutas', () => {
   it('acepta rutas relativas dentro de la carpeta y rechaza las que salen o no son rutas', () => {
     for (const ok of ['logo.png', 'imagenes/logo.png', 'a/b/c/Mi foto 2.jpg', 'ñandú.svg']) expect(isRelativeAssetPath(ok), ok).toBe(true);
-    for (const bad of ['', '/etc/passwd', '../x.png', 'a/../../x.png', 'a/./x.png', 'a//x.png', 'C:/x.png', 'C:\\\\x.png', 'a\\\\x.png', 'file:x.png', 'https://x/y.png', ' x.png', 'x.png ', 'a/\u0000.png', 'x'.repeat(301)])
+    for (const bad of ['', '/etc/passwd', '.ssh/id_rsa', 'a/.oculto.png', '.env', 'notas.txt', 'logo', '../x.png', 'a/../../x.png', 'a/./x.png', 'a//x.png', 'C:/x.png', 'C:\\\\x.png', 'a\\\\x.png', 'file:x.png', 'https://x/y.png', ' x.png', 'x.png ', 'a/\u0000.png', 'x'.repeat(301)])
       expect(isRelativeAssetPath(bad), JSON.stringify(bad)).toBe(false);
   });
 
@@ -112,16 +112,13 @@ describe('lectura desde Node', () => {
     await expect(io.read('imagenes/atajo.svg')).rejects.toThrow(/fuera de la carpeta/);
     await expect(io.read('imagenes/no-esta.svg')).rejects.toThrow(/no está junto a la agenda/);
     await expect(io.read('../secreto.svg')).rejects.toThrow(/relativa/);
-    await expect(io.read('imagenes')).rejects.toThrow(/no es un archivo/);
+    await mkdir(join(dir, 'proyecto', 'carpeta.png'), { recursive: true });
+    await expect(io.read('carpeta.png')).rejects.toThrow(/no es un archivo/);
   });
 
-  it('inlinePathAssets pone los datos adentro y avisa lo que no pudo leer', async () => {
-    const d = withPathImage('imagenes/logo.svg');
-    d.assets.push({ id: 'otra', name: 'Otra', kind: 'vector', mime: 'image/svg+xml', width: 1, height: 1, builtin: null, path: 'imagenes/no-esta.svg' });
-    const { design, errors } = await inlinePathAssets(d, join(dir, 'proyecto'));
-    expect(design.assets.find((a) => a.id === 'logo')!.data).toBe(Buffer.from(svg).toString('base64'));
-    expect(design.assets.find((a) => a.id === 'otra')!.data ?? null).toBeNull();
-    expect(errors).toHaveLength(1);
+  it('un archivo disfrazado (otra cosa con extensión de imagen) no se lee', async () => {
+    await writeFile(join(dir, 'proyecto', 'imagenes', 'falsa.png'), 'PRIVATE KEY');
+    await expect(folderIO(join(dir, 'proyecto')).read('imagenes/falsa.png')).rejects.toThrow(/extensión/);
   });
 
   it('la línea de comandos lee las imágenes junto al archivo', async () => {
@@ -154,6 +151,22 @@ describe('servidor MCP', () => {
     expect(JSON.stringify(fromFile.body)).not.toMatch(/missingAsset|archivo aparte/);
     const inline = await call('check_design', { design: withPathImage('imagenes/logo.svg') as unknown as Record<string, unknown> });
     expect(JSON.stringify(inline.body)).not.toMatch(/missingAsset|archivo aparte/);
+    await close();
+  });
+
+  it('update_design con «out» en otra carpeta reescribe las rutas, y no deja que salgan de ella', async () => {
+    await mkdir(join(dir, 'proyecto', 'sub'), { recursive: true });
+    await writeFile(join(dir, 'proyecto', 'sub', 'mover.agenda.json'), JSON.stringify(withPathImage('x/logo.svg')));
+    // Una agenda en «sub» que apunta a «sub/x/…»: copiada a la carpeta de arriba, la ruta pasa a «sub/x/…».
+    const { call, close } = await connect();
+    const patch = [{ op: 'replace', path: '/persona/name', value: 'Copia' }];
+    const up = await call('update_design', { path: 'sub/mover.agenda.json', out: 'arriba.agenda.json', patch });
+    expect(up.isError).toBe(false);
+    const saved = JSON.parse(await readFile(join(dir, 'proyecto', 'arriba.agenda.json'), 'utf8')) as { assets: Array<{ id: string; path?: string }> };
+    expect(saved.assets.find((a) => a.id === 'logo')!.path).toBe('sub/x/logo.svg');
+    // Al revés (a una carpeta más adentro) la ruta tendría que subir: se rechaza sin escribir.
+    const down = await call('update_design', { path: 'arriba.agenda.json', out: 'sub/otra/abajo.agenda.json', patch });
+    expect(down.isError).toBe(true);
     await close();
   });
 
