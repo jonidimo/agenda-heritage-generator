@@ -14,6 +14,8 @@ en cuadernillos plegados y cosidos a mano.**
 
 </div>
 
+**Probala en línea:** [jonidimo.github.io/agenda-heritage-generator](https://jonidimo.github.io/agenda-heritage-generator/) (siempre la última versión, sin instalar nada).
+
 Heritage Studio empezó como una sola agenda artesanal para 2026. Hoy es una aplicación
 que arma el libro completo para cualquier año: calendario, feriados, registros de hábitos
 y páginas de planificación basadas en la ciencia del comportamiento. Ubica las páginas en
