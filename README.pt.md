@@ -222,7 +222,7 @@ ficam as suas agendas e como gerar o aplicativo. Para usar no navegador, veja
 
 - Um **servidor MCP** permite que o Claude, ou qualquer modelo compatível com MCP, crie
   uma agenda, a altere, a revise, veja as páginas e exporte o PDF ou um tema. O aplicativo de
-  desktop o inclui: inicie-o com `--mcp` ([como](docs/desktop.md#5-use-it-with-an-ai-model-mcp), em inglês). Peça "uma
+  desktop o inclui: inicie-o com `--mcp` ([como](docs/desktop.md#6-use-it-with-an-ai-model-from-outside-mcp), em inglês). Peça "uma
   agenda de professor de março a dezembro" ou "um tema com arabescos art nouveau".
 - O formato do arquivo tem um **esquema JSON** e um catálogo gerados a partir do código,
   e `npm run agenda -- check` diz exatamente o que seria ignorado ou corrigido. Leia o

@@ -220,7 +220,7 @@ Per usarla nel browser, vedi [Come usarla](#come-usarla).
 ### Progetta con un modello di intelligenza artificiale
 
 - Un **server MCP** permette a Claude, o a qualsiasi modello compatibile con MCP, di creare
-  un’agenda, modificarla, controllarla, guardarne le pagine ed esportare il PDF o un tema. L’app desktop lo include: si avvia con `--mcp` ([come](docs/desktop.md#5-use-it-with-an-ai-model-mcp), in inglese).
+  un’agenda, modificarla, controllarla, guardarne le pagine ed esportare il PDF o un tema. L’app desktop lo include: si avvia con `--mcp` ([come](docs/desktop.md#6-use-it-with-an-ai-model-from-outside-mcp), in inglese).
   Chiedigli "un’agenda per insegnanti da marzo a dicembre" o "un tema con ghirigori liberty".
 - Il formato del file ha uno **schema JSON** e un catalogo generati dal codice, e
   `npm run agenda -- check` dice esattamente cosa verrebbe ignorato o corretto. Leggi la

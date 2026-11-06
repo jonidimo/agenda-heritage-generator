@@ -7,10 +7,12 @@
  * sandboxed renderer, without a preload script or Node.js.
  */
 import { rmSync } from 'node:fs';
+import * as fsp from 'node:fs/promises';
 import { readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { app, BrowserWindow, dialog, Menu, net, protocol, screen, session, shell } from 'electron';
+import { app, BrowserWindow, dialog, Menu, net, protocol, safeStorage, screen, session, shell } from 'electron';
+import { AiSettingsStore, AUTH, aiTargetAllowed, cleanBaseUrl, isProviderId, MAX_KEY_LENGTH, parseChatRequest } from './lib/ai.mjs';
 import { agendaFileFromArgv, MAX_OPEN_BYTES } from './lib/args.mjs';
 import { createCloseGuard } from './lib/closing.mjs';
 import { DownloadLog, sysRequestAllowed, sysRoute } from './lib/downloads.mjs';
@@ -55,6 +57,8 @@ async function sys(request) {
   const route = sysRoute(url.pathname);
   if (!route) return notFound();
   if (!sysRequestAllowed(request.headers.get('origin'), request.headers.get('sec-fetch-site'))) return json({ error: 'forbidden' }, 403);
+  if (route === 'ai-config') return aiConfig(request);
+  if (route === 'ai-chat') return aiChat(request);
   if (route === 'downloads') {
     if (request.method !== 'GET') return json({ error: 'method' }, 405);
     const after = Number.parseInt(url.searchParams.get('after') ?? '0', 10) || 0;
@@ -81,6 +85,93 @@ async function sys(request) {
   if (!/\.(pdf|json)$/i.test(file)) return json({ ok: false, error: 'not a document' }, 403);
   const error = await shell.openPath(file);
   return json({ ok: error === '', error });
+}
+
+/* ---------- The AI assistant: keys in the main process, requests through it ---------- */
+
+/** A conversation with images can be a few MB; nothing the assistant sends is bigger than this. */
+const AI_MAX_REQUEST_BYTES = 32 * 1024 * 1024;
+const AI_TIMEOUT_MS = 120_000;
+
+/** @type {AiSettingsStore | null} */
+let aiStore = null;
+const ai = () => (aiStore ??= new AiSettingsStore({ file: path.join(app.getPath('userData'), 'ai.json'), fs: fsp, safeStorage }));
+
+/** @param {Request} request @returns {Promise<unknown>} */
+async function readJsonBody(request) {
+  const bytes = await request.arrayBuffer();
+  if (bytes.byteLength > AI_MAX_REQUEST_BYTES) throw new Error('too large');
+  return JSON.parse(new TextDecoder().decode(bytes));
+}
+
+/**
+ * GET: whether there is a key for each provider (never the key) and how keys are protected.
+ * PUT `{ keys?: { [provider]: string | null }, baseUrls?: { [provider]: string } }`: saves keys (encrypted)
+ * and the addresses the person set; without a keyring, a key is kept in memory only (never written in clear).
+ * @param {Request} request
+ */
+async function aiConfig(request) {
+  if (request.method === 'GET') return json(await ai().status());
+  if (request.method !== 'PUT') return json({ error: 'method' }, 405);
+  /** @type {unknown} */
+  let body;
+  try {
+    body = await readJsonBody(request);
+  } catch {
+    return json({ error: 'body' }, 400);
+  }
+  const b = body && typeof body === 'object' ? /** @type {{ keys?: unknown, baseUrls?: unknown }} */ (body) : {};
+  if (b.baseUrls && typeof b.baseUrls === 'object') {
+    for (const [p, v] of Object.entries(b.baseUrls)) {
+      const clean = cleanBaseUrl(v);
+      if (!isProviderId(p) || clean === null) return json({ error: 'baseUrl' }, 400);
+      await ai().setBaseUrl(p, clean);
+    }
+  }
+  if (b.keys && typeof b.keys === 'object') {
+    for (const [p, v] of Object.entries(b.keys)) {
+      if (!isProviderId(p) || (v !== null && (typeof v !== 'string' || v.length > MAX_KEY_LENGTH))) return json({ error: 'key' }, 400);
+      await ai().setKey(p, v);
+    }
+  }
+  return json(await ai().status());
+}
+
+/**
+ * POST `{ provider, url, method, headers, body? }`: sends the page's request to the provider with the
+ * saved key, only to that provider's hosts or to the address saved for it, and passes the answer back as
+ * it came (status included). Nothing of the request or the answer is logged.
+ * @param {Request} request
+ */
+async function aiChat(request) {
+  if (request.method !== 'POST') return json({ error: 'method' }, 405);
+  /** @type {unknown} */
+  let body;
+  try {
+    body = await readJsonBody(request);
+  } catch {
+    return json({ error: { message: 'Pedido no válido.' } }, 400);
+  }
+  const req = parseChatRequest(body);
+  if (!req.ok) return json({ error: { message: `Pedido no válido (${req.error}).` } }, 400);
+  if (!aiTargetAllowed(req.provider, req.url, await ai().baseUrl(req.provider))) return json({ error: { message: 'Esa dirección no es la del proveedor ni la que se guardó en los ajustes.' } }, 403);
+  const key = await ai().getKey(req.provider);
+  const local = ['localhost', '127.0.0.1', '[::1]'].includes(new URL(req.url).hostname);
+  if (!key && !local) return json({ error: { message: 'Falta la clave de API.' } }, 401);
+  const auth = AUTH[req.provider];
+  const headers = { ...req.headers, ...(key ? { [auth.header]: `${auth.prefix}${key}` } : {}) };
+  let upstream;
+  try {
+    // Never follow a redirect: the key would travel to wherever it points.
+    upstream = await net.fetch(req.url, { method: req.method, headers, ...(req.payload !== undefined ? { body: req.payload } : {}), redirect: 'error', signal: AbortSignal.timeout(AI_TIMEOUT_MS) });
+  } catch (err) {
+    const timeout = /** @type {{ name?: string }} */ (err).name === 'TimeoutError';
+    return json({ error: { message: timeout ? 'El proveedor no contestó a tiempo.' : `No se pudo conectar con el proveedor: ${err instanceof Error ? err.message : String(err)}` } }, timeout ? 504 : 502);
+  }
+  const out = new Headers({ 'content-type': upstream.headers.get('content-type') ?? 'application/json' });
+  const retry = upstream.headers.get('retry-after');
+  if (retry) out.set('retry-after', retry);
+  return new Response(upstream.body, { status: upstream.status, headers: out });
 }
 
 /**

@@ -20,7 +20,7 @@ There are two ways to work with a model:
 
 **Easiest: the desktop app.** The installers already contain the server, with nothing else to
 install: the client starts the app with `--mcp` and no window opens. The configuration for each
-system is in the [desktop app guide](desktop.md#5-use-it-with-an-ai-model-mcp). The rest of this
+system is in the [desktop app guide](desktop.md#6-use-it-with-an-ai-model-from-outside-mcp). The rest of this
 section is for running it from a copy of the repository.
 
 You need a copy of this repository with its dependencies installed (`npm ci`). The server runs
@@ -82,7 +82,7 @@ same reference for clients that read resources.
 
 ### Working on the planner that is open in the desktop app
 
-With the desktop app open (see [Use it with an AI model](desktop.md#5-use-it-with-an-ai-model-mcp)), every tool that takes `path` or `design` also takes **`app: true`**: the planner open right now. `app_status` tells you what is open.
+With the desktop app open (see [Use it with an AI model](desktop.md#6-use-it-with-an-ai-model-from-outside-mcp)), every tool that takes `path` or `design` also takes **`app: true`**: the planner open right now. `app_status` tells you what is open.
 
 - `update_design` with `app: true` reads the planner with its **revision**, applies and checks your patch, and sends the app only the patch with that revision. The person sees the change at once and can undo it (it is one step). If they edited the planner meanwhile, the app refuses with a conflict: read it again (`check_design` with `app: true`) and retry.
 - `render_page` and `check_design` with `app: true` use the open planner, with its images.

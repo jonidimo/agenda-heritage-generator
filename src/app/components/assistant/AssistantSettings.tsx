@@ -10,6 +10,8 @@ import { useT, type UiKey } from '../../i18n/ui';
 import { useAssistant } from '../../state/ai/assistant';
 import { forgetAll, getKey, hasKey, setKey } from '../../state/ai/keys';
 import { activeProvider } from '../../state/ai/settings';
+import { desktopSaveKey, desktopStatus, type DesktopAiStatus } from '../../state/ai/desktop';
+import { isDesktopShell } from '../../state/desktopBridge';
 import { Modal } from '../Dialogs';
 import { Button, Field, Segmented, Select, TextInput, Toggle } from '../ui';
 
@@ -32,8 +34,22 @@ export function AssistantSettings({ onClose }: { onClose: () => void }) {
   const update = useAssistant((s) => s.updateSettings);
   const { provider, model, baseUrl } = activeProvider(settings);
   const adapter = PROVIDERS[provider];
+  const desk = isDesktopShell();
+  const [deskStatus, setDeskStatus] = useState<DesktopAiStatus | null>(null);
   const [draftKey, setDraftKey] = useState('');
-  const [stored, setStored] = useState(() => hasKey(provider));
+  const [stored, setStored] = useState(() => (desk ? false : hasKey(provider)));
+  const [keyError, setKeyError] = useState<string | null>(null);
+
+  // En el escritorio, si hay clave lo sabe el proceso principal (la página nunca la vuelve a ver).
+  useEffect(() => {
+    if (!desk) return;
+    void desktopStatus()
+      .then((st) => {
+        setDeskStatus(st);
+        setStored(st.hasKey[provider]);
+      })
+      .catch(() => setDeskStatus(null));
+  }, [desk, provider]);
   const [models, setModels] = useState<string[]>([]);
   const [check, setCheck] = useState<Check>({ state: 'idle' });
   const listId = useId();
@@ -41,19 +57,37 @@ export function AssistantSettings({ onClose }: { onClose: () => void }) {
   const preset = presetOf(baseUrl);
 
   useEffect(() => {
-    setStored(hasKey(provider));
+    if (!desk) setStored(hasKey(provider));
     setDraftKey('');
     setModels([]);
     setCheck({ state: 'idle' });
-  }, [provider, baseUrl]);
+  }, [desk, provider, baseUrl]);
 
   const setProviderField = (field: 'model' | 'baseUrl', value: string): void =>
     update((s) => ({ ...s, perProvider: { ...s.perProvider, [s.provider]: { ...s.perProvider[s.provider], [field]: value } } }));
 
   const saveKey = async (): Promise<void> => {
-    await setKey(provider, draftKey, settings.remember);
-    setDraftKey('');
-    setStored(hasKey(provider));
+    setKeyError(null);
+    try {
+      if (desk) {
+        const st = await desktopSaveKey(provider, draftKey);
+        setDeskStatus(st);
+        setStored(st.hasKey[provider]);
+      } else {
+        await setKey(provider, draftKey, settings.remember);
+        setStored(hasKey(provider));
+      }
+      setDraftKey('');
+    } catch (err) {
+      setKeyError(err instanceof Error ? err.message : String(err));
+    }
+  };
+  const removeKey = async (): Promise<void> => {
+    if (desk) {
+      const st = await desktopSaveKey(provider, null);
+      setDeskStatus(st);
+    } else await setKey(provider, null, settings.remember);
+    setStored(false);
   };
 
   const verify = async (): Promise<void> => {
@@ -126,19 +160,20 @@ export function AssistantSettings({ onClose }: { onClose: () => void }) {
                 {t('ai.settings.saveKey')}
               </Button>
               {stored && (
-                <Button
-                  variant="ghost"
-                  onClick={() =>
-                    void setKey(provider, null, settings.remember).then(() => setStored(false))
-                  }
-                >
+                <Button variant="ghost" onClick={() => void removeKey()}>
                   {t('ai.settings.removeKey')}
                 </Button>
               )}
             </div>
           </Field>
         )}
-        {!local && (
+        {keyError && <p className="text-[11.5px] text-warn" role="alert">{keyError}</p>}
+        {desk && deskStatus && !local && (
+          <p className={deskStatus.encryption.available && !deskStatus.encryption.weak ? 'text-[11.5px] text-ink-soft' : 'text-[11.5px] text-warn'} data-testid="ai-key-storage">
+            {!deskStatus.encryption.available ? t('ai.settings.noEncryption') : deskStatus.encryption.weak ? t('ai.settings.storedWeak') : t('ai.settings.storedEncrypted')}
+          </p>
+        )}
+        {!local && !desk && (
           <Toggle
             label={t('ai.settings.remember')}
             hint={t('ai.settings.rememberHint')}

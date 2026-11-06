@@ -20,7 +20,7 @@ Hay dos maneras de trabajar con un modelo:
 
 **Lo más fácil: la aplicación de escritorio.** Los instaladores ya llevan el servidor, sin nada más
 que instalar: el cliente inicia la aplicación con `--mcp` y no se abre ninguna ventana. La
-configuración de cada sistema está en la [guía de la aplicación de escritorio](desktop.md#5-use-it-with-an-ai-model-mcp)
+configuración de cada sistema está en la [guía de la aplicación de escritorio](desktop.md#6-use-it-with-an-ai-model-from-outside-mcp)
 (en inglés). El resto de esta sección es para correrlo desde una copia del repositorio.
 
 Hace falta una copia de este repositorio con sus dependencias instaladas (`npm ci`). El servidor
@@ -83,7 +83,7 @@ Los recursos `agenda://guide/es` (esta guía), `agenda://guide` (en inglés), `a
 
 ### Trabajar sobre la agenda abierta en la aplicación de escritorio
 
-Con la aplicación de escritorio abierta (ver [Usarla con un modelo de IA](desktop.md#5-use-it-with-an-ai-model-mcp)), cada herramienta que recibe `path` o `design` recibe también **`app: true`**: la agenda abierta ahora. `app_status` dice qué hay abierto.
+Con la aplicación de escritorio abierta (ver [Usarla con un modelo de IA](desktop.md#6-use-it-with-an-ai-model-from-outside-mcp)), cada herramienta que recibe `path` o `design` recibe también **`app: true`**: la agenda abierta ahora. `app_status` dice qué hay abierto.
 
 - `update_design` con `app: true` lee la agenda con su **revisión**, aplica y revisa tu parche, y le manda a la aplicación solo el parche con esa revisión. La persona ve el cambio al instante y lo puede deshacer (es un solo paso). Si ella editó la agenda mientras tanto, la aplicación lo rechaza con un conflicto: volvé a leerla (`check_design` con `app: true`) y reintentá.
 - `render_page` y `check_design` con `app: true` usan la agenda abierta, con sus imágenes.

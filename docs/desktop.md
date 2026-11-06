@@ -111,7 +111,36 @@ way yourself:
 ./heritage-studio-*.AppImage --ozone-platform=x11   # use X11 (XWayland) instead of Wayland
 ```
 
-## 5. Use it with an AI model (MCP)
+## 5. The AI assistant inside the app
+
+Below the page there is a small pill: **Ask the assistant…** (or press **Ctrl+J**). Write what you
+want ("make the weekly titles bigger", "add a page after week 12 for travel notes") and the
+assistant reads the planner, proposes the change and shows it on the page. Nothing changes until
+you press **Apply**; **Discard** (or Esc) leaves everything as it was, and an applied change is one
+step of **Undo**. It never edits the planner by itself.
+
+Set it up in **File → AI assistant…**: Claude (Anthropic), Gemini, or OpenAI and compatible
+services (OpenRouter, Groq, Mistral), or a model running on your own computer (Ollama, LM Studio:
+no key needed). **Check and load models** tests the key and lists the models it can use.
+**Let it look at the pages** sends images of the pages it needs to see: it understands the design
+better, but each request costs more.
+
+**Where the key is kept.** In the desktop app the key never stays in the page: it is handed to the
+app's main process, which stores it in `ai.json` in your data folder, encrypted by the operating
+system (Keychain on macOS, DPAPI on Windows, the GNOME keyring or KWallet on Linux). The main
+process adds it to each request and only sends it to that provider's own addresses, or to the
+address you typed in the settings. On a Linux system without a keyring, the settings say so: the
+key is then kept only while the app is open and never written in clear.
+
+The website keeps the key only in memory unless you choose **Remember the key in this browser**;
+then it is stored encrypted with a key the browser will not let out. A local model used from the
+website must allow requests from the page (in Ollama, set `OLLAMA_ORIGINS`); the desktop app does
+not need that.
+
+The conversation lasts for the session only, and starts over when you open another planner or
+change the provider, the model or the permission to look at pages.
+
+## 6. Use it with an AI model from outside (MCP)
 
 The same program is the **MCP server** that lets Claude Desktop, Claude Code or any MCP
 client create and edit planners, look at their pages and export the PDF (see [the
@@ -203,7 +232,7 @@ Nothing needs to be configured: the server finds the app by itself.
   whether the app is open.
 - Another app instance, or a test, can be reached by pointing `AGENDA_APP_LINK` to its `live.json`.
 
-## 6. Build it yourself
+## 7. Build it yourself
 
 You need Node.js 22.12 or later. The first run downloads Electron and the packaging tools
 (a few hundred MB).
@@ -227,7 +256,7 @@ npm run desktop         # opens dist/ in Electron (add -- --mcp to start the ser
 This development run keeps its data in a separate `Heritage Studio (dev)` folder and adds
 a **View** menu with **Reload** and **Toggle Developer Tools**.
 
-## 7. Publish a release
+## 8. Publish a release
 
 1. Set the new `version` in `package.json` (the files are named after it) and commit.
 2. Push a tag that starts with `v`:

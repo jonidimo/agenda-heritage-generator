@@ -211,7 +211,7 @@ instead, see [Run it](#run-it).
 
 - An **MCP server** lets Claude, or any model that speaks MCP, create a planner, change
   it, check it, look at its pages and export the PDF or a theme. The desktop app contains
-  it: start it with `--mcp` ([how](docs/desktop.md#5-use-it-with-an-ai-model-mcp)). Ask it for "a teacher's
+  it: start it with `--mcp` ([how](docs/desktop.md#6-use-it-with-an-ai-model-from-outside-mcp)). Ask it for "a teacher's
   planner from March to December" or "a theme with Art Nouveau flourishes".
 - The file format comes with a **JSON Schema** and a catalogue generated from the code,
   and `npm run agenda -- check` says exactly what would be ignored or corrected. Read the

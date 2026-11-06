@@ -306,3 +306,60 @@ test.describe('puente en vivo con un modelo de IA', () => {
     await expect.poll(() => win!.evaluate<string>('globalThis.__agenda.getState().design.persona.name')).toBe('Desde el servidor MCP');
   });
 });
+
+test.describe('asistente de IA en el escritorio', () => {
+  test('la clave queda cifrada en el proceso principal, el pedido sale por él con la clave, y solo hacia donde se configuró', async () => {
+    const { createServer } = await import('node:http');
+    const seen: Array<{ url: string; auth: string | undefined }> = [];
+    let round = 0;
+    const server = createServer((req, res) => {
+      let body = '';
+      req.on('data', (c: Buffer) => (body += c.toString()));
+      req.on('end', () => {
+        seen.push({ url: req.url ?? '', auth: req.headers.authorization });
+        res.setHeader('content-type', 'application/json');
+        if (req.url?.endsWith('/models')) return res.end(JSON.stringify({ data: [{ id: 'modelo-local' }] }));
+        round++;
+        const patch = [{ op: 'replace', path: '/theme/comfort', value: 'wide' }];
+        res.end(
+          JSON.stringify({
+            choices: [{ finish_reason: 'tool_calls', message: { content: null, tool_calls: [{ id: `c${round}`, type: 'function', function: { name: 'propose_change', arguments: JSON.stringify({ patch, summary: 'Letra amplia' }) } }] } }],
+          }),
+        );
+      });
+    });
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const port = (server.address() as { port: number }).port;
+    const base = `http://127.0.0.1:${port}/v1`;
+    try {
+      const { win } = await launchWithPlanner();
+      // Los ajustes del asistente: OpenAI compatible en esta computadora, con una clave guardada en el proceso principal.
+      const status = await win.evaluate<{ hasKey: Record<string, boolean> } & Record<string, unknown>>(`fetch('/_sys/ai/config', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ keys: { openai: 'k-test' }, baseUrls: { openai: ${JSON.stringify(base)} } }) }).then((r) => r.json())`);
+      expect(status.hasKey.openai).toBe(true);
+      // La página sabe que hay clave, nunca cuál.
+      expect(JSON.stringify(status)).not.toContain('k-test');
+      const { readFile } = await import('node:fs/promises');
+      const aiFile = join(profile, 'Heritage Studio (dev)', 'ai.json');
+      expect(await readFile(aiFile, 'utf8')).not.toContain('k-test');
+
+      await win.evaluate(`localStorage.setItem('agenda-studio.ai', JSON.stringify({ provider: 'openai', perProvider: { anthropic: { model: '', baseUrl: '' }, gemini: { model: '', baseUrl: '' }, openai: { model: 'modelo-local', baseUrl: ${JSON.stringify(base)} } }, vision: false, remember: false, pill: true }))`);
+      await win.evaluate("localStorage.setItem('agenda-studio.welcomeOnStart', 'false')");
+      await win.reload();
+      await expect(win.locator('[data-page-index]').first()).toBeVisible({ timeout: 90_000 });
+      await win.keyboard.press('Control+j');
+      await win.getByTestId('assistant-input').fill('Letra más grande');
+      await win.keyboard.press('Enter');
+      await expect(win.getByTestId('ai-proposal')).toBeVisible({ timeout: 30_000 });
+      // El servidor recibió la clave, puesta por el proceso principal.
+      expect(seen.filter((s) => s.url.endsWith('/chat/completions')).map((s) => s.auth)).toEqual(['Bearer k-test']);
+      await win.getByTestId('ai-apply').click();
+      await expect.poll(() => win.evaluate<string>('globalThis.__agenda.getState().design.theme.comfort')).toBe('wide');
+
+      // Hacia otro lado no sale ninguna clave.
+      const evil = await win.evaluate<number>(`fetch('/_sys/ai/chat', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ provider: 'openai', url: 'https://evil.example/v1/chat/completions', method: 'POST', headers: {}, body: '{}' }) }).then((r) => r.status)`);
+      expect(evil).toBe(403);
+    } finally {
+      server.close();
+    }
+  });
+});
