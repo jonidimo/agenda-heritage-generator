@@ -1774,3 +1774,100 @@ test.describe('arreglos de la 2.4', () => {
     expect(Math.abs((r.right - r.left) / (r0.right - r0.left) - (v.right - v.left) / (v0.right - v0.left))).toBeLessThan(0.02);
   });
 });
+
+test.describe('asistente de IA', () => {
+  // Con el service worker de la PWA activo, los pedidos al proveedor salen por él y la prueba no los ve.
+  test.use({ serviceWorkers: 'block' });
+
+  /** Un proveedor (la API de Anthropic) que contesta lo que dice el guion, y lo que recibió. */
+  async function fakeAnthropic(page: Page, replies: unknown[]): Promise<Array<{ url: string; headers: Record<string, string>; body: Record<string, unknown> | null }>> {
+    const seen: Array<{ url: string; headers: Record<string, string>; body: Record<string, unknown> | null }> = [];
+    await page.route('https://api.anthropic.com/**', async (route) => {
+      const req = route.request();
+      if (req.method() === 'OPTIONS') return route.fulfill({ status: 204, headers: { 'access-control-allow-origin': '*', 'access-control-allow-headers': '*', 'access-control-allow-methods': 'GET, POST' } });
+      seen.push({ url: req.url(), headers: req.headers(), body: req.postData() ? (JSON.parse(req.postData()!) as Record<string, unknown>) : null });
+      const body = req.url().includes('/v1/models') ? { data: [{ id: 'claude-opus-5-5' }, { id: 'claude-haiku-5-5' }] } : replies.shift();
+      await route.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify(body) });
+    });
+    return seen;
+  }
+
+  const propose = (value: string) => ({
+    model: 'claude-opus-5-5',
+    stop_reason: 'tool_use',
+    content: [{ type: 'tool_use', id: 'p1', name: 'propose_change', input: { patch: [{ op: 'replace', path: '/theme/comfort', value }], summary: 'Letra amplia para leer mejor' } }],
+  });
+
+  async function configure(page: Page): Promise<void> {
+    await page.locator('header').getByRole('button', { name: 'Archivo', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Asistente de IA…' }).click();
+    const dialog = page.getByTestId('ai-settings');
+    await dialog.getByLabel('Clave de API').fill('sk-ant-prueba');
+    await dialog.getByRole('button', { name: 'Comprobar y cargar modelos' }).click();
+    await expect(dialog.getByText('Funciona: 2 modelos disponibles.')).toBeVisible();
+    await dialog.getByRole('button', { name: 'Cerrar' }).click();
+  }
+
+  test('la píldora es discreta, propone un cambio que se ve en la página y Aplicar lo deja como un paso que se deshace', async ({ page }) => {
+    await openQuiet(page);
+    const seen = await fakeAnthropic(page, [
+      { model: 'claude-opus-5-5', stop_reason: 'tool_use', content: [{ type: 'tool_use', id: 'c1', name: 'get_context', input: {} }] },
+      propose('wide'),
+    ]);
+    await configure(page);
+    const pill = page.getByTestId('assistant-pill');
+    await expect(pill).toBeVisible();
+    // Plegada no ocupa una fila: es una cápsula chica sobre el lienzo.
+    const box = (await pill.boundingBox())!;
+    expect(box.height).toBeLessThanOrEqual(40);
+    expect(box.width).toBeLessThan(400);
+    await page.keyboard.press('Control+j');
+    const input = page.getByTestId('assistant-input');
+    await expect(input).toBeFocused();
+    await input.fill('Agrandá la letra para leer mejor');
+    await page.keyboard.press('Enter');
+    const card = page.getByTestId('ai-proposal');
+    await expect(card).toBeVisible();
+    await expect(card).toContainText('Letra amplia para leer mejor');
+    // Mientras tanto la agenda no cambió: lo que se ve es una vista previa.
+    expect(await page.evaluate<string>('globalThis.__agenda.getState().design.theme.comfort')).toBe('normal');
+    expect(await page.evaluate<string>('globalThis.__agenda.getState().previewDesign.theme.comfort')).toBe('wide');
+    // La política de seguridad dejó salir el pedido (si no, el proveedor simulado no lo habría visto), con la clave.
+    expect(seen.filter((s) => s.url.endsWith('/v1/messages'))).toHaveLength(2);
+    expect(seen[1]!.headers['x-api-key']).toBe('sk-ant-prueba');
+    await page.screenshot({ path: 'test-results/assistant-proposal.png' });
+
+    const past = await page.evaluate<number>('globalThis.__agenda.getState().past.length');
+    await card.getByTestId('ai-apply').click();
+    await expect.poll(() => page.evaluate<string>('globalThis.__agenda.getState().design.theme.comfort')).toBe('wide');
+    expect(await page.evaluate<number>('globalThis.__agenda.getState().past.length')).toBe(past + 1);
+    await expect(page.getByTestId('ai-notice')).toContainText('Letra amplia');
+    await page.locator('.desk').click({ position: { x: 5, y: 5 } });
+    await page.keyboard.press('Control+z');
+    await expect.poll(() => page.evaluate<string>('globalThis.__agenda.getState().design.theme.comfort')).toBe('normal');
+  });
+
+  test('Esc descarta la propuesta y la página vuelve a como estaba', async ({ page }) => {
+    await openQuiet(page);
+    await fakeAnthropic(page, [propose('compact')]);
+    await configure(page);
+    await page.keyboard.press('Control+j');
+    await page.getByTestId('assistant-input').fill('Más apretado');
+    await page.keyboard.press('Enter');
+    await expect(page.getByTestId('ai-proposal')).toBeVisible();
+    await page.getByTestId('assistant-input').press('Escape');
+    await expect(page.getByTestId('ai-proposal')).toBeHidden();
+    expect(await page.evaluate<unknown>('globalThis.__agenda.getState().previewDesign')).toBeNull();
+    expect(await page.evaluate<string>('globalThis.__agenda.getState().design.theme.comfort')).toBe('normal');
+  });
+
+  test('se puede ocultar desde el menú Ver, y Ctrl+J la vuelve a mostrar', async ({ page }) => {
+    await openQuiet(page);
+    await page.locator('header').getByRole('button', { name: 'Ver', exact: true }).click();
+    await page.getByRole('menuitem', { name: /Asistente de IA/ }).click();
+    await expect(page.getByTestId('assistant-pill')).toBeHidden();
+    await page.locator('.desk').click({ position: { x: 5, y: 5 } });
+    await page.keyboard.press('Control+j');
+    await expect(page.getByTestId('assistant-input')).toBeFocused();
+  });
+});

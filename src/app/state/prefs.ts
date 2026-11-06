@@ -9,6 +9,8 @@
  * valores por defecto.
  */
 import { LANGUAGES, type Lang } from '@core/i18n';
+import { z } from 'zod';
+import { AI_SETTINGS_DEFAULT, AiSettingsZ, type AiSettings } from './ai/settings';
 
 export interface Pref<T> {
   /** El valor guardado, o el valor por defecto. */
@@ -43,6 +45,21 @@ function rangeCodec(min: number, max: number): Codec<number> {
 
 function choiceCodec<T extends string>(values: readonly T[]): Codec<T> {
   return { decode: (raw) => values.find((v) => v === raw), encode: (v) => v };
+}
+
+/** Un valor compuesto guardado como JSON y validado al leerlo: uno dañado o de otra versión vale como ausente. */
+function jsonCodec<T>(schema: z.ZodType<T>): Codec<T> {
+  return {
+    decode(raw) {
+      try {
+        const parsed = schema.safeParse(JSON.parse(raw));
+        return parsed.success ? parsed.data : undefined;
+      } catch {
+        return undefined;
+      }
+    },
+    encode: (value) => JSON.stringify(value),
+  };
 }
 
 function definePref<T>(key: string, fallback: T, codec: Codec<T>): Pref<T> {
@@ -102,6 +119,8 @@ export const prefs = {
   liveLink: definePref<boolean>('agenda-studio.liveLink', true, boolCodec),
   /** Qué se está haciendo con la agenda: diseñarla o prepararla para imprimir. */
   mode: definePref<'design' | 'print'>('agenda-studio.mode', 'design', choiceCodec(['design', 'print'] as const)),
+  /** El asistente de IA: proveedor, modelo y dirección de cada uno, si puede mirar las páginas, si se ve la píldora. */
+  ai: definePref<AiSettings>('agenda-studio.ai', AI_SETTINGS_DEFAULT, jsonCodec(AiSettingsZ)),
   uiScale: definePref<number>('agenda-studio.uiScale', UI_SCALE.default, rangeCodec(UI_SCALE.min, UI_SCALE.max)),
   panel: {
     left: definePref<number>('agenda-studio.panel.left', PANEL_LIMITS.left.default, rangeCodec(PANEL_LIMITS.left.min, PANEL_LIMITS.left.max)),

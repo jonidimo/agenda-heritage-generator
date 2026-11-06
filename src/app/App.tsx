@@ -26,6 +26,10 @@ import { useDocument } from './state/doc';
 import { collectUnusedAssets, listDesigns, loadDesign } from './state/persist';
 import { resources } from './state/resources';
 import { installClipboard } from './state/clipboard';
+import { isDesktopShell } from './state/desktopBridge';
+import { PROVIDER_IDS } from '@core/ai/providers';
+import { installAssistant } from './state/ai/assistant';
+import { loadRemembered } from './state/ai/keys';
 import { installShortcuts } from './state/shortcuts';
 import { PANEL_LIMITS } from './state/prefs';
 import { activeView, flushSave, useStore, type Panel } from './state/store';
@@ -195,6 +199,11 @@ export function App() {
 
   // Copiar, cortar, pegar y duplicar elementos propios.
   useEffect(() => installClipboard(), []);
+  useEffect(() => installAssistant(), []);
+  // Las claves del asistente recordadas en este navegador (cifradas): en la aplicación de escritorio las guarda ella.
+  useEffect(() => {
+    if (!isDesktopShell()) void loadRemembered(PROVIDER_IDS);
+  }, []);
 
   // Cada cambio de diseño asegura sus fuentes, feriados y recursos.
   useEffect(() => {

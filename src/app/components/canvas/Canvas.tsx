@@ -15,6 +15,7 @@ import { Thumb } from './Thumb';
 import { jumpToPage } from '../../state/navigation';
 import { reveal } from '../../state/reveal';
 import { registerViewport } from '../../state/viewport';
+import { AssistantDock } from '../assistant/AssistantDock';
 
 function useSize(): [React.RefObject<HTMLDivElement | null>, { w: number; h: number }] {
   const ref = useRef<HTMLDivElement | null>(null);
@@ -86,6 +87,7 @@ export function Canvas({ committed, live }: { committed: AgendaDocument; live: A
           </div>
         )}
       </div>
+      <AssistantDock footer={view !== 'book'} />
       {view !== 'book' && (
         <div className="flex items-center justify-center gap-2 border-t border-line bg-paper/90 px-3 py-1.5 text-[12px]">
           <IconButton label="←" onClick={prev} disabled={pageIndex === 0}>

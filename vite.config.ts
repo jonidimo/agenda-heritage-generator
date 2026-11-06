@@ -16,7 +16,9 @@ const CSP = [
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' blob: data:",
   "font-src 'self' data:",
-  "connect-src 'self' blob: data:",
+  // El asistente de IA habla con el proveedor que elige la persona (https) o con un modelo en esta misma
+  // computadora (Ollama, LM Studio). Conectarse no es ejecutar: `script-src` sigue siendo solo código propio.
+  "connect-src 'self' blob: data: https: http://localhost:* http://127.0.0.1:*",
   "worker-src 'self' blob:",
   "object-src 'none'",
   "base-uri 'self'",

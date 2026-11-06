@@ -1,4 +1,4 @@
-import { Archive, ArrowLeft, Eye, Keyboard, Pencil, PenTool, ArrowRight, BookOpen, Search, Columns2, File, FileDown, FolderOpen, Grid3x3, Info, LayoutTemplate, Link2, Magnet, Maximize, PanelLeft, Printer, Redo2, Ruler, Save, Undo2, Upload, ZoomIn, ZoomOut } from 'lucide-react';
+import { Archive, ArrowLeft, Eye, Keyboard, Pencil, PenTool, ArrowRight, BookOpen, Search, Columns2, File, FileDown, FolderOpen, Grid3x3, Info, LayoutTemplate, Link2, Magnet, Maximize, PanelLeft, Printer, Redo2, Ruler, Save, Sparkles, Undo2, Upload, ZoomIn, ZoomOut } from 'lucide-react';
 import { useEffect } from 'react';
 import { backupAll, openAnyFile, saveCurrent } from '../state/fileActions';
 import { openMenuAt, type MenuItem } from './ContextMenu';
@@ -11,6 +11,7 @@ import { supportsUiScale } from '../state/uiScale';
 import { IconButton, Segmented } from './ui';
 import { goBack, goForward } from '../state/navigation';
 import { isDesktopShell, revealFile } from '../state/desktopBridge';
+import { useAssistant } from '../state/ai/assistant';
 import { SearchPalette } from './SearchPalette';
 
 /** Un botón de la barra que abre un menú justo debajo; el menú se arma al abrirlo, con lo que haya en ese momento. */
@@ -118,6 +119,7 @@ export function Topbar() {
               : []),
             ...(lastExport ? [{ label: t('file.openLastFolder'), onSelect: () => void revealFile(lastExport.path) }, { separator: true as const }] : [{ separator: true as const }]),
             { label: t('file.autoReveal'), checked: autoReveal, onSelect: () => setAutoReveal(!autoReveal) },
+            { label: t('file.aiSettings'), icon: <Sparkles size={14} />, onSelect: () => useAssistant.getState().setShowSettings(true) },
             // El puente con un modelo de IA existe solo en la aplicación de escritorio.
             ...(isDesktopShell() ? [{ label: t('file.liveLink'), checked: liveLink, onSelect: () => setLiveLink(!liveLink) }] : []),
             { label: t('file.shortcuts'), icon: <Keyboard size={14} />, hint: shortcutHint('help.shortcuts', t), onSelect: () => setShowShortcuts(true) },

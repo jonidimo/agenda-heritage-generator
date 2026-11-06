@@ -1,5 +1,6 @@
 /** Los menús «Edición» y «Ver» de la barra superior, con las teclas de cada acción a la derecha. */
-import { Copy, Crosshair, Eye, EyeOff, Link2, MousePointer2, PanelLeft, Redo2, Scissors, SquareDashedMousePointer, Undo2, Type, ZoomIn, ZoomOut, Keyboard } from 'lucide-react';
+import { Copy, Crosshair, Eye, EyeOff, Link2, MousePointer2, PanelLeft, Redo2, Scissors, SquareDashedMousePointer, Undo2, Type, ZoomIn, ZoomOut, Keyboard, Sparkles } from 'lucide-react';
+import { useAssistant } from '../state/ai/assistant';
 import { copySelection, cutSelection, duplicateSelection, pasteSelection } from '../state/clipboard';
 import { currentDocument, selectionContext } from '../state/selectionContext';
 import { shortcutHint } from '../state/shortcutHints';
@@ -61,6 +62,7 @@ const VIEW_LABELS: Array<[View, UiKey]> = [
 
 export function viewMenu(t: T): MenuItem[] {
   const st = useStore.getState();
+  const ai = useAssistant.getState();
   const screen = st.design?.binding.target === 'screen';
   return [
     { label: t('sc.view.zoomIn'), icon: <ZoomIn size={14} />, hint: shortcutHint('view.zoomIn', t), onSelect: () => st.zoomBy(1.2) },
@@ -78,6 +80,7 @@ export function viewMenu(t: T): MenuItem[] {
     { label: t('sc.view.guides'), checked: st.guides, hint: shortcutHint('view.guides', t), onSelect: () => st.toggleGuides() },
     { label: t('sc.view.snap'), checked: st.snap, hint: shortcutHint('view.snap', t), onSelect: () => st.toggleSnap() },
     { label: t('sc.view.links'), icon: <Link2 size={14} />, checked: st.showLinks, hint: shortcutHint('view.links', t), onSelect: () => st.setShowLinks(!st.showLinks) },
+    { label: t('view.aiPill'), icon: <Sparkles size={14} />, checked: ai.settings.pill, hint: shortcutHint('ai.focus', t), onSelect: () => ai.updateSettings((x) => ({ ...x, pill: !x.pill })) },
     { separator: true },
     { label: t('file.shortcuts'), icon: <Keyboard size={14} />, hint: shortcutHint('help.shortcuts', t), onSelect: () => st.setShowShortcuts(true) },
   ];

@@ -51,6 +51,11 @@ export interface ToolHost {
   setView(req: { view?: string | undefined; mode?: 'design' | 'print' | undefined; zoom?: number | 'fit' | undefined }): string;
   /** Lo que el catálogo del núcleo no sabe: las fuentes instaladas, por ejemplo. */
   catalogueExtra(): Record<string, unknown>;
+  /**
+   * Maquetar todas las páginas antes de revisarlas, cediendo el hilo entre tandas (en la aplicación, para
+   * que la interfaz no se trabe con una agenda de cientos de páginas). Sin ella, la revisión las maqueta de una.
+   */
+  layoutAll?: (() => Promise<void>) | undefined;
 }
 
 /** Un cambio listo para que la persona lo vea y lo apruebe. */
@@ -178,7 +183,11 @@ const TOOLS = [
     description: 'Lays out the whole planner and reports pages, sheets, signatures, links and warnings (text that does not fit, missing images, broken links) with their pages.',
     schema: z.strictObject({}),
     readOnly: true,
-    run: (_input, host) => ({ content: json(documentSummary(needDocument(host))) }),
+    run: async (_input, host) => {
+      const doc = needDocument(host);
+      await host.layoutAll?.();
+      return { content: json(documentSummary(doc)) };
+    },
   }),
   define({
     name: 'propose_change',

@@ -6,6 +6,7 @@
  * Una tecla «Mod» es Ctrl, o ⌘ en un Mac. Nunca se toma una tecla mientras se escribe en un campo
  * (salvo las marcadas `typing`), y Ctrl con Alt es AltGr en varias distribuciones: no cuenta como Ctrl.
  */
+import { focusAssistant } from './ai/assistant';
 import { blockBounds } from '@core/document/layout';
 import { unionRect } from '@core/layout/align';
 import type { StackMove } from '@core/layout/stack';
@@ -266,6 +267,7 @@ export const SHORTCUTS: readonly Shortcut[] = [
 
   ...PANEL_ORDER.map((panel, i): Shortcut => ({ id: `panel.${panel}`, group: 'panels', typing: true, chords: digit(i + 1), run: () => openPanel(panel) })),
 
+  { id: 'ai.focus', group: 'help', typing: true, chords: [{ key: 'j', mod: true }], run: () => (state().design ? focusAssistant() : false) },
   { id: 'search.open', group: 'help', typing: true, chords: [{ key: 'f', mod: true }, { key: 'k', mod: true }, { key: '/', shift: 'any' }], run: (e) => (e.key === '/' && isTyping(e.target) ? false : state().setSearchOpen(true)) },
   { id: 'help.shortcuts', group: 'help', typing: true, chords: [{ key: 'F1' }, { key: '/', mod: true }, { key: '?', shift: 'any' }], run: (e) => (e.key === '?' && isTyping(e.target) ? false : state().setShowShortcuts(true)) },
 ];

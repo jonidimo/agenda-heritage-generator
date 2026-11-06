@@ -22,7 +22,7 @@ import { Button, Field, NumberInput, Select, TextArea, TextInput, Toggle } from 
 
 const FOCUSABLE = 'button:not([disabled]), [href], input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
-function Modal(props: { title: string; onClose: () => void; children: React.ReactNode }) {
+export function Modal(props: { title: string; onClose: () => void; children: React.ReactNode }) {
   const t = useT();
   const boxRef = useRef<HTMLDivElement | null>(null);
   const onCloseRef = useRef(props.onClose);
