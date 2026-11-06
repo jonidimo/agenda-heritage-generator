@@ -47,3 +47,23 @@ describe('tamaño de la hoja', () => {
     expect(same.customBlocks[0]!.x).toBe(10);
   });
 });
+
+describe('cambiar el tamaño: casos de borde', () => {
+  it('leer en pantalla con un papel de imprenta es una página por hoja', () => {
+    const next = changePaper(fresh(), { paper: { preset: 'A4', width: 210, height: 297 }, target: 'screen', rescale: false });
+    expect(next.binding).toMatchObject({ target: 'screen', method: 'single' });
+  });
+
+  it('una imagen crece pareja (sin deformarse), centrada donde iba; la marca de agua no baja de 1 mm', () => {
+    const d = fresh();
+    const base = {
+      ...d,
+      customBlocks: [{ id: 'img', pageType: 'notes', pageKey: null, kind: 'image' as const, x: 10, y: 10, w: 20, h: 20, mirror: true, props: {} }],
+      watermarks: d.watermarks.map((w) => ({ ...w, width: 1.2 })),
+    };
+    const next = changePaper(base, { paper: { preset: 'TABLET_7_8', width: 210, height: 297 }, rescale: true });
+    const img = next.customBlocks[0]!;
+    expect(img.w).toBeCloseTo(img.h, 2);
+    for (const w of next.watermarks) expect(w.width).toBeGreaterThanOrEqual(1);
+  });
+});

@@ -36,17 +36,35 @@ export const AI_SETTINGS_DEFAULT: AiSettings = {
   pill: true,
 };
 
-/**
- * El modelo y la dirección que valen para el proveedor elegido. Un modelo vacío usa el de siempre, pero
- * solo en la dirección oficial: un servidor local u otro servicio no tiene «gpt-5-mini», así que ahí sin
- * modelo elegido queda vacío (y un modelo sugerido de OpenAI que quedó guardado de antes no cuenta).
- */
+/** El modelo y la dirección que valen para el proveedor elegido; sin modelo, el de siempre (solo en la dirección oficial). */
 export function activeProvider(s: AiSettings): { provider: AiProviderId; model: string; baseUrl: string } {
   const p = s.perProvider[s.provider];
   const adapter = PROVIDERS[s.provider];
-  const official = isOfficialBase(adapter, p.baseUrl);
-  const model = official ? p.model || adapter.defaultModel : p.model === adapter.defaultModel || adapter.suggestedModels.includes(p.model) ? '' : p.model;
-  return { provider: s.provider, model, baseUrl: p.baseUrl };
+  return { provider: s.provider, model: p.model || (isOfficialBase(adapter, p.baseUrl) ? adapter.defaultModel : ''), baseUrl: p.baseUrl };
+}
+
+/**
+ * Lo que la versión 2.4.0 guardó sin que nadie lo eligiera: el modelo de siempre de OpenAI junto a una
+ * dirección local u otra. Al leer los ajustes se olvida (un servidor local no tiene «gpt-5-mini»); lo que la
+ * persona elija después se respeta siempre.
+ */
+export function normalizeAiSettings(s: AiSettings): AiSettings {
+  let changed = false;
+  const perProvider = { ...s.perProvider };
+  for (const id of Object.keys(perProvider) as AiProviderId[]) {
+    const p = perProvider[id];
+    if (p.model !== '' && p.model === PROVIDERS[id].defaultModel && !isOfficialBase(PROVIDERS[id], p.baseUrl)) {
+      perProvider[id] = { ...p, model: '' };
+      changed = true;
+    }
+  }
+  return changed ? { ...s, perProvider } : s;
+}
+
+/** Al cambiar de dirección, un modelo sugerido para la oficial deja de valer en otra: se borra. */
+export function modelForBase(id: AiProviderId, model: string, baseUrl: string): string {
+  const adapter = PROVIDERS[id];
+  return !isOfficialBase(adapter, baseUrl) && (model === adapter.defaultModel || adapter.suggestedModels.includes(model)) ? '' : model;
 }
 
 /** Lo que define una sesión del asistente: si cambia, la conversación empieza de nuevo. */

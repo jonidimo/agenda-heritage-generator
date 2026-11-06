@@ -44,6 +44,7 @@ import { setEnabled } from '../../state/sections';
 import { reveal } from '../../state/reveal';
 import { exportPageSvg, fileBase } from '../../state/exporter';
 import { useStore } from '../../state/store';
+import { movable } from '../../state/movable';
 import { shortcutHint } from '../../state/shortcutHints';
 import { addAssetFiles, pickFiles } from '../../state/uploads';
 import type { MenuItem } from '../ContextMenu';
@@ -90,29 +91,33 @@ async function uploadImage(t: T): Promise<string | undefined> {
 }
 
 /** Opciones para varios elementos seleccionados. */
-export function multiMenu(c: MenuContext, blocks: Block[], primary: Block): MenuItem[] {
+export function multiMenu(c: MenuContext, all: Block[], primary: Block): MenuItem[] {
   const { t, page, scope } = c;
+  // Lo bloqueado se queda donde está: las acciones son sobre el resto.
+  const blocks = all.filter(movable);
   const n = blocks.length;
+  const none = n === 0;
   const align = (mode: Parameters<typeof alignBlocks>[2]) => () => alignBlocks(page, blocks, mode, 'selection', scope);
   return [
     { heading: t('multi.count', { n }) },
-    { label: t('align.left'), icon: <AlignStartVertical size={14} />, onSelect: align('left') },
-    { label: t('align.centerH'), icon: <AlignCenterVertical size={14} />, onSelect: align('centerH') },
-    { label: t('align.right'), icon: <AlignEndVertical size={14} />, onSelect: align('right') },
-    { label: t('align.top'), icon: <AlignStartHorizontal size={14} />, onSelect: align('top') },
-    { label: t('align.middle'), icon: <AlignCenterHorizontal size={14} />, onSelect: align('middle') },
-    { label: t('align.bottom'), icon: <AlignEndHorizontal size={14} />, onSelect: align('bottom') },
+    { label: t('align.left'), icon: <AlignStartVertical size={14} />, disabled: none, onSelect: align('left') },
+    { label: t('align.centerH'), icon: <AlignCenterVertical size={14} />, disabled: none, onSelect: align('centerH') },
+    { label: t('align.right'), icon: <AlignEndVertical size={14} />, disabled: none, onSelect: align('right') },
+    { label: t('align.top'), icon: <AlignStartHorizontal size={14} />, disabled: none, onSelect: align('top') },
+    { label: t('align.middle'), icon: <AlignCenterHorizontal size={14} />, disabled: none, onSelect: align('middle') },
+    { label: t('align.bottom'), icon: <AlignEndHorizontal size={14} />, disabled: none, onSelect: align('bottom') },
     { separator: true },
     { label: t('align.distributeH'), icon: <AlignHorizontalDistributeCenter size={14} />, disabled: n < 3, onSelect: () => distributeBlocks(page, blocks, 'x', scope) },
     { label: t('align.distributeV'), icon: <AlignVerticalDistributeCenter size={14} />, disabled: n < 3, onSelect: () => distributeBlocks(page, blocks, 'y', scope) },
-    { label: t('align.tidy'), icon: <Grid3x3 size={14} />, onSelect: () => tidyBlocks(page, blocks, scope) },
-    { label: t('align.centerMargins'), icon: <Crosshair size={14} />, onSelect: () => centerBlocks(page, blocks, 'margins', 'x', scope) },
-    { label: t('align.matchScale', { name: blockLabel(t, primary.id, primary.label) }), icon: <Scaling size={14} />, onSelect: () => matchScale(page, blocks, primary, scope) },
+    { label: t('align.tidy'), icon: <Grid3x3 size={14} />, disabled: none, onSelect: () => tidyBlocks(page, blocks, scope) },
+    { label: t('align.centerMargins'), icon: <Crosshair size={14} />, disabled: none, onSelect: () => centerBlocks(page, blocks, 'margins', 'x', scope) },
+    { label: t('align.matchScale', { name: blockLabel(t, primary.id, primary.label) }), icon: <Scaling size={14} />, disabled: none, onSelect: () => matchScale(page, blocks, primary, scope) },
     { separator: true },
-    { label: t('multi.reset'), icon: <RotateCcw size={14} />, onSelect: () => resetBlocks(page, blocks.map((b) => b.id), scope) },
+    { label: t('multi.reset'), icon: <RotateCcw size={14} />, disabled: none, onSelect: () => resetBlocks(page, blocks.map((b) => b.id), scope) },
     {
       label: t('multi.hide'),
       icon: <EyeOff size={14} />,
+      disabled: none,
       onSelect: () => {
         hideBlocks(page, blocks, scope);
         useStore.getState().select(null);
@@ -129,8 +134,9 @@ export function blockMenu(c: MenuContext, block: Block): MenuItem[] {
   const design = useStore.getState().design!;
   const update = useStore.getState().update;
   const items: MenuItem[] = [{ heading: blockLabel(t, block.id, block.label, block.renamed) }];
-  const hideHere = { label: t('menu.hideHere'), icon: <EyeOff size={14} />, onSelect: () => hideBlocks(page, [block], 'page') };
-  const hideType = { label: t('menu.hideType', { type: sectionName(t, page.type) }), icon: <EyeOff size={14} />, onSelect: () => hideBlocks(page, [block], 'type') };
+  const locked = block.locked === true;
+  const hideHere = { label: t('menu.hideHere'), icon: <EyeOff size={14} />, disabled: locked, onSelect: () => hideBlocks(page, [block], 'page') };
+  const hideType = { label: t('menu.hideType', { type: sectionName(t, page.type) }), icon: <EyeOff size={14} />, disabled: locked, onSelect: () => hideBlocks(page, [block], 'type') };
 
   if (block.role === 'watermark' && block.id.startsWith('wm.')) {
     const wmId = block.id.slice(3);
@@ -145,12 +151,14 @@ export function blockMenu(c: MenuContext, block: Block): MenuItem[] {
       ...design.assets.filter((a) => a.kind !== 'pdf').map((a) => ({ label: a.name, checked: wm?.assetId === a.id, icon: <ImageIcon size={14} />, onSelect: () => setAsset(a.id) })),
       { label: t('wm.upload'), icon: <ImagePlus size={14} />, onSelect: () => void uploadImage(t).then((id) => id && setAsset(id)) },
       { separator: true },
+      lockItem(t, page, block, scope),
       hideHere,
       hideType,
       {
         label: t('wm.delete'),
         icon: <Trash2 size={14} />,
         danger: true,
+        disabled: locked,
         onSelect: () => {
           update((d) => void (d.watermarks = d.watermarks.filter((w) => w.id !== wmId)));
           useStore.getState().select(null);
@@ -238,8 +246,8 @@ export function layerMenu(t: T, page: PageModel, block: Block, scope: Scope, act
     lockItem(t, page, block, scope),
     { label: t('layers.renameMenu'), icon: <Pencil size={14} />, hint: 'F2', onSelect: actions.rename },
     { separator: true },
-    { label: t('layers.front'), icon: <ArrowUpToLine size={14} />, disabled: at === page.blocks.length - 1, onSelect: () => moveInStack(page, block.id, 'front', scope) },
-    { label: t('layers.back'), icon: <ArrowDownToLine size={14} />, disabled: at === 0, onSelect: () => moveInStack(page, block.id, 'back', scope) },
+    { label: t('layers.front'), icon: <ArrowUpToLine size={14} />, disabled: locked || at === page.blocks.length - 1, onSelect: () => moveInStack(page, block.id, 'front', scope) },
+    { label: t('layers.back'), icon: <ArrowDownToLine size={14} />, disabled: locked || at === 0, onSelect: () => moveInStack(page, block.id, 'back', scope) },
     { separator: true },
     {
       label: custom ? t('insp.delete') : t('insp.hide'),

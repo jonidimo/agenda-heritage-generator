@@ -9,7 +9,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { plural, useT, type UiKey } from '../../i18n/ui';
 import { useAssistant } from '../../state/ai/assistant';
 import { forgetAll, getKey, hasKey, setKey } from '../../state/ai/keys';
-import { activeProvider } from '../../state/ai/settings';
+import { activeProvider, modelForBase } from '../../state/ai/settings';
 import { desktopSaveKey, desktopStatus, type DesktopAiStatus } from '../../state/ai/desktop';
 import { isDesktopShell } from '../../state/desktopBridge';
 import { Modal } from '../Dialogs';
@@ -58,7 +58,8 @@ export function AssistantSettings({ onClose }: { onClose: () => void }) {
         setStored(st.hasKey[provider]);
       })
       .catch(() => setDeskStatus(null));
-  }, [desk, provider]);
+    // Con otra dirección, el proceso principal pudo haber olvidado la clave: se pregunta de nuevo.
+  }, [desk, provider, baseUrl]);
   const [models, setModels] = useState<string[]>([]);
   const [check, setCheck] = useState<Check>({ state: 'idle' });
   const [typing, setTyping] = useState(false);
@@ -75,13 +76,12 @@ export function AssistantSettings({ onClose }: { onClose: () => void }) {
     setCheck({ state: 'idle' });
   }, [desk, provider, baseUrl]);
   const setProviderField = (field: 'model' | 'baseUrl', value: string): void =>
-    update((s) => ({
-      ...s,
-      perProvider: {
-        ...s.perProvider,
-        [s.provider]: { ...s.perProvider[s.provider], [field]: value },
-      },
-    }));
+    update((s) => {
+      const cur = s.perProvider[s.provider];
+      // Otra dirección: un modelo sugerido para la oficial ya no vale ahí.
+      const next = field === 'baseUrl' ? { ...cur, baseUrl: value, model: modelForBase(s.provider, cur.model, value) } : { ...cur, model: value };
+      return { ...s, perProvider: { ...s.perProvider, [s.provider]: next } };
+    });
 
   const saveKey = async (): Promise<void> => {
     setKeyError(null);

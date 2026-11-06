@@ -208,6 +208,40 @@ describe('ajustar una propuesta', () => {
   });
 });
 
+describe('detener o limpiar un ajuste', () => {
+  /** Un proveedor que no contesta hasta que se cancela el pedido. */
+  const hang = () =>
+    vi.stubGlobal('fetch', (_url: string, init: { signal?: AbortSignal }) => new Promise((_resolve, reject) => init.signal?.addEventListener('abort', () => reject(Object.assign(new Error('abort'), { name: 'AbortError' })))));
+
+  it('detener un ajuste deja a la vista la propuesta que se ajustaba (con Aplicar y Descartar)', async () => {
+    script.push(anthropicReply([{ type: 'tool_use', id: 'p1', name: 'propose_change', input: { patch: [{ op: 'replace', path: '/theme/comfort', value: 'wide' }], summary: 'Más amplio' } }]));
+    await useAssistant.getState().send('Más grande');
+    hang();
+    const pending = useAssistant.getState().send('Un poco más');
+    await new Promise((r) => setTimeout(r, 10));
+    useAssistant.getState().stop();
+    await pending;
+    const a = useAssistant.getState();
+    expect(a.proposal).toMatchObject({ summary: 'Más amplio' });
+    expect(a.status).toBe('awaiting');
+    expect(useStore.getState().previewDesign!.theme.comfort).toBe('wide');
+    await useAssistant.getState().apply();
+    expect(useStore.getState().design!.theme.comfort).toBe('wide');
+  });
+
+  it('«Limpiar» durante un ajuste saca el borrador de la página', async () => {
+    script.push(anthropicReply([{ type: 'tool_use', id: 'p1', name: 'propose_change', input: { patch: [{ op: 'replace', path: '/theme/comfort', value: 'wide' }], summary: 'Más amplio' } }]));
+    await useAssistant.getState().send('Más grande');
+    hang();
+    const pending = useAssistant.getState().send('Un poco más');
+    await new Promise((r) => setTimeout(r, 10));
+    useAssistant.getState().clear();
+    await pending;
+    expect(useAssistant.getState().proposal).toBeNull();
+    expect(useStore.getState().previewDesign).toBeNull();
+  });
+});
+
 describe('errores', () => {
   it('una clave rechazada se muestra como tal, y la conversación no queda a medias', async () => {
     script.push({ status: 401, body: { error: { message: 'invalid x-api-key' } } });

@@ -337,11 +337,13 @@ function placeCustomBlock(ctx: LayoutContext, cb: CustomBlock, page: PagePlan): 
  */
 function drawingPrims(drawing: DrawingProps, box: Rect, assets: ReadonlyMap<string, AssetInfo>): Prim[] {
   const from = { x: 0, y: 0, w: drawing.w0, h: drawing.h0 };
-  const prims = vectorImages(drawing.prims as Prim[], assets, drawing.tint);
-  const out: Prim[] =
+  const prims = drawing.prims as Prim[];
+  // Primero se ubica (las imágenes se mueven enteras) y después los dibujos vectoriales pasan a trazados.
+  const placed: Prim[] =
     drawing.mode === 'scale'
       ? [{ t: 'group', m: composeAll(translate(box.x, box.y), scale(box.w / drawing.w0, box.h / drawing.h0)), children: prims }]
       : stretchPrims(prims, from, box);
+  const out = vectorImages(placed, assets, drawing.tint);
   if (drawing.opacity === undefined || drawing.opacity >= 1) return out;
   return [{ t: 'group', opacity: drawing.opacity, children: out }];
 }
@@ -562,9 +564,11 @@ export function layoutPage(
       const shift = mirroredScaleShift(pivot.w, o.scale, isMirrored(doc, plan, o));
       if (shift !== 0) m = compose(translate(-shift, 0), m);
       const bounds = transformRect(m, pivot);
-      // Mantener dentro de la página.
-      const dx = bounds.x < 0 ? -bounds.x : bounds.x + bounds.w > geom.w ? geom.w - bounds.x - bounds.w : 0;
-      const dy = bounds.y < 0 ? -bounds.y : bounds.y + bounds.h > geom.h ? geom.h - bounds.y - bounds.h : 0;
+      // Mantener dentro de la página, si el ajuste lo mueve o lo transforma (uno que solo bloquea, renombra o
+      // cambia la capa no reacomoda un elemento que la persona dejó así).
+      const moves = o.dx !== 0 || o.dy !== 0 || o.dw !== 0 || o.dh !== 0 || o.scale !== 1 || (o.scaleY !== null && o.scaleY !== o.scale) || o.rotation !== 0;
+      const dx = !moves ? 0 : bounds.x < 0 ? -bounds.x : bounds.x + bounds.w > geom.w ? geom.w - bounds.x - bounds.w : 0;
+      const dy = !moves ? 0 : bounds.y < 0 ? -bounds.y : bounds.y + bounds.h > geom.h ? geom.h - bounds.y - bounds.h : 0;
       if ((dx !== 0 || dy !== 0) && bounds.w <= geom.w && bounds.h <= geom.h) {
         m = compose(translate(dx, dy), m);
         ctx.warn('clamped', `«${b.label}» se acomodó para no salir de la página.`, { block: b.id, label: b.label });

@@ -11,7 +11,7 @@ import { dirname, relative, resolve, sep } from 'node:path';
 import { z } from 'zod';
 import { createDesign, TEMPLATES, type TemplateId } from '../core/design/defaults';
 import { designJsonSchema, schemaPart } from '../core/design/jsonSchema';
-import { PAPER_PRESETS, PaperPresetZ, type Design } from '../core/design/schema';
+import { PAPER_PRESETS, PaperPresetZ, SCREEN_PRESETS, type Design } from '../core/design/schema';
 import { changePaper } from '../core/document/paper';
 import { themeFile, themeFromDesign } from '../core/design/themeFile';
 import { EXPORT_KINDS } from '../core/document';
@@ -229,6 +229,10 @@ export function createServer(opts: ServerOptions): McpServer {
       },
     },
     async ({ template, year, locale, country, name, paper, width, height, purpose, binding, out, overwrite, app }) => {
+      if ((width !== undefined || height !== undefined) && paper !== 'CUSTOM') throw new Error('«width» y «height» van solo con paper "CUSTOM".');
+      if (paper === 'CUSTOM' && (width === undefined || height === undefined)) throw new Error('Con paper "CUSTOM" hacen falta «width» y «height» (mm).');
+      if (paper && SCREEN_PRESETS.includes(paper) && (purpose === 'print' || (binding && binding !== 'single'))) throw new Error(`«${paper}» es una pantalla: va con purpose "screen" (una página por hoja), sin otra encuadernación.`);
+      if (purpose === 'screen' && binding && binding !== 'single') throw new Error('Para leer en pantalla la encuadernación es "single" (una página por hoja).');
       const created = createDesign(template, { ...(year ? { year } : {}), ...(locale ? { locale } : {}), ...(country !== undefined ? { country } : {}), ...(name ? { name } : {}) });
       const design =
         paper || purpose || binding || width || height

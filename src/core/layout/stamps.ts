@@ -25,6 +25,8 @@ export interface StampOptions {
   /** Cuánto varía cada copia (0 nada, 0,5 mucho): tamaño ±, y en el giro fijo o siguiendo el trazo, ±45°·variación. */
   jitter: number;
   seed: number;
+  /** Tope de copias, por debajo de `STAMP_LIMITS.stamps` (p. ej. para un dibujo vectorial muy detallado). */
+  max?: number;
 }
 
 export interface Stamp {
@@ -67,6 +69,7 @@ export function stampsAlong(points: readonly Point[], opts: StampOptions): Stamp
   const step = size * clamp(opts.spacing, STAMP_LIMITS.spacing.min, STAMP_LIMITS.spacing.max);
   const jitter = clamp(opts.jitter, STAMP_LIMITS.jitter.min, STAMP_LIMITS.jitter.max);
   const rand = seeded(opts.seed);
+  const cap = Math.max(1, Math.min(STAMP_LIMITS.stamps, Math.floor(opts.max ?? STAMP_LIMITS.stamps)));
   const out: Stamp[] = [];
   const place = (x: number, y: number, tangent: number): void => {
     const vary = (): number => rand() * 2 - 1;
@@ -87,14 +90,14 @@ export function stampsAlong(points: readonly Point[], opts: StampOptions): Stamp
   place(pts[0]!.x, pts[0]!.y, firstDir);
   // Cuánto falta recorrer hasta la próxima copia.
   let left = step;
-  for (let i = 1; i < pts.length && out.length < STAMP_LIMITS.stamps; i++) {
+  for (let i = 1; i < pts.length && out.length < cap; i++) {
     const a = pts[i - 1]!;
     const b = pts[i]!;
     const len = Math.hypot(b.x - a.x, b.y - a.y);
     if (len === 0) continue;
     const dir = deg(Math.atan2(b.y - a.y, b.x - a.x));
     let at = 0;
-    while (len - at >= left && out.length < STAMP_LIMITS.stamps) {
+    while (len - at >= left && out.length < cap) {
       at += left;
       place(a.x + ((b.x - a.x) * at) / len, a.y + ((b.y - a.y) * at) / len, dir);
       left = step;
@@ -119,12 +122,18 @@ export function strokeLength(points: readonly Point[]): number {
 export function stampDrawing(stamps: readonly Stamp[], asset: string, aspect: number, extra: { tint?: string; opacity?: number; label?: string } = {}): { box: { x: number; y: number; w: number; h: number }; props: DrawingProps } | null {
   if (stamps.length === 0) return null;
   const ratio = Number.isFinite(aspect) && aspect > 0 ? aspect : 1;
-  // Cada copia, girada, entra en un círculo de radio la mitad de su diagonal.
-  const radius = (s: Stamp): number => Math.hypot(s.size, s.size / ratio) / 2;
-  const x0 = Math.min(...stamps.map((s) => s.x - radius(s)));
-  const y0 = Math.min(...stamps.map((s) => s.y - radius(s)));
-  const x1 = Math.max(...stamps.map((s) => s.x + radius(s)));
-  const y1 = Math.max(...stamps.map((s) => s.y + radius(s)));
+  // Lo que ocupa cada copia girada: medio ancho y medio alto de su rectángulo girado.
+  const half = (s: Stamp): { hx: number; hy: number } => {
+    const a = (s.angle * Math.PI) / 180;
+    const w = s.size;
+    const h = s.size / ratio;
+    return { hx: (Math.abs(w * Math.cos(a)) + Math.abs(h * Math.sin(a))) / 2, hy: (Math.abs(w * Math.sin(a)) + Math.abs(h * Math.cos(a))) / 2 };
+  };
+  const ext = stamps.map((s) => ({ s, ...half(s) }));
+  const x0 = Math.min(...ext.map((e) => e.s.x - e.hx));
+  const y0 = Math.min(...ext.map((e) => e.s.y - e.hy));
+  const x1 = Math.max(...ext.map((e) => e.s.x + e.hx));
+  const y1 = Math.max(...ext.map((e) => e.s.y + e.hy));
   const r3 = (v: number): number => Math.round(v * 1000) / 1000;
   const prims: DrawingPrim[] = stamps.map((s): DrawingPrim => {
     const w = s.size;

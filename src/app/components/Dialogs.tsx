@@ -119,8 +119,8 @@ export function WelcomeDialog() {
   const create = (): void => {
     const own = template.startsWith('user:') ? userTpls.find((x) => `user:${x.id}` === template) : undefined;
     const calendar = (d: Design): Design => ({ ...d, calendar: { ...d.calendar, weekStart, startMonth, monthCount } });
-    // Una agenda nueva nace con el tamaño elegido (no hay nada hecho a mano que acompañar).
-    const sized = (d: Design): Design => changePaper(d, { ...paper, rescale: false });
+    // Una agenda nueva nace con el tamaño elegido; lo hecho a mano de una plantilla propia acompaña el cambio.
+    const sized = (d: Design): Design => changePaper(d, { ...paper, rescale: Boolean(own) });
     if (own) {
       setDesign(sized(calendar(designFromTemplate(own.design, { year, locale, country: country || null, name }))));
       setShow(false);

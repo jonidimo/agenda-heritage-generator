@@ -37,18 +37,24 @@ export function toggleFullscreen(d: FullscreenDoc | null = doc()): void {
 export function installFullscreen(d: FullscreenDoc | null = doc()): () => void {
   if (!d) return () => undefined;
   const onChange = (): void => {
-    if (!d.fullscreenElement && useStore.getState().focusMode) useStore.getState().setFocusMode(false);
+    const focus = useStore.getState().focusMode;
+    if (!d.fullscreenElement && focus) useStore.getState().setFocusMode(false);
+    // Se pidió salir antes de que la pantalla completa terminara de entrar (F11 dos veces seguidas): se sale.
+    else if (d.fullscreenElement && !focus) void d.exitFullscreen?.().catch(() => undefined);
   };
   const onKey = (e: Event): void => {
     const k = e as KeyboardEvent;
-    // Con pantalla completa de verdad, Esc la quita el navegador (y llega `fullscreenchange`).
-    if (k.key !== 'Escape' || d.fullscreenElement || !useStore.getState().focusMode) return;
+    // Con pantalla completa de verdad, Esc la quita el navegador (y llega `fullscreenchange`). Un Esc que ya
+    // usó otra cosa (un diálogo, un menú, el editor de texto, el asistente) no sale.
+    if (k.key !== 'Escape' || k.defaultPrevented || d.fullscreenElement || !useStore.getState().focusMode) return;
+    const target = k.target as { closest?: (sel: string) => unknown } | null;
+    if (target?.closest?.('input, textarea, select, [contenteditable="true"], [role="dialog"], [role="menu"]')) return;
     useStore.getState().setFocusMode(false);
   };
   d.addEventListener('fullscreenchange', onChange);
-  d.addEventListener('keydown', onKey, true);
+  d.addEventListener('keydown', onKey);
   return () => {
     d.removeEventListener('fullscreenchange', onChange);
-    d.removeEventListener('keydown', onKey, true);
+    d.removeEventListener('keydown', onKey);
   };
 }

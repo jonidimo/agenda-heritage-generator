@@ -623,8 +623,8 @@ export function setLocked(page: PageModel, blocks: readonly Block[], scope: Scop
       if (!b.editable) continue;
       const sc = effectiveScope(page, ownScope(design, page, b, scope));
       upsertOverride(d, page, b.id, sc, (o) => void (o.locked = locked), mirrored);
-      // Un bloqueo del tipo y otro de esta página: desbloquear tiene que soltar los dos.
-      if (!locked) for (const o of d.overrides) if (o.blockId === b.id && o.pageType === page.type && (o.pageKey === null || o.pageKey === page.key)) o.locked = false;
+      // El ajuste de esta página manda sobre el del tipo: bloquear y desbloquear valen para los dos.
+      for (const o of d.overrides) if (o.blockId === b.id && o.pageType === page.type && (o.pageKey === null || o.pageKey === page.key)) o.locked = locked;
     }
   });
 }
@@ -885,8 +885,8 @@ export function placeAsset(page: PageModel, assetId: string, aspect: number, opt
  * Un trazo del pincel: las copias del recurso a lo largo de los puntos (en mm de la página), en un solo
  * elemento «dibujo» y un solo paso de «Deshacer». Devuelve el id, o `null` si no quedó ninguna copia.
  */
-export function placeStampStroke(page: PageModel, points: readonly { x: number; y: number }[], tool: { assetId: string; size: number; spacing: number; rotate: StampRotation; jitter: number; tint: string | null }, aspect: number, seed: number, label: string): string | null {
-  const stamps = stampsAlong(points, { size: tool.size, spacing: tool.spacing, rotate: tool.rotate, jitter: tool.jitter, seed });
+export function placeStampStroke(page: PageModel, points: readonly { x: number; y: number }[], tool: { assetId: string; size: number; spacing: number; rotate: StampRotation; jitter: number; tint: string | null; max?: number }, aspect: number, seed: number, label: string): string | null {
+  const stamps = stampsAlong(points, { size: tool.size, spacing: tool.spacing, rotate: tool.rotate, jitter: tool.jitter, seed, ...(tool.max !== undefined ? { max: tool.max } : {}) });
   const drawn = stampDrawing(stamps, tool.assetId, aspect, { ...(tool.tint ? { tint: tool.tint } : {}), label });
   if (!drawn) return null;
   const id = newId('el');

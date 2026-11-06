@@ -25,11 +25,11 @@ const PRINT_PRESETS = (Object.keys(PAPER_PRESETS) as PaperPresetId[]).filter((id
 const fmt = (v: number): string => String(Math.round(v * 10) / 10).replace('.', ',');
 
 /** Los campos: destino, hoja (con su tamaño a mano si es personalizada), encuadernación y la página que resulta. */
-export function PaperFields({ value, onChange }: { value: PaperChoice; onChange: (v: PaperChoice) => void }) {
+export function PaperFields({ value, onChange, base }: { value: PaperChoice; onChange: (v: PaperChoice) => void; /** La agenda (con sus refilados); sin ella, la de siempre. */ base?: Design }) {
   const t = useT();
   const screen = value.target === 'screen';
   const presets: readonly PaperPresetId[] = screen ? [...SCREEN_PRESETS, 'A4', 'A5', 'LETTER', 'CUSTOM'] : PRINT_PRESETS;
-  const size = pageSizeFor(designDefaults(), value);
+  const size = pageSizeFor(base ?? designDefaults(), value);
   const setPreset = (preset: PaperPresetId): void => {
     // Una pantalla es una página por hoja, para leer: el destino y la encuadernación la acompañan.
     const isScreen = SCREEN_PRESETS.includes(preset);
@@ -101,7 +101,7 @@ export function PaperDialog() {
   };
   return (
     <Modal title={t('paper.title')} onClose={() => setShow(false)}>
-      <PaperFields value={choice} onChange={setChoice} />
+      <PaperFields value={choice} onChange={setChoice} base={design} />
       {changed && (
         <p className="mt-2 text-[11.5px] text-ink-soft" data-testid="paper-change">
           {t('paper.changeFromTo', { w0: fmt(before.w), h0: fmt(before.h), w: fmt(after.w), h: fmt(after.h) })}

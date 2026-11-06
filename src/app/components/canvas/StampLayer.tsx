@@ -6,7 +6,7 @@
  */
 import type { AssetRef } from '@core/design/schema';
 import type { PageModel } from '@core/layout/prims';
-import { stampsAlong, strokeLength, type Stamp } from '@core/layout/stamps';
+import { stampsAlong, type Stamp } from '@core/layout/stamps';
 import { useRef, useState } from 'react';
 import { useT } from '../../i18n/ui';
 import { placeAsset, placeStampStroke } from '../../state/actions';
@@ -14,8 +14,11 @@ import { assetHref } from '../../state/assetUrls';
 import { resources } from '../../state/resources';
 import { useStore, type StampTool } from '../../state/store';
 
-/** Menos que esto de recorrido (mm) es un clic, no un trazo. */
-const CLICK_MM = 1.5;
+/**
+ * Cuántos trazados puede tener un trazo entero: un dibujo vectorial muy detallado deja menos copias, así
+ * la página (y el PDF) no se vuelven enormes.
+ */
+const STROKE_PATHS = 20_000;
 
 /** La dirección para mostrar un recurso en una etiqueta `<img>` o `<image>`. */
 export function assetPreviewUrl(a: AssetRef | undefined): string | undefined {
@@ -38,14 +41,20 @@ export function StampLayer({ page, tool }: { page: PageModel; tool: StampTool })
   const [preview, setPreview] = useState<Stamp[]>([]);
   const asset = useStore((s) => s.design?.assets.find((a) => a.id === tool.assetId));
   const url = assetPreviewUrl(asset);
-  const aspect = assetAspect(asset);
+  // Una proporción extrema haría copias de un alto absurdo: se acota.
+  const aspect = Math.min(20, Math.max(0.05, assetAspect(asset)));
+  const items = resources.assetInfos.get(tool.assetId)?.vector?.items.length ?? 1;
+  const max = Math.max(1, Math.floor(STROKE_PATHS / Math.max(1, items)));
 
   const toMm = (e: { clientX: number; clientY: number }): { x: number; y: number } => {
     const r = layer.current?.getBoundingClientRect();
     if (!r || r.width === 0 || r.height === 0) return { x: 0, y: 0 };
-    return { x: ((e.clientX - r.left) / r.width) * page.w, y: ((e.clientY - r.top) / r.height) * page.h };
+    // El trazo se queda en la página (con el puntero capturado, el mouse puede salir de ella).
+    const x = ((e.clientX - r.left) / r.width) * page.w;
+    const y = ((e.clientY - r.top) / r.height) * page.h;
+    return { x: Math.min(page.w, Math.max(0, x)), y: Math.min(page.h, Math.max(0, y)) };
   };
-  const optionsFor = (seed: number) => ({ size: tool.size, spacing: tool.spacing, rotate: tool.rotate, jitter: tool.jitter, seed });
+  const optionsFor = (seed: number) => ({ size: tool.size, spacing: tool.spacing, rotate: tool.rotate, jitter: tool.jitter, seed, max });
 
   const finish = (e: React.PointerEvent<HTMLDivElement>, commit: boolean): void => {
     const s = stroke.current;
@@ -55,8 +64,9 @@ export function StampLayer({ page, tool }: { page: PageModel; tool: StampTool })
     e.stopPropagation();
     if (!commit || !asset) return;
     const label = asset.name;
-    if (strokeLength(s.points) < CLICK_MM) placeAsset(page, asset.id, aspect, { at: s.points[0]!, width: tool.size, tint: tool.tint, label });
-    else placeStampStroke(page, s.points, tool, aspect, s.seed, t('stamp.strokeLabel', { name: label }));
+    // Lo que se vio es lo que queda: una sola copia es un clic (un elemento imagen), varias son un trazo.
+    if (stampsAlong(s.points, optionsFor(s.seed)).length <= 1) placeAsset(page, asset.id, aspect, { at: s.points[0]!, width: tool.size, tint: tool.tint, label });
+    else placeStampStroke(page, s.points, { ...tool, max }, aspect, s.seed, t('stamp.strokeLabel', { name: label }));
   };
 
   return (

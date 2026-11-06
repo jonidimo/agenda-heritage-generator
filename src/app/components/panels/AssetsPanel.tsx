@@ -162,7 +162,7 @@ export function AssetsPanel() {
                     );
                   })()}
                   <div className="mt-1 flex flex-wrap gap-1">
-                    {a.kind !== 'pdf' && (
+                    {a.kind !== 'pdf' && a.kind !== 'font' && (
                       <>
                         <Button variant="outline" onClick={() => place(a)} title={t('assets.placeHint')}>
                           <MousePointerClick size={13} /> {t('assets.place')}

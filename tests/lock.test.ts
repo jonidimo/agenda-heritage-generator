@@ -39,4 +39,18 @@ describe('bloquear', () => {
     expect(movable({ editable: true })).toBe(true);
     expect(movable({ editable: true, locked: true })).toBe(false);
   });
+
+  it('un ajuste que solo bloquea no reacomoda un elemento que asoma de la página', async () => {
+    const base = fresh();
+    const { doc: probe } = await openDocument(base);
+    const index = probe.plan.pages.findIndex((p) => p.type === 'weekLeft');
+    const page = probe.plan.pages[index]!;
+    const cb = { id: 'borde', pageType: page.type, pageKey: page.key, kind: 'rect' as const, x: -5, y: 20, w: 30, h: 10, mirror: false, props: {} };
+    const locked = parseDesign({ ...base, customBlocks: [cb], overrides: [ov({ pageType: page.type, pageKey: page.key, blockId: 'custom.borde', locked: true })] });
+    const { doc } = await openDocument(locked);
+    const b = doc.page(index).blocks.find((x) => x.id === 'custom.borde')!;
+    expect(b.locked).toBe(true);
+    expect(b.m === undefined || (b.m[4] === 0 && b.m[5] === 0)).toBe(true);
+    expect(doc.pageWarnings(index).some((w) => w.code === 'clamped')).toBe(false);
+  });
 });

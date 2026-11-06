@@ -225,7 +225,7 @@ export const SHORTCUTS: readonly Shortcut[] = [
   { id: 'edit.delete', group: 'edit', chords: [{ key: 'Delete' }, { key: 'Backspace' }], run: () => hideSelection('current') },
   { id: 'edit.hide', group: 'edit', chords: [{ key: 'h', mod: true }], run: () => hideSelection('current') },
   { id: 'edit.hideType', group: 'edit', chords: [{ key: 'h', mod: true, shift: true }], run: () => hideSelection('type') },
-  { id: 'edit.lock', group: 'edit', chords: [{ key: 'l', mod: true, alt: true }], run: () => toggleLockSelection() },
+  { id: 'edit.lock', group: 'edit', chords: [{ code: 'KeyL', mod: true, alt: true, shift: true }], run: () => toggleLockSelection() },
   {
     id: 'edit.nudge',
     group: 'edit',
@@ -318,7 +318,7 @@ export function installShortcuts(): () => void {
 
 /** Cómo se escribe una combinación para mostrarla: «Ctrl+Mayús+S», o «⌘⇧S» en un Mac. */
 export function formatChord(c: Chord, mac: boolean, names: { ctrl: string; shift: string; alt: string }): string {
-  const base = c.code?.startsWith('Digit') ? c.code.slice(5) : c.key === ' ' ? 'Espacio' : (c.key ?? '').length === 1 ? (c.key ?? '').toUpperCase() : (c.key ?? '');
+  const base = c.code?.startsWith('Digit') ? c.code.slice(5) : c.code?.startsWith('Key') ? c.code.slice(3) : c.key === ' ' ? 'Espacio' : (c.key ?? '').length === 1 ? (c.key ?? '').toUpperCase() : (c.key ?? '');
   const arrows: Record<string, string> = { ArrowLeft: '←', ArrowRight: '→', ArrowUp: '↑', ArrowDown: '↓' };
   const key = arrows[base] ?? base;
   if (mac) return `${c.mod ? '⌘' : ''}${c.alt === true ? '⌥' : ''}${c.shift === true ? '⇧' : ''}${key}`;

@@ -90,4 +90,27 @@ describe('el trazo como dibujo', () => {
     const pdf = await doc.exportPdf('pages', { assetBytes: (id) => bytes.get(id) });
     expect(pdf.length).toBeGreaterThan(1000);
   });
+
+  it('en modo «estirar», un trazo de íconos queda donde estaba (no salta a la esquina)', async () => {
+    const base = parseDesign(createDesign('heritage', { year: 2027, locale: 'es-AR', country: 'AR' }));
+    const d = stampDrawing(stampsAlong(line(40), opts()), 'icon:star', 1)!;
+    const { doc: probe } = await openDocument(base);
+    const index = probe.plan.pages.findIndex((p) => p.type === 'weekLeft');
+    const page = probe.plan.pages[index]!;
+    const block: CustomBlock = { id: 'trazo', pageType: page.type, pageKey: page.key, kind: 'drawing', mirror: false, x: 60, y: 100, w: d.box.w, h: d.box.h, props: { ...d.props, mode: 'stretch' } };
+    const { doc } = await openDocument(parseDesign({ ...base, assets: [...base.assets, iconAsset('star')], customBlocks: [block] }));
+    const drawn = doc.page(index).blocks.find((b) => b.id === 'custom.trazo')!;
+    // Cada copia es un grupo con su matriz: su lugar en la página (antes de pasar a trazados) cae en la caja.
+    const groups = drawn.prims.filter((p): p is Extract<Prim, { t: 'group' }> => p.t === 'group');
+    expect(groups.length).toBeGreaterThan(3);
+    const at = (g: Extract<Prim, { t: 'group' }>): { x: number; y: number } => {
+      const m = g.m ?? [1, 0, 0, 1, 0, 0];
+      return { x: m[4], y: m[5] };
+    };
+    for (const g of groups) {
+      const p = at(g);
+      expect(p.x).toBeGreaterThan(55);
+      expect(p.y).toBeGreaterThan(95);
+    }
+  });
 });

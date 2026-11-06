@@ -30,7 +30,8 @@ export function pageSizeFor(design: Design, change: Omit<PaperChange, 'rescale'>
 function withPaper(design: Design, change: Omit<PaperChange, 'rescale'>): Design {
   const screenSize = SCREEN_PRESETS.includes(change.paper.preset);
   const target = change.target ?? (screenSize ? 'screen' : design.binding.target);
-  const method = screenSize ? 'single' : (change.method ?? design.binding.method);
+  // Para leer en pantalla, una página por hoja (salvo que se pida otra cosa con un papel de imprenta).
+  const method = screenSize ? 'single' : (change.method ?? (target === 'screen' ? 'single' : design.binding.method));
   return { ...design, paper: { ...change.paper }, binding: { ...design.binding, target, method } };
 }
 
@@ -46,8 +47,18 @@ export function changePaper(design: Design, change: PaperChange): Design {
   const r = Math.min(rx, ry);
   return {
     ...next,
-    customBlocks: design.customBlocks.map((b) => ({ ...b, x: round(b.x * rx), y: round(b.y * ry), w: round(b.w * rx), h: round(b.h * ry) })),
+    customBlocks: design.customBlocks.map((b) => {
+      // Una imagen o un dibujo que se escala entero (un trazo de sellos) no se deforma: crece parejo y
+      // queda centrado donde iba.
+      if (b.kind === 'image' || (b.kind === 'drawing' && b.props.mode === 'scale')) {
+        const w = b.w * r;
+        const h = b.h * r;
+        return { ...b, x: round((b.x + b.w / 2) * rx - w / 2), y: round((b.y + b.h / 2) * ry - h / 2), w: round(w), h: round(h) };
+      }
+      return { ...b, x: round(b.x * rx), y: round(b.y * ry), w: round(b.w * rx), h: round(b.h * ry) };
+    }),
     overrides: design.overrides.map((o) => ({ ...o, dx: round(o.dx * rx), dy: round(o.dy * ry), dw: round(o.dw * rx), dh: round(o.dh * ry) })),
-    watermarks: design.watermarks.map((w) => ({ ...w, dx: round(w.dx * rx), dy: round(w.dy * ry), width: round(w.width * r) })),
+    // La marca de agua no baja de su ancho mínimo (1 mm).
+    watermarks: design.watermarks.map((w) => ({ ...w, dx: round(w.dx * rx), dy: round(w.dy * ry), width: Math.max(1, round(w.width * r)) })),
   };
 }

@@ -74,8 +74,9 @@ function StackButtons({
 }) {
   const t = useT();
   const at = page.blocks.findIndex((b) => b.id === block.id);
-  const top = at === page.blocks.length - 1;
-  const bottom = at === 0;
+  // Un elemento bloqueado no cambia de lugar en el apilado.
+  const top = block.locked === true || at === page.blocks.length - 1;
+  const bottom = block.locked === true || at === 0;
   return (
     <span className="flex shrink-0 items-center gap-0.5">
       <StackButton
