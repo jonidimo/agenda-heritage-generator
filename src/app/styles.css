@@ -79,6 +79,18 @@ body {
   background-size: 14px 14px;
 }
 
+/* Arrastrar el área de trabajo (botón del medio, o barra espaciadora): la mano en todo el lienzo,
+   también sobre las páginas y sus elementos, que tienen su propio cursor. */
+.desk[data-pan='ready'],
+.desk[data-pan='ready'] * {
+  cursor: grab !important;
+}
+.desk[data-pan='dragging'],
+.desk[data-pan='dragging'] * {
+  cursor: grabbing !important;
+  user-select: none;
+}
+
 input[type='range'] {
   accent-color: var(--color-accent);
 }

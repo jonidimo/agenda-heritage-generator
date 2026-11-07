@@ -82,7 +82,7 @@ export function Navigator({ doc }: { doc: AgendaDocument }) {
   }, [current]);
 
   return (
-    <div className="border-t border-line bg-paper-2/70">
+    <div className="border-t border-line bg-paper-2/70" data-testid="navigator">
       <Splitter
         orientation="horizontal"
         label={t('panel.resize.thumbs')}

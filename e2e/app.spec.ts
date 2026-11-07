@@ -2,8 +2,15 @@ import { devices, expect, test, type Locator, type Page } from '@playwright/test
 
 type StoreHandle = {
   getState: () => {
-    design: { overrides: Array<{ blockId: string; dx: number }>; theme: { comfort: string }; binding: { signature: { sheets: number } }; pageStyles: Array<{ pageType: string; tokens: Record<string, unknown> }>; watermarks: Array<{ excludePages: string[] }> } | null;
+    design: {
+      overrides: Array<{ blockId: string; dx: number }>;
+      theme: { comfort: string };
+      binding: { signature: { sheets: number } };
+      pageStyles: Array<{ pageType: string; tokens: Record<string, unknown> }>;
+      watermarks: Array<{ excludePages: string[] }>;
+    } | null;
     pageIndex: number;
+    selection: { blockId: string } | null;
     selectedIds: string[];
     uiLang: string;
     zoom: number;
@@ -78,7 +85,7 @@ test('la verificación previa de la agenda de Norma no encuentra problemas', asy
 
 test('la interfaz cambia de idioma y traduce los nombres de los elementos', async ({ page }) => {
   await open(page);
-  await page.getByRole('button', { name: 'Archivo' }).click();
+  await page.getByRole('button', { name: 'Ajustes' }).click();
   await page.getByRole('menuitem', { name: 'English' }).click();
   await expect(page.getByRole('button', { name: 'Print / export' })).toBeVisible();
   for (let i = 0; i < 11; i++) await page.keyboard.press('PageDown');
@@ -304,7 +311,7 @@ test.describe('archivos y plantillas', () => {
   test('guardar la agenda como archivo y volver a abrirla', async ({ page }) => {
     await open(page);
     await page.getByRole('button', { name: 'Archivo' }).click();
-    const [dl] = await Promise.all([page.waitForEvent('download'), page.getByRole('menuitem', { name: /^Guardar \(Ctrl\+S\)/ }).click()]);
+    const [dl] = await Promise.all([page.waitForEvent('download'), page.getByRole('menuitem', { name: /^Guardar(?! como)/ }).click()]);
     const { readFileSync } = await import('node:fs');
     const saved = JSON.parse(readFileSync((await dl.path())!, 'utf8')) as { name: string; calendar: { year: number } };
     expect(saved.calendar.year).toBeGreaterThan(2000);
@@ -323,7 +330,8 @@ test.describe('archivos y plantillas', () => {
     await page.getByRole('textbox', { name: 'Nombre de la plantilla' }).fill('Mi diseño de prueba');
     await page.getByRole('button', { name: 'Guardar plantilla' }).click();
     await expect(page.getByText('Plantilla guardada: «Mi diseño de prueba».')).toBeVisible();
-    await page.getByRole('button', { name: 'Mis agendas' }).click();
+    await page.getByRole('button', { name: 'Archivo' }).click();
+    await page.getByRole('menuitem', { name: 'Mis agendas…' }).click();
     await expect(page.getByText('Mi diseño de prueba', { exact: true })).toBeVisible();
     await page.getByRole('button', { name: 'Nueva agenda' }).click();
     await page.getByRole('radio', { name: 'Mi diseño de prueba', exact: true }).check();
@@ -511,6 +519,20 @@ async function openQuiet(page: Page): Promise<void> {
     if (localStorage.getItem('agenda-studio.welcomeOnStart') === null) localStorage.setItem('agenda-studio.welcomeOnStart', 'false');
   });
   await open(page);
+}
+
+/** El tamaño de la interfaz desde Ajustes: se escribe el número y se confirma con Enter; el menú sigue abierto. */
+async function setUiScale(page: Page, pct: number): Promise<void> {
+  await page
+    .locator('header')
+    .getByRole('button', { name: /^(Ajustes|Settings)$/ })
+    .click();
+  const field = page.getByTestId('ui-scale').getByRole('spinbutton');
+  await field.fill(String(pct));
+  await field.press('Enter');
+  await expect(page.getByRole('menu')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('menu')).toHaveCount(0);
 }
 
 /** Lleva el lienzo a la semana (las páginas de abajo del año), donde están el minicalendario y los bloques de prueba. */
@@ -751,11 +773,10 @@ test.describe('interfaz', () => {
     await expect(resetPitch).toHaveCount(0);
   });
 
-  test('Archivo: idioma, tamaño de la interfaz y «Acerca de»', async ({ page }) => {
+  test('Ajustes y Ayuda: idioma, tamaño de la interfaz y «Acerca de»', async ({ page }) => {
     await open(page);
     // Tamaño de la interfaz: la raíz se escala y un arrastre sigue siendo exacto.
-    await page.getByRole('button', { name: 'Archivo' }).click();
-    await page.getByRole('menuitem', { name: '125 %' }).click();
+    await setUiScale(page, 125);
     await expect.poll(() => page.evaluate('document.documentElement.style.zoom')).toBe('1.25');
     expect(await page.evaluate('document.documentElement.style.getPropertyValue("--ui-zoom")')).toBe('1.25');
     expect((await state(page)).uiScale).toBe(1.25);
@@ -780,11 +801,11 @@ test.describe('interfaz', () => {
     // Los píxeles de pantalla se convierten en milímetros con la escala real de la página, aunque la interfaz esté ampliada.
     expect(Math.abs(Math.abs(moved.dx) - dragPx / pxPerMm)).toBeLessThan(0.3);
     // Idioma desde el menú.
-    await page.getByRole('button', { name: 'Archivo' }).click();
+    await page.getByRole('button', { name: 'Ajustes' }).click();
     await page.getByRole('menuitem', { name: 'English' }).click();
     await expect(page.getByRole('button', { name: 'Print / export' })).toBeVisible();
     // «Acerca de».
-    await page.getByRole('button', { name: 'File' }).click();
+    await page.getByRole('button', { name: 'Help' }).click();
     await page.getByRole('menuitem', { name: 'About Heritage Studio…' }).click();
     const about = page.getByRole('dialog', { name: 'About Heritage Studio' });
     await expect(about).toBeVisible();
@@ -1701,7 +1722,7 @@ test.describe('imágenes y fuentes', () => {
     await expect(uses).toContainText('Elemento «Mi foto»');
     await expect(page.locator('[data-testid="asset-uses"][data-asset="img-sola"]')).toContainText('No se usa en ningún lugar');
     // «Ir» lleva a la página del elemento.
-    await page.evaluate("globalThis.__agenda.getState().goToPage(5)");
+    await page.evaluate('globalThis.__agenda.getState().goToPage(5)');
     await uses.getByRole('button', { name: 'Ir' }).click();
     await expect.poll(() => page.evaluate<number>('globalThis.__agenda.getState().pageIndex')).toBe(0);
     // Quitarla es un solo paso, y se deshace de una vez.
@@ -1852,7 +1873,7 @@ test.describe('asistente de IA', () => {
   });
 
   async function configure(page: Page): Promise<void> {
-    await page.locator('header').getByRole('button', { name: 'Archivo', exact: true }).click();
+    await page.locator('header').getByRole('button', { name: 'Ajustes', exact: true }).click();
     await page.getByRole('menuitem', { name: 'Asistente de IA…' }).click();
     const dialog = page.getByTestId('ai-settings');
     // Lo de siempre es lo compatible con OpenAI: estas pruebas usan Claude.
@@ -1925,7 +1946,7 @@ test.describe('asistente de IA', () => {
       if (url === 'http://localhost:8080/v1/models') return route.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify({ data: [{ id: 'qwen3-27b' }] }) });
       return route.fulfill({ status: 404, contentType: 'text/html', headers: { 'access-control-allow-origin': '*' }, body: '<h1>404</h1>' });
     });
-    await page.locator('header').getByRole('button', { name: 'Archivo', exact: true }).click();
+    await page.locator('header').getByRole('button', { name: 'Ajustes', exact: true }).click();
     await page.getByRole('menuitem', { name: 'Asistente de IA…' }).click();
     const dialog = page.getByTestId('ai-settings');
     await dialog.getByLabel('Dirección de la API').fill('http://localhost:8080');
@@ -2027,17 +2048,151 @@ test.describe('pantalla completa', () => {
     await page.keyboard.press('F11');
     await expect(inspector).toBeHidden();
     await expect(sidebar).toBeHidden();
+    // Tampoco quedan la tira de miniaturas ni el pie con el número de página: solo la página.
+    await expect(page.getByTestId('navigator')).toHaveCount(0);
+    await expect(page.getByTestId('page-footer')).toHaveCount(0);
     const deskFull = (await page.locator('.desk').boundingBox())!;
     expect(deskFull.width).toBeGreaterThan(deskBefore.width + 200);
+    expect(deskFull.height).toBeGreaterThan(deskBefore.height + 60);
+    // Se sigue pasando de página con el teclado.
+    const before = await page.evaluate<number>('globalThis.__agenda.getState().pageIndex');
+    await page.keyboard.press('PageDown');
+    await expect.poll(() => page.evaluate<number>('globalThis.__agenda.getState().pageIndex')).not.toBe(before);
     await page.screenshot({ path: 'test-results/fullscreen.png' });
     await page.keyboard.press('F11');
     await expect(inspector).toBeVisible();
     await expect(sidebar).toBeVisible();
+    await expect(page.getByTestId('navigator')).toBeVisible();
+    await expect(page.getByTestId('page-footer')).toBeVisible();
     // También desde el menú Ver.
     await page.locator('header').getByRole('button', { name: 'Ver', exact: true }).click();
     await page.getByRole('menuitem', { name: /Pantalla completa/ }).click();
     await expect(inspector).toBeHidden();
     expect(await page.evaluate<boolean>('globalThis.__agenda.getState().sidebarOpen')).toBe(true);
+  });
+});
+
+test.describe('desplazar arrastrando', () => {
+  /** El desplazamiento del área de trabajo, con la página acercada para que haya hacia dónde moverse. */
+  async function zoomedDesk(page: Page): Promise<{ desk: Locator; scroll: () => Promise<{ left: number; top: number }> }> {
+    await openQuiet(page);
+    await settled(page);
+    await page.evaluate('globalThis.__agenda.getState().setZoom(3, false)');
+    const desk = page.locator('.desk');
+    await desk.evaluate((el) => {
+      el.scrollLeft = el.scrollWidth / 2 - el.clientWidth / 2;
+      el.scrollTop = el.scrollHeight / 2 - el.clientHeight / 2;
+    });
+    return { desk, scroll: () => desk.evaluate((el) => ({ left: el.scrollLeft, top: el.scrollTop })) };
+  }
+
+  test('con el botón del medio se arrastra el área de trabajo y no se toca ningún elemento', async ({ page }) => {
+    const { desk, scroll } = await zoomedDesk(page);
+    const box = (await desk.boundingBox())!;
+    const from = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+    const before = await scroll();
+    const overrides = (await state(page)).design!.overrides.length;
+    await page.mouse.move(from.x, from.y);
+    await page.mouse.down({ button: 'middle' });
+    await expect(desk).toHaveAttribute('data-pan', 'dragging');
+    await page.mouse.move(from.x - 120, from.y - 80, { steps: 6 });
+    await page.mouse.up({ button: 'middle' });
+    const after = await scroll();
+    // La página acompaña al puntero: arrastrar hacia arriba a la izquierda desplaza hacia abajo a la derecha.
+    expect(Math.abs(after.left - before.left - 120)).toBeLessThan(3);
+    expect(Math.abs(after.top - before.top - 80)).toBeLessThan(3);
+    await expect(desk).not.toHaveAttribute('data-pan', /.*/);
+    expect((await state(page)).design!.overrides.length).toBe(overrides);
+    expect((await state(page)).selection).toBeNull();
+  });
+
+  test('con la barra espaciadora apretada, el botón principal también arrastra; en un campo, la barra escribe un espacio', async ({ page }) => {
+    const { desk, scroll } = await zoomedDesk(page);
+    const box = (await desk.boundingBox())!;
+    const from = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+    await desk.click({ position: { x: 5, y: 5 } });
+    const before = await scroll();
+    await page.keyboard.down('Space');
+    await expect(desk).toHaveAttribute('data-pan', 'ready');
+    await page.mouse.move(from.x, from.y);
+    await page.mouse.down();
+    await page.mouse.move(from.x + 90, from.y + 60, { steps: 5 });
+    await page.mouse.up();
+    await page.keyboard.up('Space');
+    const after = await scroll();
+    expect(Math.abs(before.left - after.left - 90)).toBeLessThan(3);
+    expect(Math.abs(before.top - after.top - 60)).toBeLessThan(3);
+    expect((await state(page)).selection).toBeNull();
+    await expect(desk).not.toHaveAttribute('data-pan', /.*/);
+    // Escribiendo el nombre de la agenda, la barra es un espacio y no prepara el arrastre.
+    const name = page.getByRole('textbox', { name: 'Nombre de la agenda' });
+    await name.fill('Mi');
+    await name.press('Space');
+    await name.press('A');
+    await expect(name).toHaveValue('Mi A');
+    await expect(desk).not.toHaveAttribute('data-pan', /.*/);
+  });
+});
+
+test.describe('menús Archivo, Ajustes y Ayuda', () => {
+  test('Archivo tiene lo de la agenda (con «Mis agendas»), Ajustes el idioma y el tamaño, Ayuda la guía y «Acerca de»', async ({ page }) => {
+    await openQuiet(page);
+    const header = page.locator('header');
+    // «Mis agendas» ya no es un botón suelto de la barra.
+    await expect(header.getByRole('button', { name: 'Mis agendas' })).toHaveCount(0);
+    await header.getByRole('button', { name: 'Archivo', exact: true }).click();
+    const menu = page.getByRole('menu');
+    for (const name of ['Nuevo…', /^Abrir archivo/, 'Mis agendas…', /^Guardar(?! como)/, 'Guardar como plantilla…', 'Tamaño de la hoja…', 'Copia de seguridad de todo']) await expect(menu.getByRole('menuitem', { name })).toBeVisible();
+    await expect(menu.getByRole('menuitem', { name: 'English' })).toHaveCount(0);
+    await page.screenshot({ path: 'test-results/menu-file.png' });
+    await menu.getByRole('menuitem', { name: 'Mis agendas…' }).click();
+    await expect(page.getByRole('dialog', { name: 'Mis agendas' })).toBeVisible();
+    await page.keyboard.press('Escape');
+
+    await header.getByRole('button', { name: 'Ajustes', exact: true }).click();
+    // Cada idioma figura en su propio idioma.
+    for (const name of ['Español', 'English', 'Português', 'Italiano', 'Deutsch', 'Français']) await expect(menu.getByRole('menuitem', { name })).toBeVisible();
+    const scale = page.getByTestId('ui-scale');
+    await page.screenshot({ path: 'test-results/menu-settings.png' });
+    await expect(scale.getByRole('slider', { name: 'Tamaño de la interfaz' })).toHaveValue('100');
+    // Escribir el número no cambia nada hasta Enter (ni pasa por 80 % al escribir el «1»).
+    const field = scale.getByRole('spinbutton', { name: 'Tamaño de la interfaz' });
+    await field.fill('1');
+    expect((await state(page)).uiScale).toBe(1);
+    await field.fill('130');
+    await field.press('Enter');
+    await expect.poll(() => page.evaluate('document.documentElement.style.zoom')).toBe('1.3');
+    await expect(menu).toBeVisible();
+    // El deslizador con el teclado: un paso de 5 %, y el menú sigue abierto.
+    const slider = scale.getByRole('slider', { name: 'Tamaño de la interfaz' });
+    await slider.focus();
+    await page.keyboard.press('ArrowLeft');
+    await expect.poll(async () => (await state(page)).uiScale).toBeCloseTo(1.25, 5);
+    await expect(menu).toBeVisible();
+    // La rueda sobre el menú no lo cierra.
+    await menu.hover();
+    await page.mouse.wheel(0, 40);
+    await expect(menu).toBeVisible();
+    await scale.getByRole('button', { name: /Restablecer/ }).click();
+    await expect.poll(async () => (await state(page)).uiScale).toBe(1);
+    await page.keyboard.press('Escape');
+
+    await header.getByRole('button', { name: 'Ayuda', exact: true }).click();
+    await expect(menu.getByRole('menuitem', { name: /^Atajos de teclado/ })).toBeVisible();
+    await expect(menu.getByRole('menuitem', { name: 'Guía para modelos de IA (MCP)' })).toBeVisible();
+    // La guía se abre fuera del programa (se registra la dirección en lugar de salir a la red).
+    await page.evaluate(() => {
+      const g = globalThis as unknown as { open: (url?: string | URL) => null; __opened: string };
+      g.open = (url) => {
+        g.__opened = String(url);
+        return null;
+      };
+    });
+    await menu.getByRole('menuitem', { name: 'Guía para modelos de IA (MCP)' }).click();
+    expect(await page.evaluate<string>('globalThis.__opened')).toMatch(/github\.com\/jonidimo\/agenda-heritage-generator\/blob\/main\/docs\/plantillas-llm\.md$/);
+    await header.getByRole('button', { name: 'Ayuda', exact: true }).click();
+    await menu.getByRole('menuitem', { name: 'Acerca de Heritage Studio…' }).click();
+    await expect(page.getByRole('dialog', { name: 'Acerca de Heritage Studio' })).toBeVisible();
   });
 });
 
@@ -2141,6 +2296,39 @@ test.describe('2.4: empezar de cero, marcas de agua, portada del mes, QR y créd
     await page.keyboard.press('Control+z');
     await expect.poll(() => page.evaluate<number>('globalThis.__agenda.getState().design.sections.length')).toBe(1);
     expect(errors).toEqual([]);
+  });
+
+  test('«Nueva agenda» entra en una ventana chica: el título y «Crear agenda» siempre a la vista', async ({ browser }) => {
+    for (const { width, height, scale } of [
+      { width: 1280, height: 720, scale: '1' },
+      { width: 1366, height: 768, scale: '1.25' },
+    ]) {
+      const ctx = await browser.newContext({ viewport: { width, height } });
+      const page = await ctx.newPage();
+      await page.addInitScript((s) => localStorage.setItem('agenda-studio.uiScale', s), scale);
+      const dialog = await welcome(page);
+      const inView = async (l: Locator): Promise<void> => {
+        const b = (await l.boundingBox())!;
+        expect(b.y).toBeGreaterThanOrEqual(0);
+        expect(b.y + b.height).toBeLessThanOrEqual(height + 0.5);
+      };
+      await inView(dialog.getByRole('heading', { name: 'Nueva agenda' }));
+      await inView(dialog.getByRole('button', { name: 'Crear agenda' }));
+      await inView(dialog.getByRole('button', { name: 'Cerrar' }));
+      // Dos columnas: las plantillas a la izquierda y la hoja a la derecha.
+      const tpl = (await dialog
+        .getByRole('radio', { name: /Heritage/ })
+        .first()
+        .boundingBox())!;
+      const paper = (await dialog.getByTestId('welcome-paper').boundingBox())!;
+      expect(paper.x).toBeGreaterThan(tpl.x + 200);
+      // Lo que no entra se desplaza dentro del diálogo, y la hoja se alcanza.
+      await dialog.getByTestId('welcome-paper').scrollIntoViewIfNeeded();
+      await inView(dialog.getByTestId('welcome-paper').getByTestId('paper-result'));
+      await inView(dialog.getByRole('button', { name: 'Crear agenda' }));
+      await page.screenshot({ path: `test-results/welcome-${width}x${height}.png` });
+      await ctx.close();
+    }
   });
 
   test('el tamaño de la hoja se elige al empezar, a la vista, y la agenda nace con él', async ({ page }) => {

@@ -1,17 +1,37 @@
-import { Archive, ArrowLeft, Eye, Keyboard, Pencil, PenTool, ArrowRight, BookOpen, Search, Columns2, File, FileDown, FilePlus, FolderOpen, Grid3x3, Info, LayoutTemplate, Link2, Magnet, Maximize, MoreHorizontal, PanelLeft, Printer, Redo2, Ruler, Save, Sparkles, Undo2, Upload, ZoomIn, ZoomOut } from 'lucide-react';
+import {
+  ArrowLeft,
+  Eye,
+  Pencil,
+  PenTool,
+  ArrowRight,
+  BookOpen,
+  CircleHelp,
+  Search,
+  Columns2,
+  File,
+  Grid3x3,
+  Link2,
+  Magnet,
+  Maximize,
+  MoreHorizontal,
+  PanelLeft,
+  Printer,
+  Redo2,
+  Ruler,
+  Save,
+  Settings2,
+  Undo2,
+  ZoomIn,
+  ZoomOut,
+} from 'lucide-react';
 import { useEffect, useRef } from 'react';
-import { backupAll, openAnyFile, saveCurrent } from '../state/fileActions';
 import { openMenuAt, type MenuItem } from './ContextMenu';
-import { editMenu, viewMenu } from './topMenus';
+import { editMenu, fileMenu, helpMenu, settingsMenu, viewMenu } from './topMenus';
 import { shortcutHint } from '../state/shortcutHints';
-import { UI_LANG_NAMES, UI_LANGS, useT } from '../i18n/ui';
-import { UI_SCALE } from '../state/prefs';
+import { useT } from '../i18n/ui';
 import { activeView, useStore, viewsOf, ZOOM, type Mode, type View } from '../state/store';
-import { supportsUiScale } from '../state/uiScale';
 import { IconButton, Segmented } from './ui';
 import { goBack, goForward } from '../state/navigation';
-import { isDesktopShell, revealFile } from '../state/desktopBridge';
-import { useAssistant } from '../state/ai/assistant';
 import { SearchPalette } from './SearchPalette';
 import { SearchField } from './SearchField';
 import { overflowGroups, useTopbarLevel } from '../state/topbarLayout';
@@ -58,19 +78,6 @@ export function Topbar() {
   const fit = useStore((s) => s.fit);
   const zoomBy = useStore((s) => s.zoomBy);
   const zoomFit = useStore((s) => s.zoomFit);
-  const lang = useStore((s) => s.uiLang);
-  const setLang = useStore((s) => s.setUiLang);
-  const uiScale = useStore((s) => s.uiScale);
-  const setUiScale = useStore((s) => s.setUiScale);
-  const autoReveal = useStore((s) => s.autoReveal);
-  const lastExport = useStore((s) => s.lastExport);
-  const setShowShortcuts = useStore((s) => s.setShowShortcuts);
-  const setAutoReveal = useStore((s) => s.setAutoReveal);
-  const liveLink = useStore((s) => s.liveLink);
-  const setLiveLink = useStore((s) => s.setLiveLink);
-  const setShowAbout = useStore((s) => s.setShowAbout);
-  const setShowLibrary = useStore((s) => s.setShowLibrary);
-  const setShowSaveTemplate = useStore((s) => s.setShowSaveTemplate);
   const setPanel = useStore((s) => s.setPanel);
   const sidebarOpen = useStore((s) => s.sidebarOpen);
   const setSidebarOpen = useStore((s) => s.setSidebarOpen);
@@ -172,37 +179,11 @@ export function Topbar() {
       <IconButton label={t('top.menu')} onClick={() => setSidebarOpen(!sidebarOpen)} active={sidebarOpen}>
         <PanelLeft size={18} />
       </IconButton>
-      <button type="button" onClick={() => setShowLibrary(true)} className="inline-flex shrink-0 items-center gap-1.5 rounded-md px-2 py-1 text-[12.5px] font-semibold hover:bg-black/5" title={t('top.library')} aria-label={t('top.library')}>
-        <FolderOpen size={16} />
-        {labels && <span>{t('top.library')}</span>}
-      </button>
-      <MenuButton showLabel={labels} label={t('file.menu')} icon={<Save size={16} />} build={() => [
-            { label: t('file.new'), icon: <FilePlus size={14} />, onSelect: () => useStore.getState().setShowWelcome(true) },
-            { label: t('paper.menu'), icon: <Ruler size={14} />, disabled: !design, onSelect: () => useStore.getState().setShowPaper(true) },
-            { separator: true },
-            { label: t('file.save'), icon: <Save size={14} />, hint: shortcutHint('file.save', t), disabled: !design, onSelect: () => void saveCurrent(false) },
-            { label: t('file.saveAs'), icon: <FileDown size={14} />, hint: shortcutHint('file.saveAs', t), disabled: !design, onSelect: () => void saveCurrent(true) },
-            { label: t('file.open'), icon: <Upload size={14} />, hint: shortcutHint('file.open', t), onSelect: () => void openAnyFile() },
-            { separator: true },
-            { label: t('file.saveTemplate'), icon: <LayoutTemplate size={14} />, disabled: !design, onSelect: () => setShowSaveTemplate(true) },
-            { label: t('file.backup'), icon: <Archive size={14} />, onSelect: () => void backupAll() },
-            { separator: true },
-            { heading: t('top.lang') },
-            ...UI_LANGS.map((l) => ({ label: UI_LANG_NAMES[l], checked: lang === l, onSelect: () => setLang(l) })),
-            // El tamaño de la interfaz usa `zoom`: los navegadores que no lo tienen no lo ofrecen.
-            ...(supportsUiScale()
-              ? [{ separator: true }, { heading: t('file.uiScale') }, ...UI_SCALE.presets.map((p) => ({ label: `${Math.round(p * 100)} %`, checked: Math.abs(uiScale - p) < 0.005, onSelect: () => setUiScale(p) }))]
-              : []),
-            ...(lastExport ? [{ label: t('file.openLastFolder'), onSelect: () => void revealFile(lastExport.path) }, { separator: true as const }] : [{ separator: true as const }]),
-            { label: t('file.autoReveal'), checked: autoReveal, onSelect: () => setAutoReveal(!autoReveal) },
-            { label: t('file.aiSettings'), icon: <Sparkles size={14} />, onSelect: () => useAssistant.getState().setShowSettings(true) },
-            // El puente con un modelo de IA existe solo en la aplicación de escritorio.
-            ...(isDesktopShell() ? [{ label: t('file.liveLink'), checked: liveLink, onSelect: () => setLiveLink(!liveLink) }] : []),
-            { label: t('file.shortcuts'), icon: <Keyboard size={14} />, hint: shortcutHint('help.shortcuts', t), onSelect: () => setShowShortcuts(true) },
-            { label: t('file.about'), icon: <Info size={14} />, onSelect: () => setShowAbout(true) },
-          ]} />
+      <MenuButton showLabel={labels} label={t('file.menu')} icon={<Save size={16} />} build={() => fileMenu(t)} />
       <MenuButton showLabel={labels} label={t('menu.edit')} icon={<Pencil size={16} />} build={() => editMenu(t)} />
       <MenuButton showLabel={labels} label={t('menu.view')} icon={<Eye size={16} />} build={() => viewMenu(t)} />
+      <MenuButton showLabel={labels} label={t('menu.settings')} icon={<Settings2 size={16} />} build={() => settingsMenu(t)} />
+      <MenuButton showLabel={labels} label={t('menu.help')} icon={<CircleHelp size={16} />} build={() => helpMenu(t)} />
       {design && (
         <input
           aria-label={t('top.name')}

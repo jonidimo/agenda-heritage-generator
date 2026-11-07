@@ -20,6 +20,11 @@ export interface MenuItem {
   /** Título de un grupo de opciones. */
   heading?: string;
   separator?: boolean;
+  /**
+   * Un control dentro del menú (un deslizador, por ejemplo) en lugar de una opción: no cierra el menú
+   * al usarlo y las flechas y la rueda le pertenecen. `label` lo nombra para los lectores de pantalla.
+   */
+  custom?: ReactNode;
 }
 
 interface MenuState {
@@ -59,7 +64,7 @@ export function ContextMenuHost() {
     const w = el.offsetWidth;
     const h = el.offsetHeight;
     setPos({ left: Math.max(4, Math.min(x, vw - w - 4)), top: Math.max(4, y + h > vh - 4 ? Math.max(4, y - h) : y) });
-    el.querySelector<HTMLButtonElement>('button:not([disabled])')?.focus();
+    el.querySelector<HTMLButtonElement>('button[role="menuitem"]:not([disabled])')?.focus();
   }, [menu]);
 
   useEffect(() => {
@@ -74,21 +79,28 @@ export function ContextMenuHost() {
         return;
       }
       if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
-      const items = Array.from(ref.current?.querySelectorAll<HTMLButtonElement>('button:not([disabled])') ?? []);
+      // Dentro de un control del menú (un deslizador, un número) las flechas cambian su valor.
+      if (document.activeElement instanceof Element && document.activeElement.closest('[data-menu-custom]')) return;
+      const items = Array.from(ref.current?.querySelectorAll<HTMLButtonElement>('button[role="menuitem"]:not([disabled])') ?? []);
       const i = items.indexOf(document.activeElement as HTMLButtonElement);
       items[(i + (e.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length]?.focus();
       e.preventDefault();
     };
-    const onScroll = (): void => close();
+    const onResize = (): void => close();
+    // Desplazar la página cierra el menú; desplazar el propio menú (uno largo) o usar la rueda sobre
+    // un control suyo, no.
+    const onWheel = (e: WheelEvent): void => {
+      if (!(e.target instanceof Node && ref.current?.contains(e.target))) close();
+    };
     window.addEventListener('pointerdown', onDown, true);
     window.addEventListener('keydown', onKey, true);
-    window.addEventListener('resize', onScroll);
-    window.addEventListener('wheel', onScroll, { passive: true });
+    window.addEventListener('resize', onResize);
+    window.addEventListener('wheel', onWheel, { passive: true });
     return () => {
       window.removeEventListener('pointerdown', onDown, true);
       window.removeEventListener('keydown', onKey, true);
-      window.removeEventListener('resize', onScroll);
-      window.removeEventListener('wheel', onScroll);
+      window.removeEventListener('resize', onResize);
+      window.removeEventListener('wheel', onWheel);
     };
   }, [menu, close]);
 
@@ -107,6 +119,10 @@ export function ContextMenuHost() {
         ) : it.heading ? (
           <div key={i} className="truncate px-3 pt-1.5 pb-0.5 text-[10.5px] font-extrabold tracking-[0.08em] text-ink-soft uppercase">
             {it.heading}
+          </div>
+        ) : it.custom ? (
+          <div key={i} role="group" aria-label={it.label} className="px-3 py-1" data-menu-custom="">
+            {it.custom}
           </div>
         ) : (
           <button

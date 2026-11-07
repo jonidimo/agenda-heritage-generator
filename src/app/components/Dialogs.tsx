@@ -1,4 +1,5 @@
 /** Biblioteca de agendas y asistente de nueva agenda. */
+import clsx from 'clsx';
 import { createDesign, duplicateForYear, NOTEBOOK_DEFAULT_PAGES, NOTEBOOK_STYLES, TEMPLATES, type NotebookStyle, type TemplateId } from '@core/design/defaults';
 import { OPTION_COUNT } from '@core/sections/options';
 import { designDefaults, type Design } from '@core/design/schema';
@@ -26,8 +27,15 @@ import { clampPage } from '../state/paging';
 
 const FOCUSABLE = 'button:not([disabled]), [href], input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
-export function Modal(props: { title: string; onClose: () => void; children: React.ReactNode }) {
+/**
+ * Un diálogo sobre la aplicación. Centrado si entra en la ventana; si no, arranca arriba (el título y
+ * la cruz siempre se alcanzan) y se desplaza. `wide` es para los que tienen mucho que elegir: más
+ * ancho, nunca más alto que la ventana, con el contenido desplazable y el `footer` (los botones) fijo
+ * abajo, siempre a la vista.
+ */
+export function Modal(props: { title: string; onClose: () => void; children: React.ReactNode; size?: 'normal' | 'wide'; footer?: React.ReactNode; testId?: string }) {
   const t = useT();
+  const wide = props.size === 'wide';
   const boxRef = useRef<HTMLDivElement | null>(null);
   const onCloseRef = useRef(props.onClose);
   onCloseRef.current = props.onClose;
@@ -59,16 +67,22 @@ export function Modal(props: { title: string; onClose: () => void; children: Rea
       before?.focus?.();
     };
   }, []);
+  // `my-auto` centra la caja cuando entra y la deja arriba cuando no (centrar con `items-center` la
+  // cortaría por arriba, fuera del alcance del desplazamiento). La altura de la ventana va en `--vh`:
+  // con el tamaño de la interfaz, `vh` se multiplica por el zoom.
   return (
-    <div ref={boxRef} className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/30 p-4 sm:items-center" role="dialog" aria-modal="true" aria-label={props.title}>
-      <div className="w-full max-w-lg rounded-xl border border-line bg-paper shadow-2xl">
-        <div className="flex items-center justify-between border-b border-line px-4 py-2.5">
+    <div ref={boxRef} className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/30 p-4" role="dialog" aria-modal="true" aria-label={props.title} data-testid={props.testId}>
+      <div className={clsx('my-auto w-full rounded-xl border border-line bg-paper shadow-2xl', wide ? 'flex max-h-[calc(100*var(--vh)-2rem)] max-w-4xl flex-col' : 'max-w-lg')} data-modal-box="">
+        <div className="flex shrink-0 items-center justify-between border-b border-line px-4 py-2.5">
           <h2 className="font-display text-[22px] italic">{props.title}</h2>
           <button type="button" onClick={props.onClose} className="rounded p-1 hover:bg-black/5" aria-label={t('common.close')}>
             <X size={18} />
           </button>
         </div>
-        <div className="px-4 py-3">{props.children}</div>
+        <div className={clsx('px-4 py-3', wide && 'scroll-thin min-h-0 flex-1 overflow-y-auto')} data-modal-body="">
+          {props.children}
+        </div>
+        {props.footer && <div className="shrink-0 border-t border-line px-4 py-2.5">{props.footer}</div>}
       </div>
     </div>
   );
@@ -131,94 +145,12 @@ export function WelcomeDialog() {
     setShow(false);
   };
 
-  return (
-    <Modal title={t('welcome.title')} onClose={() => hasDesign && setShow(false)}>
-      <Field label={t('welcome.template')} group>
-        <div className="grid gap-1.5">
-          {TEMPLATES.map((tp) => (
-            <label key={tp.id} className={`flex cursor-pointer gap-2 rounded-md border px-2 py-1.5 ${template === tp.id ? 'border-accent bg-accent-soft' : 'border-line bg-white/60'}`}>
-              <input type="radio" name="tpl" checked={template === tp.id} onChange={() => pickTemplate(tp.id)} className="mt-0.5" />
-              <span>
-                <span className="block text-[13px] font-semibold">{uiText(t, `tpl.${tp.id}`, tp.name)}</span>
-                <span className="block text-[11.5px] text-ink-soft">{uiText(t, `tpl.${tp.id}.desc`, tp.description)}</span>
-              </span>
-            </label>
-          ))}
-          {userTpls.length > 0 && <p className="mt-1 text-[11px] font-extrabold tracking-[0.08em] text-ink-soft uppercase">{t('tpl.mine')}</p>}
-          {userTpls.map((tp) => (
-            <label key={tp.id} className={`flex cursor-pointer gap-2 rounded-md border px-2 py-1.5 ${template === `user:${tp.id}` ? 'border-accent bg-accent-soft' : 'border-line bg-white/60'}`}>
-              <input type="radio" name="tpl" checked={template === `user:${tp.id}`} onChange={() => pickTemplate(`user:${tp.id}`)} className="mt-0.5" />
-              <span>
-                <span className="block text-[13px] font-semibold">{tp.name}</span>
-                {tp.description && <span className="block text-[11.5px] text-ink-soft">{tp.description}</span>}
-              </span>
-            </label>
-          ))}
-        </div>
-      </Field>
-      <div className="grid grid-cols-2 gap-2">
-        <Field label={t('welcome.year')}>
-          <NumberInput value={year} min={1900} max={2200} integer onChange={(v) => setYear(Math.round(v))} />
-        </Field>
-        <Field label={t('welcome.language')}>
-          <Select
-            value={lang}
-            onChange={(v) => {
-              setLang(v);
-              // Un país de otro idioma pasa al país típico del nuevo (Argentina → Estados Unidos).
-              const spoken = countryLang(country);
-              if (spoken && spoken !== v) setCountry(homeCountry(v, userRegion) ?? '');
-              // La interfaz se pasa al mismo idioma y vuelve a seguir al de la agenda.
-              useStore.getState().followAgendaLang(v);
-            }}
-            options={LANGUAGES.map((l) => ({ value: l, label: UI_LANG_NAMES[l] }))}
-          />
-        </Field>
-      </div>
-      {template === 'notebook' && (
-        <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.6fr)] items-end gap-2" data-testid="notebook-options">
-          <Field label={t('welcome.notebookPages')}>
-            <NumberInput value={notePages} min={1} max={OPTION_COUNT.max} integer onChange={(v) => setNotePages(Math.min(OPTION_COUNT.max, Math.max(1, Math.round(v))))} />
-          </Field>
-          <Field label={t('welcome.notebookStyle')}>
-            <Select value={noteStyle} onChange={setNoteStyle} options={NOTEBOOK_STYLES.map((v) => ({ value: v, label: t(`val.${v}` as UiKey) }))} />
-          </Field>
-        </div>
-      )}
-      {!undated && (
-      <Field label={t('welcome.country')} hint={t('welcome.countryHint')}>
-        <Select value={country} onChange={setCountry} options={[{ value: '', label: '—' }, ...countries]} />
-      </Field>
-      )}
-      {/* Los controles se alinean por abajo: un rótulo largo puede ocupar dos líneas sin descolocar a los demás. */}
-      {!undated && (
-      <div className="grid grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_minmax(0,0.9fr)] items-end gap-2">
-        <Field label={t('cal.weekStart')}>
-          <Select
-            value={weekStart}
-            onChange={setWeekStart}
-            options={[
-              { value: 'auto', label: `${t('cal.weekStart.auto')} (${firstName})` },
-              ...(['monday', 'sunday', 'saturday'] as const).map((v) => ({ value: v, label: t(`cal.weekStart.${v}`) })),
-            ]}
-          />
-        </Field>
-        <Field label={t('cal.startMonth')}>
-          <Select value={String(startMonth)} onChange={(v) => setStartMonth(Number(v))} options={uiMonths.map((m, i) => ({ value: String(i + 1), label: m }))} />
-        </Field>
-        <Field label={t('cal.monthCount')}>
-          <NumberInput value={monthCount} min={1} max={24} integer onChange={(v) => setMonthCount(Math.min(24, Math.max(1, Math.round(v))))} />
-        </Field>
-      </div>
-      )}
-      <Field label={t('welcome.name')}>
-        <TextInput value={name} onChange={setName} />
-      </Field>
-      <section className="mt-1 rounded-md border border-line bg-white/60 px-2 py-1.5" aria-label={t('paper.title')} data-testid="welcome-paper">
-        <h3 className="mb-0.5 text-[11px] font-extrabold tracking-[0.08em] text-ink-soft uppercase">{t('paper.title')}</h3>
-        <PaperFields value={paper} onChange={setPaper} />
-      </section>
-      <div className="mt-3 flex justify-end gap-2">
+  // Los botones y «Mostrar al iniciar» quedan fijos abajo: con muchas opciones (o la interfaz
+  // agrandada) el contenido se desplaza, pero «Crear agenda» siempre está a la vista.
+  const footer = (
+    <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
+      <Toggle label={t('welcome.showAtStart')} checked={welcomeOnStart} onChange={setWelcomeOnStart} />
+      <div className="ml-auto flex gap-2">
         {hasDesign && (
           <Button variant="ghost" onClick={() => setShow(false)}>
             {t('welcome.cancel')}
@@ -231,8 +163,99 @@ export function WelcomeDialog() {
           {t('welcome.create')}
         </Button>
       </div>
-      <div className="mt-2 border-t border-line pt-1">
-        <Toggle label={t('welcome.showAtStart')} checked={welcomeOnStart} onChange={setWelcomeOnStart} />
+    </div>
+  );
+
+  // Dos columnas cuando hay lugar: a la izquierda qué agenda, a la derecha sus datos y la hoja.
+  return (
+    <Modal title={t('welcome.title')} onClose={() => hasDesign && setShow(false)} size="wide" footer={footer} testId="welcome">
+      <div className="grid gap-x-5 md:grid-cols-2">
+        <div className="min-w-0">
+          <Field label={t('welcome.template')} group>
+            <div className="grid gap-1.5">
+              {TEMPLATES.map((tp) => (
+                <label key={tp.id} className={`flex cursor-pointer gap-2 rounded-md border px-2 py-1.5 ${template === tp.id ? 'border-accent bg-accent-soft' : 'border-line bg-white/60'}`}>
+                  <input type="radio" name="tpl" checked={template === tp.id} onChange={() => pickTemplate(tp.id)} className="mt-0.5" />
+                  <span>
+                    <span className="block text-[13px] font-semibold">{uiText(t, `tpl.${tp.id}`, tp.name)}</span>
+                    <span className="block text-[11.5px] text-ink-soft">{uiText(t, `tpl.${tp.id}.desc`, tp.description)}</span>
+                  </span>
+                </label>
+              ))}
+              {userTpls.length > 0 && <p className="mt-1 text-[11px] font-extrabold tracking-[0.08em] text-ink-soft uppercase">{t('tpl.mine')}</p>}
+              {userTpls.map((tp) => (
+                <label key={tp.id} className={`flex cursor-pointer gap-2 rounded-md border px-2 py-1.5 ${template === `user:${tp.id}` ? 'border-accent bg-accent-soft' : 'border-line bg-white/60'}`}>
+                  <input type="radio" name="tpl" checked={template === `user:${tp.id}`} onChange={() => pickTemplate(`user:${tp.id}`)} className="mt-0.5" />
+                  <span>
+                    <span className="block text-[13px] font-semibold">{tp.name}</span>
+                    {tp.description && <span className="block text-[11.5px] text-ink-soft">{tp.description}</span>}
+                  </span>
+                </label>
+              ))}
+            </div>
+          </Field>
+        </div>
+        <div className="min-w-0">
+          <div className="grid grid-cols-2 gap-2">
+            <Field label={t('welcome.year')}>
+              <NumberInput value={year} min={1900} max={2200} integer onChange={(v) => setYear(Math.round(v))} />
+            </Field>
+            <Field label={t('welcome.language')}>
+              <Select
+                value={lang}
+                onChange={(v) => {
+                  setLang(v);
+                  // Un país de otro idioma pasa al país típico del nuevo (Argentina → Estados Unidos).
+                  const spoken = countryLang(country);
+                  if (spoken && spoken !== v) setCountry(homeCountry(v, userRegion) ?? '');
+                  // La interfaz se pasa al mismo idioma y vuelve a seguir al de la agenda.
+                  useStore.getState().followAgendaLang(v);
+                }}
+                options={LANGUAGES.map((l) => ({ value: l, label: UI_LANG_NAMES[l] }))}
+              />
+            </Field>
+          </div>
+          {template === 'notebook' && (
+            <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.6fr)] items-end gap-2" data-testid="notebook-options">
+              <Field label={t('welcome.notebookPages')}>
+                <NumberInput value={notePages} min={1} max={OPTION_COUNT.max} integer onChange={(v) => setNotePages(Math.min(OPTION_COUNT.max, Math.max(1, Math.round(v))))} />
+              </Field>
+              <Field label={t('welcome.notebookStyle')}>
+                <Select value={noteStyle} onChange={setNoteStyle} options={NOTEBOOK_STYLES.map((v) => ({ value: v, label: t(`val.${v}` as UiKey) }))} />
+              </Field>
+            </div>
+          )}
+          {!undated && (
+            <Field label={t('welcome.country')} hint={t('welcome.countryHint')}>
+              <Select value={country} onChange={setCountry} options={[{ value: '', label: '—' }, ...countries]} />
+            </Field>
+          )}
+          {/* Los controles se alinean por abajo: un rótulo largo puede ocupar dos líneas sin descolocar a los demás. */}
+          {!undated && (
+            <div className="grid grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_minmax(0,0.9fr)] items-end gap-2">
+              <Field label={t('cal.weekStart')}>
+                <Select
+                  value={weekStart}
+                  onChange={setWeekStart}
+                  options={[{ value: 'auto', label: `${t('cal.weekStart.auto')} (${firstName})` }, ...(['monday', 'sunday', 'saturday'] as const).map((v) => ({ value: v, label: t(`cal.weekStart.${v}`) }))]}
+                />
+              </Field>
+              <Field label={t('cal.startMonth')}>
+                <Select value={String(startMonth)} onChange={(v) => setStartMonth(Number(v))} options={uiMonths.map((m, i) => ({ value: String(i + 1), label: m }))} />
+              </Field>
+              <Field label={t('cal.monthCount')}>
+                <NumberInput value={monthCount} min={1} max={24} integer onChange={(v) => setMonthCount(Math.min(24, Math.max(1, Math.round(v))))} />
+              </Field>
+            </div>
+          )}
+          <Field label={t('welcome.name')}>
+            <TextInput value={name} onChange={setName} />
+          </Field>
+          <section className="mt-1 rounded-md border border-line bg-white/60 px-2 py-1.5" aria-label={t('paper.title')} data-testid="welcome-paper">
+            <h3 className="mb-0.5 text-[11px] font-extrabold tracking-[0.08em] text-ink-soft uppercase">{t('paper.title')}</h3>
+            <PaperFields value={paper} onChange={setPaper} />
+          </section>
+        </div>
       </div>
     </Modal>
   );

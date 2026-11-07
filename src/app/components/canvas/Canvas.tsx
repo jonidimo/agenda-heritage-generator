@@ -18,6 +18,7 @@ import { reveal } from '../../state/reveal';
 import { registerViewport } from '../../state/viewport';
 import { currentUiZoom } from '../../state/uiScale';
 import { anchorOf, anchorScroll, wheelZoomFactor, type ZoomAnchor } from '../../state/wheelZoom';
+import { installPan } from '../../state/pan';
 import { AssistantDock } from '../assistant/AssistantDock';
 
 function useSize(): [React.RefObject<HTMLDivElement | null>, { w: number; h: number }] {
@@ -46,6 +47,8 @@ export function Canvas({ committed, live }: { committed: AgendaDocument; live: A
   const goToPage = useStore((s) => s.goToPage);
   const zoom = useStore((s) => s.zoom);
   const fit = useStore((s) => s.fit);
+  // En pantalla completa no hay pie: se pasa de página con las teclas (Av Pág, Re Pág).
+  const footer = useStore((s) => !s.focusMode) && view !== 'book';
   const [ref, size] = useSize();
   const pad = 48;
 
@@ -102,6 +105,12 @@ export function Canvas({ committed, live }: { committed: AgendaDocument; live: A
     desk.scrollTop += dy;
   }, [scale, ref]);
 
+  // Botón del medio, o barra espaciadora + arrastrar: desplaza el área de trabajo sin buscar las barras.
+  useEffect(() => {
+    const desk = ref.current;
+    return desk ? installPan(desk) : undefined;
+  }, [ref]);
+
   // El lienzo le dice a los atajos de encuadre dónde está y a qué escala se dibuja.
   useEffect(() => {
     const scroller = ref.current;
@@ -136,9 +145,9 @@ export function Canvas({ committed, live }: { committed: AgendaDocument; live: A
         )}
       </div>
       <StampToolbar />
-      <AssistantDock footer={view !== 'book'} />
-      {view !== 'book' && (
-        <div className="flex items-center justify-center gap-2 border-t border-line bg-paper/90 px-3 py-1.5 text-[12px]">
+      <AssistantDock footer={footer} />
+      {footer && (
+        <div className="flex items-center justify-center gap-2 border-t border-line bg-paper/90 px-3 py-1.5 text-[12px]" data-testid="page-footer">
           <IconButton label="←" onClick={prev} disabled={pageIndex === 0}>
             <ChevronLeft size={18} />
           </IconButton>

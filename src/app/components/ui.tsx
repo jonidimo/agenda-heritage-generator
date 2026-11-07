@@ -110,8 +110,35 @@ export function TextArea(props: { value: string; onChange: (v: string) => void; 
 }
 
 /** Campo numérico. Con `integer` redondea (los campos enteros del diseño nunca reciben un 4,5). */
-export function NumberInput(props: { value: number; onChange: (v: number) => void; min?: number; max?: number; step?: number; className?: string; integer?: boolean; ariaLabel?: string }) {
+/**
+ * Un número. Con `commit: 'input'` (lo de siempre) cada tecla confirma el valor; con `'enter'`, se
+ * confirma al apretar Enter o al dejar el campo (también si el campo desaparece, como al cerrarse un
+ * menú), y Esc vuelve al de antes. Sirve cuando cada valor intermedio molesta: escribir «125» en el
+ * tamaño de la interfaz no debe pasarla por 80 % y 100 %.
+ */
+export function NumberInput(props: { value: number; onChange: (v: number) => void; min?: number; max?: number; step?: number; className?: string; integer?: boolean; ariaLabel?: string; commit?: 'input' | 'enter' }) {
   const [draft, setDraft] = useState<string | null>(null);
+  const onEnter = props.commit === 'enter';
+  const parse = (text: string): number | null => {
+    const raw = Number(text.replace(',', '.'));
+    const v = props.integer ? Math.round(raw) : raw;
+    return text.trim() !== '' && Number.isFinite(v) ? Math.min(props.max ?? Infinity, Math.max(props.min ?? -Infinity, v)) : null;
+  };
+  // Lo escrito sin confirmar, para confirmarlo si el campo se desmonta antes de perder el foco.
+  const pending = useRef<{ text: string; commit: (text: string) => void } | null>(null);
+  const confirm = (text: string): void => {
+    pending.current = null;
+    const v = parse(text);
+    if (v !== null) props.onChange(v);
+  };
+  useEffect(
+    () => () => {
+      const p = pending.current;
+      pending.current = null;
+      if (p) p.commit(p.text);
+    },
+    [],
+  );
   return (
     <input
       className={clsx(inputCls, 'tabular-nums', props.className)}
@@ -124,11 +151,28 @@ export function NumberInput(props: { value: number; onChange: (v: number) => voi
       step={props.step ?? 1}
       onChange={(e) => {
         setDraft(e.target.value);
-        const raw = Number(e.target.value.replace(',', '.'));
-        const v = props.integer ? Math.round(raw) : raw;
-        if (e.target.value !== '' && Number.isFinite(v)) props.onChange(Math.min(props.max ?? Infinity, Math.max(props.min ?? -Infinity, v)));
+        if (onEnter) {
+          pending.current = { text: e.target.value, commit: confirm };
+          return;
+        }
+        const v = parse(e.target.value);
+        if (v !== null) props.onChange(v);
       }}
-      onBlur={() => setDraft(null)}
+      onKeyDown={(e) => {
+        if (!onEnter || draft === null) return;
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          confirm(draft);
+          setDraft(null);
+        } else if (e.key === 'Escape') {
+          pending.current = null;
+          setDraft(null);
+        }
+      }}
+      onBlur={() => {
+        if (onEnter && draft !== null) confirm(draft);
+        setDraft(null);
+      }}
     />
   );
 }
@@ -247,6 +291,8 @@ export function Slider(
     step?: number;
     unit?: string;
     integer?: boolean;
+    /** Cuándo confirma el número escrito al lado (ver `NumberInput`). */
+    numberCommit?: 'input' | 'enter';
   } & ResetProps<number>,
 ) {
   const id = useId();
@@ -264,8 +310,13 @@ export function Slider(
         <div className="flex items-center gap-1">
           {modified && reset && <ResetButton label={props.label} onClick={reset} />}
           <div className="w-[74px]">
-            <NumberInput value={shown} onChange={props.onChange} min={props.min} max={props.max} step={props.step} integer={props.integer} ariaLabel={props.label} className="!py-0.5 text-right" />
+            <NumberInput value={shown} onChange={props.onChange} min={props.min} max={props.max} step={props.step} integer={props.integer} ariaLabel={props.label} commit={props.numberCommit} className="!py-0.5 text-right" />
           </div>
+          {props.unit && (
+            <span className="min-w-[1.25rem] text-[11px] text-ink-soft" aria-hidden="true">
+              {props.unit}
+            </span>
+          )}
         </div>
       </div>
       <input

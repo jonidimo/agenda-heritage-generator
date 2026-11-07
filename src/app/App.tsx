@@ -355,15 +355,14 @@ export function App() {
             </div>
           ) : !ready || !doc ? (
             <div className="desk flex flex-1 items-center justify-center text-[13px] text-ink-soft">{error ?? t('app.loading')}</div>
+          ) : doc.pageCount === 0 ? (
+            <EmptyPages doc={doc} />
           ) : (
-            doc.pageCount === 0 ? (
-              <EmptyPages doc={doc} />
-            ) : (
-              <>
-                <CanvasArea doc={doc} live={live ?? doc} />
-                <Navigator doc={doc} />
-              </>
-            )
+            <>
+              <CanvasArea doc={doc} live={live ?? doc} />
+              {/* En pantalla completa solo queda la página: la tira de miniaturas también se va. */}
+              {!focusMode && <Navigator doc={doc} />}
+            </>
           )}
         </main>
         {doc && doc.pageCount > 0 && large && !focusMode && (

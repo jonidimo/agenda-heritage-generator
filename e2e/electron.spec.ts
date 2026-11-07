@@ -106,7 +106,7 @@ test('F11 pone la ventana en pantalla completa de verdad (sin paneles) y F11 la 
 
 test('«Acerca de» muestra la carpeta de datos de la aplicación de escritorio', async () => {
   const { win } = await launchWithPlanner();
-  await win.getByRole('button', { name: 'Archivo' }).click();
+  await win.getByRole('button', { name: 'Ayuda' }).click();
   await win.getByRole('menuitem', { name: 'Acerca de Heritage Studio…' }).click();
   const about = win.getByRole('dialog', { name: 'Acerca de Heritage Studio' });
   await expect(about).toBeVisible();
@@ -116,8 +116,10 @@ test('«Acerca de» muestra la carpeta de datos de la aplicación de escritorio'
   await expect(about.locator('code')).toHaveText(DATA_FOLDERS[platform!]);
   // El tamaño de la interfaz también se cambia desde el menú.
   await win.keyboard.press('Escape');
-  await win.getByRole('button', { name: 'Archivo' }).click();
-  await win.getByRole('menuitem', { name: '110 %' }).click();
+  await win.getByRole('button', { name: 'Ajustes' }).click();
+  const field = win.getByTestId('ui-scale').getByRole('spinbutton');
+  await field.fill('110');
+  await field.press('Enter');
   await expect.poll(() => win.evaluate('document.documentElement.style.zoom')).toBe('1.1');
 });
 
@@ -287,7 +289,7 @@ test.describe('puente en vivo con un modelo de IA', () => {
     const { win } = await launchWithPlanner();
     const { found, link } = await connectToApp();
     try {
-      await win.getByRole('button', { name: 'Archivo' }).click();
+      await win.getByRole('button', { name: 'Ajustes' }).click();
       await win.getByRole('menuitem', { name: /Permitir que un modelo de IA edite la agenda abierta/ }).click();
       await expect.poll(() => win.evaluate<boolean>('globalThis.__agenda.getState().liveLink')).toBe(false);
       expect(await link.request('design.info')).toMatchObject({ enabled: false, open: true });
