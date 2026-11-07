@@ -226,6 +226,38 @@ test('al abrir un archivo con imágenes guardadas junto a él, las imágenes lle
   await expect(win.locator('li', { hasText: 'Fuera de la carpeta' }).locator('img')).toHaveCount(0);
 });
 
+test('Archivo → Abrir archivo… abre la agenda por el sistema y lee las imágenes que están junto a ella', async () => {
+  const folder = join(profile, 'abrir-archivo');
+  await mkdir(join(folder, 'assets'), { recursive: true });
+  await writeFile(join(folder, 'assets', 'logo.svg'), await readFile(join(ROOT, 'public/watermarks/colibri.svg')));
+  const file = join(folder, 'Elegida a mano.agenda.json');
+  await writeFile(file, JSON.stringify({ name: 'Elegida a mano', sections: [{ id: 'titlePage', type: 'titlePage' }], assets: [{ id: 'logo', name: 'Logo por ruta', kind: 'vector', mime: 'image/svg+xml', width: 20, height: 20, path: 'assets/logo.svg' }] }));
+  const { electronApp, win } = await launchWithPlanner();
+  // El cuadro de «Abrir» del sistema se reemplaza por el archivo elegido.
+  await electronApp.evaluate(({ dialog }, chosen) => {
+    dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [chosen] });
+  }, file);
+  await win.locator('header').getByRole('button', { name: 'Archivo', exact: true }).click();
+  await win.getByRole('menuitem', { name: /^Abrir archivo/ }).click();
+  await expect.poll(() => win.evaluate<string | null>('globalThis.__agenda?.getState().design?.name ?? null'), { timeout: 60_000 }).toBe('Elegida a mano');
+  // La imagen por ruta llegó (su miniatura sale de los bytes) y no queda el aviso de que falta.
+  await win.getByRole('tab', { name: 'Recursos / Vectores', exact: true }).click();
+  await expect(win.locator('li', { hasText: 'Logo por ruta' }).locator('img')).toBeVisible();
+  await expect(win.getByTestId('notice-action')).toHaveCount(0);
+});
+
+test('Archivo → Abrir archivo… cancelado no cambia la agenda', async () => {
+  const { electronApp, win } = await launchWithPlanner();
+  const before = await win.evaluate<string>('globalThis.__agenda.getState().design.name');
+  await electronApp.evaluate(({ dialog }) => {
+    dialog.showOpenDialog = async () => ({ canceled: true, filePaths: [] });
+  });
+  await win.locator('header').getByRole('button', { name: 'Archivo', exact: true }).click();
+  await win.getByRole('menuitem', { name: /^Abrir archivo/ }).click();
+  await win.waitForTimeout(500);
+  expect(await win.evaluate<string>('globalThis.__agenda.getState().design.name')).toBe(before);
+});
+
 test('cerrar la ventana espera a que termine el guardado pendiente', async () => {
   const { electronApp, win } = await launchWithPlanner();
   await win.evaluate(`globalThis.__agenda.getState().update((d) => { d.name = 'Último cambio'; }, 'e2e-close')`);

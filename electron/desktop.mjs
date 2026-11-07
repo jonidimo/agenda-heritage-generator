@@ -14,7 +14,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { app, BrowserWindow, dialog, Menu, net, protocol, safeStorage, screen, session, shell } from 'electron';
 import { AiSettingsStore, AUTH, aiTargetAllowed, cleanBaseUrl, isLocalHost, isProviderId, KEY_PATTERN, MAX_KEY_LENGTH, parseChatRequest } from './lib/ai.mjs';
 import { agendaFileFromArgv, MAX_OPEN_BYTES, usesWayland, withDisabledFeature } from './lib/args.mjs';
-import { inlineAssetPaths } from './lib/assets.mjs';
+import { readPlanner } from './lib/openPlanner.mjs';
 import { createCloseGuard } from './lib/closing.mjs';
 import { DownloadLog, sysRequestAllowed, sysRoute } from './lib/downloads.mjs';
 import { createLiveBroker, LIVE_ERRORS, LIVE_INFO_FILE, LIVE_PROTOCOL, liveEndpoint, newToken, writeLiveInfo } from './lib/live.mjs';
@@ -75,6 +75,7 @@ async function sys(request) {
     return json({ seq: downloads.lastId, items });
   }
   if (request.method !== 'POST') return json({ error: 'method' }, 405);
+  if (route === 'open-planner') return choosePlanner();
   /** @type {unknown} */
   let body;
   try {
@@ -93,6 +94,20 @@ async function sys(request) {
   if (!/\.(pdf|json)$/i.test(file)) return json({ ok: false, error: 'not a document' }, 403);
   const error = await shell.openPath(file);
   return json({ ok: error === '', error });
+}
+
+/**
+ * File → Open file…: the system's own dialog, then the same path as a double click, so the images saved next
+ * to the planner (by path) are read from its folder; the page cannot do that from its sandbox.
+ */
+async function choosePlanner() {
+  const win = mainWindow;
+  if (!win || win.isDestroyed()) return json({ ok: false, cancelled: false });
+  const chosen = await dialog.showOpenDialog(win, { properties: ['openFile'], filters: [{ name: APP_NAME, extensions: ['json'] }] });
+  const file = chosen.filePaths[0];
+  if (chosen.canceled || !file) return json({ ok: true, cancelled: true });
+  safeOpen(file);
+  return json({ ok: true, cancelled: false });
 }
 
 /* ---------- The AI assistant: keys in the main process, requests through it ---------- */
@@ -269,15 +284,14 @@ async function openPlannerFile(file) {
     pendingOpen = file;
     return;
   }
-  const info = await stat(file).catch(() => null);
-  if (!info?.isFile() || info.size > MAX_OPEN_BYTES) {
+  // Images saved next to the file (by relative path) travel inside it: the page cannot read that folder.
+  const planner = await readPlanner(file, { stat: (f) => stat(f).catch(() => null), readFile: (f) => readFile(f, 'utf8'), fs: { realpath: fsp.realpath, open: fsp.open }, maxBytes: MAX_OPEN_BYTES });
+  if (!planner.ok) {
     dialog.showErrorBox(APP_NAME, `Could not open ${file}.`);
     return;
   }
-  // Images saved next to the file (by relative path) travel inside it: the page cannot read that folder.
-  const { text } = await inlineAssetPaths(await readFile(file, 'utf8'), path.dirname(file), { realpath: fsp.realpath, open: fsp.open });
   app.addRecentDocument(file);
-  await win.webContents.executeJavaScript(`window.__heritageOpen && window.__heritageOpen(${JSON.stringify(text)}, ${JSON.stringify(path.basename(file))})`);
+  await win.webContents.executeJavaScript(`window.__heritageOpen && window.__heritageOpen(${JSON.stringify(planner.text)}, ${JSON.stringify(planner.name)})`);
   if (win.isMinimized()) win.restore();
   win.focus();
 }

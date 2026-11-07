@@ -10,6 +10,7 @@ import { fromBase64, toBase64 } from '@core/resources';
 import { newId } from '@core/util/hash';
 import type { FontSpec } from '@core/text/fonts';
 import { isNewerVersion } from '@core/util/version';
+import { chooseAndOpenPlanner, isDesktopShell } from './desktopBridge';
 import { download, fileBase } from './exporter';
 import {
   exportDesignFile,
@@ -155,6 +156,11 @@ export async function importText(text: string): Promise<Imported> {
 
 /** Elige un archivo y lo abre (si es una agenda, «Guardar» vuelve a escribir en él). */
 export async function openFile(): Promise<Imported | null> {
+  // En el escritorio lo abre el proceso principal (con las imágenes que están junto al archivo): la agenda llega por `__heritageOpen`.
+  if (isDesktopShell()) {
+    await chooseAndOpenPlanner();
+    return null;
+  }
   const w = window as PickerWindow;
   let file: File | undefined;
   let handle: FileHandle | undefined;

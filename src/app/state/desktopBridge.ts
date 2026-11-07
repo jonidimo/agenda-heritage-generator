@@ -45,6 +45,16 @@ async function post(route: 'reveal' | 'open', path: string): Promise<boolean> {
   return r?.ok === true;
 }
 
+/**
+ * «Abrir archivo…» en el escritorio: el sistema pide el archivo y el proceso principal lo abre como al hacer doble
+ * clic, leyendo las imágenes que están junto a él (la página no puede ver esa carpeta). Devuelve `false` si se
+ * canceló o no se pudo.
+ */
+export async function chooseAndOpenPlanner(): Promise<boolean> {
+  const r = await json<{ ok: boolean; cancelled: boolean }>('/_sys/open-planner', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' });
+  return r?.ok === true && !r.cancelled;
+}
+
 /** Muestra el archivo en su carpeta (solo uno que la aplicación guardó). */
 export const revealFile = (path: string): Promise<boolean> => post('reveal', path);
 
