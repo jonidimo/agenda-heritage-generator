@@ -3,6 +3,7 @@
  * descargas y SVG de la página actual.
  */
 import { AgendaDocument, type ExportKind } from '@core/document';
+import { usedAssetIds } from '@core/design/assetUse';
 import type { Design } from '@core/design/schema';
 import { pageToSvg } from '@core/render/svg';
 import type { PdfJob, PdfReply } from '@core/document/job';
@@ -76,8 +77,10 @@ export interface ExportExtra {
 
 function jobFor(design: Design, kind: ExportKind, extra: ExportExtra): Omit<PdfJob, 'id'> {
   const fonts = resources.fonts.list().map((f) => ({ bytes: f.bytes, family: f.family, weight: f.weight, style: f.style, source: f.source }));
+  // Solo los recursos que la agenda usa: la tapa o una imagen sin colocar no tienen por qué viajar al worker.
+  const used = usedAssetIds(design);
   const assets = design.assets.flatMap((ref) => {
-    const b = resources.assetBytes.get(ref.id);
+    const b = used.has(ref.id) ? resources.assetBytes.get(ref.id) : undefined;
     return b ? [{ ref: { ...ref, data: null }, bytes: b }] : [];
   });
   return { kind, design, fonts, holidays: resources.holidaysFor(design.holidays.country), assets, ...(extra.signature !== undefined ? { signature: extra.signature } : {}), ...(extra.pages ? { pages: [...extra.pages] } : {}) };

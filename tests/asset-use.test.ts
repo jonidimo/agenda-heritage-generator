@@ -1,6 +1,6 @@
 /** Dónde se usa una imagen y cómo se quita sin dejar nada colgando. */
 import { describe, expect, it } from 'vitest';
-import { assetUses, removeAssetFrom } from '../src/core/design/assetUse';
+import { assetUses, removeAssetFrom, usedAssetIds } from '../src/core/design/assetUse';
 import { createDesign } from '../src/core/design/defaults';
 import { parseDesign, type Design } from '../src/core/design/schema';
 
@@ -58,6 +58,29 @@ describe('uso de una imagen', () => {
     const d = withEverything();
     d.assets.push({ ...ASSET, id: 'sola', name: 'Sola' });
     expect(assetUses(d, 'sola')).toEqual([]);
+  });
+});
+
+describe('recursos que viajan al exportar', () => {
+  it('los usados en cualquier lugar viajan; los que nadie usa, no', () => {
+    const d = withEverything();
+    d.assets.push({ ...ASSET, id: 'sola', name: 'Sola' });
+    expect([...usedAssetIds(d)].sort()).toEqual(['colibri', 'img1', 'img2']);
+  });
+
+  it('un lugar que assetUses no conoce igual cuenta: el id suelto o el ornamento asset:<id> en cualquier parte del diseño', () => {
+    const d = withEverything();
+    d.assets.push({ ...ASSET, id: 'rara', name: 'Rara' }, { ...ASSET, id: 'orna', name: 'Orna' }, { ...ASSET, id: 'nadie', name: 'Nadie' });
+    d.sections[0]!.options.futuro = { imagen: 'rara' };
+    d.persona.labels = { ...d.persona.labels, ornamento: 'asset:orna' };
+    expect(assetUses(d, 'rara')).toEqual([]);
+    expect([...usedAssetIds(d)].sort()).toEqual(['colibri', 'img1', 'img2', 'orna', 'rara']);
+  });
+
+  it('sus propios bytes en base64 (data) no cuentan como un uso', () => {
+    const d = withEverything();
+    d.assets.push({ ...ASSET, id: 'hh', name: 'Con datos', data: 'aGgi' });
+    expect(usedAssetIds(d).has('hh')).toBe(false);
   });
 });
 

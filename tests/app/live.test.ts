@@ -181,6 +181,17 @@ describe('fuentes propias', () => {
     expect(await ask('fonts.add', { spec: { family: '' }, data: 'xx' })).toMatchObject({ ok: false, code: LIVE_CODES.invalid });
   });
 
+  it('design.get con assets trae los bytes de cada imagen propia y quita su ruta', async () => {
+    const png = new Uint8Array([137, 80, 78, 71]);
+    useStore.getState().update((d) => void d.assets.push({ id: 'con-ruta', name: 'Escudo', kind: 'raster', mime: 'image/png', width: 1, height: 1, builtin: null, path: 'assets/escudo.png' }));
+    resources.assetBytes.set('con-ruta', png);
+    const got = (await ok('design.get', { assets: true })).design as { assets: Array<{ id: string; data?: string | null; path?: string | null }> };
+    expect(got.assets.find((a) => a.id === 'con-ruta')).toMatchObject({ data: toBase64(png), path: null });
+    // Sin pedirlas no se tocan.
+    const bare = (await ok('design.get', {})).design as { assets: Array<{ id: string; path?: string | null }> };
+    expect(bare.assets.find((a) => a.id === 'con-ruta')?.path).toBe('assets/escudo.png');
+  });
+
   it('design.get con fonts trae las fuentes propias que la agenda usa, y solo esas', async () => {
     const added = await ok('fonts.add', { spec: DORSAL_SPEC, data: toBase64(DORSAL) });
     const unused = await ok('fonts.add', { spec: { family: 'Otra Sin Usar', weight: 400, style: 'normal' }, data: toBase64(DORSAL) });

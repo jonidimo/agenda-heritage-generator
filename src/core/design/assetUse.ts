@@ -80,6 +80,22 @@ export function assetUses(design: Design, id: string): AssetUse[] {
 }
 
 /**
+ * Los recursos que la agenda usa en algún lugar (el resto no hace falta para dibujarla ni exportarla).
+ * Suma a `assetUses` una búsqueda del id en todo el diseño (menos la lista de recursos y las fuentes
+ * incrustadas), como valor suelto o como ornamento `asset:<id>`: si un lugar nuevo llega a usar una
+ * imagen y `assetUses` no lo sabe, el recurso viaja igual en lugar de faltar en el PDF. Un falso
+ * positivo solo manda un recurso de más.
+ */
+export function usedAssetIds(design: Design): Set<string> {
+  const text = JSON.stringify({ ...design, assets: [], userFonts: [] });
+  const out = new Set<string>();
+  for (const a of design.assets) {
+    if (assetUses(design, a.id).length > 0 || text.includes(JSON.stringify(a.id)) || text.includes(JSON.stringify(ornamentRef(a.id)))) out.add(a.id);
+  }
+  return out;
+}
+
+/**
  * Quita la imagen de la agenda y todo lo que la usaba: las marcas de agua, la imagen de la tapa, los
  * elementos propios que son esa imagen (los dibujos copiados solo pierden esa imagen), las páginas y plantillas
  * (quedan sin imagen) y los ornamentos (vuelve el del tema). Se aplica sobre un borrador del diseño.

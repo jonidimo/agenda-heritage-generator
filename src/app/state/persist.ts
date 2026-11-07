@@ -185,6 +185,16 @@ export function fontsUsedBy(d: Design, userFonts: ReadonlyMap<string, { bytes: U
 }
 
 /**
+ * Un recurso listo para un archivo autocontenido: con sus bytes adentro (`data`) y sin la ruta, que ya no
+ * apunta a nada (el archivo se abre solo, también en otra carpeta). Sin bytes queda como está, con su
+ * ruta, para que quien lo abra siga sabiendo dónde buscarlo.
+ */
+export function embeddedAsset<T extends { builtin: string | null }>(a: T & { data?: string | null; path?: string | null }, bytes: Uint8Array | undefined): T & { data?: string | null; path?: string | null } {
+  if (a.builtin) return a;
+  return bytes ? { ...a, data: toBase64(bytes), path: null } : { ...a, data: a.data ?? null };
+}
+
+/**
  * Archivo `.agenda.json` autocontenido: sus imágenes y las fuentes subidas que usa, en base64 (las
  * demás fuentes de este equipo no viajan).
  */
@@ -192,7 +202,7 @@ export async function exportDesignFile(d: Design, assetBytes: ReadonlyMap<string
   const withData = {
     ...d,
     writtenBy: __APP_VERSION__,
-    assets: d.assets.map((a) => (a.builtin ? a : { ...a, data: assetBytes.get(a.id) ? toBase64(assetBytes.get(a.id)!) : (a.data ?? null) })),
+    assets: d.assets.map((a) => embeddedAsset(a, assetBytes.get(a.id))),
     userFonts: fontsUsedBy(d, userFonts),
   };
   return new Blob([JSON.stringify(withData, null, 2)], { type: 'application/json' });

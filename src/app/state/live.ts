@@ -56,12 +56,16 @@ function requireOpen(): NonNullable<ReturnType<typeof useStore.getState>['design
 function getDesign(params: { assets?: boolean | undefined; fonts?: boolean | undefined } | undefined): LiveDesign {
   const s = useStore.getState();
   const design = requireOpen();
-  const out = plain(design) as Record<string, unknown> & { assets: Array<{ id: string; builtin: string | null; data?: string | null }> };
+  const out = plain(design) as Record<string, unknown> & { assets: Array<{ id: string; builtin: string | null; data?: string | null; path?: string | null }> };
   // Las imágenes propias van adentro (como en un archivo de agenda) para que quien las pide pueda dibujar las páginas.
   if (params?.assets) {
     for (const a of out.assets) {
       const bytes = a.builtin ? undefined : resources.assetBytes.get(a.id);
-      if (bytes) a.data = toBase64(bytes);
+      if (bytes) {
+        a.data = toBase64(bytes);
+        // Con los bytes adentro la ruta ya no hace falta (y quedaría apuntando a un archivo que quizá no existe).
+        a.path = null;
+      }
     }
   }
   // Las fuentes subidas que usa (como en un archivo de agenda): sin ellas, quien dibuje las páginas usaría las de reserva.
