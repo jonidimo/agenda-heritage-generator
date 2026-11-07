@@ -1990,7 +1990,8 @@ test.describe('asistente de IA', () => {
     const f = (await form.boundingBox())!;
     const desk = (await page.locator('.desk').boundingBox())!;
     expect(f.x + f.width).toBeGreaterThan(desk.x + desk.width - 60);
-    expect(f.x).toBeGreaterThan(desk.x + desk.width / 2 - 40);
+    // Sin cruzar el centro (con un par de píxeles de margen: el ancho del campo depende de cómo dibuje el texto cada sistema).
+    expect(f.x).toBeGreaterThan(desk.x + desk.width / 2 - 42);
   });
 
   test('un servidor local: los modelos aparecen solos en una lista, y sin /v1 se propone la dirección correcta', async ({ page }) => {
