@@ -1,4 +1,7 @@
+import { effectiveDpi, HIGH_DPI, LOW_DPI } from '@core/assets/image';
 import { assetUses, removeAssetFrom, type AssetUse } from '@core/design/assetUse';
+import { imagePlacements, type ImagePlacement } from '@core/document/imageUse';
+import { formatBytes } from '@core/util/bytes';
 import { newId } from '@core/util/hash';
 import { Brush, FilePlus2, Image as ImageIcon, MousePointerClick, Smile, Stamp, Trash2, Upload } from 'lucide-react';
 import { declareIcon, pickIcon } from '../../state/iconPicker';
@@ -29,6 +32,22 @@ export function AssetsPanel() {
   // Las vistas previas de PDF llegan después: al estar listas, la lista se vuelve a dibujar.
   const [, repaint] = useReducer((x: number) => x + 1, 0);
   useEffect(() => onAssetUrlsChange(repaint), []);
+  // Cuánto mide impresa cada imagen en la agenda: se calcula después de dibujar el panel (maquetar todas las páginas lleva un rato).
+  const [placements, setPlacements] = useState<Map<string, ImagePlacement> | null>(null);
+  useEffect(() => {
+    if (!doc) {
+      setPlacements(null);
+      return;
+    }
+    let cancelled = false;
+    const id = window.setTimeout(() => {
+      if (!cancelled) setPlacements(imagePlacements(doc, { cover: true }));
+    }, 0);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(id);
+    };
+  }, [doc]);
 
   const onFiles = async (files: FileList | null): Promise<void> => {
     if (!files) return;
@@ -127,7 +146,10 @@ export function AssetsPanel() {
             const info = resources.assetInfos.get(a.id);
             const href = a.kind === 'pdf' ? assetHref(`${a.id}#1`, 'pdf') : a.kind === 'vector' ? undefined : assetHref(a.id, 'image');
             const vecHref = a.kind === 'vector' && a.builtin ? `${import.meta.env.BASE_URL}${a.builtin}` : a.kind === 'vector' ? assetHref(a.id, 'image') : undefined;
-            const dpi = a.kind === 'raster' && info?.pxWidth ? Math.round((info.pxWidth / 100) * 25.4) : null;
+            const bytes = resources.assetBytes.get(a.id);
+            // Los ppp al mayor tamaño en que se imprime de verdad; si no se usa en ninguna página, los de un tamaño supuesto.
+            const placed = a.kind === 'raster' ? placements?.get(a.id) : undefined;
+            const dpi = a.kind === 'raster' && info?.pxWidth ? (placed ? effectiveDpi(info.pxWidth, placed.maxWmm) : effectiveDpi(info.pxWidth, 100)) : null;
             return (
               <li key={a.id} className="flex gap-2 rounded-md border border-line bg-white/60 p-1.5">
                 <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded bg-white">
@@ -138,7 +160,14 @@ export function AssetsPanel() {
                   <div className="text-ink-soft">
                     <Badge>{a.kind === 'vector' ? 'SVG' : a.kind === 'pdf' ? `PDF${a.pages ? ` · ${a.pages}` : ''}` : a.mime.replace('image/', '').toUpperCase()}</Badge>{' '}
                     {a.kind === 'raster' && info && `${info.pxWidth}×${info.pxHeight}px`}
-                    {dpi !== null && <span className={dpi < 300 ? 'text-warn' : ''}> · {t('assets.dpiAt', { dpi, mm: 100 })}</span>}
+                    {bytes && !a.builtin && <span data-testid="asset-weight"> · {formatBytes(bytes.length)}</span>}
+                    {dpi !== null && (
+                      <span data-testid="asset-dpi" data-dpi={dpi} className={dpi < LOW_DPI ? 'text-warn' : ''}>
+                        {' · '}
+                        {placed ? t('assets.dpiUsed', { dpi, mm: Math.round(placed.maxWmm) }) : t('assets.dpiAt', { dpi, mm: 100 })}
+                      </span>
+                    )}
+                    {dpi !== null && placed && dpi > HIGH_DPI && <div data-testid="asset-over">{t('assets.overDpiHint')}</div>}
                   </div>
                   {(() => {
                     const uses = a.builtin ? [] : assetUses(design, a.id);

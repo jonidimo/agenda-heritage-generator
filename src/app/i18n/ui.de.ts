@@ -443,6 +443,8 @@ export const de: Record<UiKey, string> = {
   'assets.delete': 'Löschen',
   'assets.size': '{w} × {h}',
   'assets.dpiAt': '{dpi} dpi bei {mm} mm Breite',
+  'assets.overDpiHint': 'Mehr Auflösung als gedruckt wird: Sie macht nur die PDF schwerer.',
+  'assets.dpiUsed': '{dpi} ppi in der größten verwendeten Größe ({mm} mm)',
   'assets.fonts': 'Schriften',
   'assets.uploadFont': 'Schrift hochladen (TTF, OTF, WOFF, WOFF2)',
   'assets.fontsHelp': 'Die Schriften werden ins PDF eingebettet: Es druckt auf jedem Computer gleich. Prüfe die Lizenz der Schriften, die du hochlädst.',

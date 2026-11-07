@@ -443,6 +443,8 @@ export const fr: Record<UiKey, string> = {
   'assets.delete': 'Supprimer',
   'assets.size': '{w} × {h}',
   'assets.dpiAt': '{dpi} ppp pour {mm} mm de large',
+  'assets.overDpiHint': 'Plus de résolution que celle imprimée : cela alourdit seulement le PDF.',
+  'assets.dpiUsed': '{dpi} ppp à la plus grande taille utilisée ({mm} mm)',
   'assets.fonts': 'Polices',
   'assets.uploadFont': 'Importer une police (TTF, OTF, WOFF, WOFF2)',
   'assets.fontsHelp': 'Les polices sont incorporées au PDF : il s’imprime de la même façon sur n’importe quel ordinateur. Vérifiez la licence des polices que vous importez.',
