@@ -4,14 +4,17 @@
  * superposiciones). Así el modelo corrige solo, sin que alguien tenga que mirar las páginas.
  */
 import type { Design } from '../design/schema';
+import type { PageWarning, WarningCode } from '../layout/prims';
 import type { AgendaDocument } from './index';
 
 export interface LayoutNote {
   /** Número de página, desde 1. */
   page: number;
   key: string;
-  code: string;
+  code: WarningCode;
   message: string;
+  /** Los datos del aviso (para mostrarlo en el idioma de la interfaz). */
+  params: PageWarning['params'];
 }
 
 export interface LayoutFeedback {
@@ -29,7 +32,7 @@ type Open = (design: Design) => Promise<{ doc: AgendaDocument }>;
 const identity = (n: { key: string; code: string; message: string }): string => `${n.key}|${n.code}|${n.message}`;
 
 function notesOf(doc: AgendaDocument): LayoutNote[] {
-  return doc.warnings().map((w) => ({ page: w.page + 1, key: w.key, code: w.code, message: w.message }));
+  return doc.warnings().map((w) => ({ page: w.page + 1, key: w.key, code: w.code, message: w.message, params: w.params }));
 }
 
 /**
@@ -46,6 +49,7 @@ export async function newLayoutWarnings(open: Open, before: Design | null, after
   } catch (err) {
     // Detener el turno no es un problema de maquetación: sigue hacia arriba.
     if ((err as { name?: unknown } | null)?.name === 'AbortError') throw err;
-    return { notes: [{ page: 0, key: '', code: 'layoutError', message: `No se pudo revisar la maquetación: ${(err as Error).message}` }], omitted: 0 };
+    const reason = (err as Error).message;
+    return { notes: [{ page: 0, key: '', code: 'layoutError', message: `No se pudo revisar la maquetación: ${reason}`, params: { error: reason } }], omitted: 0 };
   }
 }

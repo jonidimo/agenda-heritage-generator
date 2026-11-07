@@ -6,6 +6,7 @@
 import { AiError, httpError } from '@core/ai/errors';
 import type { AiProviderId } from '@core/ai/messages';
 import type { WireRequest } from '@core/ai/providers/types';
+import { connectableBase } from '@core/ai/providers/url';
 
 export interface DesktopAiStatus {
   hasKey: Record<AiProviderId, boolean>;
@@ -32,7 +33,9 @@ export const desktopSaveBase = (provider: AiProviderId, baseUrl: string): Promis
 /** Antes de hablar con un proveedor: el proceso principal tiene que conocer la dirección elegida (solo manda la clave ahí). */
 export async function ensureDesktopBase(provider: AiProviderId, baseUrl: string): Promise<void> {
   const status = cached ?? (await desktopStatus());
-  if ((status.baseUrls[provider] ?? '') !== baseUrl.replace(/\/+$/, '')) await desktopSaveBase(provider, baseUrl);
+  // La que se usa de verdad (0.0.0.0 pasa a 127.0.0.1): el proceso principal la guarda igual.
+  const base = connectableBase(baseUrl).replace(/\/+$/, '');
+  if ((status.baseUrls[provider] ?? '') !== base) await desktopSaveBase(provider, base);
 }
 
 /** Manda un pedido al proveedor por el proceso principal; la respuesta llega tal como la dio el proveedor. */

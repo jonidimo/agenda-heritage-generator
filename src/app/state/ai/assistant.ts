@@ -29,6 +29,7 @@ import { useStore } from '../store';
 import { tNow } from '../tNow';
 import type { PendingProposal, ProposalDecision, TurnEvent } from './engine';
 import { activeProvider, normalizeAiSettings, sessionKey, type AiSettings } from './settings';
+import { loadEngine } from './lazy';
 
 export type AssistantStatus = 'idle' | 'working' | 'awaiting' | 'error';
 
@@ -149,7 +150,8 @@ function keyOriginOf(p: AiProviderId, s: AiSettings): string {
   }
 }
 
-const engine = () => import('./engine');
+// El motor se descarga recién al usarlo (si no llega, el error pide recargar la ventana).
+const engine = loadEngine;
 
 export const useAssistant = create<AssistantState>((set, get) => {
   /**

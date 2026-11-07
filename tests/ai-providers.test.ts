@@ -4,7 +4,7 @@ import { AiError, httpError, retryAfterMs } from '../src/core/ai/errors';
 import type { AiMessage, AiRequest } from '../src/core/ai/messages';
 import { anthropic } from '../src/core/ai/providers/anthropic';
 import { gemini } from '../src/core/ai/providers/gemini';
-import { isLocalUrl, presetOf } from '../src/core/ai/providers';
+import { connectableBase, isLocalUrl, listensOnAll, presetOf } from '../src/core/ai/providers';
 import { openai } from '../src/core/ai/providers/openai';
 import { retryDelay, withRetry } from '../src/core/ai/retry';
 
@@ -152,6 +152,22 @@ describe('OpenAI y compatibles', () => {
     expect(presetOf('https://mi.servidor/v1').id).toBe('custom');
     expect(isLocalUrl('http://127.0.0.1:1234/v1')).toBe(true);
     expect(isLocalUrl('http://192.168.0.2:1234/v1')).toBe(false);
+  });
+
+  it('0.0.0.0 (donde escucha llama.cpp) es esta computadora: se conecta a 127.0.0.1, también para pedir los modelos', () => {
+    expect(listensOnAll('http://0.0.0.0:8080')).toBe(true);
+    expect(listensOnAll('http://[::]:8080/v1')).toBe(true);
+    expect(listensOnAll('http://127.0.0.1:8080')).toBe(false);
+    expect(listensOnAll('no es una dirección')).toBe(false);
+    expect(connectableBase('http://0.0.0.0:8080/v1/')).toBe('http://127.0.0.1:8080/v1');
+    expect(connectableBase(' http://0.0.0.0:8080 ')).toBe('http://127.0.0.1:8080');
+    expect(connectableBase('http://[::]:8080')).toBe('http://[::1]:8080');
+    expect(connectableBase('https://api.openai.com/v1')).toBe('https://api.openai.com/v1');
+    expect(connectableBase('a medio escribir')).toBe('a medio escribir');
+    expect(isLocalUrl('http://0.0.0.0:8080')).toBe(true);
+    expect(openai.models({ baseUrl: 'http://0.0.0.0:8080/v1', surface: 'web' }).url).toBe('http://127.0.0.1:8080/v1/models');
+    const chat = openai.chat({ system: 's', messages: [{ role: 'user', parts: [{ type: 'text', text: 'hola' }] }], tools: [], maxTokens: 10 }, { model: 'qwen', baseUrl: 'http://0.0.0.0:8080/v1', surface: 'web' });
+    expect(chat.url).toBe('http://127.0.0.1:8080/v1/chat/completions');
   });
 });
 

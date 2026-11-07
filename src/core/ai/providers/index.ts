@@ -2,6 +2,7 @@
  * Los proveedores que el asistente sabe usar, y los servicios compatibles con la API de OpenAI que se
  * ofrecen con su dirección ya puesta.
  */
+import { connectableBase } from './url';
 import type { AiProviderId } from '../messages';
 import { anthropic } from './anthropic';
 import { gemini } from './gemini';
@@ -34,7 +35,7 @@ export const OPENAI_PRESETS: readonly OpenAiPreset[] = [
 
 /** El preajuste de una dirección (o `custom`). */
 export function presetOf(baseUrl: string | undefined): OpenAiPreset {
-  const clean = (baseUrl ?? '').trim().replace(/\/+$/, '');
+  const clean = connectableBase(baseUrl ?? '').replace(/\/+$/, '');
   return OPENAI_PRESETS.find((p) => p.baseUrl !== '' && p.baseUrl === clean) ?? (clean === '' ? OPENAI_PRESETS[0]! : OPENAI_PRESETS.at(-1)!);
 }
 
@@ -44,10 +45,10 @@ export function isOfficialBase(adapter: ProviderAdapter, baseUrl: string | undef
   return clean === '' || clean === adapter.defaultBase;
 }
 
-/** ¿Es una dirección de esta misma computadora? (Un modelo local no necesita clave.) */
+/** ¿Es una dirección de esta misma computadora? (Un modelo local no necesita clave.) 0.0.0.0 cuenta como 127.0.0.1. */
 export function isLocalUrl(url: string): boolean {
   try {
-    const h = new URL(url).hostname;
+    const h = new URL(connectableBase(url)).hostname;
     return h === 'localhost' || h === '127.0.0.1' || h === '[::1]' || h === '::1';
   } catch {
     return false;
@@ -55,3 +56,4 @@ export function isLocalUrl(url: string): boolean {
 }
 
 export type { ProviderAdapter } from './types';
+export { connectableBase, listensOnAll } from './url';

@@ -3,6 +3,7 @@
  * lista de modelos, y leer las respuestas. Los adaptadores son puros (no hacen `fetch`) y **nunca ven
  * la clave**: la agrega el transporte en el navegador, o el proceso principal en la aplicación de escritorio.
  */
+import { connectableBase } from './url';
 import type { AiProviderId, AiReply, AiRequest } from '../messages';
 
 /** Un pedido HTTP sin la autenticación. */
@@ -41,8 +42,8 @@ export interface ProviderAdapter {
   parseModels(json: unknown): string[];
 }
 
-/** La base sin barra final (las rutas se agregan con `/`). */
-export const baseOf = (cfg: Pick<ProviderConfig, 'baseUrl'>, fallback: string): string => (cfg.baseUrl?.trim() || fallback).replace(/\/+$/, '');
+/** La base sin barra final (las rutas se agregan con `/`), con 0.0.0.0 cambiada por 127.0.0.1 (ver `connectableBase`). */
+export const baseOf = (cfg: Pick<ProviderConfig, 'baseUrl'>, fallback: string): string => connectableBase(cfg.baseUrl?.trim() || fallback).replace(/\/+$/, '');
 
 /** Lee un objeto de una respuesta, o falla con un error de protocolo legible. */
 export function asRecord(v: unknown, what: string): Record<string, unknown> {

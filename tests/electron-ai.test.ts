@@ -98,6 +98,10 @@ describe('destinos', () => {
     expect(cleanBaseUrl('ftp://x')).toBeNull();
     expect(cleanBaseUrl('https://a:b@x.example')).toBeNull();
     expect(cleanBaseUrl('no es una dirección')).toBeNull();
+    // Donde escucha llama.cpp: se guarda la dirección a la que se conecta la página.
+    expect(cleanBaseUrl('http://0.0.0.0:8080/v1')).toBe('http://127.0.0.1:8080/v1');
+    expect(cleanBaseUrl('http://[::]:8080')).toBe('http://[::1]:8080');
+    expect(aiTargetAllowed('openai', 'http://127.0.0.1:8080/v1/chat/completions', cleanBaseUrl('http://0.0.0.0:8080/v1') ?? undefined)).toBe(true);
   });
 });
 

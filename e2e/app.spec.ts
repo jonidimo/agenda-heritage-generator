@@ -1995,6 +1995,50 @@ test.describe('asistente de IA', () => {
     await page.screenshot({ path: 'test-results/assistant-local-models.png' });
   });
 
+  test('llama.cpp muestra «listening on http://0.0.0.0:8080»: esa dirección sirve tal cual, y se conecta a 127.0.0.1', async ({ page }) => {
+    await openQuiet(page);
+    const asked: string[] = [];
+    await page.route('http://127.0.0.1:8080/**', async (route) => {
+      asked.push(route.request().url());
+      if (route.request().method() === 'OPTIONS') return route.fulfill({ status: 204, headers: { 'access-control-allow-origin': '*', 'access-control-allow-headers': '*' } });
+      return route.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify({ data: [{ id: 'qwen3-27b' }] }) });
+    });
+    await page.locator('header').getByRole('button', { name: 'Ajustes', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Asistente de IA…' }).click();
+    const dialog = page.getByTestId('ai-settings');
+    await dialog.getByLabel('Dirección de la API').fill('http://0.0.0.0:8080/v1');
+    await expect(dialog.getByTestId('ai-listen-all')).toContainText('http://127.0.0.1:8080/v1');
+    // Es una dirección de esta computadora: no pide clave, y los modelos se buscan solos en 127.0.0.1.
+    await expect(dialog.getByTestId('ai-check')).toContainText('un modelo disponible');
+    await expect(dialog.getByRole('combobox', { name: 'Modelo' })).toHaveValue('qwen3-27b');
+    expect(asked.some((u) => u === 'http://127.0.0.1:8080/v1/models')).toBe(true);
+  });
+
+  test('si una parte del programa no se puede cargar (se actualizó con la ventana abierta), se ofrece recargar y lo hecho queda guardado', async ({ page }) => {
+    await openQuiet(page);
+    // El motor del asistente se descarga al usarlo: acá no llega.
+    await page.route('**/assets/engine-*.js', (route) => route.abort());
+    await page.locator('header').getByRole('button', { name: 'Ajustes', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Asistente de IA…' }).click();
+    const dialog = page.getByTestId('ai-settings');
+    await dialog.getByRole('button', { name: 'Claude', exact: true }).click();
+    await dialog.getByLabel('Clave de API').fill('sk-ant-prueba');
+    await dialog.getByRole('button', { name: 'Cerrar' }).click();
+    // Un cambio recién hecho, que tiene que sobrevivir a la recarga.
+    await page.getByRole('textbox', { name: 'Nombre de la agenda' }).fill('Antes de recargar');
+    await page.keyboard.press('Control+j');
+    await page.getByTestId('assistant-input').fill('Traducí la agenda al inglés');
+    await page.keyboard.press('Enter');
+    const card = page.getByTestId('ai-error');
+    await expect(card).toContainText('Una parte del programa no se pudo cargar');
+    // Reintentar no serviría: el botón es recargar la ventana.
+    await expect(card.getByRole('button', { name: 'Reintentar' })).toHaveCount(0);
+    await page.unroute('**/assets/engine-*.js');
+    await Promise.all([page.waitForEvent('load'), card.getByRole('button', { name: 'Recargar la ventana' }).click()]);
+    await expect(page.locator('[data-page-index]').first()).toBeVisible({ timeout: 60_000 });
+    await expect(page.getByRole('textbox', { name: 'Nombre de la agenda' })).toHaveValue('Antes de recargar');
+  });
+
   test('Esc descarta la propuesta y la página vuelve a como estaba', async ({ page }) => {
     await openQuiet(page);
     await fakeAnthropic(page, [propose('compact')]);
@@ -2166,6 +2210,37 @@ test.describe('desplazar arrastrando', () => {
     await name.press('A');
     await expect(name).toHaveValue('Mi A');
     await expect(desk).not.toHaveAttribute('data-pan', /.*/);
+  });
+});
+
+test.describe('feriados', () => {
+  test('un feriado se renombra con el lápiz (Enter guarda, Esc no), se ve el original y se vuelve a él', async ({ page }) => {
+    await openQuiet(page);
+    await page.getByRole('tab', { name: 'Calendario', exact: true }).click();
+    const row = page.getByTestId('holiday-list').locator('[data-holiday="2027-01-01"]').first();
+    await expect(row).toContainText('Año Nuevo');
+    const renamed = () => page.evaluate<Record<string, string>>('globalThis.__agenda.getState().design.holidays.renamed');
+    // Esc cierra sin guardar.
+    await row.getByRole('button', { name: /^Cambiar el nombre/ }).click();
+    const field = row.getByRole('textbox');
+    await expect(field).toBeFocused();
+    await field.fill('Otro nombre');
+    await field.press('Escape');
+    expect(await renamed()).toEqual({});
+    // Enter guarda: la agenda usa el nombre nuevo y el panel recuerda el original.
+    await row.getByRole('button', { name: /^Cambiar el nombre/ }).click();
+    await row.getByRole('textbox').fill('Año nuevo propio');
+    await row.getByRole('textbox').press('Enter');
+    await expect.poll(renamed).toEqual({ '2027-01-01': 'Año nuevo propio' });
+    await expect(row).toContainText('Año nuevo propio');
+    await expect(row).toContainText('Original: Año Nuevo');
+    // Un paso de «Deshacer», y «Volver al nombre original» lo quita.
+    await page.keyboard.press('Control+z');
+    await expect.poll(renamed).toEqual({});
+    await page.keyboard.press('Control+Shift+z');
+    await expect.poll(renamed).toEqual({ '2027-01-01': 'Año nuevo propio' });
+    await row.getByRole('button', { name: /^Volver al nombre original/ }).click();
+    await expect.poll(renamed).toEqual({});
   });
 });
 

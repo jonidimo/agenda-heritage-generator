@@ -14,10 +14,17 @@ import type { AiMessage, AiReply, AiToolCall, AiToolResult } from './messages';
 import { contextBlock, systemPrompt } from './prompt';
 import { withRetry, type Sleep } from './retry';
 import type { ProviderAdapter, ProviderConfig, WireRequest } from './providers/types';
+import { MAX_ROUNDS } from './limits';
 import { executeTool, isReadOnlyTool, toolSpecs, type Proposal, type ToolHost } from './tools';
 
-/** Más vueltas que estas en un pedido es un modelo que no encuentra la salida. */
-export const MAX_ROUNDS = 8;
+export { MAX_ROUNDS };
+
+/**
+ * Lo que se le dice al modelo antes de su última vuelta: que decida con lo que ya sabe. Va con las
+ * respuestas de las herramientas de la vuelta anterior (la conversación solo crece hacia adelante).
+ */
+export const LAST_ROUND_NOTE =
+  'This is your last step for this request. Do not call more inspection tools: either call propose_change with what you already know (one patch can change many things at once), or answer in text saying what you could not find.';
 /** Tope de salida por respuesta (razonamiento incluido, en los modelos que razonan). */
 export const MAX_OUTPUT_TOKENS = 16_000;
 
@@ -53,6 +60,13 @@ export interface TurnInput {
 }
 
 const textResult = (call: AiToolCall, text: string, isError = false): AiToolResult => ({ callId: call.id, name: call.name, content: [{ type: 'text', text }], ...(isError ? { isError } : {}) });
+
+/** Las respuestas de una vuelta con una nota más al final de la última. */
+function withNote(results: AiToolResult[], note: string): AiToolResult[] {
+  const last = results.at(-1);
+  if (!last) return results;
+  return [...results.slice(0, -1), { ...last, content: [...last.content, { type: 'text', text: note }] }];
+}
 
 function checkAbort(signal: AbortSignal): void {
   if (signal.aborted) throw new AiError('aborted', 'Cancelado.');
@@ -115,7 +129,8 @@ export async function runTurn(input: TurnInput): Promise<TurnOutcome> {
     if (chosen) {
       return { kind: 'proposal', text: reply.text, proposal: chosen.proposal, pending: { callId: chosen.call.id, name: chosen.call.name, others: ordered }, history: messages };
     }
-    messages.push({ role: 'tool', results: ordered });
+    // Si la que sigue es la última vuelta, se le avisa junto con estas respuestas.
+    messages.push({ role: 'tool', results: round === MAX_ROUNDS - 2 ? withNote(ordered, LAST_ROUND_NOTE) : ordered });
   }
   throw new AiError('rounds', `El modelo no terminó en ${MAX_ROUNDS} vueltas.`);
 }

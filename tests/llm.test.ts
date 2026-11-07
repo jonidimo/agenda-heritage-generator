@@ -289,7 +289,7 @@ describe('servidor MCP', () => {
     expect(first.written).toBe(true);
     // El editor no deja armarlo así; el archivo sí: se avisa en la revisión y en la maquetación.
     expect(first.issues).toEqual(expect.arrayContaining([expect.objectContaining({ path: '/customBlocks/0', severity: 'adjusted', message: expect.stringContaining('sale de la página') as string })]));
-    expect(first.warnings).toEqual(expect.arrayContaining([expect.objectContaining({ code: 'offPage', page: expect.any(Number) as number })]));
+    expect(first.warnings).toEqual(expect.arrayContaining([expect.objectContaining({ code: 'offPage', page: expect.any(Number) as number, params: expect.any(Object) as object })]));
     // Un cambio que no agrega problemas nuevos no los repite.
     const second = json(await call('update_design', { path: 'fuera.agenda.json', patch: [{ op: 'replace', path: '/calendar/weekStart', value: 'sunday' }] }));
     expect(second.warnings).toEqual([]);

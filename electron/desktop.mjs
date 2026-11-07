@@ -12,13 +12,14 @@ import { readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { app, BrowserWindow, dialog, Menu, net, protocol, safeStorage, screen, session, shell } from 'electron';
-import { AiSettingsStore, AUTH, aiTargetAllowed, cleanBaseUrl, isProviderId, KEY_PATTERN, MAX_KEY_LENGTH, parseChatRequest } from './lib/ai.mjs';
+import { AiSettingsStore, AUTH, aiTargetAllowed, cleanBaseUrl, isLocalHost, isProviderId, KEY_PATTERN, MAX_KEY_LENGTH, parseChatRequest } from './lib/ai.mjs';
 import { agendaFileFromArgv, MAX_OPEN_BYTES, usesWayland, withDisabledFeature } from './lib/args.mjs';
 import { inlineAssetPaths } from './lib/assets.mjs';
 import { createCloseGuard } from './lib/closing.mjs';
 import { DownloadLog, sysRequestAllowed, sysRoute } from './lib/downloads.mjs';
 import { createLiveBroker, LIVE_ERRORS, LIVE_INFO_FILE, LIVE_PROTOCOL, liveEndpoint, newToken, writeLiveInfo } from './lib/live.mjs';
 import { createRevealer, gpuCrashAction, gpuFallbackRelaunch } from './lib/reveal.mjs';
+import { contentTypeOf, resolveAppPath } from './lib/serve.mjs';
 
 const APP_NAME = 'Heritage Studio';
 const APP_ID = 'io.github.jonidimo.heritagestudio';
@@ -165,7 +166,7 @@ async function aiChat(request) {
   // `x-heritage-error` tells the page what failed here (not at the provider): it is not the provider's answer.
   if (!aiTargetAllowed(req.provider, req.url, await ai().baseUrl(req.provider))) return json({ error: { message: 'Esa dirección no es la del proveedor ni la que se guardó en los ajustes.' } }, 403, { 'x-heritage-error': 'target' });
   const key = await ai().getKey(req.provider);
-  const local = ['localhost', '127.0.0.1', '[::1]'].includes(new URL(req.url).hostname);
+  const local = isLocalHost(new URL(req.url).hostname);
   if (!key && !local) return json({ error: { message: 'Falta la clave de API.' } }, 401);
   const auth = AUTH[req.provider];
   const headers = { ...req.headers, ...(key ? { [auth.header]: `${auth.prefix}${key}` } : {}) };
@@ -198,20 +199,23 @@ async function serve(request) {
   // An empty registerSW.js registers nothing, and sw.js is not served, so nothing can register it.
   if (pathname === '/registerSW.js') return new Response('', { headers: { 'content-type': 'text/javascript' } });
   if (pathname === '/sw.js') return notFound();
-  let rel;
-  try {
-    rel = decodeURIComponent(pathname);
-  } catch {
-    return notFound();
-  }
-  if (rel === '/') rel = '/index.html';
-  const file = path.join(DIST, rel);
-  const inside = path.relative(DIST, file);
-  if (rel.includes('\0') || !inside || inside === '..' || inside.startsWith(`..${path.sep}`) || path.isAbsolute(inside)) return notFound();
+  const file = resolveAppPath(DIST, pathname);
+  if (!file) return notFound();
   // A real 404 (not a network error) for missing files: the app treats a missing holidays/<country>.json as "no data".
+  // (A chunk missing because dist/ was rebuilt with the window open is also a 404: the page offers to reload.)
   const info = await stat(file).catch(() => null);
   if (!info?.isFile()) return notFound();
-  return net.fetch(pathToFileURL(file).toString());
+  let res;
+  try {
+    res = await net.fetch(pathToFileURL(file).toString());
+  } catch (err) {
+    return new Response(`Could not read ${pathname}: ${err instanceof Error ? err.message : String(err)}`, { status: 500, headers: { 'content-type': 'text/plain; charset=utf-8' } });
+  }
+  const type = contentTypeOf(file);
+  if (!type) return res;
+  const headers = new Headers(res.headers);
+  headers.set('content-type', type);
+  return new Response(res.body, { status: res.status, statusText: res.statusText, headers });
 }
 
 /** @param {string} url */

@@ -5,12 +5,16 @@
  * tarjeta encima, con «Aplicar» y «Descartar»; el cambio se ve en la página mientras tanto.
  */
 import clsx from 'clsx';
-import { AlertTriangle, ArrowUp, ChevronDown, ChevronUp, History, Settings2, Sparkles, Square, X } from 'lucide-react';
+import { AlertTriangle, ArrowUp, ChevronDown, ChevronUp, History, Info, Settings2, Sparkles, Square, X } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
 import { describeOps, type OpDescription, type OpStep } from '@core/ai/describe';
+import { MAX_ROUNDS } from '@core/ai/limits';
+import { isProblem } from '@core/layout/prims';
 import { createPortal } from 'react-dom';
+import { warningText } from '../../i18n/messages';
 import { plural, useT, type UiKey } from '../../i18n/ui';
 import { useAssistant, type ShownProposal, type Turn } from '../../state/ai/assistant';
+import { reloadWindow } from '../../state/ai/lazy';
 import { shortcutHint } from '../../state/shortcutHints';
 import { useStore } from '../../state/store';
 import { ErrorBoundary } from '../ErrorBoundary';
@@ -28,6 +32,7 @@ const ERROR_KEYS: Record<string, UiKey> = {
   refusal: 'ai.err.refusal',
   length: 'ai.err.length',
   rounds: 'ai.err.rounds',
+  reload: 'ai.err.reload',
 };
 
 /** El asistente, con su propio límite de errores: si algo falla acá, el editor sigue andando. */
@@ -197,15 +202,17 @@ function ProposalCard({ p }: { p: ShownProposal }) {
       </div>
       {(p.warnings.length > 0 || p.ignored.length > 0) && (
         <ul className="mt-2 flex flex-wrap gap-1" data-testid="ai-warnings">
-          {p.warnings.slice(0, 6).map((w, i) => (
-            <li key={`w${i}`} className="inline-flex max-w-full items-center gap-1 rounded-full bg-warn/10 px-2 py-0.5 text-[11px] text-warn" title={w.message}>
-              <AlertTriangle size={11} aria-hidden="true" />
-              <span className="truncate">
-                {w.page > 0 ? `${t('nav.page', { n: w.page })}: ` : ''}
-                {w.message}
-              </span>
-            </li>
-          ))}
+          {p.warnings.slice(0, 6).map((w, i) => {
+            // En el idioma de la interfaz. Un aviso informativo (un nombre que se abrevió) no es un problema.
+            const text = `${w.page > 0 ? `${t('nav.page', { n: w.page })}: ` : ''}${warningText(t, w)}`;
+            const problem = isProblem(w);
+            return (
+              <li key={`w${i}`} className={clsx('inline-flex max-w-full items-center gap-1 rounded-full px-2 py-0.5 text-[11px]', problem ? 'bg-warn/10 text-warn' : 'bg-black/5 text-ink-soft')} title={text} data-problem={problem ? '' : undefined}>
+                {problem ? <AlertTriangle size={11} aria-hidden="true" /> : <Info size={11} aria-hidden="true" />}
+                <span className="truncate">{text}</span>
+              </li>
+            );
+          })}
           {p.warnings.length + p.omittedWarnings > 6 && <li className="text-[11px] text-ink-soft">+{p.warnings.length + p.omittedWarnings - 6}</li>}
           {p.ignored.length > 0 && (
             <li className="rounded-full bg-black/5 px-2 py-0.5 text-[11px] text-ink-soft" title={p.ignored.join(', ')}>
@@ -332,7 +339,8 @@ function ErrorCard() {
         <AlertTriangle size={14} className="mt-0.5 shrink-0 text-warn" aria-hidden="true" />
         <div className="min-w-0 flex-1">
           <p className="font-semibold">{t(key)}</p>
-          {a.error.message && <p className="mt-0.5 break-words text-[11.5px] text-ink-soft">{a.error.message}</p>}
+          {/* El detalle técnico del error viene del núcleo en castellano; el de las vueltas se dice en el idioma de la interfaz. */}
+          {a.error.kind === 'rounds' ? <p className="mt-0.5 text-[11.5px] text-ink-soft">{t('ai.err.roundsDetail', { n: MAX_ROUNDS })}</p> : a.error.message && <p className="mt-0.5 break-words text-[11.5px] text-ink-soft">{a.error.message}</p>}
         </div>
         <button type="button" className="shrink-0 rounded p-0.5 hover:bg-black/5" aria-label={t('common.close')} onClick={a.dismiss}>
           <X size={14} />
@@ -347,9 +355,16 @@ function ErrorCard() {
             {t('ai.settings')}
           </button>
         )}
-        <button type="button" className="rounded-md bg-accent px-2.5 py-1 font-semibold text-white" onClick={() => void a.retry()}>
-          {t('ai.retry')}
-        </button>
+        {/* Si no se pudo cargar una parte del programa, reintentar da lo mismo: hay que recargar la ventana. */}
+        {a.error.kind === 'reload' ? (
+          <button type="button" className="rounded-md bg-accent px-2.5 py-1 font-semibold text-white" onClick={() => void reloadWindow()}>
+            {t('ai.reloadNow')}
+          </button>
+        ) : (
+          <button type="button" className="rounded-md bg-accent px-2.5 py-1 font-semibold text-white" onClick={() => void a.retry()}>
+            {t('ai.retry')}
+          </button>
+        )}
       </div>
     </section>
   );

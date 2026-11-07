@@ -5,7 +5,7 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { trimHistory } from '../src/core/ai/budget';
 import type { AiMessage } from '../src/core/ai/messages';
-import { MAX_ROUNDS, runTurn, settleProposal, type Send } from '../src/core/ai/loop';
+import { LAST_ROUND_NOTE, MAX_ROUNDS, runTurn, settleProposal, type Send } from '../src/core/ai/loop';
 import { contextBlock, systemPrompt } from '../src/core/ai/prompt';
 import { openai } from '../src/core/ai/providers/openai';
 import { executeTool, toolSpecs, type AiContext, type ToolHost } from '../src/core/ai/tools';
@@ -115,9 +115,28 @@ describe('un turno', () => {
   it('no da vueltas para siempre, y se puede cancelar', async () => {
     const loop = scripted(Array.from({ length: MAX_ROUNDS + 1 }, (_, i) => ({ tool_calls: [call(`c${i}`, 'get_context', {})] })));
     await expect(runTurn(base(loop.send))).rejects.toMatchObject({ kind: 'rounds' });
+    expect(loop.seen).toHaveLength(MAX_ROUNDS);
     const ac = new AbortController();
     ac.abort();
     await expect(runTurn(base(scripted([{ content: 'x' }]).send, { signal: ac.signal }))).rejects.toMatchObject({ kind: 'aborted' });
+  });
+
+  it('antes de la última vuelta se le avisa al modelo, y si ahí propone, el pedido termina bien', async () => {
+    const looking = Array.from({ length: MAX_ROUNDS - 1 }, (_, i) => ({ tool_calls: [call(`c${i}`, 'get_context', {})] }));
+    const loop = scripted([...looking, { tool_calls: [call('p', 'propose_change', { patch: [{ op: 'replace', path: '/locale', value: 'en' }], summary: 'Inglés' })] }]);
+    const out = await runTurn(base(loop.send));
+    expect(out.kind).toBe('proposal');
+    expect(loop.seen).toHaveLength(MAX_ROUNDS);
+    // Solo el último pedido lleva el aviso, junto a las respuestas de la vuelta anterior (al final, sin reescribir nada).
+    const lastSent = JSON.stringify(loop.seen.at(-1)!.messages);
+    expect(lastSent).toContain('This is your last step');
+    expect(loop.seen.slice(0, -1).every((req) => !JSON.stringify(req.messages).includes('This is your last step'))).toBe(true);
+    const tail = (loop.seen.at(-1)!.messages as Array<{ role: string; content: string }>).at(-1)!;
+    expect(tail.role).toBe('tool');
+    expect(tail.content).toContain(LAST_ROUND_NOTE);
+    // Lo que se guarda es lo que se mandó: el pedido siguiente no cambia lo anterior.
+    if (out.kind !== 'proposal') throw new Error('se esperaba una propuesta');
+    expect(JSON.stringify(out.history)).toContain(LAST_ROUND_NOTE);
   });
 
   it('un rechazo o una respuesta cortada se dicen como tales', async () => {
@@ -204,6 +223,10 @@ describe('historial y texto de sistema', () => {
     expect(systemPrompt('es', false)).toContain('Spanish');
     expect(systemPrompt('it', true)).toContain('Italian');
     expect(systemPrompt('es', true)).not.toBe(systemPrompt('es', false));
+    // Lo que le faltó a un modelo local para traducir sin recorrer la agenda: «/locale» traduce todo lo generado.
+    expect(systemPrompt('es', false)).toContain('"/locale"');
+    expect(systemPrompt('es', false)).toContain('/holidays/renamed/YYYY-MM-DD');
+    expect(systemPrompt('es', false)).toContain('do not go page by page');
     expect(contextBlock(ctx())).toMatch(/^<context>\n\{.*\}\n<\/context>$/s);
   });
 });

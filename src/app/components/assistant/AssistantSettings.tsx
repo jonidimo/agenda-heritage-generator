@@ -2,12 +2,13 @@
  * Ajustes del asistente de IA: con qué proveedor y modelo trabaja, la clave de API, si puede mirar las
  * páginas y si la píldora se ve. La clave se guarda aparte de los ajustes (ver `state/ai/keys.ts`).
  */
-import { OPENAI_PRESETS, PROVIDER_IDS, PROVIDERS, isLocalUrl, isOfficialBase, presetOf, type OpenAiPreset } from '@core/ai/providers';
+import { OPENAI_PRESETS, PROVIDER_IDS, PROVIDERS, connectableBase, isLocalUrl, isOfficialBase, listensOnAll, presetOf, type OpenAiPreset } from '@core/ai/providers';
 import { AiError } from '@core/ai/errors';
 import type { AiProviderId } from '@core/ai/messages';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { plural, useT, type UiKey } from '../../i18n/ui';
 import { useAssistant } from '../../state/ai/assistant';
+import { loadEngine, reloadWindow } from '../../state/ai/lazy';
 import { forgetAll, getKey, hasKey, setKey } from '../../state/ai/keys';
 import { activeProvider, modelForBase } from '../../state/ai/settings';
 import { desktopSaveKey, desktopStatus, type DesktopAiStatus } from '../../state/ai/desktop';
@@ -30,7 +31,7 @@ const PRESET_LABEL: Record<OpenAiPreset['id'], UiKey> = {
   custom: 'ai.preset.custom',
 };
 
-type Check = { state: 'idle' } | { state: 'busy'; auto: boolean } | { state: 'ok'; n: number; suggestedBase?: string } | { state: 'error'; message: string };
+type Check = { state: 'idle' } | { state: 'busy'; auto: boolean } | { state: 'ok'; n: number; suggestedBase?: string } | { state: 'error'; message: string; reload?: boolean };
 
 /** Lo que se elige en la lista para escribir un nombre a mano. */
 const OTHER = '\u0000other';
@@ -117,7 +118,7 @@ export function AssistantSettings({ onClose }: { onClose: () => void }) {
       detecting.current = ac;
       setCheck({ state: 'busy', auto });
       try {
-        const { listModels } = await import('../../state/ai/engine');
+        const { listModels } = await loadEngine();
         const found = await listModels(provider, baseUrl, ac.signal);
         if (ac.signal.aborted) return;
         setModels(found.models);
@@ -137,7 +138,7 @@ export function AssistantSettings({ onClose }: { onClose: () => void }) {
           }));
       } catch (err) {
         if (ac.signal.aborted) return;
-        setCheck({ state: 'error', message: errorText(err) });
+        setCheck({ state: 'error', message: errorText(err), ...(err instanceof AiError && err.kind === 'reload' ? { reload: true } : {}) });
       } finally {
         if (detecting.current === ac) detecting.current = null;
       }
@@ -200,6 +201,12 @@ export function AssistantSettings({ onClose }: { onClose: () => void }) {
         {(provider === 'openai' || baseUrl !== '') && (
           <Field label={t('ai.settings.baseUrl')} hint={t('ai.settings.baseUrlHint')}>
             <TextInput value={baseUrl} placeholder={adapter.defaultBase} ariaLabel={t('ai.settings.baseUrl')} onChange={(v) => setProviderField('baseUrl', v)} />
+            {/* llama.cpp muestra «listening on http://0.0.0.0:8080»: se puede pegar tal cual. */}
+            {listensOnAll(baseUrl) && (
+              <span className="mt-1 block text-[11px] leading-snug text-ink-soft" data-testid="ai-listen-all">
+                {t('ai.settings.listenAll', { url: connectableBase(baseUrl) })}
+              </span>
+            )}
           </Field>
         )}
         <Field label={t('ai.settings.model')} hint={!model ? t(official ? 'ai.settings.modelDefault' : 'ai.settings.modelPick') : undefined}>
@@ -290,6 +297,11 @@ export function AssistantSettings({ onClose }: { onClose: () => void }) {
               </span>
             )}
             {check.state === 'error' && <span className="text-warn">{check.message}</span>}
+            {check.state === 'error' && check.reload && (
+              <button type="button" className="ml-1 font-semibold text-accent underline" onClick={() => void reloadWindow()}>
+                {t('ai.reloadNow')}
+              </button>
+            )}
           </span>
           <Button variant="outline" onClick={() => void verify()} disabled={check.state === 'busy'}>
             {t('ai.settings.verify')}

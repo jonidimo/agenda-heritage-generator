@@ -4,7 +4,8 @@
  * útil para entender qué pasó, pero no se muestra como si fuera nuestro.
  */
 
-export type AiErrorKind = 'auth' | 'rateLimit' | 'badRequest' | 'notFound' | 'server' | 'network' | 'aborted' | 'timeout' | 'protocol' | 'refusal' | 'length' | 'rounds';
+/** `reload`: una parte del programa no se pudo cargar (se actualizó con la ventana abierta): hay que recargar. */
+export type AiErrorKind = 'auth' | 'rateLimit' | 'badRequest' | 'notFound' | 'server' | 'network' | 'aborted' | 'timeout' | 'protocol' | 'refusal' | 'length' | 'rounds' | 'reload';
 
 /** Más que esto de un mensaje de error del proveedor no ayuda y puede traer de todo. */
 const DETAIL_MAX = 400;

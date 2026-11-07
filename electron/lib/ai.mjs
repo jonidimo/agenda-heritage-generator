@@ -43,8 +43,17 @@ export const MAX_URL_LENGTH = 500;
 /** @param {unknown} v @returns {v is ProviderId} */
 export const isProviderId = (v) => typeof v === 'string' && /** @type {readonly string[]} */ (PROVIDER_IDS).includes(v);
 
-/** @param {string} host */
-const isLocalHost = (host) => host === 'localhost' || host === '127.0.0.1' || host === '[::1]';
+/** Whether a host name is this computer (a local model needs no key and may use plain http). @param {string} host */
+export const isLocalHost = (host) => host === 'localhost' || host === '127.0.0.1' || host === '[::1]';
+
+/**
+ * Where a server listens "on all interfaces" (llama.cpp prints http://0.0.0.0:8080), and the address
+ * to reach it from this computer. Same rule as `connectableBase` in src/core/ai/providers/url.ts.
+ */
+const LISTEN_ALL = new Map([
+  ['0.0.0.0', '127.0.0.1'],
+  ['[::]', '[::1]'],
+]);
 
 /**
  * The one origin a provider's key may go to: the saved address's (https, or http on this computer), or
@@ -108,6 +117,9 @@ export function cleanBaseUrl(v) {
   try {
     const u = new URL(v.trim());
     if ((u.protocol !== 'https:' && u.protocol !== 'http:') || u.username || u.password) return null;
+    // 0.0.0.0 is where the server listens, not an address to connect to: the page sends 127.0.0.1.
+    const local = LISTEN_ALL.get(u.hostname);
+    if (local) u.hostname = local;
     return u.toString().replace(/\/+$/, '');
   } catch {
     return null;
