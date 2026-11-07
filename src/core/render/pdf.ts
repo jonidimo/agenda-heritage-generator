@@ -12,6 +12,13 @@ import { segmentsOf } from '../text/shape';
 import { compose, IDENTITY, matrixScale, PT_PER_MM, type Matrix } from '../util/geometry';
 import type { Fill, Prim, Stroke } from '../layout/prims';
 
+/** Una imagen ya abierta por pdfkit: se incrusta una sola vez aunque se dibuje en muchas páginas. */
+interface PdfKitImage {
+  width: number;
+  height: number;
+  label: string;
+}
+
 /** Subconjunto de la API de pdfkit que usamos (tipado local, sin depender de @types/node). */
 interface PdfKitDoc {
   on(ev: 'data', cb: (chunk: Uint8Array) => void): void;
@@ -45,7 +52,8 @@ interface PdfKitDoc {
   font(name: string): PdfKitDoc;
   fontSize(size: number): PdfKitDoc;
   text(text: string, x: number, y: number, opts: Record<string, unknown>): PdfKitDoc;
-  image(src: ArrayBuffer, x: number, y: number, opts: { width: number; height: number }): PdfKitDoc;
+  openImage(src: Uint8Array): PdfKitImage;
+  image(src: PdfKitImage, x: number, y: number, opts: { width: number; height: number }): PdfKitDoc;
   ref(data: Record<string, unknown>): PdfRef;
   end(): void;
   _root: { data: Record<string, unknown> };
@@ -133,10 +141,10 @@ function decodeURISafe(s: string): string {
   }
 }
 
-const toArrayBuffer = (u8: Uint8Array): ArrayBuffer => u8.buffer.slice(u8.byteOffset, u8.byteOffset + u8.byteLength) as ArrayBuffer;
-
 class PdfPainter {
   private readonly fontAlias = new Map<string, string>();
+  /** Las imágenes abiertas, por recurso: una marca de agua en 188 páginas es un solo objeto en el PDF. */
+  private readonly images = new Map<string, PdfKitImage>();
   private readonly ctmStack: Array<{ ctm: Matrix; alpha: number }> = [];
   private ctm: Matrix = IDENTITY;
   /** Opacidad acumulada de los grupos (pdfkit la reinicia en cada cambio de color). */
@@ -301,11 +309,16 @@ class PdfPainter {
         break;
       }
       case 'image': {
-        const bytes = this.opts.assetBytes(p.asset);
-        if (!bytes) break;
+        let img = this.images.get(p.asset);
+        if (!img) {
+          const bytes = this.opts.assetBytes(p.asset);
+          if (!bytes) break;
+          img = doc.openImage(bytes);
+          this.images.set(p.asset, img);
+        }
         this.save();
         doc.opacity((p.opacity ?? 1) * this.alpha);
-        doc.image(toArrayBuffer(bytes), p.x, p.y, { width: p.w, height: p.h });
+        doc.image(img, p.x, p.y, { width: p.w, height: p.h });
         this.restore();
         this.drewSomething = true;
         break;

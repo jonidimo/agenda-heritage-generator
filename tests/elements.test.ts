@@ -9,6 +9,7 @@ import { createDesign } from '../src/core/design/defaults';
 import { parseDesign, type CustomBlock, type Design } from '../src/core/design/schema';
 import { primsBounds, type Prim } from '../src/core/layout/prims';
 import { openDocument } from './helpers/node-env';
+import { isProblem } from '../src/core/layout/prims';
 
 const PROPS: Record<ElementKind, Record<string, unknown>> = {
   table: { rows: 6, cols: 4, header: true, headers: ['Día', 'Tarea', 'Hecho', 'Notas'] },
@@ -55,7 +56,7 @@ describe('elementos compuestos', () => {
       expect(ink.y).toBeGreaterThanOrEqual(BOX.y - 1);
       expect(ink.x + ink.w).toBeLessThanOrEqual(BOX.x + BOX.w + 1);
       expect(ink.y + ink.h).toBeLessThanOrEqual(BOX.y + BOX.h + 1);
-      expect(doc.pageWarnings(page.index).filter((w) => w.code !== 'abbreviated')).toEqual([]);
+      expect(doc.pageWarnings(page.index).filter(isProblem)).toEqual([]);
     });
 
     it(`${kind}: con valores absurdos se acomoda y no falla`, async () => {
@@ -171,7 +172,7 @@ describe('elementos compuestos', () => {
     for (const paper of ['LETTER', 'LEGAL'] as const) {
       for (const kind of ELEMENT_KINDS) {
         const { doc, page } = await drawn(design(kind, PROPS[kind], (d) => void (d.paper.preset = paper)));
-        expect(doc.pageWarnings(page.index).filter((w) => w.code !== 'abbreviated'), `${kind} · ${paper}`).toEqual([]);
+        expect(doc.pageWarnings(page.index).filter(isProblem), `${kind} · ${paper}`).toEqual([]);
       }
     }
   });

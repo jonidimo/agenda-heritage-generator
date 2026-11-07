@@ -279,7 +279,9 @@ grid).
 
 `assets` declares each file with `id`, `name`, `kind` and `mime`:
 
-- `kind: "raster"`: PNG or JPEG (there is a warning if it prints below 200 ppi).
+- `kind: "raster"`: PNG or JPEG. There is a warning if it prints below 250 ppi (`lowDpi`) and,
+  as information, above 600 (`overDpi`): about 300 ppi at the printed size is enough, and more
+  only makes the PDF heavier. A phone photo does not need 4000 px for a 40 mm box.
 - `kind: "vector"`: SVG. It is drawn as vectors in the PDF (sharp at any size) and, in an `image`
   element or a watermark, `color` tints it.
 - `kind: "pdf"`: a PDF; an own page shows it with `"content": { "kind": "artwork", "assetId":
@@ -307,7 +309,7 @@ use `icon:<id>` anywhere an image goes.
 ## 11. Warnings and how to fix them
 
 `check_design` groups warnings by message, with their pages and their `fix`. All of them except
-`abbreviated` are problems.
+`abbreviated` and `overDpi` (informational) are problems.
 
 | Code | What happens | How to fix it |
 | --- | --- | --- |
@@ -316,7 +318,8 @@ use `icon:<id>` anywhere an image goes.
 | `nonPrintable` | An element enters the edge the printer cannot print (`binding.nonPrintable`, mm). | Move it inwards or make it smaller. |
 | `clamped` | An element was moved to stay on the page. | Adjust its position so it sits where you want it. |
 | `overlap` | Two texts overlap. | Move or shrink one, or shorten the text. |
-| `lowDpi` | An image has too little resolution for its printed size. | A larger image (300 ppi or more) or a smaller element. |
+| `lowDpi` | An image has too little resolution for its printed size (below 250 ppi). | A larger image (300 ppi or more) or a smaller element. |
+| `overDpi` | Informational: an image prints above 600 ppi; it does not look better and the PDF gets heavier. | Nothing required: a smaller image, or export with a lower image resolution. |
 | `missingGlyphs` | Neither the font nor the fallbacks have those characters. | Change the text, the font of that role, or add a family that has them to `/theme/tokens/fallbacks`. |
 | `missingAsset` | An image or file is missing. | Check the `assetId` and its entry in `assets` (`path`, `data` or `builtin`). |
 | `pdfPageRange` | A page the PDF does not have is requested. | A number between 1 and the PDF's page count. |

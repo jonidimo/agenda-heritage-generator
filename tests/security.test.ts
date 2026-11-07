@@ -10,6 +10,7 @@ import { parseDesign } from '../src/core/design/schema';
 import { pruneTokens, resolveTheme } from '../src/core/design/themes';
 import { pageToSvg, primsToStandaloneSvg } from '../src/core/render/svg';
 import { openDocument, sharedFonts } from './helpers/node-env';
+import { isProblem } from '../src/core/layout/prims';
 
 const PAYLOAD = 'red"/><image href="x" onerror="document.title=\'PWNED\'"/><rect fill="red';
 
@@ -64,7 +65,7 @@ describe('temas malformados', () => {
     const raw = JSON.parse(JSON.stringify(createDesign('heritage-norma', { year: 2027, locale: 'es-AR', country: 'AR' })));
     raw.theme.tokens = { colors: null, fonts: { body: null }, sizes: { body: 'x', label: 'y' }, writing: { pitch: '436' } };
     const { doc } = await openDocument(parseDesign(raw));
-    expect(doc.warnings().filter((w) => w.code !== 'abbreviated')).toEqual([]);
+    expect(doc.warnings().filter(isProblem)).toEqual([]);
   });
 });
 

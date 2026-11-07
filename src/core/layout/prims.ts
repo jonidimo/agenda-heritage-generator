@@ -270,6 +270,8 @@ export type WarningCode =
   | 'holidaysRange'
   /** Informativo: un texto (feriado, fecha propia) se abrevió con «…» para entrar. */
   | 'abbreviated'
+  /** Informativo: una imagen se imprime a más de 600 ppp; no se ve mejor y el PDF pesa más. */
+  | 'overDpi'
   /** Un enlace elegido a mano lleva a una página que ya no existe o a una dirección no válida. */
   | 'brokenLink'
   /** El texto de un código QR no entra ni en el código más grande. */
@@ -284,8 +286,11 @@ export interface PageWarning {
   message: string;
 }
 
-/** Los avisos informativos (un texto que se abrevió) no son errores: no cuentan como problemas. */
-export const isProblem = (w: Pick<PageWarning, 'code'>): boolean => w.code !== 'abbreviated';
+/** Los avisos informativos (un texto que se abrevió, una imagen de más resolución que la necesaria) no son errores. */
+const INFORMATIONAL: ReadonlySet<WarningCode> = new Set<WarningCode>(['abbreviated', 'overDpi']);
+
+/** ¿El aviso es un problema a corregir? Los informativos no cuentan. */
+export const isProblem = (w: Pick<PageWarning, 'code'>): boolean => !INFORMATIONAL.has(w.code);
 
 /* ---------- Constructores breves ---------- */
 

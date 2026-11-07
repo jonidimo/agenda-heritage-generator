@@ -9,6 +9,7 @@ import { parseDesign } from '../src/core/design/schema';
 import { LANGUAGES, localeFor, resolveStrings } from '../src/core/i18n';
 import { METHODS, methodText } from '../src/core/methods/catalog';
 import { openDocument } from './helpers/node-env';
+import { isProblem } from '../src/core/layout/prims';
 
 /** La forma de una tabla de textos: claves, largo de las listas y las variables `{x}` de cada texto. */
 function shape(v: unknown): unknown {
@@ -48,7 +49,7 @@ describe('idiomas de la agenda', () => {
         const d = parseDesign(createDesign(template, { year: 2027, locale: localeFor(lang, country), country }));
         const { doc } = await openDocument(d);
         const problems: string[] = [];
-        for (let i = 0; i < doc.pageCount; i++) for (const w of doc.pageWarnings(i)) if (w.code !== 'abbreviated') problems.push(`${template} p${i + 1} ${w.code}: ${w.message}`);
+        for (let i = 0; i < doc.pageCount; i++) for (const w of doc.pageWarnings(i)) if (isProblem(w)) problems.push(`${template} p${i + 1} ${w.code}: ${w.message}`);
         expect(problems.slice(0, 10), template).toEqual([]);
       }
     }, 300_000);

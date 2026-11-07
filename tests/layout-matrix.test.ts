@@ -7,6 +7,7 @@ import { describe, expect, it } from 'vitest';
 import { createDesign, type TemplateId } from '../src/core/design/defaults';
 import { parseDesign, type Design } from '../src/core/design/schema';
 import { openDocument } from './helpers/node-env';
+import { isProblem } from '../src/core/layout/prims';
 
 type Paper = Design['paper']['preset'];
 
@@ -31,7 +32,7 @@ async function warningsOf(d: Design): Promise<string[]> {
   const { doc } = await openDocument(d);
   const grouped = new Map<string, number[]>();
   // «abbreviated» es informativo (un feriado largo se abrevió con «…» y se puede renombrar): no es un error de diagramación.
-  for (const w of doc.warnings()) if (w.code !== 'abbreviated') grouped.set(w.message, [...(grouped.get(w.message) ?? []), w.page + 1]);
+  for (const w of doc.warnings()) if (isProblem(w)) grouped.set(w.message, [...(grouped.get(w.message) ?? []), w.page + 1]);
   return [...grouped].map(([m, pages]) => `${m} (págs. ${pages.slice(0, 6).join(', ')}${pages.length > 6 ? '…' : ''})`);
 }
 

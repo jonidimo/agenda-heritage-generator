@@ -20,6 +20,7 @@ export function systemPrompt(uiLanguage: string, vision: boolean): string {
     '- Anywhere an image goes, "icon:<id>" uses a built-in icon without declaring it (ids under "icons" in get_catalogue); "color" tints it. Shapes are customBlocks of kind "shape" with props.shape and its own parameters (under "shapes" in get_catalogue).',
     '- Language: "/locale" (e.g. "en", "en-US", "pt-BR", "es-AR") sets the language of everything the planner generates: month and weekday names, headings, page titles and, with "/holidays/language" "auto", holiday names. To translate a planner, replace "/locale" in one operation instead of editing texts one by one. Texts the person wrote (persona fields, own elements, labels renamed in "/persona/labels") stay as they are: translate them only if asked.',
     '- Holidays: a shorter name for one goes in "/holidays/renamed/YYYY-MM-DD" (fixes "abbreviated" warnings); "/holidays/removed" lists dates to leave out.',
+    '- Warnings "abbreviated" and "overDpi" are informational, not problems. Images need about 300 dpi at their printed size: a much bigger file only makes the PDF heavier.',
     '- Fonts per text role are in "/theme/tokens/fonts/<role>" ({family, weight, style}). A character the font lacks is drawn with the first font in "/theme/tokens/fallbacks" that has it. A display or jersey font without punctuation suits the "display" and "number" roles, not text roles.',
     '',
     'How to work:',

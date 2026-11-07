@@ -716,7 +716,7 @@ export function createServer(opts: ServerOptions): McpServer {
       prompt(
         [
           `Revisá ${where(archivo)} con check_design.`,
-          'Agrupá los avisos por código y corregí primero los que no son informativos («abbreviated» es solo informativo). Cada aviso trae «fix», que dice qué tocar en el JSON.',
+          'Agrupá los avisos por código y corregí primero los que no son informativos («abbreviated» y «overDpi» son solo informativos). Cada aviso trae «fix», que dice qué tocar en el JSON.',
           'Antes de mover un elemento, mirá su caja con render_page. Hacé cada corrección con update_design y volvé a revisar hasta que no queden problemas.',
         ].join('\n'),
       ),

@@ -20,6 +20,7 @@ import { inkBounds } from '../text/shape';
 import { mergeTokens, type ThemeTokens, type WritingStyle } from '../design/themes';
 import { normalizeColor } from '../util/color';
 import { parseFontSpec, type FontRegistry } from '../text/fonts';
+import { effectiveDpi, HIGH_DPI, LOW_DPI } from '../assets/image';
 import { assetPrims } from './assets';
 import { drawElement } from './elements';
 import { shapeGeometry, SHAPE_DEFAULTS, SHAPE_RANGES, SHAPES } from '../layout/shapes';
@@ -190,15 +191,22 @@ function collectTextBoxes(prims: Prim[], m: Matrix, label: string, block: string
   }
 }
 
-function findImages(prims: Prim[]): Array<{ asset: string; w: number }> {
-  const out: Array<{ asset: string; w: number }> = [];
+/** Escala lineal de una matriz (la raíz de su determinante): cuánto agranda o achica lo que transforma. */
+const matrixScale = (m: Matrix): number => Math.sqrt(Math.abs(m[0] * m[3] - m[1] * m[2]));
+
+/**
+ * Las imágenes de un conjunto de primitivas con su tamaño impreso en mm (ancho y alto), ya con la escala
+ * de los grupos que las contienen y la de `outer` (la matriz del bloque, si la tiene).
+ */
+export function imagesIn(prims: Prim[], outer?: Matrix): Array<{ asset: string; w: number; h: number }> {
+  const out: Array<{ asset: string; w: number; h: number }> = [];
   const walk = (ps: Prim[], k: number): void => {
     for (const p of ps) {
-      if (p.t === 'image') out.push({ asset: p.asset, w: p.w * k });
-      else if (p.t === 'group') walk(p.children, p.m ? k * Math.sqrt(Math.abs(p.m[0] * p.m[3] - p.m[1] * p.m[2])) : k);
+      if (p.t === 'image') out.push({ asset: p.asset, w: p.w * k, h: p.h * k });
+      else if (p.t === 'group') walk(p.children, p.m ? k * matrixScale(p.m) : k);
     }
   };
-  walk(prims, 1);
+  walk(prims, outer ? matrixScale(outer) : 1);
   return out;
 }
 
@@ -634,14 +642,16 @@ export function verifyPage(doc: Pick<DocContext, 'design' | 'binding' | 'fonts' 
       if (ix > 0.2 && iy > 0.2) warn('overlap', `Textos superpuestos: «${a.label}» y «${c.label}».`, { a: a.label, b: c.label });
     }
   }
-  // Imágenes con poca resolución para el tamaño impreso.
+  // Imágenes con poca resolución para el tamaño impreso, o con mucha más de la que se aprovecha.
+  const names = new Map(doc.design.assets.map((a) => [a.id, a.name] as const));
   for (const b of page.blocks) {
-    for (const im of findImages(b.prims)) {
+    for (const im of imagesIn(b.prims, b.m)) {
       const info = doc.assets.get(im.asset);
-      if (info?.pxWidth && im.w > 0) {
-        const dpi = Math.round(info.pxWidth / (im.w / 25.4));
-        if (dpi < 200) warn('lowDpi', `La imagen se imprime a ${dpi} ppp (se recomiendan 300 o más): se verá pixelada.`, { dpi });
-      }
+      if (!info?.pxWidth || im.w <= 0) continue;
+      const dpi = effectiveDpi(info.pxWidth, im.w);
+      const name = names.get(im.asset) ?? im.asset;
+      if (dpi < LOW_DPI) warn('lowDpi', `«${name}» se imprime a ${dpi} ppp (se recomiendan 300 o más): se verá pixelada.`, { dpi, name });
+      else if (dpi > HIGH_DPI) warn('overDpi', `«${name}» se imprime a ${dpi} ppp: más de ${HIGH_DPI} no se nota y el PDF pesa más (al exportar se puede bajar la resolución).`, { dpi, name });
     }
   }
   return dedupeWarnings(out);

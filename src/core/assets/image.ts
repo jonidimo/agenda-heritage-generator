@@ -64,6 +64,11 @@ function jpegInfo(b: Uint8Array): RasterInfo | null {
   return null;
 }
 
+/** Debajo de esto (ppp) una imagen se ve pixelada al imprimirla: `lowDpi`. La imprenta pide 300. */
+export const LOW_DPI = 250;
+/** Encima de esto (ppp) no se gana nada al imprimir y el PDF solo pesa más: `overDpi` (informativo). */
+export const HIGH_DPI = 600;
+
 /** ppp efectivos de una imagen de `pxWidth` píxeles impresa a `mmWidth` mm. */
 export function effectiveDpi(pxWidth: number, mmWidth: number): number {
   return mmWidth > 0 ? Math.round((pxWidth / mmWidth) * 25.4) : 0;

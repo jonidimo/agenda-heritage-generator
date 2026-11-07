@@ -281,7 +281,9 @@ renglones, cuadrícula).
 
 `assets` declara cada archivo con `id`, `name`, `kind` y `mime`:
 
-- `kind: "raster"`: PNG o JPEG (se avisa si se imprime a menos de 200 ppp).
+- `kind: "raster"`: PNG o JPEG. Se avisa si se imprime a menos de 250 ppp (`lowDpi`) y, como
+  información, a más de 600 (`overDpi`): con unos 300 ppp al tamaño impreso alcanza, y más solo
+  hace pesar el PDF. Una foto de celular no hace falta a 4000 px para una caja de 40 mm.
 - `kind: "vector"`: SVG. Se dibuja como vectores en el PDF (nítido a cualquier tamaño) y, en un
   elemento `image` o una marca de agua, `color` lo tiñe de un color.
 - `kind: "pdf"`: un PDF; una página propia lo muestra con `"content": { "kind": "artwork",
@@ -309,7 +311,7 @@ como `icon:<id>` en cualquier lugar que lleva una imagen.
 ## 11. Avisos y cómo corregirlos
 
 `check_design` agrupa los avisos por mensaje, con sus páginas y su `fix`. Todos menos
-`abbreviated` son problemas.
+`abbreviated` y `overDpi` (informativos) son problemas.
 
 | Código | Qué pasa | Cómo se corrige |
 | --- | --- | --- |
@@ -318,7 +320,8 @@ como `icon:<id>` en cualquier lugar que lleva una imagen.
 | `nonPrintable` | Un elemento entra en el borde que la impresora no imprime (`binding.nonPrintable`, mm). | Correlo hacia adentro o achicalo. |
 | `clamped` | Un elemento se corrió solo para no salir de la página. | Ajustá su posición para que quede donde lo querés. |
 | `overlap` | Dos textos se pisan. | Corré o achicá uno, o acortá el texto. |
-| `lowDpi` | Una imagen tiene poca resolución para su tamaño impreso. | Una imagen más grande (300 ppp o más) o un elemento más chico. |
+| `lowDpi` | Una imagen tiene poca resolución para su tamaño impreso (menos de 250 ppp). | Una imagen más grande (300 ppp o más) o un elemento más chico. |
+| `overDpi` | Informativo: una imagen se imprime a más de 600 ppp; no se ve mejor y el PDF pesa más. | Nada obligatorio: una imagen más chica, o exportar con una resolución de imágenes menor. |
 | `missingGlyphs` | Ni la fuente ni las de reserva tienen esos caracteres. | Cambiá el texto, la fuente de ese tipo de texto o agregá a `/theme/tokens/fallbacks` una familia que los tenga. |
 | `missingAsset` | Falta una imagen o un archivo. | Revisá el `assetId` y su entrada en `assets` (`path`, `data` o `builtin`). |
 | `pdfPageRange` | Se pide una página que el PDF no tiene. | Un número entre 1 y la cantidad de páginas del PDF. |
