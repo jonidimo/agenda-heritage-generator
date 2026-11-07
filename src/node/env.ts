@@ -7,6 +7,7 @@ import { open, readFile, realpath } from 'node:fs/promises';
 import { dirname, join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { designCatalogue } from '../core/design/jsonSchema';
+import { ASSET_MAX_BYTES } from '../core/assets/prepare';
 import { parseDesign, type Design } from '../core/design/schema';
 import { AgendaDocument } from '../core/document';
 import type { SvgRenderOptions } from '../core/render/svg';
@@ -43,7 +44,7 @@ export const nodeIO: ResourceIO = {
 };
 
 /** Lo más grande que se lee de una imagen junto a la agenda. */
-export const ASSET_FILE_MAX_BYTES = 64 * 1024 * 1024;
+export const ASSET_FILE_MAX_BYTES = ASSET_MAX_BYTES;
 
 /**
  * Lectura de las imágenes guardadas junto a una agenda (`assets[].path`), relativas a `baseDir` (la

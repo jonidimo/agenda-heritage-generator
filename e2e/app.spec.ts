@@ -2834,3 +2834,70 @@ test.describe('imágenes: resolución al exportar y panel de recursos', () => {
     await expect(page.getByTestId('asset-over')).toHaveCount(0);
   });
 });
+
+test.describe('imágenes: al subirlas', () => {
+  type Handle = { getState: () => { design: { assets: Array<{ id: string; name: string; mime: string; width: number; height: number }> } } };
+  const assets = (page: Page) => page.evaluate(() => (globalThis as unknown as { __agenda: Handle }).__agenda.getState().design.assets.filter((a) => !('builtin' in a && (a as { builtin: string | null }).builtin)));
+
+  /** Un archivo hecho en la página con un lienzo (así se prueba lo que el navegador sabe codificar) y entregado al campo de subida. */
+  async function upload(page: Page, spec: { name: string; type: string; w: number; h: number; transparent?: boolean }): Promise<void> {
+    const data = await page.evaluate<number[]>(`(async () => {
+      const s = ${JSON.stringify(spec)};
+      const canvas = document.createElement('canvas');
+      canvas.width = s.w;
+      canvas.height = s.h;
+      const ctx = canvas.getContext('2d');
+      const g = ctx.createLinearGradient(0, 0, s.w, s.h);
+      g.addColorStop(0, '#e63946');
+      g.addColorStop(1, '#1d3557');
+      ctx.fillStyle = g;
+      if (s.transparent) {
+        ctx.beginPath();
+        ctx.arc(s.w / 2, s.h / 2, Math.min(s.w, s.h) / 3, 0, Math.PI * 2);
+        ctx.fill();
+      } else ctx.fillRect(0, 0, s.w, s.h);
+      const blob = await new Promise((r) => canvas.toBlob((b) => r(b), s.type));
+      return Array.from(new Uint8Array(await blob.arrayBuffer()));
+    })()`);
+    await page.locator('input[type="file"][accept*="pdf"]').setInputFiles({ name: spec.name, mimeType: spec.type, buffer: Buffer.from(data) });
+  }
+
+  test('un WebP de foto se guarda como JPEG; con transparencia, como PNG', async ({ page }) => {
+    await openQuiet(page);
+    await page.getByRole('tab', { name: 'Recursos / Vectores', exact: true }).click();
+    await upload(page, { name: 'foto.webp', type: 'image/webp', w: 600, h: 400 });
+    await expect.poll(async () => (await assets(page)).map((a) => [a.name, a.mime])).toEqual([['foto.jpg', 'image/jpeg']]);
+    await upload(page, { name: 'sello.webp', type: 'image/webp', w: 300, h: 300, transparent: true });
+    await expect.poll(async () => (await assets(page)).map((a) => [a.name, a.mime])).toEqual([
+      ['foto.jpg', 'image/jpeg'],
+      ['sello.png', 'image/png'],
+    ]);
+  });
+
+  test('un PNG común se guarda tal cual', async ({ page }) => {
+    await openQuiet(page);
+    await page.getByRole('tab', { name: 'Recursos / Vectores', exact: true }).click();
+    await upload(page, { name: 'logo.png', type: 'image/png', w: 500, h: 500 });
+    await expect.poll(async () => (await assets(page)).map((a) => [a.name, a.mime, a.width])).toEqual([['logo.png', 'image/png', 500]]);
+  });
+
+  test('el mismo archivo subido dos veces es un solo recurso y se avisa', async ({ page }) => {
+    await openQuiet(page);
+    await page.getByRole('tab', { name: 'Recursos / Vectores', exact: true }).click();
+    const { readFileSync } = await import('node:fs');
+    const file = { name: 'tapa.jpg', mimeType: 'image/jpeg', buffer: readFileSync('docs/images/tapa.jpg') };
+    await page.locator('input[type="file"][accept*="pdf"]').setInputFiles(file);
+    await expect.poll(async () => (await assets(page)).length).toBe(1);
+    await page.locator('input[type="file"][accept*="pdf"]').setInputFiles({ ...file, name: 'copia de tapa.jpg' });
+    await expect(page.getByText(/«copia de tapa.jpg» ya está en la agenda como «tapa.jpg»/)).toBeVisible();
+    expect((await assets(page)).length).toBe(1);
+  });
+
+  test('una imagen de más de 4000 px de lado se achica y se avisa', async ({ page }) => {
+    await openQuiet(page);
+    await page.getByRole('tab', { name: 'Recursos / Vectores', exact: true }).click();
+    await upload(page, { name: 'panorama.png', type: 'image/png', w: 5200, h: 400 });
+    await expect(page.getByText(/«panorama.png» se achicó de 5200×400 a 4000×308 px/)).toBeVisible();
+    await expect.poll(async () => (await assets(page)).map((a) => [a.mime, a.width, a.height])).toEqual([['image/png', 4000, 308]]);
+  });
+});

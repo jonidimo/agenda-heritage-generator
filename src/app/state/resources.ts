@@ -43,6 +43,8 @@ export class Resources {
   readonly holidayData = new Map<string, HolidayCountryData | null>();
   readonly assetBytes = new Map<string, Uint8Array>();
   readonly assetInfos = new Map<string, AssetInfo>();
+  /** SHA-256 de los bytes de cada imagen, para no guardar dos veces el mismo archivo (se calcula al subir). */
+  readonly assetHashes = new Map<string, string>();
   /** Fuentes subidas por el usuario: id → bytes (para el Worker de PDF). */
   readonly userFontBytes = new Map<string, { bytes: Uint8Array; spec: FontSpec }>();
   /** Problemas al cargar (se muestran en la interfaz). */

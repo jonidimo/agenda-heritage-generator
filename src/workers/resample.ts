@@ -5,6 +5,30 @@
  */
 import type { ImageResampler } from '@core/assets/resample';
 
+/**
+ * Achica una imagen ya decodificada a `w`×`h` de a mitades y devuelve el lienzo (o `null` si el navegador
+ * no puede). Con el mismo tamaño la copia sin cambios.
+ */
+export function scaleDown(source: ImageBitmap, w: number, h: number): OffscreenCanvas | null {
+  let current: ImageBitmap | OffscreenCanvas = source;
+  let cw = source.width;
+  let ch = source.height;
+  do {
+    const nw = Math.max(w, Math.ceil(cw / 2));
+    const nh = Math.max(h, Math.ceil(ch / 2));
+    const step = new OffscreenCanvas(nw, nh);
+    const ctx = step.getContext('2d');
+    if (!ctx) return null;
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(current, 0, 0, nw, nh);
+    current = step;
+    cw = nw;
+    ch = nh;
+  } while (cw > w || ch > h);
+  return current;
+}
+
 export const canvasResampler: ImageResampler = async (bytes, mime, target, quality) => {
   if (typeof OffscreenCanvas === 'undefined' || typeof createImageBitmap === 'undefined') return null;
   let bitmap: ImageBitmap | null = null;
@@ -12,24 +36,9 @@ export const canvasResampler: ImageResampler = async (bytes, mime, target, quali
     // Sin girar por EXIF (las imágenes giradas ni llegan acá) y sin convertir el color: los mismos valores que lee el PDF.
     bitmap = await createImageBitmap(new Blob([bytes as BlobPart], { type: mime }), { imageOrientation: 'none', colorSpaceConversion: 'none' });
     if (target.w > bitmap.width || target.h > bitmap.height) return null;
-    let source: ImageBitmap | OffscreenCanvas = bitmap;
-    let w = bitmap.width;
-    let h = bitmap.height;
-    while (w > target.w || h > target.h) {
-      const nw = Math.max(target.w, Math.ceil(w / 2));
-      const nh = Math.max(target.h, Math.ceil(h / 2));
-      const step = new OffscreenCanvas(nw, nh);
-      const ctx = step.getContext('2d');
-      if (!ctx) return null;
-      ctx.imageSmoothingEnabled = true;
-      ctx.imageSmoothingQuality = 'high';
-      ctx.drawImage(source, 0, 0, nw, nh);
-      source = step;
-      w = nw;
-      h = nh;
-    }
-    if (!(source instanceof OffscreenCanvas)) return null;
-    const blob = await source.convertToBlob(mime === 'image/jpeg' ? { type: 'image/jpeg', quality } : { type: 'image/png' });
+    const canvas = scaleDown(bitmap, target.w, target.h);
+    if (!canvas) return null;
+    const blob = await canvas.convertToBlob(mime === 'image/jpeg' ? { type: 'image/jpeg', quality } : { type: 'image/png' });
     return new Uint8Array(await blob.arrayBuffer());
   } catch {
     return null;
