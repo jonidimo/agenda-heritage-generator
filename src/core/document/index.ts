@@ -11,10 +11,13 @@ import type { DocContext } from '../layout/context';
 import type { PageModel, PageWarning } from '../layout/prims';
 import { addMonths } from '../util/dates';
 import { renderPdf, type PdfLink, type PdfPageInput } from '../render/pdf';
+import { rasterInfo } from '../assets/image';
+import { canResample, resampleTarget, pickSmaller, RESAMPLE_QUALITY, type ImageDpi, type ImageResampler } from '../assets/resample';
 import { SECTION_REGISTRY } from '../sections/registry';
 import { shapeText } from '../text/shape';
 import { isScreen, type Binding } from './binding';
 import { createDocContext, pageFormat, type PageFormat, type Resources } from './context';
+import { imagePlacements } from './imageUse';
 import { dedupeWarnings, layoutPage, pageInputs, pagePrims, samePageInputs, verifyPage, type PageInputs } from './layout';
 import { buildOutline, LinkResolver, pageFullTitle, pageLinks, remapOutline, type ResolvedLink } from './links';
 import { hiddenElements, type HiddenElement } from './hidden';
@@ -32,7 +35,16 @@ export interface ExportOptions {
   signature?: number;
   /** Para `pages`: solo estas páginas (índices desde 0); los enlaces y marcadores a las demás se omiten. */
   pages?: readonly number[];
+  /**
+   * Resolución de las imágenes en el PDF: `'original'` (o nada) las deja como están; 300 o 150 las achica,
+   * solo las que tienen más de la que hace falta al tamaño en que se imprimen. Necesita `resample`.
+   */
+  imageDpi?: ImageDpi;
+  /** Quien lee y escribe las imágenes (el navegador con un lienzo, Node con jpeg-js y pngjs). */
+  resample?: ImageResampler;
 }
+
+export { defaultImageDpi } from './binding';
 
 export interface DocumentOptions {
   /**
@@ -245,10 +257,38 @@ export class AgendaDocument {
     return this.design.sections.some((s) => s.enabled && s.options.separate === true);
   }
 
+  /**
+   * Los bytes de cada imagen para el PDF: los mismos, salvo las que tienen mucha más resolución de la que
+   * hace falta al tamaño en que se imprimen, que se achican a la pedida (si el resultado pesa menos). Una
+   * imagen que no se puede leer, o que no gana nada, queda como está: achicar nunca hace fallar la exportación.
+   */
+  private async imageBytes(kind: ExportKind, opts: ExportOptions): Promise<(assetId: string) => Uint8Array | undefined> {
+    const dpi = opts.imageDpi;
+    if (dpi === undefined || dpi === 'original' || !opts.resample) return opts.assetBytes;
+    const scope = kind === 'pages' ? { pages: opts.pages } : kind === 'cover' ? { cover: true, noPages: true } : kind === 'calibration' || kind === 'sewing' ? { noPages: true } : {};
+    const placements = imagePlacements(this, scope);
+    const smaller = new Map<string, Uint8Array>();
+    for (const [id, placed] of placements) {
+      const info = this.ctx.assets.get(id);
+      const bytes = opts.assetBytes(id);
+      if (info?.kind !== 'raster' || !info.pxWidth || !info.pxHeight || !bytes || !canResample(bytes)) continue;
+      const target = resampleTarget({ w: info.pxWidth, h: info.pxHeight }, placed, dpi);
+      const mime = rasterInfo(bytes)?.mime;
+      if (!target || !mime) continue;
+      try {
+        smaller.set(id, pickSmaller(bytes, await opts.resample(bytes, mime, target, RESAMPLE_QUALITY[dpi]), target));
+      } catch {
+        /* se queda con la imagen original */
+      }
+    }
+    return (id) => smaller.get(id) ?? opts.assetBytes(id);
+  }
+
   async exportPdf(kind: ExportKind, opts: ExportOptions): Promise<Uint8Array> {
     const d = this.design;
     const title = `${d.name}`;
-    const base = { fonts: this.ctx.fonts, assetBytes: opts.assetBytes, info: { title, author: d.persona.name, subject: 'Agenda', keywords: 'agenda, planner' }, ...(opts.onProgress ? { onProgress: opts.onProgress } : {}) };
+    const assetBytes = kind === 'separate' ? opts.assetBytes : await this.imageBytes(kind, opts);
+    const base = { fonts: this.ctx.fonts, assetBytes, info: { title, author: d.persona.name, subject: 'Agenda', keywords: 'agenda, planner' }, ...(opts.onProgress ? { onProgress: opts.onProgress } : {}) };
     const toInput = (r: SheetRender): PdfPageInput => ({ w: r.w, h: r.h, prims: r.prims });
     if (this.pageCount === 0 && kind !== 'calibration' && kind !== 'sewing') throw new Error('La agenda no tiene páginas: agregá secciones o páginas propias antes de exportarla.');
     if (kind !== 'pages' && this.screen) throw new Error(`El PDF «${kind}» es para imprimir y encuadernar: la agenda está hecha para leer en pantalla. Cambiá el destino a «Encuadernación» o exportá las páginas.`);

@@ -58,6 +58,18 @@ describe('nombres de los parámetros', () => {
     expect((await call('export_pdf', { path: 'a.agenda.json', out: 'x.pdf' })).isError).toBe(true);
   });
 
+  it('export_pdf acepta la resolución de las imágenes (original, 300 o 150), la informa, y rechaza otra', async () => {
+    await call('create_design', { template: 'minimal', year: 2027, out: 'dpi.agenda.json' });
+    const dflt = JSON.parse((await call('export_pdf', { path: 'dpi.agenda.json', kind: 'calibration', out: 'dpi-a.pdf' })).text) as { imageDpi: number | string };
+    expect(dflt.imageDpi).toBe(300);
+    for (const imageDpi of ['original', 300, 150]) {
+      const res = await call('export_pdf', { path: 'dpi.agenda.json', kind: 'calibration', imageDpi, out: 'dpi-b.pdf' });
+      expect(res.isError, res.text).toBe(false);
+      expect((JSON.parse(res.text) as { imageDpi: unknown }).imageDpi).toBe(imageDpi);
+    }
+    expect((await call('export_pdf', { path: 'dpi.agenda.json', kind: 'calibration', imageDpi: 200, out: 'dpi-c.pdf' })).isError).toBe(true);
+  });
+
   it('update_design con «out» escribe el resultado en otro archivo y deja el original', async () => {
     await call('create_design', { template: 'minimal', year: 2027, out: 'b.agenda.json' });
     const patch = [{ op: 'replace', path: '/persona/name', value: 'Otra' }];

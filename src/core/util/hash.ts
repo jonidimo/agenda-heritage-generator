@@ -8,6 +8,16 @@ export function fnv1a(input: string): string {
   return (h >>> 0).toString(36);
 }
 
+/** FNV-1a de 32 bits sobre bytes: para reconocer el mismo contenido (claves de caché), no para seguridad. */
+export function fnv1aBytes(bytes: Uint8Array): string {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < bytes.length; i++) {
+    h ^= bytes[i]!;
+    h = Math.imul(h, 0x01000193);
+  }
+  return (h >>> 0).toString(36);
+}
+
 /** Serialización JSON con claves ordenadas (para hashes deterministas de objetos). */
 export function stableStringify(value: unknown): string {
   if (value === null || typeof value !== 'object') return JSON.stringify(value) ?? 'null';

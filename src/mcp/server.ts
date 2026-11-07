@@ -18,6 +18,9 @@ import { themeFile, themeFromDesign } from '../core/design/themeFile';
 import { EXPORT_KINDS } from '../core/document';
 import { documentSummary } from '../core/document/summary';
 import type { LiveDesign, LiveFontAdded, LiveInfo, LiveLibraryItem, LiveOpened, LivePatchResult, LiveReveal } from '../core/live/protocol';
+import { cachedResampler, IMAGE_DPI_OPTIONS } from '../core/assets/resample';
+import { defaultImageDpi } from '../core/document';
+import { nodeResampler } from '../node/resample';
 import { newLayoutWarnings, type LayoutFeedback } from '../core/document/feedback';
 import { fixesFor } from '../core/document/fixes';
 import { listPages, pageRenderInfo } from '../core/document/inspect';
@@ -628,19 +631,24 @@ export function createServer(opts: ServerOptions): McpServer {
         kind: z.enum(EXPORT_KINDS).optional().describe('Qué PDF: pages, imposed, fronts, backs, signature, calibration, sewing, cover o separate'),
         mode: z.enum(EXPORT_KINDS).optional().describe('Nombre anterior de «kind» (se sigue aceptando)'),
         signature: z.number().int().min(1).optional().describe('Con kind=signature: el cuadernillo, desde 1'),
+        imageDpi: z
+          .union([z.literal('original'), z.literal(300), z.literal(150)])
+          .optional()
+          .describe(`Resolución de las imágenes en el PDF: ${IMAGE_DPI_OPTIONS.join(', ')}. 300 (imprimir) o 150 (pantalla) achican solo las imágenes que tienen más ppp de los que hacen falta al tamaño en que se imprimen, sin perder calidad visible; original no las toca. Por defecto, 300 para imprimir y 150 si la agenda es para pantalla.`),
         out: z.string().describe('Archivo que se escribe (.pdf), relativo a la carpeta de trabajo'),
       },
     },
-    async ({ kind: given, mode, signature, out, ...input }) => {
+    async ({ kind: given, mode, signature, imageDpi, out, ...input }) => {
       if (given !== undefined && mode !== undefined && given !== mode) throw new Error('Indicá el tipo de PDF con «kind» (o con «mode», su nombre anterior), no con los dos distintos.');
       const kind = given ?? mode;
       if (kind === undefined) throw new Error(`Indicá qué PDF con «kind»: ${EXPORT_KINDS.join(', ')}.`);
       if (kind === 'signature' && signature === undefined) throw new Error('Con kind=signature indicá el cuadernillo en «signature» (1, 2, 3…).');
       const { design, baseDir } = await load(input);
       const { doc, bytes } = await open(design, baseDir);
-      const pdf = await doc.exportPdf(kind, { assetBytes: (id) => bytes.get(id), ...(signature !== undefined ? { signature: signature - 1 } : {}) });
+      const dpi = imageDpi ?? defaultImageDpi(design.binding);
+      const pdf = await doc.exportPdf(kind, { assetBytes: (id) => bytes.get(id), imageDpi: dpi, resample: cachedResampler(nodeResampler), ...(signature !== undefined ? { signature: signature - 1 } : {}) });
       const full = await ws.write(out, pdf, { extensions: ['.pdf'], overwrite: true });
-      return text({ path: ws.show(full), bytes: pdf.length, pages: doc.pageCount });
+      return text({ path: ws.show(full), bytes: pdf.length, pages: doc.pageCount, imageDpi: dpi });
     },
   );
 

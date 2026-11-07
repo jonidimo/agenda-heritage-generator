@@ -63,7 +63,7 @@ evita que npm escriba en el canal que usan el cliente y el servidor.
 | `add_font` | Agrega una fuente propia (`.ttf`, `.otf`, `.woff`, `.woff2` de la carpeta de trabajo) a un archivo (`path`, viaja adentro en `userFonts`) o a la aplicación abierta (`app: true`); con `roles`, la pone en esos tipos de texto. Devuelve sus glifos y la puntuación que le falta (ver la sección 7). |
 | `list_pages` | Las páginas, con su número, clave, tipo y título (se puede filtrar por tipo). |
 | `render_page` | Dibuja una página tal como se imprime y la devuelve como imagen PNG, con su lado (derecha o izquierda), su zona de contenido, sus bloques (id, nombre y caja en mm) y sus avisos. |
-| `export_pdf` | Escribe un PDF (`out`) del tipo que dice `kind` (se sigue aceptando `mode`): `pages` (para tableta, con enlaces y marcadores), `imposed` (pliegos para imprimir doble faz y doblar en cuadernillos), `fronts`/`backs`, `signature`, `calibration`, `sewing`, `cover`, `separate`. |
+| `export_pdf` | Escribe un PDF (`out`) del tipo que dice `kind` (se sigue aceptando `mode`): `pages` (para tableta, con enlaces y marcadores), `imposed` (pliegos para imprimir doble faz y doblar en cuadernillos), `fronts`/`backs`, `signature`, `calibration`, `sewing`, `cover`, `separate`. `imageDpi` (`300` para imprimir, `150` para pantalla u `"original"`; por defecto 300, o 150 si la agenda es para pantalla) achica las imágenes que tienen más resolución de la que hace falta al tamaño en que se imprimen, sin perder calidad que se note; las demás quedan como están. |
 | `export_theme` | Guarda el estilo de la agenda como archivo de tema `.tema.json` (letras, colores, líneas, ornamentos y sus imágenes) para importarlo en la aplicación. |
 | `list_catalogue` | Tipos de sección con sus opciones y valores posibles, temas, plantillas, fuentes integradas, ornamentos, usos y dibujos de línea, armonías de color, tipos de elemento, tipos de página y variables de texto. |
 | `get_schema` | El esquema JSON, entero o por partes (`"theme.tokens.lines"`, `"sections"`, `"customBlocks"`…). |
@@ -321,7 +321,7 @@ como `icon:<id>` en cualquier lugar que lleva una imagen.
 | `clamped` | Un elemento se corrió solo para no salir de la página. | Ajustá su posición para que quede donde lo querés. |
 | `overlap` | Dos textos se pisan. | Corré o achicá uno, o acortá el texto. |
 | `lowDpi` | Una imagen tiene poca resolución para su tamaño impreso (menos de 250 ppp). | Una imagen más grande (300 ppp o más) o un elemento más chico. |
-| `overDpi` | Informativo: una imagen se imprime a más de 600 ppp; no se ve mejor y el PDF pesa más. | Nada obligatorio: una imagen más chica, o exportar con una resolución de imágenes menor. |
+| `overDpi` | Informativo: una imagen se imprime a más de 600 ppp; no se ve mejor y el PDF pesa más. | Nada obligatorio: una imagen más chica, o exportar con `imageDpi` 300 o 150. |
 | `missingGlyphs` | Ni la fuente ni las de reserva tienen esos caracteres. | Cambiá el texto, la fuente de ese tipo de texto o agregá a `/theme/tokens/fallbacks` una familia que los tenga. |
 | `missingAsset` | Falta una imagen o un archivo. | Revisá el `assetId` y su entrada en `assets` (`path`, `data` o `builtin`). |
 | `pdfPageRange` | Se pide una página que el PDF no tiene. | Un número entre 1 y la cantidad de páginas del PDF. |

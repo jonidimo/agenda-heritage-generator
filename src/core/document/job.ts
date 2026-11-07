@@ -1,6 +1,7 @@
 /** Mensajes entre la interfaz y el Worker de PDF (solo tipos, sin dependencias de entorno). */
 import type { AssetRef, Design } from '../design/schema';
 import type { HolidayCountryData } from '../holidays';
+import type { ImageDpi } from '../assets/resample';
 import type { FontStyle } from '../text/fonts';
 import type { ExportKind } from './index';
 
@@ -10,6 +11,8 @@ export interface PdfJob {
   signature?: number;
   /** Solo para el PDF de páginas: las páginas a exportar (índices desde 0). */
   pages?: number[];
+  /** Resolución de las imágenes del PDF (sin ella, la original). */
+  imageDpi?: ImageDpi;
   design: Design;
   fonts: Array<{ bytes: Uint8Array; family: string; weight: number; style: FontStyle; source: 'builtin' | 'user' }>;
   holidays: HolidayCountryData | null;

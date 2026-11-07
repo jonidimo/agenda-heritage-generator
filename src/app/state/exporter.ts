@@ -2,11 +2,13 @@
  * Exportación: PDF en un Web Worker (con respaldo en el hilo principal),
  * descargas y SVG de la página actual.
  */
+import { cachedResampler, type ImageDpi } from '@core/assets/resample';
 import { AgendaDocument, type ExportKind } from '@core/document';
 import { usedAssetIds } from '@core/design/assetUse';
 import type { Design } from '@core/design/schema';
 import { pageToSvg } from '@core/render/svg';
 import type { PdfJob, PdfReply } from '@core/document/job';
+import { canvasResampler } from '../../workers/resample';
 import { resources } from './resources';
 import { awaitDownload, downloadMark } from './desktopBridge';
 
@@ -69,11 +71,15 @@ export async function deliverPdf(bytes: Uint8Array, name: string): Promise<Deliv
 /** Nombre de archivo a partir del nombre de una agenda, plantilla o tema (sin tildes ni signos). */
 export { fileBase } from '@core/util/filename';
 
-/** Qué más pide una exportación: un cuadernillo, o solo algunas páginas del PDF de páginas. */
+/** Qué más pide una exportación: un cuadernillo, solo algunas páginas del PDF de páginas, o la resolución de las imágenes. */
 export interface ExportExtra {
   signature?: number;
   pages?: readonly number[];
+  imageDpi?: ImageDpi;
 }
+
+/** Para exportar en el hilo principal (cuando no hay Worker). */
+const mainThreadResampler = cachedResampler(canvasResampler);
 
 function jobFor(design: Design, kind: ExportKind, extra: ExportExtra): Omit<PdfJob, 'id'> {
   const fonts = resources.fonts.list().map((f) => ({ bytes: f.bytes, family: f.family, weight: f.weight, style: f.style, source: f.source }));
@@ -83,7 +89,7 @@ function jobFor(design: Design, kind: ExportKind, extra: ExportExtra): Omit<PdfJ
     const b = used.has(ref.id) ? resources.assetBytes.get(ref.id) : undefined;
     return b ? [{ ref: { ...ref, data: null }, bytes: b }] : [];
   });
-  return { kind, design, fonts, holidays: resources.holidaysFor(design.holidays.country), assets, ...(extra.signature !== undefined ? { signature: extra.signature } : {}), ...(extra.pages ? { pages: [...extra.pages] } : {}) };
+  return { kind, design, fonts, holidays: resources.holidaysFor(design.holidays.country), assets, ...(extra.signature !== undefined ? { signature: extra.signature } : {}), ...(extra.pages ? { pages: [...extra.pages] } : {}), ...(extra.imageDpi !== undefined ? { imageDpi: extra.imageDpi } : {}) };
 }
 
 export async function exportPdf(design: Design, kind: ExportKind, onProgress: (done: number, total: number) => void, extra: ExportExtra = {}): Promise<Uint8Array> {
@@ -121,7 +127,7 @@ export async function exportPdf(design: Design, kind: ExportKind, onProgress: (d
     }
   }
   const doc = new AgendaDocument(design, { fonts: resources.fonts, holidays: resources.holidaysFor(design.holidays.country), assets: resources.assetInfos });
-  return doc.exportPdf(kind, { assetBytes: (id) => resources.assetBytes.get(id), onProgress, ...(extra.signature !== undefined ? { signature: extra.signature } : {}), ...(extra.pages ? { pages: extra.pages } : {}) });
+  return doc.exportPdf(kind, { assetBytes: (id) => resources.assetBytes.get(id), onProgress, ...(extra.signature !== undefined ? { signature: extra.signature } : {}), ...(extra.pages ? { pages: extra.pages } : {}), ...(extra.imageDpi !== undefined ? { imageDpi: extra.imageDpi, resample: mainThreadResampler } : {}) });
 }
 
 export function exportPageSvg(doc: AgendaDocument, index: number, name: string): void {

@@ -2751,3 +2751,86 @@ test.describe('revisión de la 2.5', () => {
     await expect(nochebuena).toContainText('Víspera');
   });
 });
+
+test.describe('imágenes: resolución al exportar y panel de recursos', () => {
+  type Handle = { getState: () => { design: { assets: Array<{ id: string }> }; update: (fn: (d: Record<string, unknown>) => void, key: string) => void } };
+
+  /** Una agenda de una sola página (la portada) con la foto del repositorio en una caja de `mm` de ancho. */
+  async function withPhoto(page: Page, mm: number): Promise<void> {
+    await openQuiet(page);
+    await page.getByRole('tab', { name: 'Recursos / Vectores', exact: true }).click();
+    const { readFileSync } = await import('node:fs');
+    await page.locator('input[type="file"][accept*="pdf"]').setInputFiles({ name: 'tapa.jpg', mimeType: 'image/jpeg', buffer: readFileSync('docs/images/tapa.jpg') });
+    await expect(page.getByTestId('asset-weight')).toBeVisible();
+    const h = mm * (1280 / 951);
+    await page.evaluate(
+      ([w, hh]) => {
+        const st = (globalThis as unknown as { __agenda: Handle }).__agenda.getState();
+        const id = st.design.assets.at(-1)!.id;
+        st.update((d) => {
+          const sections = d.sections as Array<{ type: string }>;
+          d.sections = sections.filter((s) => s.type === 'titlePage');
+          (d.customBlocks as unknown[]).push({ id: 'foto', pageType: 'titlePage', pageKey: null, kind: 'image', x: 20, y: 20, w, h: hh, mirror: false, props: { assetId: id } });
+        }, 'e2e-foto');
+      },
+      [mm, h],
+    );
+  }
+
+  /** Exporta el PDF de páginas con la resolución elegida y devuelve los anchos (px) de las imágenes que lleva y su peso. */
+  async function exportPages(page: Page, choice: string): Promise<{ widths: number[]; size: number }> {
+    await page.getByRole('button', { name: 'Imprimir / exportar' }).click();
+    await page.getByRole('combobox', { name: 'Imágenes en el PDF' }).selectOption(choice);
+    const [dl] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: 'PDF de páginas' }).click()]);
+    const { readFileSync } = await import('node:fs');
+    const bytes = readFileSync((await dl.path())!);
+    const { PDFDocument, PDFName, PDFRawStream } = await import('@cantoo/pdf-lib');
+    const loaded = await PDFDocument.load(bytes);
+    const widths: number[] = [];
+    for (const [, obj] of loaded.context.enumerateIndirectObjects()) {
+      if (obj instanceof PDFRawStream && obj.dict.get(PDFName.of('Subtype')) === PDFName.of('Image')) widths.push((obj.dict.get(PDFName.of('Width')) as unknown as { asNumber(): number }).asNumber());
+    }
+    return { widths, size: bytes.length };
+  }
+
+  test('300 ppp achica la foto que sobra en el navegador, y «Originales» la deja como está; el aviso dice el peso', async ({ page }) => {
+    test.setTimeout(180_000);
+    await withPhoto(page, 30);
+    const original = await exportPages(page, 'original');
+    expect(original.widths).toEqual([951]);
+    const at300 = await exportPages(page, '300');
+    // 30 mm a 300 ppp son 355 px (951 es más de una vez y media eso).
+    expect(at300.widths).toEqual([355]);
+    expect(at300.size).toBeLessThan(original.size * 0.6);
+    await expect(page.getByText(/Listo: .*\(\d+(\.\d)? ?(KB|MB)\)/)).toBeVisible();
+    const at150 = await exportPages(page, '150');
+    expect(at150.widths).toEqual([178]);
+  });
+
+  test('una foto que ya tiene lo justo no se toca', async ({ page }) => {
+    test.setTimeout(180_000);
+    await withPhoto(page, 100);
+    expect((await exportPages(page, '300')).widths).toEqual([951]);
+  });
+
+  test('el panel de recursos dice el peso y los ppp al tamaño en que se usa, y avisa cuando sobra resolución', async ({ page }) => {
+    await withPhoto(page, 30);
+    const meta = page.locator('[data-testid="asset-dpi"]');
+    // 951 px en 30 mm: 805 ppp, más de 600.
+    await expect(meta).toHaveAttribute('data-dpi', '805');
+    await expect(meta).toContainText('al mayor tamaño en que se usa (30 mm)');
+    await expect(page.getByTestId('asset-over')).toBeVisible();
+    await expect(page.getByTestId('asset-weight')).toContainText('KB');
+    // En una caja grande ya no sobra.
+    await page.evaluate(() => {
+      const st = (globalThis as unknown as { __agenda: Handle }).__agenda.getState();
+      st.update((d) => {
+        const b = (d.customBlocks as Array<{ w: number; h: number }>)[0]!;
+        b.w = 100;
+        b.h = 100 * (1280 / 951);
+      }, 'e2e-foto-grande');
+    });
+    await expect(meta).toHaveAttribute('data-dpi', '242');
+    await expect(page.getByTestId('asset-over')).toHaveCount(0);
+  });
+});

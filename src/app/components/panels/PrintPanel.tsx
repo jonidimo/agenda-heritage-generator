@@ -1,4 +1,6 @@
-import type { ExportKind } from "@core/document";
+import type { ImageDpi } from "@core/assets/resample";
+import { defaultImageDpi, type ExportKind } from "@core/document";
+import { formatBytes } from "@core/util/bytes";
 import {
   designDefaults,
   PAPER_PRESETS,
@@ -52,6 +54,9 @@ export function PrintPanel() {
   const setLastExport = useStore((s) => s.setLastExport);
   const [busy, setBusy] = useState(false);
   const [sigNo, setSigNo] = useState(1);
+  // Resolución de las imágenes del PDF: la que corresponde al destino, hasta que se elija otra.
+  const [imageDpiChoice, setImageDpiChoice] = useState<ImageDpi | null>(null);
+  const imageDpi: ImageDpi = imageDpiChoice ?? defaultImageDpi(design.binding);
   const [customText, setCustomText] = useState<string | null>(null);
   // Al apagar «todos los meses» vuelve lo que había antes (la pestaña del mes, o nada).
   const [tabsBefore, setTabsBefore] = useState<boolean | null>(null);
@@ -69,7 +74,7 @@ export function PrintPanel() {
         design,
         kind,
         (done, total) => setStatus(t("export.working", { done, total })),
-        signature !== undefined ? { signature } : {},
+        { ...(signature !== undefined ? { signature } : {}), imageDpi },
       );
       const name = `${fileBase(design)}-${suffix}.pdf`;
       const done = await deliverPdf(bytes, name);
@@ -78,10 +83,10 @@ export function PrintPanel() {
       );
       setStatus(
         done.kind === "saved"
-          ? t("export.saved")
+          ? t("export.saved", { size: formatBytes(bytes.length) })
           : done.kind === "cancelled"
             ? t("export.cancelled")
-            : t("export.done", { name }),
+            : t("export.done", { name, size: formatBytes(bytes.length) }),
       );
     } catch (err) {
       setStatus(t("export.error", { msg: (err as Error).message }));
@@ -156,6 +161,19 @@ export function PrintPanel() {
             {t("export.empty")}
           </p>
         )}
+        <Field label={t("export.imageDpi")}>
+          <Select
+            value={String(imageDpi)}
+            onChange={(v) => setImageDpiChoice(v === "original" ? "original" : v === "150" ? 150 : 300)}
+            ariaLabel={t("export.imageDpi")}
+            options={[
+              { value: "300", label: t("export.imageDpiPrint") },
+              { value: "150", label: t("export.imageDpiScreen") },
+              { value: "original", label: t("export.imageDpiOriginal") },
+            ]}
+          />
+        </Field>
+        <p className="mb-1.5 mt-1 text-[11px] leading-snug text-ink-soft">{t("export.imageDpiHelp")}</p>
         <div className="grid gap-1.5">
           {screen ? (
             <Button

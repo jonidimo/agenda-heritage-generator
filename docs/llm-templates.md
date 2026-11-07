@@ -63,7 +63,7 @@ matters: it keeps npm from printing anything on the channel the client and the s
 | `add_font` | Adds a font of your own (a `.ttf`, `.otf`, `.woff` or `.woff2` in the working folder) to a file (`path`; it travels inside, in `userFonts`) or to the open app (`app: true`); with `roles`, sets it for those text roles. Returns its glyph count and the punctuation it lacks (see section 7). |
 | `list_pages` | The pages, with their number, key, type and title (filter by type). |
 | `render_page` | Draws one page exactly as it prints and returns it as a PNG image, with its side (right or left), its content area, its blocks (id, name and box in mm) and its warnings. |
-| `export_pdf` | Writes a PDF (`out`) of the kind in `kind` (`mode` is still accepted): `pages` (for tablets, with links and bookmarks), `imposed` (sheets to print double-sided and fold into signatures), `fronts`/`backs`, `signature`, `calibration`, `sewing`, `cover`, `separate`. |
+| `export_pdf` | Writes a PDF (`out`) of the kind in `kind` (`mode` is still accepted): `pages` (for tablets, with links and bookmarks), `imposed` (sheets to print double-sided and fold into signatures), `fronts`/`backs`, `signature`, `calibration`, `sewing`, `cover`, `separate`. `imageDpi` (`300` for print, `150` for screens or `"original"`; default 300, or 150 when the planner is for screens) reduces images that have more resolution than their printed size needs, without visible quality loss; the others stay as they are. |
 | `export_theme` | Saves the planner's style as a `.tema.json` theme file (fonts, colours, lines, ornaments and their images) to import in the app. |
 | `list_catalogue` | Section types with their options and allowed values, themes, templates, built-in fonts, ornaments, line uses and patterns, colour harmonies, element kinds, page types and text variables. |
 | `get_schema` | The JSON Schema, whole or by part (`"theme.tokens.lines"`, `"sections"`, `"customBlocks"`…). |
@@ -319,7 +319,7 @@ use `icon:<id>` anywhere an image goes.
 | `clamped` | An element was moved to stay on the page. | Adjust its position so it sits where you want it. |
 | `overlap` | Two texts overlap. | Move or shrink one, or shorten the text. |
 | `lowDpi` | An image has too little resolution for its printed size (below 250 ppi). | A larger image (300 ppi or more) or a smaller element. |
-| `overDpi` | Informational: an image prints above 600 ppi; it does not look better and the PDF gets heavier. | Nothing required: a smaller image, or export with a lower image resolution. |
+| `overDpi` | Informational: an image prints above 600 ppi; it does not look better and the PDF gets heavier. | Nothing required: a smaller image, or export with `imageDpi` 300 or 150. |
 | `missingGlyphs` | Neither the font nor the fallbacks have those characters. | Change the text, the font of that role, or add a family that has them to `/theme/tokens/fallbacks`. |
 | `missingAsset` | An image or file is missing. | Check the `assetId` and its entry in `assets` (`path`, `data` or `builtin`). |
 | `pdfPageRange` | A page the PDF does not have is requested. | A number between 1 and the PDF's page count. |

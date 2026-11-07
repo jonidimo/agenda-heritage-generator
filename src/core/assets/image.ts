@@ -64,6 +64,43 @@ function jpegInfo(b: Uint8Array): RasterInfo | null {
   return null;
 }
 
+/**
+ * La orientación EXIF de un JPEG (1 a 8; 1 = derecha, también cuando no la dice). Un JPEG con otra
+ * orientación se muestra girado por el lector, no en sus píxeles: volver a codificarlo sin esa marca lo
+ * dejaría torcido, así que esas imágenes no se remuestrean.
+ */
+export function jpegOrientation(b: Uint8Array): number {
+  if (b.length < 4 || b[0] !== 0xff || b[1] !== 0xd8) return 1;
+  let o = 2;
+  while (o + 4 <= b.length && b[o] === 0xff) {
+    const marker = b[o + 1]!;
+    if (marker === 0xda || marker === 0xd9) break;
+    const len = u16(b, o + 2);
+    // APP1 con «Exif\0\0»: cabecera TIFF (orden de bytes, directorio 0).
+    if (marker === 0xe1 && b[o + 4] === 0x45 && b[o + 5] === 0x78 && b[o + 6] === 0x69 && b[o + 7] === 0x66) {
+      const tiff = o + 10;
+      const little = b[tiff] === 0x49;
+      const rd16 = (at: number): number => (little ? b[at]! | (b[at + 1]! << 8) : (b[at]! << 8) | b[at + 1]!);
+      const rd32 = (at: number): number => (little ? (b[at]! | (b[at + 1]! << 8) | (b[at + 2]! << 16) | (b[at + 3]! << 24)) >>> 0 : ((b[at]! << 24) | (b[at + 1]! << 16) | (b[at + 2]! << 8) | b[at + 3]!) >>> 0);
+      if (tiff + 8 > b.length) return 1;
+      const dir = tiff + rd32(tiff + 4);
+      if (dir + 2 > b.length) return 1;
+      const count = rd16(dir);
+      for (let i = 0; i < count; i++) {
+        const entry = dir + 2 + i * 12;
+        if (entry + 12 > b.length) return 1;
+        if (rd16(entry) === 0x0112) {
+          const v = rd16(entry + 8);
+          return v >= 1 && v <= 8 ? v : 1;
+        }
+      }
+      return 1;
+    }
+    o += 2 + len;
+  }
+  return 1;
+}
+
 /** Debajo de esto (ppp) una imagen se ve pixelada al imprimirla: `lowDpi`. La imprenta pide 300. */
 export const LOW_DPI = 250;
 /** Encima de esto (ppp) no se gana nada al imprimir y el PDF solo pesa más: `overDpi` (informativo). */

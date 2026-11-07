@@ -29,7 +29,7 @@ function chunk(type: string, data: Uint8Array): Uint8Array {
 
 /**
  * PNG de `w`×`h` del color `rgb`. Con `alpha` (0–255) lleva canal alfa (RGBA); sin él es RGB opaco, que
- * pdfkit incrusta sin máscara. Con `noise`, cada píxel varía un poco (no se comprime a casi nada).
+ * pdfkit incrusta sin máscara. Con `noise`, cada píxel varía un poco.
  */
 export function makePng(w: number, h: number, rgb: readonly [number, number, number], opts: { alpha?: number; noise?: boolean } = {}): Uint8Array {
   const channels = opts.alpha === undefined ? 3 : 4;

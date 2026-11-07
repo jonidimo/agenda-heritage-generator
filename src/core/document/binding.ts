@@ -7,6 +7,7 @@
  * Es la única lectura de `design.binding` fuera de la planificación del formato: el resto del núcleo
  * pregunta al contexto del documento (`doc.binding`), así un destino nuevo no deja lecturas sueltas.
  */
+import type { TargetDpi } from '../assets/resample';
 import type { Design } from '../design/schema';
 import { insetRect, type Rect } from '../util/geometry';
 
@@ -34,6 +35,9 @@ export function effectiveBinding(design: Pick<Design, 'binding'>): Binding {
 
 /** ¿Se hace para leer en pantalla? (Sin cuadernillos, hojas impuestas ni material de encuadernación.) */
 export const isScreen = (binding: Pick<Binding, 'target'>): boolean => binding.target === 'screen';
+
+/** La resolución de imágenes del PDF si nadie elige otra: 300 ppp para imprimir, 150 para leer en pantalla. */
+export const defaultImageDpi = (binding: Pick<Binding, 'target'>): TargetDpi => (isScreen(binding) ? 150 : 300);
 
 /** La parte de la página que la impresora imprime: sin la franja del borde (y sin ella en el lado del lomo, que sigue en la otra página). */
 export function safeArea(binding: Pick<Binding, 'method' | 'nonPrintable'>, page: { w: number; h: number; side: 'recto' | 'verso' }): Rect {

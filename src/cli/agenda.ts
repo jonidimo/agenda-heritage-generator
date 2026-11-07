@@ -18,11 +18,13 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { createDesign, TEMPLATES, type TemplateId } from '../core/design/defaults';
 import { designJsonSchema } from '../core/design/jsonSchema';
-import { EXPORT_KINDS, type ExportKind } from '../core/document';
+import { cachedResampler, parseImageDpi } from '../core/assets/resample';
+import { defaultImageDpi, EXPORT_KINDS, type ExportKind } from '../core/document';
 import { documentSummary, formatSummary } from '../core/document/summary';
 import { pageToSvg } from '../core/render/svg';
 import { fileBase } from '../core/util/filename';
 import { checkDesignJson } from '../node/check';
+import { nodeResampler } from '../node/resample';
 import { fullCatalogue, loadFonts, openNodeDocument, readDesignFile } from '../node/env';
 
 function flag(name: string, def?: string): string | undefined {
@@ -95,10 +97,15 @@ async function cmdPdf(path: string): Promise<void> {
   const signature = sigFlag === undefined ? undefined : Number(sigFlag);
   if (mode === 'signature' && (signature === undefined || !Number.isInteger(signature) || signature < 1))
     throw new Error('Con --kind signature indicá el cuadernillo con --signature N (1, 2, 3…).');
+  // Las imágenes a 300 ppp para imprimir o 150 para pantalla (o `original`, sin tocarlas).
+  const imageFlag = flag('image-dpi');
+  const imageDpi = imageFlag === undefined ? defaultImageDpi(design.binding) : parseImageDpi(imageFlag);
   const { doc, bytes } = await openNodeDocument(design, await allFonts(), { baseDir: dirname(resolve(path)) });
   const t0 = Date.now();
   const pdf = await doc.exportPdf(mode, {
     assetBytes: (id) => bytes.get(id),
+    imageDpi,
+    resample: cachedResampler(nodeResampler),
     ...(signature !== undefined ? { signature: signature - 1 } : {}),
     onProgress: (d, n) => {
       if (d === n || d % 25 === 0) process.stdout.write(`\r  ${d}/${n} páginas`);
@@ -106,7 +113,7 @@ async function cmdPdf(path: string): Promise<void> {
   });
   process.stdout.write('\n');
   const out = await writeOut(flag('out', `output/${fileBase(design)}-${mode}.pdf`)!, pdf);
-  console.log(`PDF (${mode}) escrito en ${out} — ${(pdf.length / 1024).toFixed(0)} KB en ${((Date.now() - t0) / 1000).toFixed(1)} s`);
+  console.log(`PDF (${mode}) escrito en ${out} — ${(pdf.length / 1024).toFixed(0)} KB en ${((Date.now() - t0) / 1000).toFixed(1)} s (imágenes: ${imageDpi === 'original' ? 'originales' : `hasta ${imageDpi} ppp`})`);
 }
 
 async function cmdSvg(path: string): Promise<void> {
@@ -120,7 +127,7 @@ async function cmdSvg(path: string): Promise<void> {
 const USAGE: Record<string, string> = {
   info: 'agenda info <diseño.agenda.json>',
   check: 'agenda check <diseño.agenda.json> [--json] [--strict]',
-  pdf: 'agenda pdf <diseño.agenda.json> [--kind imposed|pages|…] [--out archivo.pdf]',
+  pdf: 'agenda pdf <diseño.agenda.json> [--kind imposed|pages|…] [--image-dpi original|300|150] [--out archivo.pdf]',
   svg: 'agenda svg <diseño.agenda.json> --page N',
 };
 

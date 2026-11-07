@@ -2,13 +2,17 @@
  * Worker de PDF: recibe el diseño y los bytes de fuentes, feriados y recursos,
  * arma el documento con el mismo núcleo que la vista previa y devuelve el PDF.
  */
+import { cachedResampler } from '@core/assets/resample';
 import { AgendaDocument } from '@core/document';
 import type { PdfJob, PdfReply } from '@core/document/job';
 import type { AssetInfo } from '@core/layout/context';
 import { assetInfoFromBytes } from '@core/resources';
 import { FontRegistry } from '@core/text/fonts';
+import { canvasResampler } from './resample';
 
 const ctx = self as unknown as DedicatedWorkerGlobalScope;
+/** La misma imagen en varias exportaciones seguidas se achica una vez. */
+const resample = cachedResampler(canvasResampler);
 
 ctx.onmessage = async (ev: MessageEvent<PdfJob>) => {
   const job = ev.data;
@@ -26,6 +30,7 @@ ctx.onmessage = async (ev: MessageEvent<PdfJob>) => {
       assetBytes: (id) => bytes.get(id),
       ...(job.signature !== undefined ? { signature: job.signature } : {}),
       ...(job.pages ? { pages: job.pages } : {}),
+      ...(job.imageDpi !== undefined ? { imageDpi: job.imageDpi, resample } : {}),
       onProgress: (done, total) => ctx.postMessage({ id: job.id, type: 'progress', done, total } satisfies PdfReply),
     });
     ctx.postMessage({ id: job.id, type: 'done', bytes: pdf } satisfies PdfReply, [pdf.buffer as ArrayBuffer]);
