@@ -26,8 +26,7 @@ export function useFamilies(): Family[] {
   }, [v]);
 }
 
-
-export function FontRow(props: { label: string; spec: FontSpec; families: Family[]; onChange: (s: FontSpec) => void }) {
+export function FontRow(props: { label: string; spec: FontSpec; families: Family[]; onChange: (s: FontSpec) => void; /** Una aclaración debajo (p. ej. que a la fuente le falta la puntuación). */ note?: React.ReactNode }) {
   const t = useT();
   const fam = props.families.find((f) => f.family === props.spec.family);
   const weights = [...new Set((fam?.faces ?? []).filter((f) => f.style === props.spec.style || !(fam?.faces ?? []).some((x) => x.style === props.spec.style)).map((f) => f.weight))];
@@ -55,6 +54,7 @@ export function FontRow(props: { label: string; spec: FontSpec; families: Family
         <Select ariaLabel={t('style.weight')} value={String(props.spec.weight)} onChange={(w) => props.onChange({ ...props.spec, weight: Number(w) })} options={(weights.length ? weights : [props.spec.weight]).map((w) => ({ value: String(w), label: String(w) }))} />
       </div>
       {hasItalic && <Toggle label={t('style.italic')} checked={props.spec.style === 'italic'} onChange={(v) => props.onChange({ ...props.spec, style: v ? 'italic' : 'normal' })} />}
+      {props.note}
     </div>
   );
 }

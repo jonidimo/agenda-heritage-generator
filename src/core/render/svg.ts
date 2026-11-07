@@ -5,7 +5,7 @@
  * instaladas ni del motor de texto del navegador).
  */
 import { BLEND_NAMES } from '../design/blend';
-import { glyphPath } from '../text/shape';
+import { glyphPath, segmentsOf } from '../text/shape';
 import type { FontRegistry } from '../text/fonts';
 import { fmt, isIdentity, matrixScale, matrixToString, type Matrix } from '../util/geometry';
 import type { Block, Fill, PageModel, Prim, Stroke } from '../layout/prims';
@@ -117,12 +117,16 @@ export function primsToSvg(prims: Prim[], opts: SvgRenderOptions, sink: GlyphSin
       case 'text': {
         const run = p.run;
         if (run.glyphs.length === 0) break;
-        const u = run.unit;
         const o = (p.opacity ?? 1) * alpha;
         let g = `<g fill="${esc(p.color)}"${o < 1 ? ` fill-opacity="${fmt(o, 3)}"` : ''}>`;
-        for (const gl of run.glyphs) {
-          const id = sink.add(run.face, gl.id);
-          g += `<use href="#${prefix}${id}" transform="matrix(${fmt(u, 7)} 0 0 ${fmt(-u, 7)} ${fmt(p.x + gl.x, 4)} ${fmt(p.y + gl.y, 4)})"/>`;
+        // Cada tramo con su cara (los caracteres tomados de una fuente de reserva, con la de reserva).
+        for (const seg of segmentsOf(run)) {
+          const u = seg.unit;
+          for (let i = seg.from; i < seg.to; i++) {
+            const gl = run.glyphs[i]!;
+            const id = sink.add(seg.face, gl.id);
+            g += `<use href="#${prefix}${id}" transform="matrix(${fmt(u, 7)} 0 0 ${fmt(-u, 7)} ${fmt(p.x + gl.x, 4)} ${fmt(p.y + gl.y, 4)})"/>`;
+          }
         }
         out += `${g}</g>`;
         break;

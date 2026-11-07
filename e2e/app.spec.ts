@@ -1733,6 +1733,41 @@ test.describe('imágenes y fuentes', () => {
     await expect.poll(gone).toEqual({ assets: 1, cover: 'img-e2e', blocks: 1 });
   });
 
+  test('una fuente sin puntuación (como la de una camiseta): los signos salen de la de reserva, sin avisos, y Estilo y Fuentes lo explican', async ({ page }) => {
+    await openQuiet(page);
+    // Una fuente con letras y números pero sin ningún signo (e2e/fixtures: Manrope reducida y renombrada).
+    await page.keyboard.press('Control+7');
+    const [chooser] = await Promise.all([page.waitForEvent('filechooser'), page.getByRole('button', { name: 'Subir fuentes' }).click()]);
+    await chooser.setFiles('e2e/fixtures/dorsal-prueba.ttf');
+    const item = page.getByTestId('font-list').locator('[data-font="Dorsal Prueba"]');
+    await expect(item).toBeVisible();
+    // Un texto con coma y paréntesis en la primera página.
+    await page.evaluate(`globalThis.__agenda.getState().update((d) => { d.customBlocks.push({ id: 'coma', pageType: 'titlePage', pageKey: null, kind: 'text', x: 20, y: 30, w: 100, h: 14, mirror: true, props: { text: 'Hola, mundo (2027)' } }); }, 'e2e-coma')`);
+    // Se la elige para el texto corrido desde Estilo: avisa que no tiene puntuación y de dónde salen los signos.
+    await page.getByRole('tab', { name: 'Estilo', exact: true }).click();
+    await page.getByRole('combobox', { name: 'Texto', exact: true }).selectOption('Dorsal Prueba');
+    const note = page.getByTestId('punctuation-body');
+    await expect(note).toContainText('salen de Manrope');
+    await expect(note).toContainText(', .');
+    await note.scrollIntoViewIfNeeded();
+    await page.screenshot({ path: 'test-results/punctuation-note.png' });
+    // La página no tiene avisos: la coma y los paréntesis se dibujaron con Manrope.
+    const footer = page.getByTestId('page-footer');
+    await expect(footer).toBeVisible();
+    await expect(page.locator('[data-block="custom.coma"]')).toBeVisible();
+    await expect(page.getByTestId('page-warnings')).toHaveCount(0);
+    // Un signo que no tiene ninguna fuente sí avisa, con el nombre de la fuente.
+    await page.evaluate(`globalThis.__agenda.getState().update((d) => { d.customBlocks.find((c) => c.id === 'coma').props.text = 'Hola, mundo ✓'; }, 'e2e-coma2')`);
+    await expect(page.getByTestId('page-warnings')).toBeVisible();
+    await page.getByTestId('page-warnings').click();
+    await expect(page.locator('[data-reveal="preflight"]')).toContainText('Ni la fuente Dorsal Prueba ni las de reserva tienen estos caracteres: ✓');
+    // En Fuentes: lo que toma de Manrope, sin marcarlo como faltante.
+    await page.keyboard.press('Control+7');
+    await expect(item.getByTestId('font-borrowed')).toContainText('salen de Manrope');
+    await item.scrollIntoViewIfNeeded();
+    await page.screenshot({ path: 'test-results/font-borrowed.png' });
+  });
+
   test('la pestaña de fuentes lista las familias, y el buscador encuentra una fuente', async ({ page }) => {
     await openQuiet(page);
     await page.keyboard.press('Control+7');

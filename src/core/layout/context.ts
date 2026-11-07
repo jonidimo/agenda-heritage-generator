@@ -8,7 +8,7 @@ import type { Design } from '../design/schema';
 import type { ThemeTokens, WritingStyle } from '../design/themes';
 import type { AgendaStrings } from '../i18n';
 import { langOf } from '../i18n';
-import type { FontFace, FontRegistry } from '../text/fonts';
+import type { FontFace, FontRegistry, GlyphFallback } from '../text/fonts';
 import { fitSize, shapeText, wrapText, type ShapedRun } from '../text/shape';
 import { ptToMm, type Rect } from '../util/geometry';
 import { adjustBox, type BoxAdjust } from './box';
@@ -189,17 +189,25 @@ export class LayoutContext {
     return opts.font ? this.doc.fonts.resolveWithFallback(opts.font, this.theme.fallbacks) : this.face(opts.role ?? 'body');
   }
 
+  /** De dónde salen los caracteres que la cara no tiene: las fuentes de reserva del tema, y después las demás. */
+  private glyphFallback(face: FontFace): GlyphFallback {
+    return this.doc.fonts.glyphFallback(face, this.theme.fallbacks);
+  }
+
   run(text: string, opts: TextOpts = {}): ShapedRun {
     const face = this.faceFor(opts);
     const str = opts.upper ? text.toLocaleUpperCase(this.doc.locale) : text;
     const tracking = opts.tracking === true ? this.theme.tracking.label : opts.tracking === false ? 0 : (opts.tracking ?? 0);
-    return shapeText(face, str, this.sizeOf(opts.size), { tracking, ...(opts.features ? { features: opts.features } : {}) });
+    return shapeText(face, str, this.sizeOf(opts.size), { tracking, fallback: this.glyphFallback(face), ...(opts.features ? { features: opts.features } : {}) });
   }
 
   private prim(run: ShapedRun, x: number, y: number, opts: TextOpts, align: 'left' | 'center' | 'right' = 'left'): TextPrim {
+    // Solo lo que no tiene ninguna fuente cargada: lo que falta en la del texto y sí está en una de
+    // reserva ya se dibujó con ella (ver `shapeText`).
     if (run.missing.length > 0) {
       const chars = [...new Set(run.missing)].map((c) => String.fromCodePoint(c)).join(' ');
-      this.warn('missingGlyphs', `La fuente no tiene los caracteres: ${chars}`, { chars });
+      const family = this.doc.fonts.get(run.face)?.family ?? run.face.split('|')[0] ?? run.face;
+      this.warn('missingGlyphs', `Ni la fuente ${family} ni las de reserva tienen estos caracteres: ${chars}`, { chars, family });
     }
     const role = opts.role ?? 'body';
     // Sin color propio, el texto toma el de su tipo en el tema (paleta).
@@ -235,7 +243,7 @@ export class LayoutContext {
     const str = opts.upper ? text.toLocaleUpperCase(this.doc.locale) : text;
     const tracking = opts.tracking === true ? this.theme.tracking.label : opts.tracking === false ? 0 : (opts.tracking ?? 0);
     let sizePt = this.sizeOf(opts.size);
-    const shapeOpts = { tracking, ...(opts.features ? { features: opts.features } : {}) };
+    const shapeOpts = { tracking, fallback: this.glyphFallback(face), ...(opts.features ? { features: opts.features } : {}) };
     if (opts.fit && !opts.wrap) sizePt = fitSize(face, str, sizePt, box.w, this.theme.minTextPt, shapeOpts);
     let lines = opts.wrap ? wrapText(face, str, sizePt, box.w, shapeOpts) : [str];
     const leading = ptToMm(sizePt) * (opts.leading ?? 1.3);

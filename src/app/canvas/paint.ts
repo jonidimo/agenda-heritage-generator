@@ -5,7 +5,7 @@
 import { BLEND_NAMES } from '@core/design/blend';
 import type { Prim } from '@core/layout/prims';
 import type { FontRegistry } from '@core/text/fonts';
-import { glyphPath } from '@core/text/shape';
+import { glyphPath, segmentsOf } from '@core/text/shape';
 import { assetHref } from '../state/assetUrls';
 
 const pathCache = new Map<string, Path2D>();
@@ -93,15 +93,18 @@ export function paintPrims(ctx: CanvasRenderingContext2D, prims: Prim[], fonts: 
         break;
       case 'text': {
         ctx.fillStyle = p.color;
-        const u = p.run.unit;
-        for (const g of p.run.glyphs) {
-          const path = glyph(fonts, p.run.face, g.id);
-          if (!path) continue;
-          ctx.save();
-          ctx.translate(p.x + g.x, p.y + g.y);
-          ctx.scale(u, -u);
-          ctx.fill(path);
-          ctx.restore();
+        for (const seg of segmentsOf(p.run)) {
+          const u = seg.unit;
+          for (let i = seg.from; i < seg.to; i++) {
+            const g = p.run.glyphs[i]!;
+            const path = glyph(fonts, seg.face, g.id);
+            if (!path) continue;
+            ctx.save();
+            ctx.translate(p.x + g.x, p.y + g.y);
+            ctx.scale(u, -u);
+            ctx.fill(path);
+            ctx.restore();
+          }
         }
         break;
       }

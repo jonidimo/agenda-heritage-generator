@@ -206,17 +206,17 @@ export function coverSheet(doc: DocContext, plan: SignaturePlan): SheetRender {
     const cx = area.x + area.w / 2;
     let y = area.y + area.h * 0.45;
     if (c.showYear) {
-      const r = shapeText(display, String(doc.design.calendar.year), doc.theme.sizes.hero * 0.75);
+      const r = shapeText(display, String(doc.design.calendar.year), doc.theme.sizes.hero * 0.75, { fallback: doc.fonts.glyphFallback(display, doc.theme.fallbacks) });
       p.push({ t: 'text', run: r, x: cx - r.width / 2, y, color: '#000000' });
       y += 14;
     }
     if (c.showName && doc.design.persona.name) {
-      const r = shapeText(title, doc.design.persona.name, doc.theme.sizes.title);
+      const r = shapeText(title, doc.design.persona.name, doc.theme.sizes.title, { fallback: doc.fonts.glyphFallback(title, doc.theme.fallbacks) });
       p.push({ t: 'text', run: r, x: cx - r.width / 2, y, color: '#000000' });
       y += 10;
     }
     if (c.showTitle) {
-      const r = shapeText(sans, (doc.design.persona.title || doc.strings.titlePage.title).toLocaleUpperCase(doc.locale), doc.theme.sizes.label + 1, { tracking: 0.15 });
+      const r = shapeText(sans, (doc.design.persona.title || doc.strings.titlePage.title).toLocaleUpperCase(doc.locale), doc.theme.sizes.label + 1, { tracking: 0.15, fallback: doc.fonts.glyphFallback(sans, doc.theme.fallbacks) });
       p.push({ t: 'text', run: r, x: cx - r.width / 2, y, color: '#000000' });
     }
   };

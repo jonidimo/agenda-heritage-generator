@@ -7,18 +7,28 @@ import { resolveThemeFor } from '@core/design/themes';
 import { holidayName } from '@core/holidays';
 import { langOf, listStringKeys, resolveStrings } from '@core/i18n';
 import { facesForDesign } from '@core/resources';
-import { detectFaceMeta, parseFontSpec } from '@core/text/fonts';
+import { detectFaceMeta, parseFontSpec, type FontSpec } from '@core/text/fonts';
+import { hasGlyph } from '@core/text/shape';
 import { openFont } from '@core/text/fontkit';
 import { newId } from '@core/util/hash';
 import { deleteUserFont, saveUserFont } from './persist';
 import { resources } from './resources';
 import { useStore } from './store';
 
+/** Lo que una familia no tiene de los textos de la agenda. */
+export interface FamilyCoverage {
+  /** Los que no tiene ninguna fuente cargada: salen como un cuadrado vacío y avisan. */
+  missing: string[];
+  /** Los que no tiene pero se toman de otra fuente (las de reserva del tema primero), por fuente. */
+  borrowed: Array<{ from: string; chars: string[] }>;
+}
+
 /**
  * Los caracteres que le faltan a cada familia que la agenda usa: todos los textos (los del programa,
- * feriados, textos y métodos propios) frente a cada cara. Falta un carácter si le falta a alguna cara.
+ * feriados, textos y métodos propios) frente a cada cara. Falta un carácter si le falta a alguna cara;
+ * si otra fuente lo tiene, se toma de ella (como en un navegador) y no es un problema.
  */
-export function fontCoverage(design: Design, resourcesVersion: number): Map<string, string[]> {
+export function fontCoverage(design: Design, resourcesVersion: number): Map<string, FamilyCoverage> {
   // El cálculo recorre todos los textos de la agenda: se repite solo si cambió la agenda o llegaron fuentes o feriados.
   if (cached && cached.design === design && cached.version === resourcesVersion) return cached.value;
   const value = computeCoverage(design);
@@ -26,9 +36,9 @@ export function fontCoverage(design: Design, resourcesVersion: number): Map<stri
   return value;
 }
 
-let cached: { design: Design; version: number; value: Map<string, string[]> } | null = null;
+let cached: { design: Design; version: number; value: Map<string, FamilyCoverage> } | null = null;
 
-function computeCoverage(design: Design): Map<string, string[]> {
+function computeCoverage(design: Design): Map<string, FamilyCoverage> {
   const strings = resolveStrings(design.locale, design.persona.labels);
   const data = resources.holidaysFor(design.holidays.country);
   // Los nombres de feriados en el idioma en que se van a imprimir.
@@ -43,18 +53,57 @@ function computeCoverage(design: Design): Map<string, string[]> {
   ];
   const text = [...listStringKeys(strings).map((r) => r.value), design.persona.name, design.persona.title, design.persona.dedication, ...design.persona.phrases, ...design.personalDates.map((p) => p.label), ...holidayNames, ...own].join(' ');
   const cps = [...new Set(Array.from(text).map((c) => c.codePointAt(0)!))].filter((cp) => cp > 32);
+  const fallbacks = resolveThemeFor(design.theme).fallbacks;
   const used = new Map(
     facesForDesign(design).map((spec) => {
-      const face = resources.fonts.resolveWithFallback(spec);
+      const face = resources.fonts.resolveWithFallback(spec, fallbacks);
       return [face.key, face] as const;
     }),
   );
-  const out = new Map<string, string[]>();
+  const missing = new Map<string, Set<string>>();
+  const borrowed = new Map<string, Map<string, Set<string>>>();
   for (const f of used.values()) {
-    const missing = cps.filter((cp) => !f.font.hasGlyphForCodePoint(cp)).map((cp) => String.fromCodePoint(cp));
-    out.set(f.family, [...new Set([...(out.get(f.family) ?? []), ...missing])]);
+    const gaps = missing.get(f.family) ?? missing.set(f.family, new Set()).get(f.family)!;
+    const lent = borrowed.get(f.family) ?? borrowed.set(f.family, new Map()).get(f.family)!;
+    const reserve = resources.fonts.glyphFallback(f, fallbacks).faces;
+    for (const cp of cps) {
+      if (hasGlyph(f, cp)) continue;
+      const ch = String.fromCodePoint(cp);
+      const from = reserve.find((r) => hasGlyph(r, cp));
+      if (from) (lent.get(from.family) ?? lent.set(from.family, new Set()).get(from.family)!).add(ch);
+      else gaps.add(ch);
+    }
+  }
+  const out = new Map<string, FamilyCoverage>();
+  for (const [family, chars] of missing) {
+    const lent = borrowed.get(family) ?? new Map<string, Set<string>>();
+    // Lo que una cara de la familia no tiene y otra sí presta no figura como faltante en las dos listas.
+    const lentChars = new Set([...lent.values()].flatMap((set) => [...set]));
+    out.set(family, { missing: [...chars].filter((c) => !lentChars.has(c)), borrowed: [...lent].map(([from, set]) => ({ from, chars: [...set] })) });
   }
   return out;
+}
+
+/** La puntuación que un texto corrido necesita: a una fuente de números o de camiseta suele faltarle. */
+export const BASIC_PUNCTUATION: readonly string[] = [',', '.', ';', ':', '(', ')', '-', '?', '!', '¿', '¡'];
+
+/** Los tipos de texto con frases (no cifras ni el año grande): ahí la puntuación se nota. */
+const PROSE_ROLES: ReadonlySet<string> = new Set(['title', 'heading', 'body', 'label', 'labelStrong', 'quote']);
+
+/**
+ * La puntuación básica que le falta a la fuente de un tipo de texto con frases, y de qué fuente se
+ * toma (`null` si de ninguna). `null` si no le falta nada, si el tipo es de cifras, o si la fuente
+ * todavía no se cargó.
+ */
+export function punctuationGap(role: string, spec: FontSpec, fallbacks: readonly string[]): { chars: string[]; from: string | null } | null {
+  if (!PROSE_ROLES.has(role)) return null;
+  const face = resources.fonts.resolve(spec);
+  if (!face) return null;
+  const chars = BASIC_PUNCTUATION.filter((c) => !hasGlyph(face, c.codePointAt(0)!));
+  if (chars.length === 0) return null;
+  const reserve = resources.fonts.glyphFallback(face, fallbacks).faces;
+  const from = reserve.find((r) => chars.every((c) => hasGlyph(r, c.codePointAt(0)!)));
+  return { chars, from: from?.family ?? null };
 }
 
 /** Dónde se usa una familia: los tipos de texto del tema que la llevan y la cantidad de elementos propios con ella. */

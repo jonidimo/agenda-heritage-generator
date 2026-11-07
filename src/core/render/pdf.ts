@@ -8,6 +8,7 @@
  */
 import { BLEND_NAMES, type BlendMode } from '../design/blend';
 import type { FontRegistry } from '../text/fonts';
+import { segmentsOf } from '../text/shape';
 import { compose, IDENTITY, matrixScale, PT_PER_MM, type Matrix } from '../util/geometry';
 import type { Fill, Prim, Stroke } from '../layout/prims';
 
@@ -282,15 +283,20 @@ class PdfPainter {
       case 'text': {
         const run = p.run;
         if (!run.text || run.glyphs.length === 0) break;
-        doc.font(this.alias(run.face));
-        doc.fontSize(run.size);
-        doc.fillColor(p.color, (p.opacity ?? 1) * this.alpha);
-        doc.text(run.text, p.x, p.y, {
-          lineBreak: false,
-          baseline: 'alphabetic',
-          characterSpacing: run.tracking,
-          features: [...run.features],
-        });
+        // Un tramo por cara, cada uno donde lo ubicó el conformado: pdfkit conforma cada trozo con su
+        // cara igual que `shapeText`. Con una sola cara (lo de siempre) es una única llamada en `p.x`.
+        for (const seg of segmentsOf(run)) {
+          if (!seg.text) continue;
+          doc.font(this.alias(seg.face));
+          doc.fontSize(run.size);
+          doc.fillColor(p.color, (p.opacity ?? 1) * this.alpha);
+          doc.text(seg.text, p.x + seg.x, p.y, {
+            lineBreak: false,
+            baseline: 'alphabetic',
+            characterSpacing: run.tracking,
+            features: [...run.features],
+          });
+        }
         this.drewSomething = true;
         break;
       }

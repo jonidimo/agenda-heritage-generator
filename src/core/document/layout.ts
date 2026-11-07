@@ -182,11 +182,8 @@ function collectTextBoxes(prims: Prim[], m: Matrix, label: string, block: string
   for (const p of prims) {
     if (p.t === 'group') collectTextBoxes(p.children, p.m ? compose(m, p.m) : m, label, block, out, fonts);
     else if (p.t === 'text' && p.run.glyphs.length > 0 && p.run.text.trim()) {
-      const face = fonts.get(p.run.face);
-      const ink = face ? inkBounds(face, p.run) : null;
-      const r = ink
-        ? { x: p.x + ink.x, y: p.y + ink.y, w: ink.w, h: ink.h }
-        : { x: p.x, y: p.y - p.run.capHeight * 1.05, w: p.run.width, h: p.run.capHeight * 1.05 + Math.abs(p.run.descent) * 0.6 };
+      const ink = inkBounds(p.run, fonts);
+      const r = ink ? { x: p.x + ink.x, y: p.y + ink.y, w: ink.w, h: ink.h } : { x: p.x, y: p.y - p.run.capHeight * 1.05, w: p.run.width, h: p.run.capHeight * 1.05 + Math.abs(p.run.descent) * 0.6 };
       const text = p.run.text.length > 28 ? `${p.run.text.slice(0, 26)}…` : p.run.text;
       out.push({ r: transformRect(m, r), label: `${text}`, block });
     }

@@ -65,6 +65,16 @@ function clampWeight(w: number): number {
 }
 
 /**
+ * De dónde sale un carácter que la cara de un texto no tiene (una fuente de camiseta sin coma ni
+ * paréntesis, por ejemplo): las caras candidatas, en orden de preferencia, nunca la propia.
+ */
+export interface GlyphFallback {
+  /** Las claves de las caras, juntas: identifica la lista (forma parte de la clave de la caché de conformado). */
+  key: string;
+  faces: readonly FontFace[];
+}
+
+/**
  * Registro de caras tipográficas cargadas. La resolución sigue el algoritmo de
  * coincidencia de pesos de CSS Fonts 4 dentro de la familia pedida.
  */
@@ -72,6 +82,8 @@ export class FontRegistry {
   private readonly faces = new Map<string, FontFace>();
   /** Las caras integradas que una subida con la misma familia, peso y estilo tapó: vuelven al quitarla. */
   private readonly shadowed = new Map<string, FontFace>();
+  /** Las listas de reserva ya armadas; cambian si se agrega o se quita una cara. */
+  private readonly fallbackCache = new Map<string, GlyphFallback>();
 
   register(
     bytes: Uint8Array,
@@ -96,6 +108,7 @@ export class FontRegistry {
     const prev = this.faces.get(face.key);
     if (prev && prev.source === 'builtin' && face.source === 'user') this.shadowed.set(face.key, prev);
     this.faces.set(face.key, face);
+    this.fallbackCache.clear();
     return face;
   }
 
@@ -112,6 +125,7 @@ export class FontRegistry {
         }
       }
     }
+    if (removed > 0) this.fallbackCache.clear();
     return removed;
   }
 
@@ -157,6 +171,31 @@ export class FontRegistry {
     const any = this.list()[0];
     if (!any) throw new Error('No hay ninguna fuente cargada');
     return any;
+  }
+
+  /**
+   * Las caras de reserva por carácter para `primary`, como hace un navegador: primero las familias de
+   * reserva del tema, después las demás cargadas (en el orden en que se cargaron); de cada familia, la
+   * cara más parecida en peso y estilo. La familia de `primary` no cuenta: si a una cara le falta un
+   * signo, a sus hermanas casi siempre también.
+   */
+  glyphFallback(primary: FontFace, fallbacks: readonly string[] = []): GlyphFallback {
+    const cacheKey = `${primary.key}\u0001${fallbacks.join('\u0002')}`;
+    const hit = this.fallbackCache.get(cacheKey);
+    if (hit) return hit;
+    const families = [...fallbacks, ...new Set(this.list().map((f) => f.family))];
+    const seen = new Set<string>([primary.key]);
+    const faces: FontFace[] = [];
+    for (const family of families) {
+      if (family === primary.family) continue;
+      const face = this.resolve({ family, weight: primary.weight, style: primary.style });
+      if (!face || seen.has(face.key)) continue;
+      seen.add(face.key);
+      faces.push(face);
+    }
+    const out: GlyphFallback = { key: faces.map((f) => f.key).join(';'), faces };
+    this.fallbackCache.set(cacheKey, out);
+    return out;
   }
 }
 

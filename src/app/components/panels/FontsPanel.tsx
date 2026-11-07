@@ -41,7 +41,7 @@ export function FontsPanel() {
         </Button>
         <ul className="mt-2 space-y-2" data-testid="font-list">
           {families.map((fam) => {
-            const missing = coverage.get(fam);
+            const cover = coverage.get(fam);
             const faces = resources.fonts.facesOf(fam);
             const user = faces.some((f) => f.source === 'user');
             const use = uses.get(fam);
@@ -83,7 +83,14 @@ export function FontsPanel() {
                     {t('fonts.usedIn', { where: [...use.roles.map((r) => t(`role.${r}` as UiKey)), ...(use.blocks > 0 ? [plural(t, 'fonts.blocks', use.blocks)] : [])].join(', ') })}
                   </div>
                 )}
-                {missing && (missing.length === 0 ? <div className="text-[11px] text-accent">✓ {t('fonts.coverageOk')}</div> : <div className="text-[11px] text-warn">{t('fonts.missing', { chars: missing.slice(0, 20).join(' ') })}</div>)}
+                {cover && cover.missing.length === 0 && cover.borrowed.length === 0 && <div className="text-[11px] text-accent">✓ {t('fonts.coverageOk')}</div>}
+                {/* Lo que la fuente no tiene pero otra sí: se toma de ella al dibujar, sin aviso. */}
+                {cover?.borrowed.map((b) => (
+                  <div key={b.from} className="text-[11px] text-ink-soft" data-testid="font-borrowed">
+                    {t('fonts.borrowed', { from: b.from, chars: b.chars.slice(0, 20).join(' ') })}
+                  </div>
+                ))}
+                {cover && cover.missing.length > 0 && <div className="text-[11px] text-warn">{t('fonts.missing', { chars: cover.missing.slice(0, 20).join(' ') })}</div>}
                 {confirm === fam && <div className="mt-1 text-[11px] text-warn">{t('fonts.removeHelp')}</div>}
               </li>
             );

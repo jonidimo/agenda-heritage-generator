@@ -6,7 +6,7 @@
  */
 import type { PathPrim } from '../layout/prims';
 import type { FontRegistry } from './fonts';
-import { glyphPath, type ShapedRun } from './shape';
+import { glyphPath, segmentsOf, type ShapedRun } from './shape';
 
 const COMMAND = /([MLHVCSQTAZmlhvcsqtaz])([^MLHVCSQTAZmlhvcsqtaz]*)/g;
 const NUMBER = /-?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?/g;
@@ -37,12 +37,15 @@ export function mapGlyphPath(d: string, u: number, ox: number, oy: number): stri
 
 /** Los contornos de toda una corrida (con su origen `x`, `y` sobre la línea de base) como un solo trazado relleno. */
 export function outlineRun(fonts: FontRegistry, run: ShapedRun, x: number, y: number, color: string, opacity?: number): PathPrim | null {
-  const face = fonts.get(run.face);
-  if (!face) return null;
   const parts: string[] = [];
-  for (const gl of run.glyphs) {
-    const d = glyphPath(face, gl.id);
-    if (d) parts.push(mapGlyphPath(d, run.unit, x + gl.x, y + gl.y));
+  for (const seg of segmentsOf(run)) {
+    const face = fonts.get(seg.face);
+    if (!face) continue;
+    for (let i = seg.from; i < seg.to; i++) {
+      const gl = run.glyphs[i]!;
+      const d = glyphPath(face, gl.id);
+      if (d) parts.push(mapGlyphPath(d, seg.unit, x + gl.x, y + gl.y));
+    }
   }
   if (parts.length === 0) return null;
   return { t: 'path', d: parts.join(''), fill: { color, ...(opacity !== undefined && opacity < 1 ? { opacity } : {}) }, rule: 'nonzero' };

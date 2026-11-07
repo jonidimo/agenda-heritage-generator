@@ -2,10 +2,12 @@ import { derivePalette, type DerivedPalette } from '@core/design/palette';
 import { designDefaults, type UserTheme } from '@core/design/schema';
 import { HARMONIES, LINE_PATTERNS, LINE_USES, mergeTokens, THEMES, type Harmony, type LineStyle, type LineUse, type ThemeTokens, type WritingStyle } from '@core/design/themes';
 import type { TextRole } from '@core/layout/context';
+import type { FontSpec } from '@core/text/fonts';
 import { deleteAtPath, getAtPath, setAtPath, type PlainRecord } from '@core/util/path';
 import { Download, Palette, RotateCcw, Save, Trash2, Upload } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { uiText, useT, type UiKey } from '../../i18n/ui';
+import { punctuationGap } from '../../state/fonts';
 import { deleteTheme, listThemes } from '../../state/persist';
 import { resources } from '../../state/resources';
 import { scrub, type Scrubbing } from '../../state/scrub';
@@ -72,6 +74,7 @@ export function StylePanel() {
                 void resources.ensureFamily(spec.family);
                 setToken(['fonts', role], spec);
               }}
+              note={<PunctuationNote role={role} spec={base.fonts[role]} fallbacks={base.fallbacks} />}
             />
             <ColorInput label={t('style.color')} value={base.colors.roles[role]} {...drag<string>(['colors', 'roles', role])} {...reset(['colors', 'roles', role])} />
           </div>
@@ -310,5 +313,23 @@ function LineStyleEditor({
         )}
       </div>
     </div>
+  );
+}
+
+/**
+ * Debajo de la fuente de un tipo de texto con frases: si le falta la puntuación básica (una fuente de
+ * números o de camiseta), de qué fuente salen esos signos y para qué conviene usarla.
+ */
+function PunctuationNote({ role, spec, fallbacks }: { role: TextRole; spec: FontSpec; fallbacks: readonly string[] }) {
+  const t = useT();
+  // Se vuelve a mirar cuando llega una fuente (la elegida se carga después de elegirla).
+  useStore((s) => s.resVersion);
+  const gap = punctuationGap(role, spec, fallbacks);
+  if (!gap) return null;
+  const chars = gap.chars.join(' ');
+  return (
+    <p className="mt-1 text-[11px] leading-snug text-ink-soft" data-testid={`punctuation-${role}`}>
+      {gap.from ? t('fonts.punctuation', { chars, from: gap.from }) : t('fonts.punctuationMissing', { chars })}
+    </p>
   );
 }

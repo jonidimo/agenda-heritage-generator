@@ -34,11 +34,11 @@ export const titlePage: SectionModule = {
     ctx.add('title.year', 'Año', [y.prim]);
     // Las cifras de estilo antiguo bajan de la línea de base (el 7 y el 9 de Cormorant Garamond):
     // la línea siguiente se ubica por debajo de la tinta real del año, nunca encima.
-    const yearInk = inkBounds(ctx.face('display'), yearRun);
+    const yearInk = inkBounds(yearRun, ctx.doc.fonts);
     const yearBottom = cy + (yearInk ? yearInk.y + yearInk.h : 0);
     const clear = (text: string, role: TextRole, size: SizeKey, preferred: number): number => {
       const run = ctx.run(text, { role, size });
-      const ink = inkBounds(ctx.face(role), run);
+      const ink = inkBounds(run, ctx.doc.fonts);
       return Math.max(preferred, yearBottom + 2.5 - (ink ? ink.y : -run.capHeight));
     };
     let baseline = cy + ptToMm(ctx.theme.sizes.title) * 1.45;
