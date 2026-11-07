@@ -164,8 +164,8 @@ describe('servidor MCP con la aplicación abierta', () => {
     const render = await client.callTool({ name: 'render_page', arguments: { app: true, page: 1, width: 300 } });
     expect((render.content as Array<{ type: string }>).some((c) => c.type === 'image' || c.type === 'text')).toBe(true);
     expect(app.state.calls.filter((c) => c.method === 'design.get').length).toBeGreaterThanOrEqual(3);
-    // Para dibujar, las imágenes propias van adentro.
-    expect(app.state.calls.find((c) => c.method === 'design.get')!.params).toEqual({ assets: true });
+    // Para dibujar, las imágenes y las fuentes propias van adentro.
+    expect(app.state.calls.find((c) => c.method === 'design.get')!.params).toEqual({ assets: true, fonts: true });
   });
 
   it('indicar más de una fuente, o ninguna, es un error', async () => {

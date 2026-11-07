@@ -36,6 +36,18 @@ export class Workspace {
 
   /** Lee un archivo de texto con una de las extensiones permitidas. */
   async read(path: string, extensions: readonly string[]): Promise<{ full: string; text: string }> {
+    const full = await this.checkedFile(path, extensions, MAX_READ_BYTES);
+    return { full, text: await readFile(full, 'utf8') };
+  }
+
+  /** Como `read`, los bytes tal cual (una fuente, una imagen), con su propio tope de tamaño. */
+  async readBytes(path: string, extensions: readonly string[], maxBytes: number): Promise<{ full: string; bytes: Uint8Array }> {
+    const full = await this.checkedFile(path, extensions, maxBytes);
+    return { full, bytes: new Uint8Array(await readFile(full)) };
+  }
+
+  /** La ruta real de un archivo de la carpeta de trabajo con una de esas extensiones y no más grande que `maxBytes`. */
+  private async checkedFile(path: string, extensions: readonly string[], maxBytes: number): Promise<string> {
     if (!extensions.some((e) => path.toLowerCase().endsWith(e))) throw new Error(`Solo se leen archivos ${extensions.join(' o ')}.`);
     const full = await realpath(this.lexical(path)).catch(() => {
       throw new Error(`No existe «${path}» en la carpeta de trabajo.`);
@@ -43,8 +55,8 @@ export class Workspace {
     if (!this.inside(full)) throw new Error(`«${path}» lleva fuera de la carpeta de trabajo.`);
     const info = await lstat(full);
     if (!info.isFile()) throw new Error(`«${path}» no es un archivo.`);
-    if (info.size > MAX_READ_BYTES) throw new Error(`«${path}» pesa más de ${MAX_READ_BYTES / 1024 / 1024} MB.`);
-    return { full, text: await readFile(full, 'utf8') };
+    if (info.size > maxBytes) throw new Error(`«${path}» pesa más de ${Math.round(maxBytes / 1024 / 1024)} MB.`);
+    return full;
   }
 
   /**

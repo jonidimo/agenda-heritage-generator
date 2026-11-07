@@ -10,7 +10,7 @@ import { designCatalogue } from '../core/design/jsonSchema';
 import { parseDesign, type Design } from '../core/design/schema';
 import { AgendaDocument } from '../core/document';
 import type { SvgRenderOptions } from '../core/render/svg';
-import { facesForDesign, loadAssets, loadBuiltinFonts, loadFontManifest, loadHolidayData, toBase64, type FontManifest, type ResourceIO } from '../core/resources';
+import { facesForDesign, loadAssets, loadBuiltinFonts, loadFontManifest, loadHolidayData, toBase64, withUserFonts, type FontManifest, type ResourceIO } from '../core/resources';
 import { FontRegistry, type FontSpec } from '../core/text/fonts';
 import { bytesMatchExtension, isRelativeAssetPath } from '../core/util/relpath';
 
@@ -95,7 +95,7 @@ export interface OpenedDocument {
   doc: AgendaDocument;
   /** Bytes de las imágenes de la agenda (los pide el PDF). */
   bytes: Map<string, Uint8Array>;
-  /** Imágenes que no se pudieron leer. */
+  /** Imágenes y fuentes propias que no se pudieron leer. */
   errors: string[];
   /** Las imágenes como direcciones `data:` (para el SVG de una página). */
   assetHref: NonNullable<SvgRenderOptions['assetHref']>;
@@ -107,14 +107,16 @@ export interface OpenedDocument {
  */
 export async function openNodeDocument(design: Design, fonts?: FontRegistry, opts: { baseDir?: string | undefined } = {}): Promise<OpenedDocument> {
   const files = opts.baseDir === undefined ? null : folderIO(opts.baseDir);
-  const [registry, holidays, assets] = await Promise.all([loadFonts(facesForDesign(design), fonts), loadHolidayData(nodeIO, design.holidays.country), loadAssets(nodeIO, design, new Map(), files)]);
+  const [base, holidays, assets] = await Promise.all([loadFonts(facesForDesign(design), fonts), loadHolidayData(nodeIO, design.holidays.country), loadAssets(nodeIO, design, new Map(), files)]);
+  // Las fuentes propias que trae el archivo, en una copia: el registro compartido queda como estaba.
+  const { registry, errors: fontErrors } = withUserFonts(base, design.userFonts);
   const doc = new AgendaDocument(design, { fonts: registry, holidays, assets: assets.infos });
   const mime = new Map(design.assets.map((a) => [a.id, a.mime]));
   const assetHref: OpenedDocument['assetHref'] = (id, kind) => {
     const b = kind === 'image' ? assets.bytes.get(id) : undefined;
     return b ? `data:${mime.get(id) ?? 'application/octet-stream'};base64,${toBase64(b)}` : undefined;
   };
-  return { doc, bytes: assets.bytes, errors: assets.errors, assetHref };
+  return { doc, bytes: assets.bytes, errors: [...assets.errors, ...fontErrors], assetHref };
 }
 
 /** El catálogo de lo que se puede usar en una agenda, con las fuentes integradas. */

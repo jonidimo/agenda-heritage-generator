@@ -7,6 +7,7 @@
 import { duplicateForYear } from '@core/design/defaults';
 import { parseDesign, type Design } from '@core/design/schema';
 import { newId } from '@core/util/hash';
+import type { FontSpec } from '@core/text/fonts';
 import { isNewerVersion } from '@core/util/version';
 import { download, fileBase } from './exporter';
 import {
@@ -18,9 +19,9 @@ import {
   saveAsset,
   saveDesign,
   saveTemplate,
-  saveUserFont,
   type TemplateRecord,
 } from './persist';
+import { addUserFont } from './fonts';
 import { resources } from './resources';
 import { useStore } from './store';
 import { tNow } from './tNow';
@@ -75,16 +76,13 @@ export async function saveDesignToFile(design: Design, saveAs: boolean): Promise
 }
 
 /** Bytes de imágenes y fuentes que trae un archivo: se guardan y quedan disponibles. */
-async function adopt(assets: Array<{ id: string; bytes: Uint8Array }>, fonts: Array<{ id: string; bytes: Uint8Array; spec: Parameters<typeof saveUserFont>[2] }>): Promise<void> {
+async function adopt(assets: Array<{ id: string; bytes: Uint8Array }>, fonts: Array<{ id: string; bytes: Uint8Array; spec: Partial<FontSpec> }>): Promise<void> {
   for (const a of assets) {
     await saveAsset(a.id, a.bytes);
     resources.assetBytes.set(a.id, a.bytes);
   }
-  for (const fo of fonts) {
-    await saveUserFont(fo.id, fo.bytes, fo.spec);
-    const face = resources.fonts.register(fo.bytes, { ...fo.spec, source: 'user', file: fo.id });
-    resources.userFontBytes.set(fo.id, { bytes: fo.bytes, spec: { family: face.family, weight: face.weight, style: face.style } });
-  }
+  // Como una subida: se guarda, se registra y reemplaza a otra con la misma familia, peso y estilo.
+  for (const fo of fonts) await addUserFont(fo.bytes, fo.spec, fo.id);
   resources.bump();
   useStore.getState().bumpResources(resources.version);
 }

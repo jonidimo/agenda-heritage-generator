@@ -1374,7 +1374,7 @@ export const de: Record<UiKey, string> = {
   'notice.reload': 'Neu laden',
   'page.keys': 'Seite {n}. Mit dem Fokus hier wählen [ und ] ein Element; die Pfeile verschieben es.',
   'cal.useForUi': '{lang} auch für die Oberfläche verwenden',
-  'cal.uiHint': 'Datumsangaben, Währung und Wochenbeginn richten sich nach dem Feiertagsland. Die Sprache der Oberfläche stellst du im Menü Datei ein.',
+  'cal.uiHint': 'Datumsangaben, Währung und Wochenbeginn richten sich nach dem Feiertagsland. Die Sprache der Oberfläche stellst du im Menü Einstellungen ein.',
   'wm.image': 'Bild',
   'wm.upload': 'Anderes Bild hochladen…',
   'wm.delete': 'Wasserzeichen löschen',

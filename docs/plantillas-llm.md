@@ -58,7 +58,9 @@ evita que npm escriba en el canal que usan el cliente y el servidor.
 | --- | --- |
 | `create_design` | Agenda nueva desde una plantilla (`heritage`, `heritage-norma` (con dedicatoria), `clara` (letra grande), `minimal`) para un año, idioma, país y nombre, y desde el principio el tamaño de la hoja (`paper`: A4, LETTER, LEGAL…, pantallas de tableta `TABLET_10_3`, `IPAD_11`…, o `CUSTOM` con `width`/`height`), el destino (`purpose`: `print` o `screen`) y la encuadernación (`binding`). Con `out` escribe el archivo; con `app: true` la abre en la aplicación de escritorio. |
 | `update_design` | Cambia un archivo (`path`) o la agenda abierta en la aplicación de escritorio (`app: true`) con operaciones [JSON Patch](https://datatracker.ietf.org/doc/html/rfc6902) (`add`, `remove`, `replace`, `move`, `copy`, `test`). Todo o nada; si el resultado no abriría, no se cambia nada. Con `out`, el resultado se escribe en otro archivo y `path` queda como estaba. En todas las herramientas, `path` es siempre el archivo que se lee y `out` el que se escribe. |
-| `check_design` | Lista lo que el programa ignoraría o corregiría en el archivo (claves desconocidas, colores no válidos, valores fuera de la lista o del rango) y resume la agenda armada: páginas, hojas, cuadernillos, enlaces y avisos (textos que no entran, imágenes que faltan, enlaces rotos) con sus páginas. |
+| `check_design` | Lista lo que el programa ignoraría o corregiría en el archivo (claves desconocidas, colores no válidos, valores fuera de la lista o del rango) y resume la agenda armada: páginas, hojas, cuadernillos, enlaces, la fuente de cada tipo de texto (si está cargada y si le falta la puntuación) y los avisos con sus páginas. Cada aviso trae `fix`: qué tocar en el JSON para corregirlo (ver la sección 11). |
+| `get_guide` | Esta guía (`lang`: `es` o `en`), entera o una sección (`section` busca en los títulos: `"fuentes"`, `"alcance"`, `"avisos"`…). Para los clientes que no leen recursos. |
+| `add_font` | Agrega una fuente propia (`.ttf`, `.otf`, `.woff`, `.woff2` de la carpeta de trabajo) a un archivo (`path`, viaja adentro en `userFonts`) o a la aplicación abierta (`app: true`); con `roles`, la pone en esos tipos de texto. Devuelve sus glifos y la puntuación que le falta (ver la sección 7). |
 | `list_pages` | Las páginas, con su número, clave, tipo y título (se puede filtrar por tipo). |
 | `render_page` | Dibuja una página tal como se imprime y la devuelve como imagen PNG, con su lado (derecha o izquierda), su zona de contenido, sus bloques (id, nombre y caja en mm) y sus avisos. |
 | `export_pdf` | Escribe un PDF (`out`) del tipo que dice `kind` (se sigue aceptando `mode`): `pages` (para tableta, con enlaces y marcadores), `imposed` (pliegos para imprimir doble faz y doblar en cuadernillos), `fronts`/`backs`, `signature`, `calibration`, `sewing`, `cover`, `separate`. |
@@ -70,7 +72,12 @@ evita que npm escriba en el canal que usan el cliente y el servidor.
 | `app_library` / `app_open` | Las agendas guardadas en la aplicación, y abrir una de ellas. |
 
 Los recursos `agenda://guide/es` (esta guía), `agenda://guide` (en inglés), `agenda://schema` y
-`agenda://catalogue` dan la misma referencia a los clientes que leen recursos.
+`agenda://catalogue` dan la misma referencia a los clientes que leen recursos. El servidor también
+ofrece tres recetas (*prompts*) para los pedidos más comunes: `nueva-agenda`, `revisar-avisos` y
+`traducir`.
+
+Las respuestas de `update_design` y `add_font` traen `warnings` (los avisos que produjo el cambio)
+y `fixes`: cómo se corrige cada código que aparece, una sola vez por código.
 
 ### Una buena forma de trabajar
 
@@ -87,7 +94,8 @@ Con la aplicación de escritorio abierta (ver [Usarla con un modelo de IA](deskt
 
 - `update_design` con `app: true` lee la agenda con su **revisión**, aplica y revisa tu parche, y le manda a la aplicación solo el parche con esa revisión. La persona ve el cambio al instante y lo puede deshacer (es un solo paso). Si ella editó la agenda mientras tanto, la aplicación lo rechaza con un conflicto: volvé a leerla (`check_design` con `app: true`) y reintentá.
 - `render_page` y `check_design` con `app: true` usan la agenda abierta, con sus imágenes.
-- La persona puede apagar el enlace en **Archivo → Permitir que un modelo de IA edite la agenda abierta**; entonces cada llamada falla con ese motivo. No se escribe nada en el disco: la aplicación guarda sus agendas como siempre.
+- `render_page`, `check_design` y `update_design` usan también las fuentes propias que la agenda tiene en la aplicación. `add_font` con `app: true` deja una fuente nueva en la aplicación, para todas sus agendas.
+- La persona puede apagar el enlace en **Ajustes → Permitir que un modelo de IA edite la agenda abierta**; entonces cada llamada falla con ese motivo. No se escribe nada en el disco: la aplicación guarda sus agendas como siempre.
 - Los ids de los elementos salen de `render_page`; `app_reveal` con `page` y `blockId` elige uno en la aplicación.
 
 ## 2. Sin MCP: esquema, catálogo y revisión
@@ -218,7 +226,107 @@ están en el esquema (`get_schema` con la parte `customBlocks`).
 `export_theme` convierte el estilo en un archivo `.tema.json`. En la aplicación, *Importar tema…*
 del panel Estilo lo suma a tus temas, para usarlo en otras agendas.
 
-## 7. Consejos para buenos resultados
+## 7. Fuentes propias
+
+Además de las integradas (`fonts` en el catálogo), una agenda puede usar fuentes propias. Viajan
+**dentro del archivo**, en `userFonts`: una lista de `{ "id", "spec": { "family", "weight",
+"style" }, "data" }`, con el archivo de la fuente en base64. No hace falta instalar nada en la
+computadora: la aplicación, la línea de comandos y el servidor MCP las leen del archivo. Lo más
+simple es `add_font`, que lee el `.ttf` u `.otf` de la carpeta de trabajo y la incrusta.
+
+Una fuente propia se usa como cualquier otra, por su familia, peso y estilo: en
+`/theme/tokens/fonts/<rol>` o en la fuente de un texto propio (`props.font`).
+
+**Caracteres que una fuente no tiene.** Si a la fuente de un texto le falta un carácter, ese
+carácter se dibuja con la primera fuente de `/theme/tokens/fallbacks` que lo tenga (después, con
+las demás cargadas), como hace un navegador, en pantalla y en el PDF. Solo avisa
+(`missingGlyphs`) lo que no tiene ninguna. Una fuente de números o de camiseta suele no tener
+coma, punto ni paréntesis: luce mejor en `display` y `number` (el año grande, las cifras), y no en
+los tipos de texto con frases (`title`, `heading`, `body`, `label`, `quote`). `add_font` y
+`check_design` dicen qué puntuación le falta y de qué fuente sale.
+
+```json
+[
+  { "op": "replace", "path": "/theme/tokens/fonts/display", "value": { "family": "Mi Dorsal", "weight": 400, "style": "normal" } },
+  { "op": "replace", "path": "/theme/tokens/fonts/number", "value": { "family": "Mi Dorsal", "weight": 400, "style": "normal" } },
+  { "op": "replace", "path": "/theme/tokens/fallbacks", "value": ["Manrope", "Cormorant Garamond"] }
+]
+```
+
+## 8. Alcance de un elemento: pageType y pageKey
+
+Cada elemento propio (`customBlocks`), ajuste (`overrides`), estilo (`blockStyles`,
+`pageStyles`) y enlace (`links.blocks`) dice a qué páginas va:
+
+- **`pageType` con `"pageKey": null`** (lo de siempre): **todas** las páginas de ese tipo. Un
+  elemento en `weekRight` sale en todas las semanas del año, sin copiarlo.
+- **`pageType` y una `pageKey`**: solo esa página (`"pageKey": "week:2027-W12:right"`). Si un
+  mismo elemento tiene una entrada para el tipo y otra para la página, en esa página gana la de
+  la página.
+
+Las claves y los tipos salen de `list_pages`. En un tipo que cae a ambos lados, la posición se
+espeja en las páginas izquierdas (`"mirror": true`, lo de siempre). Los elementos compuestos
+(`table`, `checklist`, `habits`, `finance`, `minical`, `quadrants`, `notes`, `timeline`, `rating`,
+`qr`) aceptan `"paper": true`: un fondo blanco que tapa lo que la página tiene debajo (puntos,
+renglones, cuadrícula).
+
+## 9. Recursos: imágenes, vectores, PDF e íconos
+
+`assets` declara cada archivo con `id`, `name`, `kind` y `mime`:
+
+- `kind: "raster"`: PNG o JPEG (se avisa si se imprime a menos de 200 ppp).
+- `kind: "vector"`: SVG. Se dibuja como vectores en el PDF (nítido a cualquier tamaño) y, en un
+  elemento `image` o una marca de agua, `color` lo tiñe de un color.
+- `kind: "pdf"`: un PDF; una página propia lo muestra con `"content": { "kind": "artwork",
+  "assetId": "…", "pdfPage": 3 }`.
+
+El archivo va como `path` (relativo a la carpeta del `.agenda.json`), `data` (base64) o `builtin`
+(los integrados, como `watermarks/colibri.svg`). Los íconos integrados no se declaran: se usan
+como `icon:<id>` en cualquier lugar que lleva una imagen.
+
+## 10. Traducir y feriados
+
+- `/locale` (`es-AR`, `en-US`, `pt-BR`, `it-IT`, `de-DE`, `fr-FR`…) fija el idioma de **todo lo
+  que la agenda genera**: meses, días, títulos, rótulos y, con `holidays.language` en `auto`, los
+  feriados. Para traducir una agenda alcanza con **una** operación:
+  `{ "op": "replace", "path": "/locale", "value": "en-US" }`. Los textos escritos a mano (persona,
+  elementos propios, rótulos renombrados en `persona.labels`) quedan como están.
+- Un feriado con un nombre largo se abrevia con «…» en su casilla (aviso `abbreviated`). Un
+  nombre propio más corto va en `/holidays/renamed/AAAA-MM-DD`, con la fecha en que cae ese año
+  (un feriado trasladable puede no caer en su día: `check_design` y `render_page` muestran la
+  fecha). En Argentina, Güemes cae el 21 de junio de 2027:
+  `{ "op": "add", "path": "/holidays/renamed/2027-06-21", "value": "Güemes" }`.
+- `holidays.removed` lista fechas que no se muestran; `holidays.added`, feriados propios
+  (`{ "date": "2027-03-08", "name": "…" }`).
+
+## 11. Avisos y cómo corregirlos
+
+`check_design` agrupa los avisos por mensaje, con sus páginas y su `fix`. Todos menos
+`abbreviated` son problemas.
+
+| Código | Qué pasa | Cómo se corrige |
+| --- | --- | --- |
+| `textOverflow` | Un texto no entra en su lugar. | Acortalo, agrandá la caja (`w`/`h` o `dw`/`dh`), bajá `props.size` o dejá `props.fit` en `true`. |
+| `offPage` | Parte de un elemento queda fuera de la página. | Achicalo o correlo (`x`/`y`/`w`/`h`, o `dx`/`dy`/`dw`/`dh` en `overrides`). |
+| `nonPrintable` | Un elemento entra en el borde que la impresora no imprime (`binding.nonPrintable`, mm). | Correlo hacia adentro o achicalo. |
+| `clamped` | Un elemento se corrió solo para no salir de la página. | Ajustá su posición para que quede donde lo querés. |
+| `overlap` | Dos textos se pisan. | Corré o achicá uno, o acortá el texto. |
+| `lowDpi` | Una imagen tiene poca resolución para su tamaño impreso. | Una imagen más grande (300 ppp o más) o un elemento más chico. |
+| `missingGlyphs` | Ni la fuente ni las de reserva tienen esos caracteres. | Cambiá el texto, la fuente de ese tipo de texto o agregá a `/theme/tokens/fallbacks` una familia que los tenga. |
+| `missingAsset` | Falta una imagen o un archivo. | Revisá el `assetId` y su entrada en `assets` (`path`, `data` o `builtin`). |
+| `pdfPageRange` | Se pide una página que el PDF no tiene. | Un número entre 1 y la cantidad de páginas del PDF. |
+| `brokenLink` | Un enlace lleva a una página que no existe o a una dirección no válida. | Corregí `page` (una clave de `list_pages`) o `url` en `links.blocks`. |
+| `qrTooLong` | Demasiado texto para un código QR. | Acortá `props.text` o bajá `props.ecc` a `L`. |
+| `invalidPath` | El trazado de una forma no es SVG válido. | Revisá `props.d`. |
+| `holidaysMissing` | No hay datos de feriados para ese país. | Revisá `holidays.country` o dejalo en `null`. |
+| `holidaysRange` | Los datos de feriados no cubren ese año. | Agregá los que falten en `holidays.added`. |
+| `layoutError` | Un elemento no se pudo dibujar. | Revisá sus `props` con `get_schema` (parte `customBlocks`). |
+| `abbreviated` | Informativo: un nombre se acortó con «…». | Un nombre más corto en `/holidays/renamed/AAAA-MM-DD` o en `personalDates[].label`. |
+
+Un aviso `resource` dice que un recurso (una imagen por ruta o una fuente de `userFonts`) no se
+pudo leer.
+
+## 12. Consejos para buenos resultados
 
 - Empezá desde una plantilla y cambiá de a poco. Cada cambio se valida con el mismo validador que
   usa la aplicación. El esquema JSON se genera de ese validador al correr, así que los dos nunca
@@ -229,10 +337,12 @@ del panel Estilo lo suma a tus temas, para usarlo en otras agendas.
   izquierdas.
 - Si algo no entra, `check_design` dice en qué página y en qué bloque; `render_page` lo muestra.
 
-## 8. Seguridad
+## 13. Seguridad
 
-El servidor solo lee archivos `.json` y solo escribe `.agenda.json`, `.tema.json` y `.pdf`, siempre
-dentro de su carpeta de trabajo y nunca a través de enlaces simbólicos. No reemplaza una agenda
-o un tema que ya existen salvo que se lo pidas. Las imágenes de una agenda solo pueden ser rutas
-integradas o datos dentro del archivo. Los valores que llegan de un archivo se validan y se
-mantienen dentro de su rango antes de llegar a la vista previa o al PDF.
+El servidor solo lee agendas y plantillas (`.json`), las imágenes que una agenda nombra por ruta y
+las fuentes que se le piden a `add_font` (`.ttf`, `.otf`, `.woff`, `.woff2`), y solo escribe
+`.agenda.json`, `.tema.json` y `.pdf`, siempre dentro de su carpeta de trabajo y nunca a través de
+enlaces simbólicos. No reemplaza una agenda o un tema que ya existen salvo que se lo pidas. Las
+imágenes de una agenda solo pueden ser rutas integradas, datos dentro del archivo o archivos de
+su misma carpeta (nunca de afuera). Los valores que llegan de un archivo se validan y se mantienen
+dentro de su rango antes de llegar a la vista previa o al PDF.

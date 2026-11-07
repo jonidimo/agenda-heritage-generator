@@ -9,9 +9,10 @@
 import { z } from 'zod';
 import type { JsonPatchOp } from '../util/jsonPatch';
 import { JsonPatchOpZ } from '../util/jsonPatchSchema';
+import { UserFontZ } from '../design/schema';
 
 /** Los métodos que existen (los mismos que reenvía el intermediario). */
-export const LIVE_METHOD_NAMES = ['design.info', 'design.get', 'design.patch', 'view.reveal', 'library.list', 'design.open', 'design.load'] as const;
+export const LIVE_METHOD_NAMES = ['design.info', 'design.get', 'design.patch', 'view.reveal', 'library.list', 'design.open', 'design.load', 'fonts.add'] as const;
 export type LiveMethodName = (typeof LIVE_METHOD_NAMES)[number];
 
 /** Códigos de error de la página (los del transporte, de -32000 a -32003, son de `live.mjs`). */
@@ -33,7 +34,8 @@ const patchOp = JsonPatchOpZ;
 /** Parámetros de cada método (lo que la página acepta). */
 export const LiveParams = {
   'design.info': z.object({}).optional(),
-  'design.get': z.object({ assets: z.boolean().optional() }).optional(),
+  /** Con `assets`, los datos de las imágenes propias; con `fonts`, las fuentes subidas que la agenda usa (`userFonts`). */
+  'design.get': z.object({ assets: z.boolean().optional(), fonts: z.boolean().optional() }).optional(),
   'design.patch': z.object({
     patch: z.array(patchOp).min(1).max(500),
     /** La revisión que el cliente leyó: si cambió, el pedido se rechaza con `conflict`. */
@@ -48,6 +50,8 @@ export const LiveParams = {
   'library.list': z.object({}).optional(),
   'design.open': z.object({ id: z.string().min(1).max(200) }),
   'design.load': z.object({ design: z.record(z.string(), z.unknown()) }),
+  /** Una fuente propia (base64) que queda en la aplicación, disponible para todas las agendas. */
+  'fonts.add': UserFontZ.extend({ id: UserFontZ.shape.id.optional() }),
 } as const satisfies Record<LiveMethodName, z.ZodType>;
 
 /** Lo que contesta `design.info`. */
@@ -85,6 +89,15 @@ export interface LiveReveal {
   key: string;
   /** ¿Quedó elegido el elemento pedido? */
   selected: boolean;
+}
+
+/** Lo que contesta `fonts.add`: la fuente que quedó, con cuántos glifos tiene. */
+export interface LiveFontAdded {
+  id: string;
+  family: string;
+  weight: number;
+  style: 'normal' | 'italic';
+  glyphs: number;
 }
 
 export interface LiveLibraryItem {

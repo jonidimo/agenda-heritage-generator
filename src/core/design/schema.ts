@@ -541,6 +541,27 @@ export const CoverZ = z
   })
   .prefault({});
 
+/** Hasta cuánto base64 puede tener una fuente incrustada (unos 22 MB de archivo). */
+export const USER_FONT_MAX_CHARS = 30_000_000;
+/** Fuentes incrustadas en un archivo, como mucho. */
+export const USER_FONTS_MAX = 40;
+
+/**
+ * Una fuente subida que viaja dentro del archivo, en base64. La aplicación la escribe al guardar (solo
+ * las familias que la agenda usa) y la adopta al abrir; el servidor MCP y la línea de comandos la usan
+ * al dibujar, igual que la aplicación. Se usa por su familia, peso y estilo, como cualquier otra.
+ */
+export const UserFontZ = z.object({
+  id: z.string().min(1).max(100),
+  spec: z.object({
+    family: z.string().trim().min(1).max(80),
+    weight: z.number().int().min(1).max(1000).default(400),
+    style: z.enum(['normal', 'italic']).default('normal'),
+  }),
+  data: z.string().min(4).max(USER_FONT_MAX_CHARS).regex(/^[A-Za-z0-9+/]*={0,2}$/, 'base64'),
+});
+export type UserFont = z.infer<typeof UserFontZ>;
+
 export const DesignZ = z.object({
   schemaVersion: z.literal(SCHEMA_VERSION).default(SCHEMA_VERSION),
   id: z.string().default('design'),
@@ -570,6 +591,8 @@ export const DesignZ = z.object({
   links: LinksZ,
   assets: z.array(AssetRefZ).default([]),
   cover: CoverZ,
+  /** Fuentes que viajan con el archivo. Si alguna no es válida se descartan todas (la agenda abre igual, con las de reserva). */
+  userFonts: z.array(UserFontZ).max(USER_FONTS_MAX).optional().catch(undefined),
 });
 
 export type Design = z.infer<typeof DesignZ>;

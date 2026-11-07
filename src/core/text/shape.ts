@@ -139,6 +139,22 @@ const cache = new Map<string, ShapedRun>();
 const CACHE_LIMIT = 20_000;
 
 /**
+ * Un número por cara cargada, para las cachés: la clave de una cara (`familia|peso|estilo`) puede
+ * repetirse entre registros (dos fuentes subidas distintas con el mismo nombre, en dos agendas abiertas
+ * por el mismo servidor), y sus glifos no son los mismos.
+ */
+const faceIds = new WeakMap<FontFace, number>();
+let nextFaceId = 1;
+function faceId(face: FontFace): number {
+  let id = faceIds.get(face);
+  if (id === undefined) {
+    id = nextFaceId++;
+    faceIds.set(face, id);
+  }
+  return id;
+}
+
+/**
  * Conforma una línea de texto con fontkit exactamente como lo hará pdfkit:
  * misma llamada `font.layout(texto, rasgos)` sobre la cadena completa (pdfkit
  * no la parte en palabras cuando recibe rasgos explícitos) y mismo modelo de
@@ -155,7 +171,7 @@ export function shapeText(face: FontFace, rawText: string, sizePt: number, opts:
   const features = opts.features ?? BASE_FEATURES;
   const trackingEm = opts.tracking ?? 0;
   const fallback = opts.fallback;
-  const key = `${face.key}\u0001${sizePt}\u0001${trackingEm}\u0001${features.join(',')}\u0001${fallback?.key ?? ''}\u0001${text}`;
+  const key = `${faceId(face)}\u0001${sizePt}\u0001${trackingEm}\u0001${features.join(',')}\u0001${fallback ? fallback.faces.map(faceId).join(',') : ''}\u0001${text}`;
   const hit = cache.get(key);
   if (hit) return hit;
 
@@ -229,7 +245,7 @@ const glyphPathCache = new Map<string, string>();
 
 /** Contorno de un glifo como `d` de SVG en unidades de diseño (Y hacia arriba). */
 export function glyphPath(face: FontFace, glyphId: number): string {
-  const key = `${face.key}#${glyphId}`;
+  const key = `${faceId(face)}#${glyphId}`;
   const hit = glyphPathCache.get(key);
   if (hit !== undefined) return hit;
   const d = face.font.getGlyph(glyphId).path.toSVG();

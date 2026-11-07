@@ -16,6 +16,7 @@ import type { AgendaDocument } from '../document';
 import { newLayoutWarnings, type LayoutNote } from '../document/feedback';
 import { listPages, PAGE_LIST_MAX, pageRenderInfo, type Box } from '../document/inspect';
 import { documentSummary } from '../document/summary';
+import { fixesFor } from '../document/fixes';
 import { getAtPointer, type JsonPatchOp } from '../util/jsonPatch';
 import { JsonPatchOpZ } from '../util/jsonPatchSchema';
 import type { AiImagePart, AiPart, AiToolSpec } from './messages';
@@ -223,7 +224,8 @@ const TOOLS = [
       };
       const layout = await newLayoutWarnings(open, host.baseline?.() ?? current, result.design);
       const proposal: Proposal = { design: result.design, patch, summary: input.summary, warnings: layout.notes, omittedWarnings: layout.omitted, ignored: result.stripped };
-      return { proposal, content: json({ ok: true, pendingApproval: true, warnings: layout.notes, ignoredKeys: result.stripped }) };
+      const fixes = fixesFor(layout.notes.map((n) => n.code));
+      return { proposal, content: json({ ok: true, pendingApproval: true, warnings: layout.notes, ...(Object.keys(fixes).length > 0 ? { fixes } : {}), ignoredKeys: result.stripped }) };
     },
   }),
   define({

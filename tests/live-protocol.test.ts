@@ -1,5 +1,6 @@
 /** Puente en vivo: dónde está cada cosa, cómo se parten los mensajes y las reglas de una conexión (sin sockets). */
 import { describe, expect, it } from 'vitest';
+import { LIVE_METHOD_NAMES } from '../src/core/live/protocol';
 import { appDataDir, createBrokerCore, createFrameParser, dataDirs, encodeFrame, LIVE_ERRORS, LIVE_METHODS, LIVE_PROTOCOL, liveEndpoint, MAX_FRAME_BYTES, newToken } from '../electron/lib/live.mjs';
 
 describe('dónde está cada cosa', () => {
@@ -145,6 +146,8 @@ describe('reglas de una conexión', () => {
       { id: 'a', result: { ok: 'design.info' } },
     ]);
     expect(LIVE_METHODS).toContain('design.patch');
+    // El intermediario conoce los mismos pedidos que la página atiende.
+    expect([...LIVE_METHODS]).toEqual([...LIVE_METHOD_NAMES]);
   });
 
   it('un error de la página vuelve como error, con su código si lo trae', async () => {

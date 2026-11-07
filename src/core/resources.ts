@@ -5,7 +5,7 @@
  */
 import { rasterInfo } from './assets/image';
 import { importSvg } from './assets/svg';
-import type { AssetRef, Design } from './design/schema';
+import type { AssetRef, Design, UserFont } from './design/schema';
 import { effectiveAssets } from './assets/icons';
 import { themeFaces, resolveThemeFor } from './design/themes';
 import type { HolidayCountryData, HolidayIndex } from './holidays';
@@ -58,19 +58,50 @@ export async function loadFontManifest(io: ResourceIO): Promise<FontManifest> {
   return JSON.parse(utf8(await io.read('fonts/fonts.json'))) as FontManifest;
 }
 
-/** Caras necesarias para un diseño: las del tema + Manrope (marcas y hojas auxiliares). */
-export function facesForDesign(design: Design): FontSpec[] {
+/**
+ * Caras necesarias para un diseño: las del tema, las de los estilos de página y los textos con fuente
+ * propia, más Manrope (marcas y hojas auxiliares). Con `fallbacks` (lo de siempre al cargar), también
+ * las familias de reserva del tema en los mismos pesos y estilos: de ahí salen los caracteres que una
+ * fuente no tiene, y así la pantalla, el PDF de la aplicación y el del servidor MCP toman los mismos.
+ */
+export function facesForDesign(design: Design, opts: { fallbacks?: boolean } = {}): FontSpec[] {
   const theme = resolveThemeFor(design.theme);
-  const list = [
+  const used = [
     ...themeFaces(theme),
+    // Un estilo propio de una página puede elegir otras fuentes para sus tipos de texto.
+    ...design.pageStyles.flatMap((ps) => Object.values((ps.tokens as { fonts?: Record<string, unknown> }).fonts ?? {}).flatMap((v) => parseFontSpec(v) ?? [])),
     // Textos propios con su propia fuente.
     ...design.customBlocks.flatMap((cb) => parseFontSpec(cb.props.font) ?? []),
+  ];
+  const reserve = opts.fallbacks === false ? [] : theme.fallbacks.flatMap((family) => used.map((f) => ({ family, weight: f.weight, style: f.style })));
+  const list = [
+    ...used,
+    ...reserve,
     { family: 'Manrope', weight: 400, style: 'normal' as const },
     { family: 'Manrope', weight: 700, style: 'normal' as const },
     { family: 'Manrope', weight: 800, style: 'normal' as const },
   ];
   const seen = new Set<string>();
   return list.filter((f) => (seen.has(faceKey(f)) ? false : (seen.add(faceKey(f)), true)));
+}
+
+/**
+ * El registro con las fuentes que viajan en el archivo de la agenda (`userFonts`): una copia de
+ * `registry` con esas caras encima, o el mismo si no trae ninguna. Una fuente que no se puede leer no
+ * impide las demás: vuelve en `errors`, y los textos que la usaban salen con la de reserva.
+ */
+export function withUserFonts(registry: FontRegistry, fonts: readonly UserFont[] | undefined): { registry: FontRegistry; errors: string[] } {
+  if (!fonts || fonts.length === 0) return { registry, errors: [] };
+  const out = registry.fork();
+  const errors: string[] = [];
+  for (const f of fonts) {
+    try {
+      out.register(fromBase64(f.data), { ...f.spec, source: 'user', file: f.id });
+    } catch (err) {
+      errors.push(`La fuente «${f.spec.family}» (${f.id}) no se pudo leer: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+  return { registry: out, errors };
 }
 
 /**

@@ -1374,7 +1374,7 @@ export const fr: Record<UiKey, string> = {
   'notice.reload': 'Recharger',
   'page.keys': 'Page {n}. Quand le focus est ici, [ et ] choisissent un élément ; les flèches le déplacent.',
   'cal.useForUi': 'Utiliser aussi {lang} pour l’interface',
-  'cal.uiHint': 'Les dates, la devise et le premier jour de la semaine suivent le pays des jours fériés. La langue de l’interface se change dans le menu Fichier.',
+  'cal.uiHint': 'Les dates, la devise et le premier jour de la semaine suivent le pays des jours fériés. La langue de l’interface se change dans le menu Réglages.',
   'wm.image': 'Image',
   'wm.upload': 'Importer une autre image…',
   'wm.delete': 'Supprimer le filigrane',

@@ -115,19 +115,25 @@ export function designJsonSchema(): Json {
   schema.$defs = { ...(schema.$defs as Json | undefined), themeTokens: ornamentNames(tokenSchema()), sectionItem, monthItem: { $ref: '#/$defs/sectionItem', unevaluatedProperties: false } };
   // La hora de creación no es un valor por defecto útil (y cambiaría el esquema en cada uso).
   for (const k of ['createdAt', 'updatedAt']) delete (props[k] as Json).default;
-  // Claves que agrega el archivo autocontenido o un editor (no son parte del diseño).
+  // Claves que agrega el archivo autocontenido o un editor ($schema no es parte del diseño; userFonts se describe acá con más detalle).
   Object.assign(props, {
     $schema: { type: 'string', description: 'Ruta o dirección de este esquema (para el autocompletado del editor).' },
     userFonts: {
       type: 'array',
-      description: 'Fuentes subidas que viajan con el archivo (las escribe la aplicación al guardar).',
+      maxItems: 40,
+      description:
+        'Fuentes propias que viajan con el archivo, en base64 (TTF, OTF, WOFF, WOFF2). Se usan por su familia, peso y estilo en theme.tokens.fonts o en un texto propio, como las integradas. La aplicación las escribe al guardar; con el servidor MCP se agregan con add_font. Si a una le faltan caracteres, salen de theme.tokens.fallbacks.',
       items: {
         type: 'object',
         additionalProperties: false,
         required: ['id', 'spec', 'data'],
         properties: {
-          id: { type: 'string' },
-          spec: { type: 'object', properties: { family: { type: 'string' }, weight: { type: 'number' }, style: { enum: ['normal', 'italic'] } } },
+          id: { type: 'string', maxLength: 100 },
+          spec: {
+            type: 'object',
+            required: ['family'],
+            properties: { family: { type: 'string', maxLength: 80 }, weight: { type: 'integer', minimum: 1, maximum: 1000, default: 400 }, style: { enum: ['normal', 'italic'], default: 'normal' } },
+          },
           data: { type: 'string', contentEncoding: 'base64' },
         },
       },

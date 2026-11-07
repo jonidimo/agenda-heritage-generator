@@ -38,7 +38,7 @@ export const LIVE_LINK_ENV = 'AGENDA_APP_LINK';
 const MAX_SOCKET_PATH = 100;
 
 /** What a client can ask the page for. Anything else is refused by the broker. */
-export const LIVE_METHODS = Object.freeze(['design.info', 'design.get', 'design.patch', 'view.reveal', 'library.list', 'design.open', 'design.load']);
+export const LIVE_METHODS = Object.freeze(['design.info', 'design.get', 'design.patch', 'view.reveal', 'library.list', 'design.open', 'design.load', 'fonts.add']);
 
 /** JSON-RPC-style error codes. */
 export const LIVE_ERRORS = Object.freeze({

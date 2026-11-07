@@ -11,17 +11,21 @@ import { dirname, relative, resolve, sep } from 'node:path';
 import { z } from 'zod';
 import { createDesign, TEMPLATES, type TemplateId } from '../core/design/defaults';
 import { designJsonSchema, schemaPart } from '../core/design/jsonSchema';
-import { PAPER_PRESETS, PaperPresetZ, SCREEN_PRESETS, type Design } from '../core/design/schema';
+import { PAPER_PRESETS, PaperPresetZ, SCREEN_PRESETS, USER_FONTS_MAX, type Design } from '../core/design/schema';
 import { changePaper } from '../core/document/paper';
 import { themeFile, themeFromDesign } from '../core/design/themeFile';
 import { EXPORT_KINDS } from '../core/document';
 import { documentSummary } from '../core/document/summary';
-import type { LiveDesign, LiveInfo, LiveLibraryItem, LiveOpened, LivePatchResult, LiveReveal } from '../core/live/protocol';
-import { newLayoutWarnings } from '../core/document/feedback';
+import type { LiveDesign, LiveFontAdded, LiveInfo, LiveLibraryItem, LiveOpened, LivePatchResult, LiveReveal } from '../core/live/protocol';
+import { newLayoutWarnings, type LayoutFeedback } from '../core/document/feedback';
+import { fixesFor } from '../core/document/fixes';
 import { listPages, pageRenderInfo } from '../core/document/inspect';
 import { pageToSvg } from '../core/render/svg';
 import { toBase64 } from '../core/resources';
-import type { FontRegistry } from '../core/text/fonts';
+import { detectFaceMeta, type FontRegistry } from '../core/text/fonts';
+import { openFont, type FKFont } from '../core/text/fontkit';
+import { punctuationOf } from '../core/text/punctuation';
+import { newId } from '../core/util/hash';
 import { applyJsonPatch, type JsonPatchOp } from '../core/util/jsonPatch';
 import { JsonPatchOpZ } from '../core/util/jsonPatchSchema';
 import { isRelativeAssetPath } from '../core/util/relpath';
@@ -50,15 +54,58 @@ function parseJson(body: string, path: string): unknown {
 }
 
 const INSTRUCTIONS = `Diseño de agendas imprimibles (Agenda Heritage Studio). Una agenda es un archivo JSON (.agenda.json).
+Si no conocés el formato, empezá por get_guide (la guía completa, o una sección con «section»; también está en el recurso agenda://guide).
 Flujo: create_design (desde una plantilla) → update_design (JSON Patch) → check_design hasta que no queden problemas → render_page para ver páginas → export_pdf / export_theme.
 Referencia: list_catalogue (secciones con sus opciones, temas, ornamentos, variables de texto) y get_schema (con «part» para leer solo una parte, p. ej. "theme.tokens.lines").
 Con la aplicación de escritorio abierta: app_status dice qué agenda tiene; con «app: true» check_design, render_page, update_design y las demás trabajan sobre ESA agenda (los cambios son un paso que la persona puede deshacer; si ella la tocó mientras tanto, volvé a leerla), app_reveal le muestra una página y app_library/app_open cambian de agenda.
-Medidas en milímetros; colores #rrggbb; las rutas de archivo son relativas a la carpeta de trabajo. La guía completa está en el recurso agenda://guide.`;
+Claves: un elemento propio (customBlocks) con pageKey null vale para todas las páginas de su pageType, con una pageKey solo para esa página; paper: true le pone fondo blanco que tapa los renglones de abajo. «/locale» traduce todo lo que la agenda genera en una operación. Las fuentes por tipo de texto van en /theme/tokens/fonts/<rol>; una fuente propia se agrega con add_font (viaja en userFonts) y lo que no tiene sale de /theme/tokens/fallbacks. Las imágenes y SVG van en assets (kind raster, vector, pdf) o como "icon:<id>". Cada aviso de check_design trae «fix»: cómo corregirlo.
+Medidas en milímetros; colores #rrggbb; las rutas de archivo son relativas a la carpeta de trabajo.`;
+
+/** Una fuente que se puede incrustar: el archivo pesa como mucho esto (en base64 entra en `userFonts`). */
+const MAX_FONT_BYTES = 20 * 1024 * 1024;
+const FONT_EXT = ['.ttf', '.otf', '.woff', '.woff2'] as const;
+const TEXT_ROLES = ['display', 'title', 'label', 'labelStrong', 'heading', 'body', 'number', 'quote'] as const;
+
+/** Las secciones de una guía en Markdown (cada «## »), con su título. */
+export function guideSections(markdown: string): Array<{ title: string; text: string }> {
+  const out: Array<{ title: string; text: string }> = [];
+  for (const block of markdown.split(/^(?=## )/m)) {
+    const m = /^## (.+)$/m.exec(block);
+    if (m && block.startsWith('## ')) out.push({ title: m[1]!.trim(), text: block.trimEnd() });
+  }
+  return out;
+}
+
+/** Para buscar sin importar mayúsculas ni tildes. */
+const fold = (s: string): string => s.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
+
+/**
+ * Las operaciones que ponen `spec` como fuente de esos tipos de texto en una agenda (todavía JSON):
+ * crean lo que falte de /theme/tokens/fonts.
+ */
+function fontRoleOps(raw: unknown, roles: readonly string[], spec: { family: string; weight: number; style: 'normal' | 'italic' }): JsonPatchOp[] {
+  if (roles.length === 0) return [];
+  const obj = (v: unknown): Record<string, unknown> | null => (v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : null);
+  const theme = obj(obj(raw)?.theme);
+  const tokens = obj(theme?.tokens);
+  const fonts = obj(tokens?.fonts);
+  const values = Object.fromEntries(roles.map((r) => [r, spec]));
+  if (!theme) return [{ op: 'add', path: '/theme', value: { tokens: { fonts: values } } }];
+  if (!tokens) return [{ op: 'add', path: '/theme/tokens', value: { fonts: values } }];
+  if (!fonts) return [{ op: 'add', path: '/theme/tokens/fonts', value: values }];
+  return roles.map((r) => ({ op: 'add', path: `/theme/tokens/fonts/${r}`, value: spec }));
+}
 
 /** Los tamaños de hoja que se pueden pedir, con su medida (para el modelo). */
 const PAPER_HELP = Object.entries(PAPER_PRESETS)
   .map(([id, p]) => (id === 'CUSTOM' ? 'CUSTOM: width y height a elección' : `${id}: ${p.w} × ${p.h} mm`))
   .join('; ');
+
+/** Los avisos que un cambio produjo, con cómo se corrige cada código (una vez por código). */
+function layoutResult(layout: LayoutFeedback): { warnings: LayoutFeedback['notes']; fixes?: Record<string, string>; omittedWarnings?: number } {
+  const fixes = fixesFor(layout.notes.map((n) => n.code));
+  return { warnings: layout.notes, ...(Object.keys(fixes).length > 0 ? { fixes } : {}), ...(layout.omitted > 0 ? { omittedWarnings: layout.omitted } : {}) };
+}
 
 type ToolResult = { content: Array<{ type: 'text'; text: string } | { type: 'image'; data: string; mimeType: string }>; isError?: boolean };
 
@@ -147,7 +194,7 @@ export function createServer(opts: ServerOptions): McpServer {
     let revision: number | undefined;
     if (input.app === true) {
       // Con las imágenes propias adentro, para que las páginas se vean como en la aplicación.
-      const got = await appLink.request<LiveDesign>('design.get', { assets: true });
+      const got = await appLink.request<LiveDesign>('design.get', { assets: true, fonts: true });
       raw = got.design;
       revision = got.revision;
     }
@@ -202,6 +249,28 @@ export function createServer(opts: ServerOptions): McpServer {
       const found = schemaPart(schema, part);
       if (!found) throw new Error(`No hay «${part}» en el esquema. Partes de primer nivel: ${Object.keys(schema.properties as object).join(', ')}.`);
       return text(found);
+    },
+  );
+
+  server.registerTool(
+    'get_guide',
+    {
+      title: 'Guía',
+      description:
+        'La guía para trabajar con agendas: el formato, cómo se ubican los elementos (pageType y pageKey), fuentes propias, recursos, traducción y feriados, y cómo se corrige cada aviso. Sin «section», la guía entera; con «section», solo esa parte (busca en los títulos). Es la misma que el recurso agenda://guide, para los clientes que no leen recursos.',
+      inputSchema: {
+        lang: z.enum(['es', 'en']).optional().describe('es (castellano, por defecto) o en'),
+        section: z.string().max(80).optional().describe('Parte de un título de sección, p. ej. "fuentes", "avisos", "alcance"'),
+      },
+      annotations: { readOnlyHint: true },
+    },
+    async ({ lang, section }) => {
+      const markdown = await (lang === 'en' ? opts.guides.en() : opts.guides.es());
+      if (!section) return text(markdown);
+      const sections = guideSections(markdown);
+      const found = sections.filter((x) => fold(x.title).includes(fold(section)));
+      if (found.length === 0) throw new Error(`No hay una sección con «${section}». Secciones: ${sections.map((x) => x.title).join(' · ')}`);
+      return text(found.map((x) => x.text).join('\n\n'));
     },
   );
 
@@ -287,7 +356,7 @@ export function createServer(opts: ServerOptions): McpServer {
       const written = await ws.write(target, `${JSON.stringify(stamp(moved.design), null, 2)}\n`, { extensions: DESIGN_EXT, overwrite: out === undefined || overwrite === true });
       // Los avisos de maquetación que el cambio produjo (texto que no entra, fuera de la página…).
       const layout = await newLayoutWarnings((d) => open(d, dirname(written)), checkDesignJson(body).design, checkDesignData(moved.design).design ?? check.design);
-      return text({ written: true, path: ws.show(written), issues: check.issues, warnings: layout.notes, ...(layout.omitted > 0 ? { omittedWarnings: layout.omitted } : {}) });
+      return text({ written: true, path: ws.show(written), issues: check.issues, ...layoutResult(layout) });
     },
   );
 
@@ -297,7 +366,8 @@ export function createServer(opts: ServerOptions): McpServer {
    * Si la persona tocó la agenda mientras tanto, la aplicación lo rechaza en lugar de pisar su cambio.
    */
   async function updateInApp(patch: JsonPatchOp[]): Promise<ToolResult> {
-    const got = await appLink.request<LiveDesign>('design.get', { assets: true });
+    // Con las imágenes y las fuentes propias: los avisos se miden como se ve en la aplicación.
+    const got = await appLink.request<LiveDesign>('design.get', { assets: true, fonts: true });
     const before = checkDesignData(got.design).design;
     const next = applyJsonPatch(got.design, patch);
     const check = checkDesignData(next);
@@ -311,8 +381,7 @@ export function createServer(opts: ServerOptions): McpServer {
       applied: true,
       revision: sent.revision,
       issues: check.issues,
-      warnings: layout.notes,
-      ...(layout.omitted > 0 ? { omittedWarnings: layout.omitted } : {}),
+      ...layoutResult(layout),
       ...(assetErrors.length > 0 ? { assetErrors } : {}),
     });
   }
@@ -345,6 +414,72 @@ export function createServer(opts: ServerOptions): McpServer {
     return { ops, errors };
   }
 
+  /* ---------- Fuentes propias ---------- */
+
+  server.registerTool(
+    'add_font',
+    {
+      title: 'Agregar una fuente',
+      description:
+        'Agrega una fuente propia (un archivo .ttf, .otf, .woff o .woff2 de la carpeta de trabajo) a una agenda: en un archivo .agenda.json («path», viaja adentro en userFonts) o en la aplicación de escritorio abierta («app: true», queda en la aplicación para todas las agendas). Familia, peso y estilo salen de la fuente salvo que los indiques. Con «roles», la pone en esos tipos de texto (/theme/tokens/fonts/<rol>). Devuelve cuántos glifos tiene y qué puntuación le falta: una fuente sin coma ni paréntesis (de números o de camiseta) va mejor en display y number; lo que no tiene sale de /theme/tokens/fallbacks.',
+      inputSchema: {
+        font: z.string().describe('El archivo de la fuente, relativo a la carpeta de trabajo'),
+        path: z.string().optional().describe('La agenda (.agenda.json) que se lee y donde queda incrustada la fuente, relativa a la carpeta de trabajo'),
+        app: z.boolean().optional().describe('La aplicación de escritorio abierta, en lugar de un archivo'),
+        family: z.string().trim().min(1).max(80).optional().describe('Nombre de la familia (por defecto, el de la fuente)'),
+        weight: z.number().int().min(1).max(1000).optional(),
+        style: z.enum(['normal', 'italic']).optional(),
+        roles: z.array(z.enum(TEXT_ROLES)).max(TEXT_ROLES.length).optional().describe(`Tipos de texto que pasan a usarla: ${TEXT_ROLES.join(', ')}`),
+      },
+    },
+    async ({ font, path, app, family, weight, style, roles }) => {
+      if ((path === undefined) === (app !== true)) throw new Error('Indicá dónde va la fuente: «path» (una agenda .agenda.json) o «app: true» (la aplicación abierta), una de las dos.');
+      const { bytes } = await ws.readBytes(font, FONT_EXT, MAX_FONT_BYTES);
+      let opened: FKFont;
+      try {
+        opened = openFont(bytes);
+      } catch (err) {
+        throw new Error(`«${font}» no es una fuente que se pueda leer: ${(err as Error).message}`, { cause: err });
+      }
+      const detected = detectFaceMeta(opened);
+      const spec = { family: family ?? detected.family, weight: weight ?? detected.weight, style: style ?? detected.style };
+      // Lo que le falta, medido con las integradas como reserva (las de la agenda pueden ser otras: check_design lo dice).
+      const probe = (await sharedFonts()).fork();
+      const face = probe.register(bytes, { ...spec, source: 'user', file: 'probe' });
+      const info = { ...spec, glyphs: opened.numGlyphs, punctuation: punctuationOf(probe, face, ['Manrope']) };
+      const roleList = roles ?? [];
+      if (app === true) {
+        const added = await appLink.request<LiveFontAdded>('fonts.add', { spec, data: toBase64(bytes) });
+        if (roleList.length === 0) return text({ added: true, font: { ...info, id: added.id } });
+        const got = await appLink.request<LiveDesign>('design.get', {});
+        const result = await updateInApp(fontRoleOps(got.design, roleList, spec));
+        return { ...result, content: [{ type: 'text', text: JSON.stringify({ font: { ...info, id: added.id }, roles: roleList }, null, 2) }, ...result.content] };
+      }
+      const { full, text: body } = await ws.read(path!, DESIGN_EXT);
+      const raw = parseJson(body, path!);
+      const list = (raw as { userFonts?: unknown } | null)?.userFonts;
+      const fonts = Array.isArray(list) ? list : [];
+      // La misma familia, peso y estilo se reemplaza (con su id): no quedan dos fuentes iguales.
+      const same = fonts.findIndex((f: unknown) => {
+        const s = (f as { spec?: { family?: unknown; weight?: unknown; style?: unknown } } | null)?.spec;
+        return s?.family === spec.family && (s.weight ?? 400) === spec.weight && (s.style ?? 'normal') === spec.style;
+      });
+      const id = same >= 0 ? String((fonts[same] as { id?: unknown }).id ?? newId('font')) : newId('font');
+      const entry = { id, spec, data: toBase64(bytes) };
+      const ops: JsonPatchOp[] = [
+        Array.isArray(list) ? (same >= 0 ? { op: 'replace', path: `/userFonts/${same}`, value: entry } : { op: 'add', path: '/userFonts/-', value: entry }) : { op: 'add', path: '/userFonts', value: [entry] },
+        ...fontRoleOps(raw, roleList, spec),
+      ];
+      const next = applyJsonPatch(raw, ops);
+      const check = checkDesignData(next);
+      if (!check.design) return { ...text({ written: false, issues: check.issues }), isError: true };
+      if ((check.design.userFonts?.length ?? 0) === 0) return { ...text({ written: false, issues: [{ path: '/userFonts', message: `Ya hay ${USER_FONTS_MAX} fuentes o alguna no es válida: no se pudo agregar.` }] }), isError: true };
+      const written = await ws.write(full, `${JSON.stringify(stamp(next), null, 2)}\n`, { extensions: DESIGN_EXT, overwrite: true });
+      const layout = await newLayoutWarnings((d) => open(d, dirname(written)), checkDesignJson(body).design, check.design);
+      return text({ written: true, path: ws.show(written), font: { ...info, id }, roles: roleList, issues: check.issues, ...layoutResult(layout) });
+    },
+  );
+
   /* ---------- La aplicación de escritorio abierta ---------- */
 
   server.registerTool(
@@ -352,7 +487,7 @@ export function createServer(opts: ServerOptions): McpServer {
     {
       title: 'Estado de la aplicación',
       description:
-        'Pregunta si la aplicación de escritorio Heritage Studio está abierta y qué agenda tiene: nombre, año, páginas y revisión (cambia con cada cambio, también los de la persona). Si no está abierta, lo dice sin error. Con «app: true» en las demás herramientas se trabaja sobre esa agenda; la persona puede desactivarlo en Archivo → «Permitir que un modelo de IA edite la agenda abierta».',
+        'Pregunta si la aplicación de escritorio Heritage Studio está abierta y qué agenda tiene: nombre, año, páginas y revisión (cambia con cada cambio, también los de la persona). Si no está abierta, lo dice sin error. Con «app: true» en las demás herramientas se trabaja sobre esa agenda; la persona puede desactivarlo en Ajustes → «Permitir que un modelo de IA edite la agenda abierta».',
       annotations: { readOnlyHint: true },
     },
     async () => {
@@ -517,6 +652,72 @@ export function createServer(opts: ServerOptions): McpServer {
   server.registerResource('catalogue', 'agenda://catalogue', { title: 'Catálogo de secciones, temas y ornamentos', mimeType: 'application/json' }, async (uri) => ({
     contents: [{ uri: uri.href, mimeType: 'application/json', text: JSON.stringify(await fullCatalogue(), null, 2) }],
   }));
+
+  /* ---------- Recetas (prompts): cómo encarar los pedidos más comunes ---------- */
+
+  const prompt = (body: string) => ({ messages: [{ role: 'user' as const, content: { type: 'text' as const, text: body } }] });
+  const where = (file: string | undefined): string => (file ? `el archivo «${file}» (path)` : 'la agenda abierta en la aplicación (app: true; si app_status dice que no está abierta, pedí un archivo)');
+
+  server.registerPrompt(
+    'nueva-agenda',
+    {
+      title: 'Armar una agenda nueva',
+      description: 'Los pasos para crear una agenda desde una plantilla y dejarla sin avisos.',
+      argsSchema: {
+        para: z.string().optional().describe('Para quién es y qué quiere (p. ej. «una docente que planifica sus clases»)'),
+        anio: z.string().optional().describe('Año'),
+        idioma: z.string().optional().describe('Idioma y país, p. ej. es-AR'),
+        hoja: z.string().optional().describe('Tamaño de la hoja, p. ej. A4, A5, LETTER, TABLET_10_3'),
+      },
+    },
+    ({ para, anio, idioma, hoja }) =>
+      prompt(
+        [
+          `Armá una agenda${para ? ` para ${para}` : ''}.`,
+          '1. list_catalogue para ver plantillas, secciones y temas; elegí la plantilla más cercana.',
+          `2. create_design con template${anio ? `, year ${anio}` : ''}${idioma ? `, locale "${idioma}"` : ''}${hoja ? `, paper "${hoja}"` : ''} y out (un .agenda.json). El tamaño de la hoja se elige ahora: cambiarlo después mueve lo hecho a mano.`,
+          '3. Ajustala con update_design (JSON Patch), de a pocos cambios. Leé get_guide (section "alcance") antes de agregar elementos propios.',
+          '4. check_design hasta que no queden problemas (cada aviso trae «fix»), y render_page en las páginas que cambiaste.',
+        ].join('\n'),
+      ),
+  );
+
+  server.registerPrompt(
+    'revisar-avisos',
+    {
+      title: 'Revisar y corregir los avisos',
+      description: 'Revisa una agenda y corrige sus avisos uno por uno.',
+      argsSchema: { archivo: z.string().optional().describe('La agenda (.agenda.json); sin él, la abierta en la aplicación') },
+    },
+    ({ archivo }) =>
+      prompt(
+        [
+          `Revisá ${where(archivo)} con check_design.`,
+          'Agrupá los avisos por código y corregí primero los que no son informativos («abbreviated» es solo informativo). Cada aviso trae «fix», que dice qué tocar en el JSON.',
+          'Antes de mover un elemento, mirá su caja con render_page. Hacé cada corrección con update_design y volvé a revisar hasta que no queden problemas.',
+        ].join('\n'),
+      ),
+  );
+
+  server.registerPrompt(
+    'traducir',
+    {
+      title: 'Traducir una agenda',
+      description: 'Cambia el idioma de una agenda en una sola operación (meses, días, títulos y feriados).',
+      argsSchema: {
+        idioma: z.string().describe('Idioma y país de destino, p. ej. en-US, pt-BR, it-IT'),
+        archivo: z.string().optional().describe('La agenda (.agenda.json); sin él, la abierta en la aplicación'),
+      },
+    },
+    ({ idioma, archivo }) =>
+      prompt(
+        [
+          `Traducí ${where(archivo)} a «${idioma}».`,
+          `No traduzcas los textos uno por uno: una sola operación de update_design, { "op": "replace", "path": "/locale", "value": "${idioma}" }, traduce todo lo que la agenda genera (meses, días, títulos, rótulos y, con holidays.language "auto", los feriados).`,
+          'Después, check_design: si un feriado se abrevia («abbreviated»), dale un nombre más corto en /holidays/renamed/AAAA-MM-DD. Los textos escritos a mano (persona, elementos propios) se traducen aparte, solo si te lo piden.',
+        ].join('\n'),
+      ),
+  );
 
   return server;
 }

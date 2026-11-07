@@ -1766,6 +1766,26 @@ test.describe('imágenes y fuentes', () => {
     await expect(item.getByTestId('font-borrowed')).toContainText('salen de Manrope');
     await item.scrollIntoViewIfNeeded();
     await page.screenshot({ path: 'test-results/font-borrowed.png' });
+    // Guardada como archivo, la fuente viaja adentro (solo las que la agenda usa)… (sin el selector nativo: se descarga)
+    await page.evaluate(() => {
+      (globalThis as unknown as { showSaveFilePicker?: unknown }).showSaveFilePicker = undefined;
+    });
+    await page.locator('header').getByRole('button', { name: 'Archivo', exact: true }).click();
+    const [dl] = await Promise.all([page.waitForEvent('download'), page.getByRole('menuitem', { name: /^Guardar(?! como)/ }).click()]);
+    const { readFileSync } = await import('node:fs');
+    const saved = JSON.parse(readFileSync((await dl.path())!, 'utf8')) as { userFonts?: Array<{ spec: { family: string } }> };
+    expect(saved.userFonts?.map((f) => f.spec.family)).toEqual(['Dorsal Prueba']);
+    // …y en otro navegador, sin nada guardado, al abrir el archivo la fuente queda disponible y en uso.
+    const other = await page.context().browser()!.newContext();
+    const fresh = await other.newPage();
+    await openQuiet(fresh);
+    await fresh.evaluate((text) => (globalThis as unknown as { __heritageOpen: (t: string) => Promise<unknown> }).__heritageOpen(text), readFileSync((await dl.path())!, 'utf8'));
+    await expect.poll(() => fresh.evaluate<string>('globalThis.__agenda.getState().design.theme.tokens.fonts?.body?.family ?? ""')).toBe('Dorsal Prueba');
+    await fresh.keyboard.press('Control+7');
+    await expect(fresh.getByTestId('font-list').locator('[data-font="Dorsal Prueba"]')).toContainText('propia');
+    // Lo guardado en la biblioteca no repite la fuente en base64.
+    expect(await fresh.evaluate<boolean>('"userFonts" in globalThis.__agenda.getState().design')).toBe(false);
+    await other.close();
   });
 
   test('la pestaña de fuentes lista las familias, y el buscador encuentra una fuente', async ({ page }) => {

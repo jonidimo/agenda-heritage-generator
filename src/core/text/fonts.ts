@@ -174,6 +174,17 @@ export class FontRegistry {
   }
 
   /**
+   * Una copia con las mismas caras (no se vuelven a leer ni a abrir): para sumarle las fuentes propias
+   * de una agenda sin tocar un registro que comparten otras.
+   */
+  fork(): FontRegistry {
+    const copy = new FontRegistry();
+    for (const [k, f] of this.faces) copy.faces.set(k, f);
+    for (const [k, f] of this.shadowed) copy.shadowed.set(k, f);
+    return copy;
+  }
+
+  /**
    * Las caras de reserva por carácter para `primary`, como hace un navegador: primero las familias de
    * reserva del tema, después las demás cargadas (en el orden en que se cargaron); de cada familia, la
    * cara más parecida en peso y estilo. La familia de `primary` no cuenta: si a una cara le falta un

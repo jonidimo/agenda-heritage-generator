@@ -4,16 +4,17 @@
  * que un cambio hecho a mano: un solo paso que se puede deshacer, validado con el esquema y avisado.
  *
  * `window.__heritageLive(pedido)` lo llama el proceso principal (`executeJavaScript`) y devuelve un sobre
- * `{ ok, result }` o `{ ok: false, code, message }`. Si la persona no lo permitió (Archivo → «Permitir
+ * `{ ok, result }` o `{ ok: false, code, message }`. Si la persona no lo permitió (Ajustes → «Permitir
  * que un modelo de IA edite la agenda abierta»), solo contesta `design.info`.
  */
 import { applyDesignPatch, issuesOf } from '@core/design/patch';
-import { LIVE_CODES, LIVE_METHOD_NAMES, LiveParams, type LiveDesign, type LiveInfo, type LiveLibraryItem, type LiveMethodName, type LiveOpened, type LivePatchResult, type LiveReveal } from '@core/live/protocol';
-import { toBase64 } from '@core/resources';
+import { LIVE_CODES, LIVE_METHOD_NAMES, LiveParams, type LiveDesign, type LiveFontAdded, type LiveInfo, type LiveLibraryItem, type LiveMethodName, type LiveOpened, type LivePatchResult, type LiveReveal } from '@core/live/protocol';
+import { fromBase64, toBase64 } from '@core/resources';
 import type { JsonPatchOp } from '@core/util/jsonPatch';
 import { newId } from '@core/util/hash';
 import { importText } from './files';
-import { listDesigns, loadDesign } from './persist';
+import { addUserFont } from './fonts';
+import { fontsUsedBy, listDesigns, loadDesign } from './persist';
 import { resources } from './resources';
 import { revealTarget, type RevealRequest } from './revealTarget';
 import { currentDocument } from './selectionContext';
@@ -52,7 +53,7 @@ function requireOpen(): NonNullable<ReturnType<typeof useStore.getState>['design
   return design;
 }
 
-function getDesign(params: { assets?: boolean | undefined } | undefined): LiveDesign {
+function getDesign(params: { assets?: boolean | undefined; fonts?: boolean | undefined } | undefined): LiveDesign {
   const s = useStore.getState();
   const design = requireOpen();
   const out = plain(design) as Record<string, unknown> & { assets: Array<{ id: string; builtin: string | null; data?: string | null }> };
@@ -63,10 +64,15 @@ function getDesign(params: { assets?: boolean | undefined } | undefined): LiveDe
       if (bytes) a.data = toBase64(bytes);
     }
   }
+  // Las fuentes subidas que usa (como en un archivo de agenda): sin ellas, quien dibuje las páginas usaría las de reserva.
+  if (params?.fonts) {
+    const fonts = fontsUsedBy(design, resources.userFontBytes);
+    if (fonts.length > 0) out.userFonts = fonts;
+  }
   return { revision: s.revision, design: out };
 }
 
-function patchDesign(params: { patch: JsonPatchOp[]; baseRevision?: number | undefined }): LivePatchResult {
+async function patchDesign(params: { patch: JsonPatchOp[]; baseRevision?: number | undefined }): Promise<LivePatchResult> {
   const s = useStore.getState();
   const current = requireOpen();
   if (params.baseRevision !== undefined && params.baseRevision !== s.revision) {
@@ -74,8 +80,14 @@ function patchDesign(params: { patch: JsonPatchOp[]; baseRevision?: number | und
   }
   const result = applyDesignPatch(current, params.patch);
   if (!result.ok) return { applied: false, reason: 'invalid', issues: result.issues };
+  // Fuentes que llegaron dentro de la agenda: quedan en este equipo, como al abrir un archivo, y la
+  // agenda no guarda su base64.
+  const { userFonts, ...design } = result.design;
+  for (const f of userFonts ?? []) await addUserFont(fromBase64(f.data), f.spec, f.id);
+  // Mientras se guardaban, la persona pudo cambiar la agenda: ese cambio no se pisa.
+  if (useStore.getState().revision !== s.revision) throw new LiveFailure(LIVE_CODES.conflict, 'La agenda cambió en la aplicación mientras se aplicaba el cambio: volvé a leerla.');
   // Una clave única por pedido: cada cambio de un modelo es su propio paso de «Deshacer».
-  s.update(() => result.design, `live:${Date.now()}:${Math.random()}`);
+  useStore.getState().update(() => design, `live:${Date.now()}:${Math.random()}`);
   const after = useStore.getState();
   after.setAiNotice({ text: t('live.changed'), revision: after.revision });
   return { applied: true, revision: after.revision };
@@ -131,6 +143,15 @@ async function loadNew(params: { design: Record<string, unknown> }): Promise<Liv
   return { id: imported.design.id, name: imported.design.name, revision: showOpened(imported.design.name, 'live.created') };
 }
 
+/** Una fuente propia que manda un modelo (por el servidor MCP): queda en este equipo, para todas las agendas. */
+async function addFont(params: { id?: string | undefined; spec: { family: string; weight: number; style: 'normal' | 'italic' }; data: string }): Promise<LiveFontAdded> {
+  try {
+    return await addUserFont(fromBase64(params.data), params.spec, params.id);
+  } catch (err) {
+    throw new LiveFailure(LIVE_CODES.invalid, `La fuente no se pudo leer: ${(err as Error).message}`);
+  }
+}
+
 async function dispatch(method: LiveMethodName, params: unknown): Promise<unknown> {
   switch (method) {
     case 'design.info':
@@ -147,6 +168,8 @@ async function dispatch(method: LiveMethodName, params: unknown): Promise<unknow
       return openSaved(params as Parameters<typeof openSaved>[0]);
     case 'design.load':
       return loadNew(params as Parameters<typeof loadNew>[0]);
+    case 'fonts.add':
+      return addFont(params as Parameters<typeof addFont>[0]);
   }
 }
 
@@ -161,7 +184,7 @@ export function handleLive(request: unknown): Promise<LiveEnvelope> {
       if (typeof method !== 'string' || !(LIVE_METHOD_NAMES as readonly string[]).includes(method)) throw new LiveFailure(LIVE_CODES.invalid, 'Pedido desconocido.');
       const name = method as LiveMethodName;
       // Sin permiso solo se puede preguntar si lo hay: nada de leer ni cambiar.
-      if (name !== 'design.info' && !useStore.getState().liveLink) throw new LiveFailure(LIVE_CODES.disabled, 'La persona no permitió que un modelo de IA use la agenda abierta (Archivo → «Permitir que un modelo de IA edite la agenda abierta»).');
+      if (name !== 'design.info' && !useStore.getState().liveLink) throw new LiveFailure(LIVE_CODES.disabled, 'La persona no permitió que un modelo de IA use la agenda abierta (Ajustes → «Permitir que un modelo de IA edite la agenda abierta»).');
       const parsed = LiveParams[name].safeParse((request as { params?: unknown }).params);
       if (!parsed.success) throw new LiveFailure(LIVE_CODES.invalid, `Parámetros no válidos: ${issuesOf(parsed.error).map((i) => `${i.path}: ${i.message}`).join('; ')}`);
       return { ok: true, result: await dispatch(name, parsed.data) };

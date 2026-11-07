@@ -6,6 +6,11 @@ import { LIVE_CODES } from '../../src/core/live/protocol';
 import { handleLive } from '../../src/app/state/live';
 import { resources } from '../../src/app/state/resources';
 import { useStore } from '../../src/app/state/store';
+import { readFileSync } from 'node:fs';
+import { toBase64 } from '../../src/core/resources';
+
+const DORSAL = new Uint8Array(readFileSync('e2e/fixtures/dorsal-prueba.ttf'));
+const DORSAL_SPEC = { family: 'Dorsal Prueba', weight: 400, style: 'normal' as const };
 
 const fresh = () => parseDesign(createDesign('heritage', { year: 2027, locale: 'es-AR', country: 'AR' }));
 
@@ -162,5 +167,39 @@ describe('view.reveal', () => {
   it('sin recursos cargados la agenda no se arma y lo dice', async () => {
     const r = await ask('view.reveal', { page: 1 });
     expect(r.ok).toBe(false);
+  });
+});
+
+describe('fuentes propias', () => {
+  it('fonts.add deja la fuente en la aplicación (registrada y guardada), y una que no es fuente se rechaza', async () => {
+    const r = await ok('fonts.add', { spec: DORSAL_SPEC, data: toBase64(DORSAL) });
+    expect(r).toMatchObject({ family: 'Dorsal Prueba', weight: 400, style: 'normal' });
+    expect(r.glyphs).toBeGreaterThan(50);
+    expect(resources.fonts.resolve(DORSAL_SPEC)?.source).toBe('user');
+    expect(resources.userFontBytes.get(String(r.id))?.bytes.length).toBe(DORSAL.length);
+    expect(await ask('fonts.add', { spec: DORSAL_SPEC, data: toBase64(new Uint8Array([1, 2, 3, 4, 5, 6])) })).toMatchObject({ ok: false, code: LIVE_CODES.invalid });
+    expect(await ask('fonts.add', { spec: { family: '' }, data: 'xx' })).toMatchObject({ ok: false, code: LIVE_CODES.invalid });
+  });
+
+  it('design.get con fonts trae las fuentes propias que la agenda usa, y solo esas', async () => {
+    const added = await ok('fonts.add', { spec: DORSAL_SPEC, data: toBase64(DORSAL) });
+    const unused = await ok('fonts.add', { spec: { family: 'Otra Sin Usar', weight: 400, style: 'normal' }, data: toBase64(DORSAL) });
+    expect((await ok('design.get', { fonts: true })).design).not.toHaveProperty('userFonts');
+    useStore.getState().update((d) => void (d.theme.tokens = { fonts: { title: DORSAL_SPEC } }));
+    const got = (await ok('design.get', { fonts: true })).design as { userFonts?: Array<{ id: string; data: string }> };
+    expect(got.userFonts?.map((f) => f.id)).toEqual([added.id]);
+    expect(got.userFonts?.[0]?.data).toBe(toBase64(DORSAL));
+    expect(got.userFonts?.map((f) => f.id)).not.toContain(unused.id);
+    // Sin pedirlas, no van.
+    expect((await ok('design.get', {})).design).not.toHaveProperty('userFonts');
+  });
+
+  it('un cambio que trae userFonts las deja en la aplicación y la agenda no guarda su base64', async () => {
+    const before = useStore.getState().revision;
+    const r = await ok('design.patch', { patch: [{ op: 'add', path: '/userFonts', value: [{ id: 'font-del-modelo', spec: DORSAL_SPEC, data: toBase64(DORSAL) }] }] });
+    expect(r).toMatchObject({ applied: true });
+    expect(useStore.getState().revision).toBeGreaterThan(before);
+    expect(useStore.getState().design).not.toHaveProperty('userFonts');
+    expect(resources.userFontBytes.get('font-del-modelo')?.bytes.length).toBe(DORSAL.length);
   });
 });

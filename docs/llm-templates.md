@@ -58,7 +58,9 @@ matters: it keeps npm from printing anything on the channel the client and the s
 | --- | --- |
 | `create_design` | New planner from a template (`heritage`, `heritage-norma` (with a dedication), `clara` (large print), `minimal`) for a year, language, country and name, and from the start its sheet size (`paper`: A4, LETTER, LEGAL…, tablet screens `TABLET_10_3`, `IPAD_11`…, or `CUSTOM` with `width`/`height`), `purpose` (`print` or `screen`) and `binding`. With `out` it writes the file; with `app: true` it opens it in the desktop app instead. |
 | `update_design` | Changes a file (`path`) or the planner open in the desktop app (`app: true`) with [JSON Patch](https://datatracker.ietf.org/doc/html/rfc6902) operations (`add`, `remove`, `replace`, `move`, `copy`, `test`). All or nothing; if the result would not open, nothing is changed. With `out`, the result is written to another file and `path` stays as it was. Across all tools, `path` is always the file that is read and `out` the file that is written. |
-| `check_design` | Lists what the program would ignore or correct in the file (unknown keys, invalid colours, values outside the list or range), and summarizes the built planner: pages, sheets, signatures, links and warnings (text that does not fit, missing images, broken links) with their pages. |
+| `check_design` | Lists what the program would ignore or correct in the file (unknown keys, invalid colours, values outside the list or range), and summarizes the built planner: pages, sheets, signatures, links, the font of each text role (whether it is loaded and whether it lacks punctuation) and the warnings with their pages. Each warning carries `fix`: what to change in the JSON to fix it (see section 11). |
+| `get_guide` | This guide (`lang`: `en` or `es`), whole or one section (`section` searches the headings: `"fonts"`, `"scope"`, `"warnings"`…). For clients that do not read resources. |
+| `add_font` | Adds a font of your own (a `.ttf`, `.otf`, `.woff` or `.woff2` in the working folder) to a file (`path`; it travels inside, in `userFonts`) or to the open app (`app: true`); with `roles`, sets it for those text roles. Returns its glyph count and the punctuation it lacks (see section 7). |
 | `list_pages` | The pages, with their number, key, type and title (filter by type). |
 | `render_page` | Draws one page exactly as it prints and returns it as a PNG image, with its side (right or left), its content area, its blocks (id, name and box in mm) and its warnings. |
 | `export_pdf` | Writes a PDF (`out`) of the kind in `kind` (`mode` is still accepted): `pages` (for tablets, with links and bookmarks), `imposed` (sheets to print double-sided and fold into signatures), `fronts`/`backs`, `signature`, `calibration`, `sewing`, `cover`, `separate`. |
@@ -69,8 +71,13 @@ matters: it keeps npm from printing anything on the channel the client and the s
 | `app_reveal` | Takes the app to a page (and, with `blockId`, selects that element), so the person sees what you are talking about. |
 | `app_library` / `app_open` | The planners saved in the app, and opening one of them. |
 
-The resources `agenda://guide` (this guide), `agenda://schema` and `agenda://catalogue` carry the
-same reference for clients that read resources.
+The resources `agenda://guide` (this guide), `agenda://guide/es` (in Spanish), `agenda://schema`
+and `agenda://catalogue` carry the same reference for clients that read resources. The server also
+offers three recipes (*prompts*) for the most common requests: `nueva-agenda` (new planner),
+`revisar-avisos` (review warnings) and `traducir` (translate).
+
+The answers of `update_design` and `add_font` carry `warnings` (what the change produced) and
+`fixes`: how to fix each code that appears, once per code.
 
 ### A good working loop
 
@@ -86,7 +93,8 @@ With the desktop app open (see [Use it with an AI model](desktop.md#6-use-it-wit
 
 - `update_design` with `app: true` reads the planner with its **revision**, applies and checks your patch, and sends the app only the patch with that revision. The person sees the change at once and can undo it (it is one step). If they edited the planner meanwhile, the app refuses with a conflict: read it again (`check_design` with `app: true`) and retry.
 - `render_page` and `check_design` with `app: true` use the open planner, with its images.
-- The person can turn the link off in **File → Let an AI model edit the open planner**; then every call fails with that reason. Nothing is written to disk: the app saves its own planners as always.
+- `render_page`, `check_design` and `update_design` also use the planner's own fonts from the app. `add_font` with `app: true` leaves a new font in the app, for all its planners.
+- The person can turn the link off in **Settings → Let an AI model edit the open planner**; then every call fails with that reason. Nothing is written to disk: the app saves its own planners as always.
 - Ids of elements come from `render_page`; `app_reveal` with `page` and `blockId` selects one in the app.
 
 ## 2. Without MCP: schema, catalogue and check
@@ -216,7 +224,107 @@ margin is wider. The props of each element kind are in the schema (`get_schema` 
 `export_theme` turns the style into a `.tema.json` file. In the app, *Import theme…* in the Style
 panel adds it to your themes so you can use it in other planners.
 
-## 7. Advice for good results
+## 7. Fonts of your own
+
+Besides the built-in fonts (`fonts` in the catalogue), a planner can use fonts of its own. They
+travel **inside the file**, in `userFonts`: a list of `{ "id", "spec": { "family", "weight",
+"style" }, "data" }`, with the font file in base64. Nothing has to be installed on the computer:
+the app, the command line and the MCP server read them from the file. The simplest way is
+`add_font`, which reads the `.ttf` or `.otf` from the working folder and embeds it.
+
+A font of your own is used like any other, by family, weight and style: in
+`/theme/tokens/fonts/<role>` or as the font of an own text element (`props.font`).
+
+**Characters a font does not have.** If the font of a text lacks a character, that character is
+drawn with the first font in `/theme/tokens/fallbacks` that has it (then with the other loaded
+fonts), as a browser does, on screen and in the PDF. Only what no font has gives a warning
+(`missingGlyphs`). A numbers or jersey font often has no comma, full stop or parentheses: it looks
+best in `display` and `number` (the big year, the figures), not in roles with sentences (`title`,
+`heading`, `body`, `label`, `quote`). `add_font` and `check_design` say which punctuation it
+lacks and which font it comes from.
+
+```json
+[
+  { "op": "replace", "path": "/theme/tokens/fonts/display", "value": { "family": "My Jersey", "weight": 400, "style": "normal" } },
+  { "op": "replace", "path": "/theme/tokens/fonts/number", "value": { "family": "My Jersey", "weight": 400, "style": "normal" } },
+  { "op": "replace", "path": "/theme/tokens/fallbacks", "value": ["Manrope", "Cormorant Garamond"] }
+]
+```
+
+## 8. Scope of an element: pageType and pageKey
+
+Every own element (`customBlocks`), adjustment (`overrides`), style (`blockStyles`, `pageStyles`)
+and link (`links.blocks`) says which pages it goes on:
+
+- **`pageType` with `"pageKey": null`** (the default): **every** page of that type. An element on
+  `weekRight` shows on every week of the year, without copying it.
+- **`pageType` and a `pageKey`**: only that page (`"pageKey": "week:2027-W12:right"`). If the
+  same element has an entry for the type and another for the page, on that page the page entry
+  wins.
+
+Keys and types come from `list_pages`. On a type that falls on both sides, the position is
+mirrored on left pages (`"mirror": true`, the default). Compound elements (`table`, `checklist`,
+`habits`, `finance`, `minical`, `quadrants`, `notes`, `timeline`, `rating`, `qr`) accept
+`"paper": true`: a white background that covers what the page has underneath (dots, lines,
+grid).
+
+## 9. Assets: images, vectors, PDF and icons
+
+`assets` declares each file with `id`, `name`, `kind` and `mime`:
+
+- `kind: "raster"`: PNG or JPEG (there is a warning if it prints below 200 ppi).
+- `kind: "vector"`: SVG. It is drawn as vectors in the PDF (sharp at any size) and, in an `image`
+  element or a watermark, `color` tints it.
+- `kind: "pdf"`: a PDF; an own page shows it with `"content": { "kind": "artwork", "assetId":
+  "…", "pdfPage": 3 }`.
+
+The file goes as `path` (relative to the folder of the `.agenda.json`), `data` (base64) or
+`builtin` (the built-in ones, like `watermarks/colibri.svg`). Built-in icons are not declared:
+use `icon:<id>` anywhere an image goes.
+
+## 10. Translating and holidays
+
+- `/locale` (`es-AR`, `en-US`, `pt-BR`, `it-IT`, `de-DE`, `fr-FR`…) sets the language of
+  **everything the planner generates**: months, weekdays, headings, labels and, with
+  `holidays.language` set to `auto`, the holidays. Translating a planner takes **one**
+  operation: `{ "op": "replace", "path": "/locale", "value": "en-US" }`. Texts written by hand
+  (persona, own elements, labels renamed in `persona.labels`) stay as they are.
+- A holiday with a long name is shortened with "…" in its cell (warning `abbreviated`). A
+  shorter name of your own goes in `/holidays/renamed/YYYY-MM-DD`, with the date it falls on that
+  year (a movable holiday may not fall on its day: `check_design` and `render_page` show the
+  date). In Argentina, Güemes falls on 21 June 2027:
+  `{ "op": "add", "path": "/holidays/renamed/2027-06-21", "value": "Güemes" }`.
+- `holidays.removed` lists dates that are left out; `holidays.added`, holidays of your own
+  (`{ "date": "2027-03-08", "name": "…" }`).
+
+## 11. Warnings and how to fix them
+
+`check_design` groups warnings by message, with their pages and their `fix`. All of them except
+`abbreviated` are problems.
+
+| Code | What happens | How to fix it |
+| --- | --- | --- |
+| `textOverflow` | A text does not fit its place. | Shorten it, enlarge the box (`w`/`h` or `dw`/`dh`), lower `props.size`, or leave `props.fit` at `true`. |
+| `offPage` | Part of an element is off the page. | Make it smaller or move it (`x`/`y`/`w`/`h`, or `dx`/`dy`/`dw`/`dh` in `overrides`). |
+| `nonPrintable` | An element enters the edge the printer cannot print (`binding.nonPrintable`, mm). | Move it inwards or make it smaller. |
+| `clamped` | An element was moved to stay on the page. | Adjust its position so it sits where you want it. |
+| `overlap` | Two texts overlap. | Move or shrink one, or shorten the text. |
+| `lowDpi` | An image has too little resolution for its printed size. | A larger image (300 ppi or more) or a smaller element. |
+| `missingGlyphs` | Neither the font nor the fallbacks have those characters. | Change the text, the font of that role, or add a family that has them to `/theme/tokens/fallbacks`. |
+| `missingAsset` | An image or file is missing. | Check the `assetId` and its entry in `assets` (`path`, `data` or `builtin`). |
+| `pdfPageRange` | A page the PDF does not have is requested. | A number between 1 and the PDF's page count. |
+| `brokenLink` | A link goes to a page that no longer exists or to an invalid address. | Fix `page` (a key from `list_pages`) or `url` in `links.blocks`. |
+| `qrTooLong` | Too much text for a QR code. | Shorten `props.text` or lower `props.ecc` to `L`. |
+| `invalidPath` | A shape's path is not valid SVG. | Check `props.d`. |
+| `holidaysMissing` | There is no holiday data for that country. | Check `holidays.country` or set it to `null`. |
+| `holidaysRange` | The holiday data does not cover that year. | Add the missing ones in `holidays.added`. |
+| `layoutError` | An element could not be drawn. | Check its `props` with `get_schema` (part `customBlocks`). |
+| `abbreviated` | Informational: a name was shortened with "…". | A shorter name in `/holidays/renamed/YYYY-MM-DD` or in `personalDates[].label`. |
+
+A `resource` warning says a resource (an image by path or a font in `userFonts`) could not be
+read.
+
+## 12. Advice for good results
 
 - Start from a template and change little at a time. Every change is checked against the same
   validator the app uses. The JSON Schema is generated from that validator at run time, so the
@@ -226,10 +334,12 @@ panel adds it to your themes so you can use it in other planners.
 - After each change look at a left page and a right page. Elements are mirrored on left pages.
 - If something does not fit, `check_design` names the page and the block; `render_page` shows it.
 
-## 8. Safety
+## 13. Safety
 
-The server only reads `.json` files and only writes `.agenda.json`, `.tema.json` and `.pdf`
-files, always inside its working folder, never through symbolic links. It does not overwrite an
-existing planner or theme unless asked to. Images in a planner can only be built-in paths or
-data embedded in the file. Values that come from a file are validated and kept within range
-before they reach the preview or the PDF.
+The server only reads planners and templates (`.json`), the images a planner names by path and
+the fonts given to `add_font` (`.ttf`, `.otf`, `.woff`, `.woff2`), and only writes `.agenda.json`,
+`.tema.json` and `.pdf` files, always inside its working folder, never through symbolic links. It
+does not overwrite an existing planner or theme unless asked to. Images in a planner can only be
+built-in paths, data embedded in the file or files in its own folder (never outside it). Values
+that come from a file are validated and kept within range before they reach the preview or the
+PDF.

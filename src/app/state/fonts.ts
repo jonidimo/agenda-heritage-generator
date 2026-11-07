@@ -8,6 +8,7 @@ import { holidayName } from '@core/holidays';
 import { langOf, listStringKeys, resolveStrings } from '@core/i18n';
 import { facesForDesign } from '@core/resources';
 import { detectFaceMeta, parseFontSpec, type FontSpec } from '@core/text/fonts';
+import { PROSE_ROLES, punctuationOf } from '@core/text/punctuation';
 import { hasGlyph } from '@core/text/shape';
 import { openFont } from '@core/text/fontkit';
 import { newId } from '@core/util/hash';
@@ -55,7 +56,8 @@ function computeCoverage(design: Design): Map<string, FamilyCoverage> {
   const cps = [...new Set(Array.from(text).map((c) => c.codePointAt(0)!))].filter((cp) => cp > 32);
   const fallbacks = resolveThemeFor(design.theme).fallbacks;
   const used = new Map(
-    facesForDesign(design).map((spec) => {
+    // Las que la agenda usa (no las de reserva: esas solo prestan caracteres).
+    facesForDesign(design, { fallbacks: false }).map((spec) => {
       const face = resources.fonts.resolveWithFallback(spec, fallbacks);
       return [face.key, face] as const;
     }),
@@ -84,26 +86,12 @@ function computeCoverage(design: Design): Map<string, FamilyCoverage> {
   return out;
 }
 
-/** La puntuación que un texto corrido necesita: a una fuente de números o de camiseta suele faltarle. */
-export const BASIC_PUNCTUATION: readonly string[] = [',', '.', ';', ':', '(', ')', '-', '?', '!', '¿', '¡'];
-
-/** Los tipos de texto con frases (no cifras ni el año grande): ahí la puntuación se nota. */
-const PROSE_ROLES: ReadonlySet<string> = new Set(['title', 'heading', 'body', 'label', 'labelStrong', 'quote']);
-
-/**
- * La puntuación básica que le falta a la fuente de un tipo de texto con frases, y de qué fuente se
- * toma (`null` si de ninguna). `null` si no le falta nada, si el tipo es de cifras, o si la fuente
- * todavía no se cargó.
- */
 export function punctuationGap(role: string, spec: FontSpec, fallbacks: readonly string[]): { chars: string[]; from: string | null } | null {
   if (!PROSE_ROLES.has(role)) return null;
   const face = resources.fonts.resolve(spec);
   if (!face) return null;
-  const chars = BASIC_PUNCTUATION.filter((c) => !hasGlyph(face, c.codePointAt(0)!));
-  if (chars.length === 0) return null;
-  const reserve = resources.fonts.glyphFallback(face, fallbacks).faces;
-  const from = reserve.find((r) => chars.every((c) => hasGlyph(r, c.codePointAt(0)!)));
-  return { chars, from: from?.family ?? null };
+  const { missing, from } = punctuationOf(resources.fonts, face, fallbacks);
+  return missing.length === 0 ? null : { chars: missing, from };
 }
 
 /** Dónde se usa una familia: los tipos de texto del tema que la llevan y la cantidad de elementos propios con ella. */
@@ -123,19 +111,38 @@ export function fontUses(design: Design): Map<string, FontUse> {
   return out;
 }
 
+/**
+ * Una fuente propia que llega con sus bytes (un archivo subido, el servidor MCP): se registra, se guarda
+ * en este equipo y queda disponible para todas las agendas. Familia, peso y estilo salen de la fuente,
+ * salvo los que se indiquen. Con un `id` que ya existía, la reemplaza.
+ */
+export async function addUserFont(bytes: Uint8Array, meta: Partial<FontSpec> = {}, id: string = newId('font')): Promise<FontSpec & { id: string; glyphs: number }> {
+  const font = openFont(bytes);
+  const detected = detectFaceMeta(font);
+  const spec: FontSpec = { family: meta.family ?? detected.family, weight: meta.weight ?? detected.weight, style: meta.style ?? detected.style };
+  if (resources.userFontBytes.has(id)) resources.fonts.unregisterFile(id);
+  // La misma familia, peso y estilo con otra id (subida otra vez): la nueva la reemplaza; si no, la
+  // vieja quedaría guardada sin usarse y viajaría igual en los archivos.
+  for (const [other, f] of resources.userFontBytes) {
+    if (other === id || f.spec.family !== spec.family || f.spec.weight !== spec.weight || f.spec.style !== spec.style) continue;
+    resources.fonts.unregisterFile(other);
+    resources.userFontBytes.delete(other);
+    await deleteUserFont(other);
+  }
+  resources.fonts.register(bytes, { ...spec, source: 'user', file: id });
+  resources.userFontBytes.set(id, { bytes, spec });
+  await saveUserFont(id, bytes, spec);
+  resources.bump();
+  useStore.getState().bumpResources(resources.version);
+  return { id, ...spec, glyphs: font.numGlyphs };
+}
+
 /** Agrega fuentes subidas por quien usa la agenda; los errores de cada archivo se devuelven (los demás se cargan igual). */
 export async function addFontFiles(files: File[]): Promise<string[]> {
   const errors: string[] = [];
   for (const file of files) {
     try {
-      const bytes = new Uint8Array(await file.arrayBuffer());
-      const meta = detectFaceMeta(openFont(bytes));
-      const id = newId('font');
-      resources.fonts.register(bytes, { ...meta, source: 'user', file: id });
-      resources.userFontBytes.set(id, { bytes, spec: meta });
-      await saveUserFont(id, bytes, meta);
-      resources.bump();
-      useStore.getState().bumpResources(resources.version);
+      await addUserFont(new Uint8Array(await file.arrayBuffer()));
     } catch (err) {
       errors.push(`${file.name}: ${(err as Error).message}`);
     }

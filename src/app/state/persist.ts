@@ -5,7 +5,7 @@
  * computadora o teléfono.
  */
 import { parseDesign, UserThemeZ, type Design, type UserTheme } from '@core/design/schema';
-import { fromBase64, toBase64 } from '@core/resources';
+import { facesForDesign, fromBase64, toBase64 } from '@core/resources';
 import type { FontSpec } from '@core/text/fonts';
 import { createStore, del, get, keys, set } from 'idb-keyval';
 
@@ -178,13 +178,22 @@ export async function listUserFonts(): Promise<Array<{ id: string; bytes: Uint8A
   }, []);
 }
 
-/** Archivo `.agenda.json` autocontenido (incluye imágenes y fuentes subidas en base64). */
+/** Las fuentes subidas que la agenda usa (por familia: en sus tipos de texto, sus textos propios o como reserva). */
+export function fontsUsedBy(d: Design, userFonts: ReadonlyMap<string, { bytes: Uint8Array; spec: FontSpec }>): Array<{ id: string; spec: FontSpec; data: string }> {
+  const families = new Set(facesForDesign(d).map((f) => f.family));
+  return [...userFonts.entries()].filter(([, f]) => families.has(f.spec.family)).map(([id, f]) => ({ id, spec: f.spec, data: toBase64(f.bytes) }));
+}
+
+/**
+ * Archivo `.agenda.json` autocontenido: sus imágenes y las fuentes subidas que usa, en base64 (las
+ * demás fuentes de este equipo no viajan).
+ */
 export async function exportDesignFile(d: Design, assetBytes: ReadonlyMap<string, Uint8Array>, userFonts: ReadonlyMap<string, { bytes: Uint8Array; spec: FontSpec }>): Promise<Blob> {
   const withData = {
     ...d,
     writtenBy: __APP_VERSION__,
     assets: d.assets.map((a) => (a.builtin ? a : { ...a, data: assetBytes.get(a.id) ? toBase64(assetBytes.get(a.id)!) : (a.data ?? null) })),
-    userFonts: [...userFonts.entries()].map(([id, f]) => ({ id, spec: f.spec, data: toBase64(f.bytes) })),
+    userFonts: fontsUsedBy(d, userFonts),
   };
   return new Blob([JSON.stringify(withData, null, 2)], { type: 'application/json' });
 }
@@ -195,12 +204,13 @@ export async function importDesignFile(text: string): Promise<{ design: Design; 
 
 /** Como `importDesignFile`, a partir del objeto ya leído (archivos de plantilla y copias de seguridad). */
 export async function importDesignData(data: unknown): Promise<{ design: Design; assets: Array<{ id: string; bytes: Uint8Array }>; fonts: Array<{ id: string; bytes: Uint8Array; spec: Partial<FontSpec> }> }> {
-  const raw = data as Record<string, unknown> & { userFonts?: Array<{ id: string; spec: Partial<FontSpec>; data: string }> };
-  const design = parseDesign(raw);
+  const design = parseDesign(data);
   const assetsOut: Array<{ id: string; bytes: Uint8Array }> = [];
   for (const a of design.assets) if (a.data) assetsOut.push({ id: a.id, bytes: fromBase64(a.data) });
-  const fontsOut = (raw.userFonts ?? []).map((f) => ({ id: f.id, spec: f.spec, bytes: fromBase64(f.data) }));
-  // Los bytes quedan en IndexedDB; el diseño no repite el base64.
-  const clean = parseDesign({ ...design, assets: design.assets.map((a) => ({ ...a, data: null })) });
+  // Las fuentes ya validadas por el esquema (una que no lo es no entra).
+  const fontsOut = (design.userFonts ?? []).map((f) => ({ id: f.id, spec: f.spec, bytes: fromBase64(f.data) }));
+  // Los bytes quedan en IndexedDB; el diseño no repite el base64 (ni de las imágenes ni de las fuentes).
+  const clean = parseDesign({ ...design, assets: design.assets.map((a) => ({ ...a, data: null })), userFonts: undefined });
+  delete clean.userFonts;
   return { design: clean, assets: assetsOut, fonts: fontsOut };
 }
