@@ -243,7 +243,18 @@ Para usarla en el navegador, mirá [Cómo usarla](#cómo-usarla).
 - Los paneles **Imágenes** y **Fuentes** dicen dónde se usa cada imagen (marca de agua, tapa, elementos, páginas, ornamentos) y la quitan junto con todo lo que la usaba; las fuentes muestran qué caracteres faltan y dónde se usa cada familia, y las tuyas se pueden quitar.
 - **Imágenes junto al archivo**: una agenda puede apuntar a sus imágenes por ruta (`"path":
   "imagenes/logo.png"`) en lugar de llevarlas adentro; la línea de comandos, el servidor MCP y
-  la aplicación de escritorio (cuando el sistema le abre el archivo) las leen solo de esa carpeta.
+  la aplicación de escritorio (cuando el sistema le abre el archivo, o con *Archivo → Abrir archivo…*)
+  las leen solo de esa carpeta. En la aplicación web, el aviso ofrece **Buscar la carpeta de las
+  imágenes…**: elegís la carpeta y las imágenes quedan incrustadas en la agenda (y se borra la ruta).
+  Como con cualquier archivo que abre el sistema en el escritorio, el primer *Guardar* de una sesión
+  pregunta dónde.
+- **PDF livianos**: *Impresión → Imágenes en el PDF* (300 ppp para imprimir, 150 para pantalla u
+  originales) achica solo las imágenes que tienen más resolución de la que hace falta al tamaño en que
+  se imprimen, sin perder calidad que se note, y una imagen que va en todas las páginas (una marca de
+  agua) se guarda una sola vez en el PDF. El panel *Imágenes* muestra el peso de cada una y sus ppp al
+  tamaño en que se imprime de verdad; por encima de 600 ppp lo avisa (`overDpi`). Al subir imágenes
+  pasa lo mismo: las fotos en WebP/HEIC/AVIF quedan en JPEG (no en PNG), lo que pasa de 4000 px de lado
+  se achica y el mismo archivo no se guarda dos veces.
 - Aplicación de escritorio: al exportar un PDF muestra **dónde quedó guardado**, con *Abrir carpeta*; las agendas se abren con doble clic en un `.agenda.json` o soltándolas sobre la ventana, y cerrar nunca pierde el último cambio.
 - **El tamaño de la hoja desde el principio**: la pantalla de agenda nueva muestra el papel (o la pantalla de la tableta), cómo se encuaderna y el tamaño que queda cada página. *Archivo/Edición → Tamaño de la hoja…* lo cambia después y puede llevar tus elementos a la página nueva en un solo paso de Deshacer.
 

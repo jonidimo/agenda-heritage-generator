@@ -241,7 +241,17 @@ Per usarla nel browser, vedi [Come usarla](#come-usarla).
 - I pannelli **Immagini** e **Caratteri** dicono dove si usa ogni immagine (filigrana, copertina, elementi, pagine, ornamenti) e la rimuovono insieme a tutto ciò che la usava; i caratteri mostrano quali caratteri mancano e dove si usa ogni famiglia, e i tuoi si possono rimuovere.
 - **Immagini accanto al file**: un’agenda può indicare le sue immagini con un percorso
   (`"path": "immagini/logo.png"`) invece di contenerle; la riga di comando, il server MCP e
-  l’app desktop (quando il sistema le apre il file) le leggono solo da quella cartella.
+  l’app desktop (quando il sistema le apre il file, o con *File → Apri file…*) le leggono solo da
+  quella cartella. Nell’app web, l’avviso offre **Cerca la cartella delle immagini…**: scegli la cartella
+  e le immagini vengono incorporate nell’agenda (e il percorso viene eliminato). Come per ogni file che
+  il sistema apre nell’app desktop, il primo *Salva* di una sessione chiede dove.
+- **PDF leggeri**: *Stampa → Immagini nel PDF* (300 ppi per stampare, 150 per lo schermo, o originali)
+  riduce solo le immagini che hanno più risoluzione di quella necessaria alla dimensione di stampa,
+  senza perdita di qualità visibile, e un’immagine usata in ogni pagina (una filigrana) viene salvata
+  una sola volta nel PDF. Il pannello *Immagini* mostra il peso di ciascuna e i suoi ppi alla
+  dimensione in cui viene davvero stampata; oltre 600 ppi lo segnala (`overDpi`). Anche al caricamento:
+  le foto WebP/HEIC/AVIF diventano JPEG (non PNG), ciò che supera 4000 px di lato viene ridotto e lo
+  stesso file non viene salvato due volte.
 - App desktop: dopo aver esportato un PDF mostra **dove è stato salvato**, con *Apri cartella*; le agende si aprono con doppio clic su un `.agenda.json` o trascinandole sulla finestra, e chiudere non perde mai l’ultima modifica.
 - **Il formato del foglio fin dall’inizio**: la schermata della nuova agenda mostra la carta (o lo schermo del tablet), la rilegatura e il formato di ogni pagina. *File/Modifica → Formato del foglio…* lo cambia dopo e può portare i tuoi elementi alla nuova pagina in un solo passo di Annulla.
 

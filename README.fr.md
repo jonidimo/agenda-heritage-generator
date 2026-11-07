@@ -248,8 +248,18 @@ l’application vous-même. Pour l’utiliser plutôt dans le navigateur, voir [
 - Les panneaux **Images** et **Polices** indiquent où chaque image est utilisée (filigrane, couverture, éléments, pages, ornements) et la suppriment avec tout ce qui l’utilisait ; les polices montrent les caractères manquants et où chaque famille est utilisée, et les vôtres peuvent être supprimées.
 - **Images à côté du fichier** : un agenda peut désigner ses images par un chemin (`"path":
   "images/logo.png"`) au lieu de les contenir ; la ligne de commande, le serveur MCP et
-  l’application de bureau (quand le système ouvre le fichier) les lisent uniquement depuis ce
-  dossier.
+  l’application de bureau (quand le système ouvre le fichier, ou avec *Fichier → Ouvrir un fichier…*)
+  les lisent uniquement depuis ce dossier. Dans l’application web, l’avis propose **Chercher le
+  dossier des images…** : vous choisissez le dossier et les images sont intégrées à l’agenda (le
+  chemin disparaît). Comme pour tout fichier que le système ouvre dans l’application de bureau, le
+  premier *Enregistrer* d’une session demande où.
+- **PDF légers** : *Impression → Images dans le PDF* (300 ppp pour imprimer, 150 pour l’écran, ou
+  originales) ne réduit que les images ayant plus de résolution que leur taille imprimée n’en
+  demande, sans perte de qualité visible, et une image présente sur toutes les pages (un filigrane)
+  n’est stockée qu’une fois dans le PDF. Le panneau *Images* montre le poids de chacune et ses ppp à
+  la taille où elle est réellement imprimée ; au-delà de 600 ppp, il le signale (`overDpi`). Même
+  principe au téléversement : les photos WebP/HEIC/AVIF deviennent des JPEG (pas des PNG), ce qui
+  dépasse 4000 px de côté est réduit, et le même fichier n’est jamais stocké deux fois.
 - Application de bureau : après l’export d’un PDF, elle indique **où il a été enregistré**, avec *Ouvrir le dossier* ; les agendas s’ouvrent par un double-clic sur un `.agenda.json` ou en le déposant sur la fenêtre, et la fermeture ne perd jamais la dernière modification.
 - **Le format de la feuille dès le départ** : l’écran de nouvel agenda montre le papier (ou l’écran de la tablette), la reliure et la taille de chaque page. *Fichier/Édition → Format de la feuille…* le change ensuite et peut adapter vos éléments à la nouvelle page en une seule étape d’annulation.
 

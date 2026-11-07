@@ -231,7 +231,16 @@ instead, see [Run it](#run-it).
 - The **Images** and **Fonts** panels say where each image is used (watermark, cover, elements, pages, ornaments) and remove it together with everything that used it; fonts show which characters are missing and where each family is used, and your own can be removed.
 - **Images next to the file**: a planner can point to its images by path (`"path":
   "images/logo.png"`) instead of carrying them inside; the command line, the MCP server and
-  the desktop app (when the system opens the file) read them from that folder only.
+  the desktop app (when the system opens the file, or with *File → Open file…*) read them from that
+  folder only. In the web app, the warning offers **Find the images folder…**: you choose the folder and
+  the images are embedded in the planner (and the path is dropped). As with any file the system opens
+  in the desktop app, the first *Save* of a session asks where.
+- **Light PDFs**: *Printing → Images in the PDF* (300 ppi for printing, 150 for screens, or originals)
+  reduces only the images that have more resolution than their printed size needs, without visible
+  quality loss, and an image used on every page (a watermark) is stored once in the PDF. The panel
+  *Images* shows each image's weight and its ppi at the size it is really printed; above 600 ppi it
+  says so (`overDpi`). Uploads follow the same idea: photos in WebP/HEIC/AVIF become JPEG (not
+  PNG), anything over 4000 px on its longest side is reduced, and the same file is never stored twice.
 - Desktop app: after exporting a PDF it shows **where it was saved**, with *Open folder*; planners open by double-clicking a `.agenda.json` or by dropping it on the window, and closing never loses the last change.
 - **Sheet size from the start**: the new-planner screen shows the paper (or the tablet screen), how it is bound and the resulting page size. *File/Edit → Sheet size…* changes it later and can scale your own elements to the new page in one undo step.
 

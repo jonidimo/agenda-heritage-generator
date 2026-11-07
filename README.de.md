@@ -248,8 +248,18 @@ selbst baust. Wenn du sie lieber im Browser nutzen willst, siehe [Lokal ausführ
 - Die Panels **Bilder** und **Schriften** zeigen, wo jedes Bild verwendet wird (Wasserzeichen, Umschlag, Elemente, Seiten, Ornamente), und entfernen es zusammen mit allem, was es verwendet hat; bei Schriften siehst du, welche Zeichen fehlen und wo jede Familie verwendet wird, und deine eigenen lassen sich entfernen.
 - **Bilder neben der Datei**: Ein Planer kann über einen Pfad auf seine Bilder verweisen
   (`"path": "bilder/logo.png"`), statt sie in sich zu tragen; die Kommandozeile, der
-  MCP-Server und die Desktop-App (wenn das System die Datei öffnet) lesen sie nur aus diesem
-  Ordner.
+  MCP-Server und die Desktop-App (wenn das System die Datei öffnet oder mit *Datei → Datei öffnen…*)
+  lesen sie nur aus diesem Ordner. In der Web-App bietet der Hinweis **Bilderordner suchen …**: Du
+  wählst den Ordner, und die Bilder werden in den Planer eingebettet (der Pfad entfällt). Wie bei
+  jeder Datei, die das System in der Desktop-App öffnet, fragt das erste *Speichern* einer Sitzung,
+  wohin.
+- **Schlanke PDFs**: *Drucken → Bilder in der PDF* (300 ppi zum Drucken, 150 für Bildschirme oder
+  Originale) verkleinert nur Bilder, die mehr Auflösung haben, als ihre gedruckte Größe braucht, ohne
+  sichtbaren Qualitätsverlust; ein Bild auf jeder Seite (ein Wasserzeichen) wird nur einmal in der
+  PDF gespeichert. Das Panel *Bilder* zeigt das Gewicht jedes Bildes und seine ppi in der Größe, in
+  der es wirklich gedruckt wird; über 600 ppi weist es darauf hin (`overDpi`). Auch beim Hochladen:
+  Fotos als WebP/HEIC/AVIF werden zu JPEG (nicht PNG), was über 4000 px an der längsten Seite liegt,
+  wird verkleinert, und dieselbe Datei wird nie zweimal gespeichert.
 - Desktop-App: Nach dem Export eines PDFs zeigt sie, **wo es gespeichert wurde**, mit *Ordner öffnen*; Planer öffnen sich per Doppelklick auf eine `.agenda.json` oder indem du sie auf das Fenster ziehst, und beim Schließen geht nie die letzte Änderung verloren.
 - **Die Blattgröße von Anfang an**: Der Bildschirm für einen neuen Planer zeigt das Papier (oder den Tablet-Bildschirm), die Bindung und die daraus folgende Seitengröße. *Datei/Bearbeiten → Blattgröße…* ändert sie später und kann eigene Elemente in einem Rückgängig-Schritt an die neue Seite anpassen.
 

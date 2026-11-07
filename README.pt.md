@@ -243,7 +243,16 @@ ficam as suas agendas e como gerar o aplicativo. Para usar no navegador, veja
 - Os painéis **Imagens** e **Fontes** dizem onde cada imagem é usada (marca d’água, capa, elementos, páginas, ornamentos) e a removem junto com tudo o que a usava; as fontes mostram que caracteres faltam e onde cada família é usada, e as suas podem ser removidas.
 - **Imagens ao lado do arquivo**: uma agenda pode apontar para suas imagens por caminho
   (`"path": "imagens/logo.png"`) em vez de levá-las dentro; a linha de comando, o servidor MCP
-  e o aplicativo de desktop (quando o sistema abre o arquivo) as leem só dessa pasta.
+  e o aplicativo de desktop (quando o sistema abre o arquivo, ou com *Arquivo → Abrir arquivo…*) as
+  leem só dessa pasta. No aplicativo web, o aviso oferece **Procurar a pasta das imagens…**: você
+  escolhe a pasta e as imagens ficam incorporadas à agenda (e o caminho é descartado). Como com qualquer
+  arquivo que o sistema abre no aplicativo de desktop, o primeiro *Salvar* de uma sessão pergunta onde.
+- **PDFs leves**: *Impressão → Imagens no PDF* (300 ppp para imprimir, 150 para tela, ou originais)
+  reduz apenas as imagens que têm mais resolução do que o tamanho impresso precisa, sem perda de
+  qualidade visível, e uma imagem usada em todas as páginas (uma marca d’água) é guardada uma só vez no
+  PDF. O painel *Imagens* mostra o peso de cada uma e seus ppp no tamanho em que é realmente impressa;
+  acima de 600 ppp avisa (`overDpi`). Ao enviar imagens vale o mesmo: fotos WebP/HEIC/AVIF viram JPEG
+  (não PNG), o que passa de 4000 px de lado é reduzido e o mesmo arquivo nunca é guardado duas vezes.
 - Aplicativo de desktop: ao exportar um PDF mostra **onde foi salvo**, com *Abrir pasta*; as agendas abrem com duplo clique num `.agenda.json` ou soltando-as na janela, e fechar nunca perde a última alteração.
 - **O tamanho da folha desde o início**: a tela de agenda nova mostra o papel (ou a tela do tablet), a encadernação e o tamanho que fica cada página. *Arquivo/Edição → Tamanho da folha…* muda depois e pode levar seus elementos à página nova num só passo de Desfazer.
 
