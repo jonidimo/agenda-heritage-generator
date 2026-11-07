@@ -20,6 +20,17 @@ import { connectLive, findLiveApp } from '../electron/lib/live.mjs';
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
+/** ¿Alguien contesta en ese socket? (La conexión se rechaza al instante si la aplicación ya no está.) */
+async function answers(endpoint: string, token: string): Promise<boolean> {
+  try {
+    const link = await connectLive({ endpoint, token, connectTimeoutMs: 3000, requestTimeoutMs: 3000 });
+    link.close();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export async function smokeLive(command: string, args: readonly string[], timeoutMs = 90_000): Promise<string[]> {
   const problems: string[] = [];
   const profile = await mkdtemp(join(tmpdir(), 'heritage-live-smoke-'));
@@ -68,7 +79,14 @@ export async function smokeLive(command: string, args: readonly string[], timeou
     child.kill('SIGTERM');
     await Promise.race([exited, sleep(15_000)]);
     if (existsSync(found.endpoint) && !found.endpoint.startsWith('\\\\')) problems.push('Al cerrarse la aplicación quedó el archivo del socket.');
-    if (await findLiveApp(where)) problems.push('Al cerrarse la aplicación quedó el live.json.');
+    // Al cerrarse, la aplicación borra su live.json. En Windows `kill()` termina el proceso sin darle esa oportunidad (no hay
+    // señal que atrapar), así que el archivo queda; es inofensivo mientras nadie conteste en su socket (es lo que lee el
+    // servidor MCP: la conexión falla al instante). Ahí lo que se comprueba es eso.
+    const left = await findLiveApp(where);
+    if (left) {
+      if (process.platform !== 'win32') problems.push('Al cerrarse la aplicación quedó el live.json.');
+      else if (await answers(left.endpoint, left.token)) problems.push('La aplicación se cerró pero su socket sigue contestando.');
+    }
   } finally {
     if (child.exitCode === null) child.kill('SIGKILL');
     await rm(profile, { recursive: true, force: true });
