@@ -95,8 +95,8 @@ l’application vous-même. Pour l’utiliser plutôt dans le navigateur, voir [
 - Chaque élément de texte peut avoir sa propre police et sa propre couleur, ou suivre son type
   de texte.
 - **Zoomez** sur la page avec Ctrl et + / − / 0, ou avec Ctrl et la molette de la souris (ou en
-  pinçant sur le pavé tactile) : le point sous le curseur reste en place. **Fichier →
-  Taille de l’interface** met à l’échelle toute l’interface, et les panneaux latéraux et la bande
+  pinçant sur le pavé tactile) : le point sous le curseur reste en place. **Réglages →
+  Taille de l’interface** (un curseur avec sa valeur) met à l’échelle toute l’interface, et les panneaux latéraux et la bande
   de pages se redimensionnent en faisant glisser leurs bords ; l’application mémorise les deux.
 - **Clic droit** (ou appui long sur un téléphone) sur n’importe quel élément, page ou miniature
   pour afficher ses options : changer l’image du filigrane, masquer quelque chose sur une page ou
@@ -116,9 +116,11 @@ l’application vous-même. Pour l’utiliser plutôt dans le navigateur, voir [
 - **Menu des calques et verrouillage** : clic droit sur une ligne de Calques pour dupliquer, verrouiller ou déverrouiller, renommer, mettre au premier plan, envoyer à l’arrière-plan ou supprimer. Un élément verrouillé se sélectionne mais ne se fait pas glisser, ne se redimensionne pas, ne bouge pas avec les flèches et ne se supprime pas (Ctrl+Shift+Alt+L). Sous la liste, l’opacité, la fusion et le verrouillage de l’élément choisi.
 - **Formes** : remplissage en pastille de couleur avec un bouton *Sans remplissage*, opacité de 5 à 100 %, et tout élément personnel tourne de 0 à 360°.
 - **Ressources / Vecteurs** : toute image, tout SVG ou toute icône se pose sur la page d’un clic, ou devient un **pinceau tampon et tracé** : un clic laisse une copie ; glisser laisse des copies le long du tracé (taille, espacement, droit / suit le tracé / aléatoire, variation, couleur). Chaque tracé est un élément et une étape d’annulation.
-- **Plein écran (F11)** : la page seule, sans les panneaux latéraux ; F11 ou Échap les remettent comme avant.
+- **Plein écran (F11)** : la page seule, sans les panneaux latéraux, la bande des miniatures ni le pied de page ; F11 ou Échap les remettent comme avant.
+- **Glisser pour défiler** : avec le bouton du milieu de la souris, ou en maintenant la barre d’espace avec le bouton principal, la zone de travail suit le pointeur, sans chercher les barres de défilement.
+- **Menus en ordre** : Fichier (l’agenda et ses fichiers, avec *Mes agendas*), Édition, Affichage, Réglages (langue de l’interface, chacune dans sa langue ; taille de l’interface ; préférences ; assistant IA) et Aide (raccourcis, guide pour les modèles d’IA, signaler un problème, À propos). *Nouvel agenda* tient dans n’importe quelle fenêtre : deux colonnes, et *Créer l’agenda* toujours visible.
 - **Les éléments masqués ne sont jamais perdus** : Édition → *Afficher les éléments masqués* les liste et les rétablit un par un. **Zoom sur la sélection** avec Ctrl+Maj+2 ; le pied de page compte les avertissements de la page en cours, et les miniatures affichent un point.
-- **Raccourcis clavier** pour tout, listés dans l’application (F1) et à côté de chaque élément de menu, avec les menus Fichier, Édition et Affichage.
+- **Raccourcis clavier** pour tout, listés dans l’application (F1) et à côté de chaque élément de menu.
 
 ### Sections et modèles de page
 
@@ -156,7 +158,8 @@ l’application vous-même. Pour l’utiliser plutôt dans le navigateur, voir [
   s’écrit ainsi jour/mois. L’ordre des dates et le premier jour de la semaine peuvent aussi
   être réglés à la main ; les dates sont toujours enregistrées au format ISO 8601.
 - Jours fériés de **207 pays** et de leurs régions, de 2016 à 2061. Ajoutez des ponts,
-  renommez ou supprimez des jours fériés.
+  supprimez des jours fériés ou donnez-en un autre nom avec le crayon de *Calendrier → Jours
+  fériés* (par exemple un plus court pour un nom qui ne tient pas dans sa case).
 - Anniversaires et dates importantes, phases de la Lune, ainsi qu’équinoxes et solstices
   calculés pour votre fuseau horaire et votre hémisphère.
 - Numéros de semaine ISO, semaines commençant le lundi, le dimanche ou le samedi, de 1 à
@@ -181,7 +184,10 @@ l’application vous-même. Pour l’utiliser plutôt dans le navigateur, voir [
   met à jour en direct.
 - 5 familles de polices libres fournies, incorporées au PDF sous forme de sous-ensembles.
   Importez vos propres polices TTF, OTF, WOFF ou WOFF2 ; l’application vérifie qu’elles
-  contiennent tous les caractères dont votre langue a besoin.
+  contiennent tous les caractères dont votre langue a besoin. S’il manque un caractère à
+  l’une d’elles (une police de maillot sans virgule ni parenthèses), ce caractère vient
+  d’une police de secours, à l’écran et dans le PDF, comme dans un navigateur ; Style
+  signale s’il manque la ponctuation et à quoi la police convient le mieux.
 
 ### Des méthodes fondées sur les preuves
 
@@ -259,9 +265,10 @@ l’application vous-même. Pour l’utiliser plutôt dans le navigateur, voir [
 - Votre clé n’est jamais stockée en clair : dans l’application de bureau, le système
   d’exploitation la chiffre (Trousseau, DPAPI, libsecret) et les requêtes passent par
   l’application ; sur le site web, elle reste en mémoire, ou chiffrée dans le navigateur si vous
-  choisissez de la mémoriser. Réglages dans *Fichier → Assistant IA…* ou via l’engrenage de la
+  choisissez de la mémoriser. Réglages dans *Réglages → Assistant IA…* ou via l’engrenage de la
   pastille.
 - **Version 2.4.1** : l’assistant tient dans un bouton rond en bas à droite. Avec un serveur local, la liste des modèles se récupère toute seule (une liste à choisir, pas un champ qui filtre), et une adresse sans `/v1` est proposée corrigée. Demander autre chose pendant qu’une proposition est affichée l’**ajuste** (la proposition suivante s’ajoute et Appliquer confirme tout en une étape), et la carte montre chaque changement avec l’ancienne et la nouvelle valeur.
+- **Version 2.5.0** : le modèle dispose de 10 étapes par demande et, avant la dernière, on lui demande de proposer avec ce qu’il sait déjà ; il sait que changer la langue de l’agenda traduit tout en une seule opération. L’adresse `http://0.0.0.0:8080` qu’affiche llama.cpp fonctionne telle quelle. Si une partie du programme ne se charge pas (parce qu’il a été mis à jour fenêtre ouverte), la carte l’explique et propose de recharger la fenêtre sans perdre votre travail.
 
 ### Concevez avec un modèle d’IA
 
@@ -278,7 +285,8 @@ l’application vous-même. Pour l’utiliser plutôt dans le navigateur, voir [
 - Les modèles peuvent utiliser `icon:<name>` pour n’importe quelle icône sans la déclarer,
   dessiner avec des formes et garder les images à côté du fichier via un chemin. Dans tous les
   outils, `path` est toujours le fichier lu et `out` celui qui est écrit.
-- **Liaison en direct (application de bureau)** : quand l’application est ouverte, le même serveur travaille sur **l’agenda que vous avez ouvert**. Le modèle le lit, le modifie en une seule étape que vous pouvez annuler (refusée si vous l’avez modifié entre-temps), vous montre une page ou ouvre un autre agenda. Désactivez-la dans *Fichier → Autoriser un modèle d’IA à modifier l’agenda ouvert*. Rien n’écoute sur le réseau : il s’agit d’un socket local protégé par un jeton créé à chaque démarrage.
+- **Polices propres et guide pour les modèles (2.5.0)** : vos polices voyagent dans le fichier (`userFonts`) et le serveur les utilise pour dessiner ; `add_font` en incorpore une et indique la ponctuation qui lui manque. `get_guide` donne le guide par sections aux clients qui ne lisent pas les ressources, il y a des recettes (`nueva-agenda`, `revisar-avisos`, `traducir`), et chaque avertissement de `check_design` dit comment le corriger.
+- **Liaison en direct (application de bureau)** : quand l’application est ouverte, le même serveur travaille sur **l’agenda que vous avez ouvert**. Le modèle le lit, le modifie en une seule étape que vous pouvez annuler (refusée si vous l’avez modifié entre-temps), vous montre une page ou ouvre un autre agenda. Désactivez-la dans *Réglages → Autoriser un modèle d’IA à modifier l’agenda ouvert*. Rien n’écoute sur le réseau : il s’agit d’un socket local protégé par un jeton créé à chaque démarrage.
 
 ### Fait pour durer
 

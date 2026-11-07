@@ -89,8 +89,8 @@ instead, see [Run it](#run-it).
   SVG.
 - Each text element can have its own font and colour, or follow its type of text.
 - **Zoom** the page with Ctrl and + / − / 0, or with Ctrl and the mouse wheel (or a pinch on
-  the touchpad): the point under the cursor stays where it is. **File →
-  Interface size** scales the whole interface, and the side panels and the page strip
+  the touchpad): the point under the cursor stays where it is. **Settings →
+  Interface size** (a slider with its number) scales the whole interface, and the side panels and the page strip
   are resized by dragging their edges; the app remembers both.
 - **Right-click** (or long-press on a phone) any element, page or thumbnail for its
   options: change the watermark image, hide something on one page or on all pages of
@@ -109,9 +109,11 @@ instead, see [Run it](#run-it).
 - **Layer menu and lock**: right-click a row in Layers to duplicate, lock or unlock, rename, bring to the front, send to the back, or delete. A locked element can be selected but not dragged, resized, nudged or deleted (Ctrl+Shift+Alt+L). Under the list, the chosen element's opacity, blend and lock.
 - **Shapes**: fill as a colour swatch with a *No fill* button, opacity from 5 to 100 %, and every element of your own rotates from 0 to 360°.
 - **Assets / Vectors**: place any image, SVG or icon on the page with one click, or use it as a **stamp and stroke brush**: a click leaves one copy; dragging leaves copies along the stroke (size, spacing, upright / following the stroke / random, variation, colour). Each stroke is one element and one undo step.
-- **Full screen (F11)**: just the page, without the side panels; F11 or Esc brings them back as they were.
+- **Full screen (F11)**: just the page, without the side panels, the page strip or the footer; F11 or Esc brings them back as they were.
+- **Drag to scroll**: with the middle mouse button, or holding the space bar with the main button, the workspace follows the pointer, without hunting for the scroll bars.
+- **Tidy menus**: File (the planner and its files, with *My planners*), Edit, View, Settings (interface language, each in its own language; interface size; preferences; AI assistant) and Help (shortcuts, guide for AI models, report a problem, About). *New planner* fits any window: two columns, and *Create planner* always in view.
 - **Hidden elements are never lost**: Edit → *Show hidden elements* lists them and brings each one back. **Zoom to the selection** with Ctrl+Shift+2; the page footer counts the warnings of the current page, and thumbnails show a dot.
-- **Keyboard shortcuts** for everything, listed in the app (F1) and beside each menu item, with File, Edit and View menus.
+- **Keyboard shortcuts** for everything, listed in the app (F1) and beside each menu item.
 
 ### Sections and page templates
 
@@ -146,7 +148,8 @@ instead, see [Run it](#run-it).
   written day/month. Date order and first day of the week can also be set by hand;
   dates are always stored as ISO 8601.
 - Public holidays for **207 countries** and their regions, from 2016 to 2061. Add bridge
-  days, rename or remove holidays.
+  days, remove holidays or give one another name with the pencil in *Calendar → Holidays*
+  (for example a shorter one for a name that does not fit its cell).
 - Birthdays and important dates, moon phases, and the equinoxes and solstices computed
   for your time zone and hemisphere.
 - ISO week numbers, weeks starting on Monday, Sunday or Saturday, 1 to 24 months,
@@ -169,7 +172,9 @@ instead, see [Run it](#run-it).
   a comfort level for older eyes. Everything updates live.
 - 5 bundled open-source font families, embedded in the PDF as subsets. Upload your own
   TTF, OTF, WOFF or WOFF2 fonts; the app checks that they have every character your
-  language needs.
+  language needs. If one lacks a character (a jersey font with no comma or parentheses),
+  that character comes from a fallback font, on screen and in the PDF, as in a browser;
+  Style warns when a font lacks punctuation and what it suits best.
 
 ### Methods based on evidence
 
@@ -241,8 +246,9 @@ instead, see [Run it](#run-it).
 - Your key is never stored in clear: in the desktop app the operating system encrypts it
   (Keychain, DPAPI, libsecret) and requests go out through the app; on the website it lives
   in memory, or encrypted in the browser if you choose to remember it. Settings in
-  *File → AI assistant…* or the gear on the pill.
+  *Settings → AI assistant…* or the gear on the pill.
 - **Version 2.4.1**: the assistant sits as a round button in the bottom-right corner. With a local server the model list is fetched by itself (a choice list, not a filtered field), and an address without `/v1` is offered with it. Asking for something else while a proposal is on screen **refines** it (the next proposal adds to it and Apply confirms everything as one step), and the card shows each change with its old and new values.
+- **Version 2.5.0**: the model has 10 steps per request and, before the last one, is asked to propose with what it already knows; it knows that changing the planner language translates everything in a single operation. The address `http://0.0.0.0:8080` that llama.cpp prints works as it is. If part of the app fails to load (because it was updated with the window open), the card explains it and offers to reload the window without losing your work.
 
 ### Design with an AI model
 
@@ -258,7 +264,8 @@ instead, see [Run it](#run-it).
 - Models can use `icon:<name>` for any icon without declaring it, draw with shapes, and keep
   images next to the file by path. Across the tools, `path` is always the file that is read
   and `out` the one that is written.
-- **Live link (desktop app)**: with the app open, the same server works on **the planner you have open**. The model reads it, changes it as one step you can undo (refused if you edited it meanwhile), shows you a page, or opens another planner. Turn it off in *File → Let an AI model edit the open planner*. Nothing listens on the network: it is a local socket protected by a token made at every start.
+- **Own fonts and a guide for models (2.5.0)**: your own fonts travel inside the file (`userFonts`) and the server uses them to draw; `add_font` embeds one and says which punctuation it lacks. `get_guide` gives the guide by section to clients that do not read resources, there are recipes (`nueva-agenda`, `revisar-avisos`, `traducir`), and each `check_design` warning says how to fix it.
+- **Live link (desktop app)**: with the app open, the same server works on **the planner you have open**. The model reads it, changes it as one step you can undo (refused if you edited it meanwhile), shows you a page, or opens another planner. Turn it off in *Settings → Let an AI model edit the open planner*. Nothing listens on the network: it is a local socket protected by a token made at every start.
 
 ### Made to last
 

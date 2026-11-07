@@ -94,8 +94,8 @@ selbst baust. Wenn du sie lieber im Browser nutzen willst, siehe [Lokal ausführ
   oder SVG hoch.
 - Jedes Textelement kann eine eigene Schrift und Farbe haben oder seinem Texttyp folgen.
 - **Zoome** die Seite mit Strg und + / − / 0 oder mit Strg und dem Mausrad (oder mit zwei
-  Fingern auf dem Touchpad): Der Punkt unter dem Mauszeiger bleibt, wo er ist. **Datei →
-  Größe der Oberfläche** skaliert die gesamte Oberfläche, und die Seitenpanels und die
+  Fingern auf dem Touchpad): Der Punkt unter dem Mauszeiger bleibt, wo er ist. **Einstellungen →
+  Größe der Oberfläche** (ein Schieberegler mit Zahl) skaliert die gesamte Oberfläche, und die Seitenpanels und die
   Seitenleiste lassen sich durch Ziehen ihrer Ränder in der Größe ändern; die App merkt sich beides.
 - **Rechtsklick** (oder langes Drücken auf dem Smartphone) auf ein Element, eine Seite oder
   eine Miniaturansicht zeigt seine Optionen: das Wasserzeichenbild ändern, etwas auf einer
@@ -115,9 +115,11 @@ selbst baust. Wenn du sie lieber im Browser nutzen willst, siehe [Lokal ausführ
 - **Ebenenmenü und Sperren**: Rechtsklick auf eine Zeile in Ebenen zum Duplizieren, Sperren oder Entsperren, Umbenennen, In den Vordergrund, In den Hintergrund oder Löschen. Ein gesperrtes Element lässt sich auswählen, aber nicht ziehen, skalieren, mit den Pfeilen verschieben oder löschen (Strg+Umschalt+Alt+L). Unter der Liste Deckkraft, Füllmethode und Sperre des gewählten Elements.
 - **Formen**: Füllung als Farbfeld mit einer Schaltfläche *Keine Füllung*, Deckkraft von 5 bis 100 %, und jedes eigene Element dreht sich von 0 bis 360°.
 - **Ressourcen / Vektoren**: Jedes Bild, SVG oder Symbol mit einem Klick auf die Seite legen oder als **Stempel- und Strichpinsel** nutzen: ein Klick setzt eine Kopie; Ziehen setzt Kopien entlang des Strichs (Größe, Abstand, gerade / folgt dem Strich / zufällig, Variation, Farbe). Jeder Strich ist ein Element und ein Rückgängig-Schritt.
-- **Vollbild (F11)**: nur die Seite, ohne Seitenleisten; F11 oder Esc bringen sie wie zuvor zurück.
+- **Vollbild (F11)**: nur die Seite, ohne Seitenleisten, Miniaturleiste und Fußzeile; F11 oder Esc bringen sie wie zuvor zurück.
+- **Ziehen zum Verschieben**: Mit der mittleren Maustaste oder mit gedrückter Leertaste und der Haupttaste folgt die Arbeitsfläche dem Zeiger, ohne nach den Bildlaufleisten zu suchen.
+- **Aufgeräumte Menüs**: Datei (der Planer und seine Dateien, mit *Meine Planer*), Bearbeiten, Ansicht, Einstellungen (Sprache der Oberfläche, jede in ihrer eigenen Sprache; Größe der Oberfläche; Vorlieben; KI-Assistent) und Hilfe (Tastenkürzel, Leitfaden für KI-Modelle, Problem melden, Über). *Neuer Planer* passt in jedes Fenster: zwei Spalten, und *Planer erstellen* ist immer sichtbar.
 - **Ausgeblendete Elemente gehen nie verloren**: Bearbeiten → *Ausgeblendete Elemente anzeigen* listet sie auf und holt jedes einzeln zurück. **Auf die Auswahl zoomen** mit Strg+Umschalt+2; die Fußzeile zählt die Warnungen der aktuellen Seite, und Miniaturansichten zeigen einen Punkt.
-- **Tastenkürzel** für alles, in der App aufgelistet (F1) und neben jedem Menüeintrag, mit den Menüs Datei, Bearbeiten und Ansicht.
+- **Tastenkürzel** für alles, in der App aufgelistet (F1) und neben jedem Menüeintrag.
 
 ### Abschnitte und Seitenvorlagen
 
@@ -156,7 +158,8 @@ selbst baust. Wenn du sie lieber im Browser nutzen willst, siehe [Lokal ausführ
   als Tag/Monat geschrieben wird. Datumsreihenfolge und erster Wochentag lassen sich auch von
   Hand einstellen; Daten werden immer im Format ISO 8601 gespeichert.
 - Gesetzliche Feiertage für **207 Länder** und ihre Regionen, von 2016 bis 2061. Füge
-  Brückentage hinzu, benenne Feiertage um oder entferne sie.
+  Brückentage hinzu, entferne Feiertage oder gib einem mit dem Stift unter *Kalender →
+  Feiertage* einen anderen Namen (zum Beispiel einen kürzeren, wenn er nicht ins Feld passt).
 - Geburtstage und wichtige Termine, Mondphasen sowie Tagundnachtgleichen und Sonnenwenden,
   berechnet für deine Zeitzone und Hemisphäre.
 - ISO-Kalenderwochen, Wochen, die am Montag, Sonntag oder Samstag beginnen, 1 bis 24 Monate,
@@ -180,7 +183,10 @@ selbst baust. Wenn du sie lieber im Browser nutzen willst, siehe [Lokal ausführ
   aktualisiert.
 - 5 mitgelieferte Open-Source-Schriftfamilien, als Teilmengen ins PDF eingebettet. Lade
   eigene TTF-, OTF-, WOFF- oder WOFF2-Schriften hoch; die App prüft, ob sie alle Zeichen
-  enthalten, die deine Sprache braucht.
+  enthalten, die deine Sprache braucht. Fehlt einer Schrift ein Zeichen (eine Trikotschrift
+  ohne Komma oder Klammern), kommt es aus einer Ersatzschrift, am Bildschirm und im PDF, wie
+  in einem Browser; Stil weist darauf hin, wenn Satzzeichen fehlen, und wofür die Schrift
+  sich eignet.
 
 ### Evidenzbasierte Methoden
 
@@ -259,8 +265,9 @@ selbst baust. Wenn du sie lieber im Browser nutzen willst, siehe [Lokal ausführ
 - Dein Schlüssel wird nie im Klartext gespeichert: In der Desktop-App verschlüsselt ihn das
   Betriebssystem (Schlüsselbund, DPAPI, libsecret), und Anfragen laufen über die App; auf der
   Website bleibt er im Arbeitsspeicher oder verschlüsselt im Browser, wenn du ihn dir merken
-  lässt. Einstellungen unter *Datei → KI-Assistent…* oder über das Zahnrad an der Pille.
+  lässt. Einstellungen unter *Einstellungen → KI-Assistent…* oder über das Zahnrad an der Pille.
 - **Version 2.4.1**: Der Assistent sitzt als runde Schaltfläche unten rechts. Bei einem lokalen Server wird die Modellliste selbst geholt (eine Auswahlliste, kein filterndes Feld), und eine Adresse ohne `/v1` wird korrigiert angeboten. Wer etwas anderes verlangt, während ein Vorschlag sichtbar ist, **verfeinert** ihn (der nächste Vorschlag kommt hinzu, Übernehmen bestätigt alles in einem Schritt), und die Karte zeigt jede Änderung mit altem und neuem Wert.
+- **Version 2.5.0**: Das Modell hat 10 Schritte pro Anfrage und wird vor dem letzten gebeten, mit dem Vorhandenen etwas vorzuschlagen; es weiß, dass eine andere Sprache des Planers alles in einem Vorgang übersetzt. Die Adresse `http://0.0.0.0:8080`, die llama.cpp anzeigt, funktioniert so, wie sie ist. Lädt ein Teil des Programms nicht (weil es bei geöffnetem Fenster aktualisiert wurde), erklärt die Karte das und bietet an, das Fenster neu zu laden, ohne Arbeit zu verlieren.
 
 ### Mit einem KI-Modell gestalten
 
@@ -277,7 +284,8 @@ selbst baust. Wenn du sie lieber im Browser nutzen willst, siehe [Lokal ausführ
 - Modelle können `icon:<name>` für jedes Symbol verwenden, ohne es zu deklarieren, mit Formen
   zeichnen und Bilder per Pfad neben der Datei ablegen. In allen Werkzeugen ist `path` immer
   die Datei, die gelesen wird, und `out` die, die geschrieben wird.
-- **Live-Verbindung (Desktop-App)**: Bei geöffneter App arbeitet derselbe Server mit **dem Planer, den du geöffnet hast**. Das Modell liest ihn, ändert ihn in einem Schritt, den du rückgängig machen kannst (abgelehnt, wenn du ihn inzwischen bearbeitet hast), zeigt dir eine Seite oder öffnet einen anderen Planer. Schalte das unter *Datei → Einem KI-Modell erlauben, den geöffneten Planer zu bearbeiten* aus. Nichts lauscht im Netzwerk: Es ist ein lokaler Socket, geschützt durch ein Token, das bei jedem Start neu erzeugt wird.
+- **Eigene Schriften und ein Leitfaden für Modelle (2.5.0)**: Eigene Schriften reisen in der Datei mit (`userFonts`), und der Server zeichnet mit ihnen; `add_font` bettet eine ein und sagt, welche Satzzeichen ihr fehlen. `get_guide` liefert den Leitfaden abschnittsweise für Clients, die keine Ressourcen lesen, es gibt Rezepte (`nueva-agenda`, `revisar-avisos`, `traducir`), und jeder Hinweis von `check_design` sagt, wie er zu beheben ist.
+- **Live-Verbindung (Desktop-App)**: Bei geöffneter App arbeitet derselbe Server mit **dem Planer, den du geöffnet hast**. Das Modell liest ihn, ändert ihn in einem Schritt, den du rückgängig machen kannst (abgelehnt, wenn du ihn inzwischen bearbeitet hast), zeigt dir eine Seite oder öffnet einen anderen Planer. Schalte das unter *Einstellungen → Einem KI-Modell erlauben, den geöffneten Planer zu bearbeiten* aus. Nichts lauscht im Netzwerk: Es ist ein lokaler Socket, geschützt durch ein Token, das bei jedem Start neu erzeugt wird.
 
 ### Für die Dauer gemacht
 

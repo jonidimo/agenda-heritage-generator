@@ -127,9 +127,10 @@ assistant reads the planner, proposes the change and shows it on the page. Nothi
 you press **Apply**; **Discard** (or Esc) leaves everything as it was, and an applied change is one
 step of **Undo**. It never edits the planner by itself.
 
-Set it up in **File → AI assistant…**: Claude (Anthropic), Gemini, or OpenAI and compatible
-services (OpenRouter, Groq, Mistral), or a model running on your own computer (Ollama, LM Studio:
-no key needed). **Check and load models** tests the key and lists the models it can use.
+Set it up in **Settings → AI assistant…**: Claude (Anthropic), Gemini, or OpenAI and compatible
+services (OpenRouter, Groq, Mistral), or a model running on your own computer (Ollama, LM Studio,
+llama.cpp: no key needed). The address a local server prints, like `http://0.0.0.0:8080`, works as
+it is: the app connects to `127.0.0.1`. **Check and load models** tests the key and lists the models it can use.
 **Let it look at the pages** sends images of the pages it needs to see: it understands the design
 better, but each request costs more.
 
@@ -212,7 +213,7 @@ extracted `AppRun`:
 
 ```sh
 cd ~/Apps
-./heritage-studio-2.4.1-linux-x86_64.AppImage --appimage-extract   # creates ~/Apps/squashfs-root
+./heritage-studio-2.5.0-linux-x86_64.AppImage --appimage-extract   # creates ~/Apps/squashfs-root
 ```
 
 This also starts faster and needs no FUSE. Do not use `--appimage-extract-and-run` (or the
@@ -236,7 +237,7 @@ Nothing needs to be configured: the server finds the app by itself.
   server reads it, connects and says hello with the token. Nothing listens on the network.
 - A change from the model is **one step you can undo**; the app shows a notice with *Undo*. If you
   edited the planner after the model read it, its change is refused instead of overwriting yours.
-- Turn it off in **File → Let an AI model edit the open planner**. Then the model can only ask
+- Turn it off in **Settings → Let an AI model edit the open planner**. Then the model can only ask
   whether the app is open.
 - Another app instance, or a test, can be reached by pointing `AGENDA_APP_LINK` to its `live.json`.
 
@@ -270,8 +271,8 @@ a **View** menu with **Reload** and **Toggle Developer Tools**.
 2. Push a tag that starts with `v`:
 
    ```sh
-   git tag v2.4.1
-   git push origin v2.4.1
+   git tag v2.5.0
+   git push origin v2.5.0
    ```
 
 3. The **Desktop apps** workflow builds the three systems and creates the GitHub Release

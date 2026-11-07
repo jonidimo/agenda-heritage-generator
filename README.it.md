@@ -93,8 +93,8 @@ Per usarla nel browser, vedi [Come usarla](#come-usarla).
 - Ogni testo può avere il suo carattere e il suo colore, oppure seguire quelli del suo tipo
   di testo.
 - **Zoom** della pagina con Ctrl e + / − / 0, o con Ctrl e la rotellina del mouse (o un
-  pizzico sul touchpad): il punto sotto il cursore resta fermo. **File →
-  Dimensione dell'interfaccia** ingrandisce o riduce tutta l'interfaccia, e i pannelli laterali
+  pizzico sul touchpad): il punto sotto il cursore resta fermo. **Impostazioni →
+  Dimensione dell’interfaccia** (un cursore con il suo numero) ingrandisce o riduce tutta l'interfaccia, e i pannelli laterali
   e la striscia di miniature si ridimensionano trascinandone i bordi; l'app ricorda entrambe le cose.
 - **Clic destro** (o pressione prolungata sul telefono) su qualsiasi elemento, pagina o
   miniatura: cambiare l’immagine della filigrana, nascondere qualcosa in una pagina o in
@@ -114,9 +114,11 @@ Per usarla nel browser, vedi [Come usarla](#come-usarla).
 - **Menu dei livelli e blocco**: clic destro su una riga di Livelli per duplicare, bloccare o sbloccare, rinominare, portare in primo piano, mandare sullo sfondo o eliminare. Un elemento bloccato si seleziona ma non si trascina, non si ridimensiona, non si sposta con le frecce e non si elimina (Ctrl+Shift+Alt+L). Sotto l’elenco, opacità, fusione e blocco dell’elemento scelto.
 - **Forme**: riempimento come campione di colore con un pulsante *Nessun riempimento*, opacità dal 5 al 100 %, e ogni elemento personale ruota da 0 a 360°.
 - **Risorse / Vettori**: qualsiasi immagine, SVG o icona si posiziona sulla pagina con un clic, o diventa un **pennello timbro e tratto**: un clic lascia una copia; trascinando si lasciano copie lungo il tratto (dimensione, spaziatura, dritto / segue il tratto / casuale, variazione, colore). Ogni tratto è un elemento e un passo di Annulla.
-- **Schermo intero (F11)**: solo la pagina, senza i pannelli laterali; F11 o Esc li riportano com’erano.
+- **Schermo intero (F11)**: solo la pagina, senza i pannelli laterali, la striscia delle miniature né il piè di pagina; F11 o Esc li riportano com’erano.
+- **Trascinare per scorrere**: con il tasto centrale del mouse, o tenendo premuta la barra spaziatrice con il tasto principale, l’area di lavoro segue il puntatore, senza cercare le barre di scorrimento.
+- **Menu in ordine**: File (l’agenda e i suoi file, con *Le mie agende*), Modifica, Vista, Impostazioni (lingua dell’interfaccia, ognuna nella sua lingua; dimensione dell’interfaccia; preferenze; assistente IA) e Aiuto (scorciatoie, guida per i modelli di IA, segnalare un problema, Informazioni). *Nuova agenda* entra in qualsiasi finestra: due colonne, e *Crea agenda* sempre in vista.
 - **Ciò che nascondi non si perde**: Modifica → *Mostra elementi nascosti* li elenca e li riporta uno per uno. **Ingrandisci sulla selezione** con Ctrl+Maiusc+2; il piè di pagina conta gli avvisi della pagina corrente e le miniature mostrano un punto.
-- **Scorciatoie da tastiera** per tutto, elencate nell’app (F1) e accanto a ogni voce di menu, con i menu File, Modifica e Vista.
+- **Scorciatoie da tastiera** per tutto, elencate nell’app (F1) e accanto a ogni voce di menu.
 
 ### Sezioni e modelli di pagina
 
@@ -152,7 +154,8 @@ Per usarla nel browser, vedi [Come usarla](#come-usarla).
   scrive giorno/mese. L’ordine delle date e l’inizio della settimana si possono anche
   scegliere a mano; le date sono sempre salvate in ISO 8601.
 - Festività di **207 Paesi** e delle loro regioni, dal 2016 al 2061. Aggiungi ponti,
-  rinomina o rimuovi festività.
+  rimuovi festività o dagli un altro nome con la matita di *Calendario → Festività* (per
+  esempio, uno più breve per un nome che non entra nella sua casella).
 - Compleanni e date importanti, fasi lunari, ed equinozi e solstizi calcolati per il tuo
   fuso orario e il tuo emisfero.
 - Numerazione ISO delle settimane, settimane che iniziano di lunedì, di domenica o di
@@ -176,7 +179,9 @@ Per usarla nel browser, vedi [Come usarla](#come-usarla).
   ha la vista stanca. Tutto si aggiorna in tempo reale.
 - 5 famiglie di caratteri open source incluse, incorporate nel PDF come sottoinsiemi.
   Carica i tuoi caratteri TTF, OTF, WOFF o WOFF2: l’app controlla che contengano tutti i
-  segni che servono alla tua lingua.
+  segni che servono alla tua lingua. Se a uno manca un segno (un carattere da maglia senza
+  virgola né parentesi), quel segno viene da un carattere di riserva, a schermo e nel PDF,
+  come in un browser; Stile avvisa se manca la punteggiatura e a cosa si presta meglio.
 
 ### Metodi basati sulle evidenze
 
@@ -252,8 +257,9 @@ Per usarla nel browser, vedi [Come usarla](#come-usarla).
 - La tua chiave non viene mai salvata in chiaro: nell’app desktop la cifra il sistema
   operativo (Portachiavi, DPAPI, libsecret) e le richieste passano dall’app; sul web resta in
   memoria, o cifrata nel browser se scegli di ricordarla. Le impostazioni sono in
-  *File → Assistente IA…* o nell’ingranaggio della pillola.
+  *Impostazioni → Assistente IA…* o nell’ingranaggio della pillola.
 - **Versione 2.4.1**: l’assistente sta in un pulsante rotondo in basso a destra. Con un server locale l’elenco dei modelli si cerca da solo (un elenco da cui scegliere, non un campo che filtra), e un indirizzo senza `/v1` viene proposto corretto. Chiedere altro con una proposta in vista la **ritocca** (la proposta successiva si somma e Applica conferma tutto in un passo), e la scheda mostra ogni modifica con il valore prima e dopo.
+- **Versione 2.5.0**: il modello ha 10 passi per richiesta e, prima dell’ultimo, gli si chiede di proporre con ciò che sa già; sa che cambiare la lingua dell’agenda traduce tutto in una sola operazione. L’indirizzo `http://0.0.0.0:8080` che mostra llama.cpp funziona così com’è. Se una parte del programma non si carica (perché è stato aggiornato con la finestra aperta), la scheda lo spiega e propone di ricaricare la finestra senza perdere il lavoro.
 
 ### Progetta con un modello di intelligenza artificiale
 
@@ -268,7 +274,8 @@ Per usarla nel browser, vedi [Come usarla](#come-usarla).
 - I modelli possono usare `icon:<nome>` per qualsiasi icona senza dichiararla, disegnare con
   le forme e lasciare le immagini accanto al file con un percorso. In tutti gli strumenti,
   `path` è sempre il file che si legge e `out` quello che si scrive.
-- **Collegamento in tempo reale (app desktop)**: con l’app aperta, lo stesso server lavora sull’**agenda che hai aperta**. Il modello la legge, la modifica in un solo passo annullabile (rifiutato se l’hai modificata nel frattempo), ti mostra una pagina o apre un’altra agenda. Si disattiva in *File → Consenti a un modello di IA di modificare l’agenda aperta*. Niente ascolta in rete: è un socket locale protetto da un token creato a ogni avvio.
+- **Caratteri propri e guida per i modelli (2.5.0)**: i caratteri propri viaggiano dentro il file (`userFonts`) e il server li usa per disegnare; `add_font` ne incorpora uno e dice quale punteggiatura gli manca. `get_guide` dà la guida per sezioni ai client che non leggono le risorse, ci sono ricette (`nueva-agenda`, `revisar-avisos`, `traducir`), e ogni avviso di `check_design` dice come correggerlo.
+- **Collegamento in tempo reale (app desktop)**: con l’app aperta, lo stesso server lavora sull’**agenda che hai aperta**. Il modello la legge, la modifica in un solo passo annullabile (rifiutato se l’hai modificata nel frattempo), ti mostra una pagina o apre un’altra agenda. Si disattiva in *Impostazioni → Consenti a un modello di IA di modificare l’agenda aperta*. Niente ascolta in rete: è un socket locale protetto da un token creato a ogni avvio.
 
 ### Fatta per durare
 

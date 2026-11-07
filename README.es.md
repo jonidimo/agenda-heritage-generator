@@ -94,8 +94,8 @@ Para usarla en el navegador, mirá [Cómo usarla](#cómo-usarla).
 - Cada texto puede tener su propia letra y su propio color, o seguir los de su tipo de
   texto.
 - **Zoom** de la página con Ctrl y + / − / 0, o con Ctrl y la rueda del mouse (o pellizcando
-  el panel táctil): el punto bajo el cursor queda quieto. **Archivo →
-  Tamaño de la interfaz** agranda o achica toda la interfaz, y los paneles laterales y la tira
+  el panel táctil): el punto bajo el cursor queda quieto. **Ajustes →
+  Tamaño de la interfaz** (un deslizador con su número) agranda o achica toda la interfaz, y los paneles laterales y la tira
   de miniaturas se redimensionan arrastrando sus bordes; la aplicación recuerda ambas cosas.
 - **Clic derecho** (o pulsación larga en el teléfono) sobre cualquier elemento, página o
   miniatura: cambiar la imagen de la marca de agua, ocultar algo en una página o en todas
@@ -115,9 +115,11 @@ Para usarla en el navegador, mirá [Cómo usarla](#cómo-usarla).
 - **Menú de capas y bloqueo**: clic derecho en una fila de Capas para duplicar, bloquear o desbloquear, renombrar, traer al frente, enviar al fondo o borrar. Un elemento bloqueado se elige pero no se arrastra, no cambia de tamaño, no se mueve con las flechas ni se borra (Ctrl+Shift+Alt+L). Debajo de la lista, la opacidad, la fusión y el bloqueo del elegido.
 - **Formas**: relleno como una muestra de color con un botón *Sin relleno*, opacidad de 5 a 100 %, y todo elemento propio gira de 0 a 360°.
 - **Recursos / Vectores**: cualquier imagen, SVG o ícono se coloca en la página con un clic, o se usa como **pincel de sello y trazo**: un clic deja una copia; arrastrar deja copias a lo largo del trazo (tamaño, espaciado, derecho / sigue el trazo / al azar, variación, color). Cada trazo es un elemento y un paso de Deshacer.
-- **Pantalla completa (F11)**: solo la página, sin los paneles laterales; F11 o Esc los devuelven como estaban.
+- **Pantalla completa (F11)**: solo la página, sin los paneles laterales, la tira de miniaturas ni el pie; F11 o Esc los devuelven como estaban.
+- **Desplazar arrastrando**: con el botón del medio del mouse, o con la barra espaciadora apretada y el botón principal, el área de trabajo se mueve con el puntero, sin buscar las barras.
+- **Menús ordenados**: Archivo (la agenda y sus archivos, con *Mis agendas*), Edición, Ver, Ajustes (idioma de la interfaz, cada uno en su idioma; tamaño de la interfaz; preferencias; asistente de IA) y Ayuda (atajos, guía para modelos de IA, avisar de un problema, Acerca de). *Nueva agenda* entra en cualquier ventana: dos columnas, y *Crear agenda* siempre a la vista.
 - **Lo oculto no se pierde**: Edición → *Mostrar elementos ocultos* los lista y devuelve cada uno. **Acercar a la selección** con Ctrl+Mayús+2; el pie de la página cuenta los avisos de la página actual y las miniaturas muestran un punto.
-- **Atajos de teclado** para todo, listados en la aplicación (F1) y junto a cada ítem de menú, con menús Archivo, Edición y Ver.
+- **Atajos de teclado** para todo, listados en la aplicación (F1) y junto a cada ítem de menú.
 
 ### Secciones y plantillas de página
 
@@ -153,7 +155,8 @@ Para usarla en el navegador, mirá [Cómo usarla](#cómo-usarla).
   Argentina se escribe día/mes. El orden de las fechas y el comienzo de la semana también
   se eligen a mano; las fechas se guardan siempre en ISO 8601.
 - Feriados de **207 países** y sus regiones, de 2016 a 2061. Podés agregar feriados
-  puente, renombrar o quitar feriados.
+  puente, quitar feriados o darles otro nombre con el lápiz de *Calendario → Feriados* (por
+  ejemplo, uno más corto para un nombre que no entra en su casilla).
 - Cumpleaños y fechas importantes, fases lunares, y los equinoccios y solsticios
   calculados para tu zona horaria y hemisferio.
 - Semanas ISO, semanas que empiezan el lunes, el domingo o el sábado, de 1 a 24 meses,
@@ -178,7 +181,10 @@ Para usarla en el navegador, mirá [Cómo usarla](#cómo-usarla).
   Todo se actualiza en vivo.
 - 5 familias tipográficas libres incluidas, incrustadas en el PDF como subconjuntos.
   Podés subir tus propias fuentes TTF, OTF, WOFF o WOFF2: la aplicación verifica que
-  tengan todos los caracteres que necesita tu idioma.
+  tengan todos los caracteres que necesita tu idioma. Si a una le falta un carácter (una
+  fuente de camiseta sin coma ni paréntesis), ese carácter sale de una fuente de reserva, en
+  pantalla y en el PDF, como en un navegador; Estilo avisa si le falta la puntuación y para
+  qué conviene usarla.
 
 ### Métodos basados en evidencia
 
@@ -252,8 +258,9 @@ Para usarla en el navegador, mirá [Cómo usarla](#cómo-usarla).
 - Tu clave nunca se guarda en texto plano: en la aplicación de escritorio la cifra el sistema
   operativo (Llavero, DPAPI, libsecret) y los pedidos salen por la aplicación; en la web vive
   en memoria, o cifrada en el navegador si elegís recordarla. Los ajustes están en
-  *Archivo → Asistente de IA…* o en el engranaje de la píldora.
+  *Ajustes → Asistente de IA…* o en el engranaje de la píldora.
 - **Versión 2.4.1**: el asistente queda como un botón redondo en la esquina de abajo a la derecha. Con un servidor local la lista de modelos se busca sola (una lista para elegir, no un campo que filtra), y una dirección sin `/v1` se ofrece corregida. Pedir otra cosa con una propuesta a la vista la **ajusta** (la próxima propuesta se suma y Aplicar confirma todo en un paso), y la tarjeta muestra cada cambio con su valor de antes y el nuevo.
+- **Versión 2.5.0**: el modelo tiene 10 pasos por pedido y antes del último se le pide que proponga con lo que ya sabe; sabe que cambiar el idioma de la agenda traduce todo en una sola operación. La dirección `http://0.0.0.0:8080` que muestra llama.cpp sirve tal cual. Si una parte del programa no carga (porque se actualizó con la ventana abierta), la tarjeta lo explica y ofrece recargar la ventana sin perder lo hecho.
 
 ### Diseñar con un modelo de inteligencia artificial
 
@@ -269,7 +276,8 @@ Para usarla en el navegador, mirá [Cómo usarla](#cómo-usarla).
 - Los modelos pueden usar `icon:<nombre>` para cualquier ícono sin declararlo, dibujar con
   formas y dejar las imágenes junto al archivo por ruta. En todas las herramientas, `path` es
   siempre el archivo que se lee y `out` el que se escribe.
-- **Enlace en vivo (aplicación de escritorio)**: con la aplicación abierta, el mismo servidor trabaja sobre **la agenda que tenés abierta**. El modelo la lee, la cambia en un solo paso que se puede deshacer (se rechaza si la editaste mientras tanto), te muestra una página o abre otra agenda. Se apaga en *Archivo → Permitir que un modelo de IA edite la agenda abierta*. Nada escucha en la red: es un socket local protegido por un token que se genera en cada arranque.
+- **Fuentes propias y guía para modelos (2.5.0)**: las fuentes propias viajan dentro del archivo (`userFonts`) y el servidor las usa al dibujar; `add_font` incrusta una y dice qué puntuación le falta. `get_guide` da la guía por secciones a los clientes que no leen recursos, hay recetas (`nueva-agenda`, `revisar-avisos`, `traducir`), y cada aviso de `check_design` dice cómo corregirlo.
+- **Enlace en vivo (aplicación de escritorio)**: con la aplicación abierta, el mismo servidor trabaja sobre **la agenda que tenés abierta**. El modelo la lee, la cambia en un solo paso que se puede deshacer (se rechaza si la editaste mientras tanto), te muestra una página o abre otra agenda. Se apaga en *Ajustes → Permitir que un modelo de IA edite la agenda abierta*. Nada escucha en la red: es un socket local protegido por un token que se genera en cada arranque.
 
 ### Hecha para durar
 
