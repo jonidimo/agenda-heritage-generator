@@ -11,6 +11,12 @@ import { saveDesign } from './persist';
 import { PANEL_LIMITS, prefs, UI_SCALE, type PanelId } from './prefs';
 import type { UiLang } from '../i18n/ui';
 
+/** Lo que hace el botón de un aviso. */
+export interface NoticeAction {
+  label: string;
+  run(): void;
+}
+
 export type View = 'page' | 'spread' | 'sheet' | 'book';
 /** Diseñar la agenda o prepararla para imprimir: cada modo muestra solo lo que le sirve. */
 export type Mode = 'design' | 'print';
@@ -165,6 +171,8 @@ interface StoreState {
   setNav(back: string[], forward: string[]): void;
   /** Aviso para el usuario (errores de carga, archivos inválidos…). */
   notice: string | null;
+  /** Un botón junto al aviso (p. ej. «Buscar la carpeta de las imágenes…»), o `null`. */
+  noticeAction: NoticeAction | null;
   /** Página a la que ir en cuanto exista (p. ej. una página propia recién creada). */
   goToKey: string | null;
   /** Se instaló una versión nueva de la aplicación (hay que recargar para usarla). */
@@ -174,7 +182,7 @@ interface StoreState {
   setDesign(d: Design, opts?: { keepHistory?: boolean }): void;
   /** Cierra la agenda abierta (p. ej. al borrarla) sin volver a guardarla. */
   closeDesign(): void;
-  setNotice(msg: string | null): void;
+  setNotice(msg: string | null, action?: NoticeAction | null): void;
   update(recipe: Recipe, coalesceKey?: string): void;
   /** Muestra `recipe` sin confirmarlo (como mucho una vez por cuadro lo llama quien arrastra). */
   preview(recipe: Recipe, key: string): void;
@@ -347,6 +355,7 @@ export const useStore = create<StoreState>((set, get) => ({
   navBack: [],
   navForward: [],
   notice: null,
+  noticeAction: null,
   goToKey: null,
   updateReady: false,
 
@@ -377,7 +386,7 @@ export const useStore = create<StoreState>((set, get) => ({
     set((s) => ({ design: null, ...NO_PREVIEW, revision: s.revision + 1, past: [], future: [], coalesce: null, selection: null, selectedIds: [], pageIndex: 0, navBack: [], navForward: [] }));
   },
 
-  setNotice: (notice) => set({ notice }),
+  setNotice: (notice, action) => set({ notice, noticeAction: notice === null ? null : (action ?? null) }),
   setGoToKey: (goToKey) => set({ goToKey }),
   setUpdateReady: (updateReady) => set({ updateReady }),
 

@@ -17,6 +17,7 @@ import { SHORTCUT_GROUPS, SHORTCUTS } from '../state/shortcuts';
 import { deleteDesign, deleteTemplate, exportDesignFile, listDesigns, listTemplates, loadDesign, saveDesign, type DesignMeta, type TemplateRecord } from '../state/persist';
 import { backupAll, openAnyFile } from '../state/fileActions';
 import { designFromTemplate, exportTemplateFile, importText, saveAsTemplate } from '../state/files';
+import { relinkAssets } from '../state/relink';
 import { download, fileBase } from '../state/exporter';
 import { dataFolderFor } from '../state/platform';
 import { resources } from '../state/resources';
@@ -422,7 +423,7 @@ export function LibraryDialog() {
       const r = await importText(await f.text());
       if (r.kind === 'design') {
         setDesign(r.design);
-        setNotice(r.notices.length > 0 ? r.notices.join(' ') : null);
+        setNotice(r.notices.length > 0 ? r.notices.join(' ') : null, r.unread > 0 ? { label: t('assets.relink'), run: () => void relinkAssets() } : null);
         setShow(false);
       } else if (r.kind === 'template') {
         setInfo([t('file.templateAdded', { name: r.template.name }), ...r.notices].join(' '));

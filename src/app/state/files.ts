@@ -104,11 +104,11 @@ async function adopt(assets: Array<{ id: string; bytes: Uint8Array }>, fonts: Ar
 
 /** Lo que se abrió; una agenda trae los avisos para la persona (se muestran después de abrirla). */
 export type Imported =
-  | { kind: 'design'; design: Design; notices: string[] }
+  | { kind: 'design'; design: Design; notices: string[]; unread: number }
   | { kind: 'template'; template: TemplateRecord; notices: string[] }
   | { kind: 'backup'; designs: number; templates: number; notices: string[] };
 
-async function importDesignObject(data: unknown): Promise<{ design: Design; notices: string[] }> {
+async function importDesignObject(data: unknown): Promise<{ design: Design; notices: string[]; unread: number }> {
   const { design, assets, fonts, droppedFonts } = await importDesignData(data);
   const adopted = await adopt(assets, fonts, droppedFonts);
   await saveDesign(design);
@@ -118,7 +118,7 @@ async function importDesignObject(data: unknown): Promise<{ design: Design; noti
   // Imágenes guardadas junto al archivo (por ruta): desde acá no se puede leer esa carpeta.
   const unread = design.assets.filter((a) => a.path && !assets.some((x) => x.id === a.id));
   if (unread.length > 0) notices.push(tNow(unread.length === 1 ? 'file.pathAssetsOne' : 'file.pathAssets', { name: unread[0]!.name, path: unread[0]!.path ?? '', n: unread.length }));
-  return { design, notices: [...notices, ...adopted] };
+  return { design, notices: [...notices, ...adopted], unread: unread.length };
 }
 
 async function importTemplateObject(raw: { id?: string; name?: string; description?: string; createdAt?: string; design: unknown }): Promise<{ template: TemplateRecord; notices: string[] }> {

@@ -2901,3 +2901,78 @@ test.describe('imágenes: al subirlas', () => {
     await expect.poll(async () => (await assets(page)).map((a) => [a.mime, a.width, a.height])).toEqual([['image/png', 4000, 308]]);
   });
 });
+
+test.describe('imágenes por ruta: buscar la carpeta', () => {
+  type Handle = { getState: () => { design: { assets: Array<{ id: string; path?: string | null; width: number }> } } };
+
+  /** Abre una agenda cuyas imágenes están por ruta (como la que arma un modelo de lenguaje): desde la web no se pueden leer. */
+  async function openWithPaths(page: Page, paths: string[]): Promise<void> {
+    // Sin el selector de carpetas del navegador: se usa el campo de archivos con carpeta entera, que el test puede llenar.
+    await page.addInitScript(() => Object.defineProperty(globalThis, 'showDirectoryPicker', { value: undefined, configurable: true }));
+    await openQuiet(page);
+    const text = await page.evaluate(
+      (list) => {
+        const design = (globalThis as unknown as { __agenda: { getState: () => { design: Record<string, unknown> } } }).__agenda.getState().design;
+        const assets = list.map((path, i) => ({ id: `ruta-${i}`, name: `Imagen ${i + 1}`, kind: 'raster', mime: 'image/jpeg', width: 10, height: 10, builtin: null, path }));
+        return JSON.stringify({ ...design, id: 'agenda-con-rutas', name: 'Con rutas', assets: [...(design.assets as unknown[]), ...assets] });
+      },
+      paths,
+    );
+    await page.evaluate((t) => (globalThis as unknown as { __heritageOpen: (t: string) => Promise<unknown> }).__heritageOpen(t), text);
+  }
+
+  /** Una carpeta de trabajo con las imágenes que se piden (todas son la misma foto). */
+  async function folderWith(files: string[]): Promise<string> {
+    const { mkdtempSync, mkdirSync, copyFileSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const { dirname, join } = await import('node:path');
+    const dir = mkdtempSync(join(tmpdir(), 'agenda-imagenes-'));
+    for (const f of files) {
+      mkdirSync(dirname(join(dir, f)), { recursive: true });
+      copyFileSync('docs/images/tapa.jpg', join(dir, f));
+    }
+    return dir;
+  }
+
+  test('el aviso ofrece buscar la carpeta; al elegirla, las imágenes quedan incrustadas y sin ruta', async ({ page }) => {
+    await openWithPaths(page, ['assets/cover.jpg', 'assets/escudo.jpg']);
+    const notice = page.getByRole('status').filter({ hasText: 'están en archivos aparte' });
+    await expect(notice).toContainText('2 imágenes');
+    const folder = await folderWith(['assets/cover.jpg', 'assets/escudo.jpg', 'assets/otra.jpg', 'README.txt']);
+    const [chooser] = await Promise.all([page.waitForEvent('filechooser'), page.getByTestId('notice-action').click()]);
+    await chooser.setFiles(folder);
+    await expect(page.getByRole('status').filter({ hasText: 'Listo: 2 imágenes quedaron incrustadas' })).toBeVisible();
+    await expect(page.getByTestId('notice-action')).toHaveCount(0);
+    const assets = await page.evaluate(() => (globalThis as unknown as { __agenda: Handle }).__agenda.getState().design.assets.filter((a) => a.id.startsWith('ruta-')));
+    expect(assets.map((a) => [a.path, a.width])).toEqual([
+      [null, 951],
+      [null, 951],
+    ]);
+    // Y desde el panel de recursos ya figuran con su peso, sin pedir la carpeta.
+    await page.getByRole('tab', { name: 'Recursos / Vectores', exact: true }).click();
+    await expect(page.getByTestId('asset-nofile')).toHaveCount(0);
+  });
+
+  test('si falta alguna, se dice cuál, y el panel de recursos deja buscarla en otra carpeta', async ({ page }) => {
+    await openWithPaths(page, ['assets/cover.jpg', 'assets/falta.jpg']);
+    const first = await folderWith(['assets/cover.jpg']);
+    const [chooser] = await Promise.all([page.waitForEvent('filechooser'), page.getByTestId('notice-action').click()]);
+    await chooser.setFiles(first);
+    const partial = page.getByRole('status').filter({ hasText: 'Imágenes encontradas: 1. Faltan: 1' });
+    await expect(partial).toContainText('assets/falta.jpg');
+    await expect(page.getByTestId('notice-action')).toBeVisible();
+    // En el panel solo la que falta lo ofrece.
+    await page.getByRole('tab', { name: 'Recursos / Vectores', exact: true }).click();
+    await expect(page.getByTestId('asset-nofile')).toHaveCount(1);
+    const second = await folderWith(['otro/lugar/falta.jpg']);
+    const [again] = await Promise.all([page.waitForEvent('filechooser'), page.locator('li').filter({ has: page.getByTestId('asset-nofile') }).getByRole('button', { name: 'Buscar la carpeta de las imágenes…' }).click()]);
+    await again.setFiles(second);
+    await expect(page.getByRole('status').filter({ hasText: 'Listo: 1 imagen quedó incrustada' })).toBeVisible();
+    await expect(page.getByTestId('asset-nofile')).toHaveCount(0);
+  });
+
+  test('una agenda sin imágenes por ruta no ofrece buscar nada', async ({ page }) => {
+    await openQuiet(page);
+    await expect(page.getByTestId('notice-action')).toHaveCount(0);
+  });
+});

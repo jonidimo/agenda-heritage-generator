@@ -129,6 +129,7 @@ export function App() {
   const setSidebarOpen = useStore((s) => s.setSidebarOpen);
   const selection = useStore((s) => s.selection);
   const notice = useStore((s) => s.notice);
+  const noticeAction = useStore((s) => s.noticeAction);
   const aiNotice = useStore((s) => s.aiNotice);
   const setAiNotice = useStore((s) => s.setAiNotice);
   const revision = useStore((s) => s.revision);
@@ -325,6 +326,11 @@ export function App() {
           {notice && (
             <div role="status" className="flex items-start gap-2 border-b border-line bg-[#fbf3e4] px-3 py-1.5 text-[12px] text-ink">
               <span className="min-w-0 flex-1 break-words">{notice}</span>
+              {noticeAction && (
+                <button type="button" className="shrink-0 rounded-md border border-line bg-white px-2 py-0.5 font-semibold text-accent hover:bg-paper" data-testid="notice-action" onClick={noticeAction.run}>
+                  {noticeAction.label}
+                </button>
+              )}
               <button type="button" className="shrink-0 rounded p-0.5 hover:bg-black/5" aria-label={t('common.close')} onClick={() => setNotice(null)}>
                 <X size={14} />
               </button>

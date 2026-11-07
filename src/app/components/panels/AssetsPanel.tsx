@@ -11,6 +11,7 @@ import { assetHref, onAssetUrlsChange } from '../../state/assetUrls';
 import { customPageHere } from '../../state/customPages';
 import { useDocument } from '../../state/doc';
 import { jumpToPage } from '../../state/navigation';
+import { relinkAssets } from '../../state/relink';
 import { addAssetFiles } from '../../state/uploads';
 import { resources } from '../../state/resources';
 import { useStore, type StampTool } from '../../state/store';
@@ -147,6 +148,8 @@ export function AssetsPanel() {
             const href = a.kind === 'pdf' ? assetHref(`${a.id}#1`, 'pdf') : a.kind === 'vector' ? undefined : assetHref(a.id, 'image');
             const vecHref = a.kind === 'vector' && a.builtin ? `${import.meta.env.BASE_URL}${a.builtin}` : a.kind === 'vector' ? assetHref(a.id, 'image') : undefined;
             const bytes = resources.assetBytes.get(a.id);
+            // Una imagen por ruta que desde acá no se puede leer (la agenda se abrió sin su carpeta).
+            const needsFile = Boolean(a.path) && !a.builtin && !bytes;
             // Los ppp al mayor tamaño en que se imprime de verdad; si no se usa en ninguna página, los de un tamaño supuesto.
             const placed = a.kind === 'raster' ? placements?.get(a.id) : undefined;
             const dpi = a.kind === 'raster' && info?.pxWidth ? (placed ? effectiveDpi(info.pxWidth, placed.maxWmm) : effectiveDpi(info.pxWidth, 100)) : null;
@@ -161,6 +164,12 @@ export function AssetsPanel() {
                     <Badge>{a.kind === 'vector' ? 'SVG' : a.kind === 'pdf' ? `PDF${a.pages ? ` · ${a.pages}` : ''}` : a.mime.replace('image/', '').toUpperCase()}</Badge>{' '}
                     {a.kind === 'raster' && info && `${info.pxWidth}×${info.pxHeight}px`}
                     {bytes && !a.builtin && <span data-testid="asset-weight"> · {formatBytes(bytes.length)}</span>}
+                    {needsFile && (
+                      <span className="text-warn" data-testid="asset-nofile">
+                        {' · '}
+                        {t('assets.noFile')} ({a.path})
+                      </span>
+                    )}
                     {dpi !== null && (
                       <span data-testid="asset-dpi" data-dpi={dpi} className={dpi < LOW_DPI ? 'text-warn' : ''}>
                         {' · '}
@@ -191,6 +200,11 @@ export function AssetsPanel() {
                     );
                   })()}
                   <div className="mt-1 flex flex-wrap gap-1">
+                    {needsFile && (
+                      <Button variant="primary" onClick={() => void relinkAssets()}>
+                        {t('assets.relink')}
+                      </Button>
+                    )}
                     {a.kind !== 'pdf' && a.kind !== 'font' && (
                       <>
                         <Button variant="outline" onClick={() => place(a)} title={t('assets.placeHint')}>

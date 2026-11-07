@@ -1,4 +1,5 @@
 /** Acciones de archivo con sus avisos (las usan el menú Archivo, los atajos y la biblioteca). */
+import { relinkAssets } from './relink';
 import { exportBackup, importText, openFile, saveDesignToFile, type Imported } from './files';
 import { useStore } from './store';
 import { tNow as t } from './tNow';
@@ -24,7 +25,8 @@ function applyImported(r: Imported): void {
     st.setDesign(r.design);
     st.setShowWelcome(false);
     st.setShowLibrary(false);
-    st.setNotice(r.notices.length > 0 ? r.notices.join(' ') : null);
+    // Imágenes por ruta que desde acá no se pueden leer: el aviso ofrece buscar su carpeta.
+    st.setNotice(r.notices.length > 0 ? r.notices.join(' ') : null, r.unread > 0 ? { label: t('assets.relink'), run: () => void relinkAssets() } : null);
   } else if (r.kind === 'template') st.setNotice([t('file.templateAdded', { name: r.template.name }), ...r.notices].join(' '));
   else st.setNotice([t('file.restored', { designs: r.designs, templates: r.templates }), ...r.notices].join(' '));
 }
