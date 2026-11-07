@@ -2044,6 +2044,8 @@ test.describe('asistente de IA', () => {
     await dialog.getByRole('button', { name: 'Claude', exact: true }).click();
     await dialog.getByLabel('Clave de API').fill('sk-ant-prueba');
     await dialog.getByRole('button', { name: 'Cerrar' }).click();
+    // «Cerrar» guarda la clave antes de cerrar; con un diálogo abierto, Ctrl+J no abre el asistente detrás.
+    await expect(dialog).toHaveCount(0);
     // Un cambio recién hecho, que tiene que sobrevivir a la recarga.
     await page.getByRole('textbox', { name: 'Nombre de la agenda' }).fill('Antes de recargar');
     await page.keyboard.press('Control+j');
