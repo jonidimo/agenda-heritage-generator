@@ -26,6 +26,9 @@ export function parseImageDpi(value: string): ImageDpi {
  */
 export const RESAMPLE_GAIN = 1.5;
 
+/** Más megapíxeles que esto no se decodifican para achicarlos (una imagen RGBA de 100 MP son 400 MB, y se usan varias copias). */
+export const RESAMPLE_MAX_MEGAPIXELS = 100;
+
 /** Calidad JPEG con que se vuelve a codificar (0–1) según la resolución pedida: imprimir cuida más el detalle. */
 export const RESAMPLE_QUALITY: Record<TargetDpi, number> = { 300: 0.9, 150: 0.82 };
 
@@ -58,13 +61,15 @@ export function pickSmaller(original: Uint8Array, candidate: Uint8Array | null |
 }
 
 /**
- * ¿Se puede remuestrear sin cambiar cómo se ve? Un JPEG con una orientación EXIF distinta de la derecha
- * y un PNG de 16 bits por canal (se pasaría a 8) se dejan como están.
+ * ¿Se puede remuestrear sin cambiar cómo se ve? Se dejan como están: un JPEG con una orientación EXIF
+ * distinta de la derecha, uno CMYK, un PNG de 16 bits por canal (se pasaría a 8) y lo que tiene tantos
+ * megapíxeles que decodificarlo agotaría la memoria.
  */
 export function canResample(bytes: Uint8Array): boolean {
   const info = rasterInfo(bytes);
-  if (!info) return false;
-  if (info.mime === 'image/jpeg') return jpegOrientation(bytes) === 1;
+  if (!info || (info.width * info.height) / 1_000_000 > RESAMPLE_MAX_MEGAPIXELS) return false;
+  // Un JPEG CMYK se incrusta en el PDF tal cual (DeviceCMYK): pasarlo a RGB cambiaría sus colores de imprenta.
+  if (info.mime === 'image/jpeg') return jpegOrientation(bytes) === 1 && info.components !== 4;
   return bytes[24] !== 16;
 }
 

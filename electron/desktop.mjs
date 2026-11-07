@@ -106,8 +106,9 @@ async function choosePlanner() {
   const chosen = await dialog.showOpenDialog(win, { properties: ['openFile'], filters: [{ name: APP_NAME, extensions: ['json'] }] });
   const file = chosen.filePaths[0];
   if (chosen.canceled || !file) return json({ ok: true, cancelled: true });
-  safeOpen(file);
-  return json({ ok: true, cancelled: false });
+  // The page tells the person (in their language) when it could not be opened.
+  const opened = await openPlannerFile(file).catch(() => ({ ok: false, reason: 'unreadable' }));
+  return json({ ok: true, cancelled: false, opened: opened.ok, ...(opened.ok ? {} : { reason: opened.reason }) });
 }
 
 /* ---------- The AI assistant: keys in the main process, requests through it ---------- */
@@ -277,28 +278,31 @@ let pendingOpen = agendaFileFromArgv(process.argv);
  * Opens a planner file in the page. The page exposes `__heritageOpen(text, name)`; the text travels as a
  * JSON string literal, so nothing in the file can run as code.
  * @param {string} file
+ * @returns {Promise<{ ok: true } | { ok: false, reason: 'unreadable' | 'too-large' }>}
  */
 async function openPlannerFile(file) {
   const win = mainWindow;
   if (!win || win.isDestroyed() || !loaded) {
     pendingOpen = file;
-    return;
+    return { ok: true };
   }
   // Images saved next to the file (by relative path) travel inside it: the page cannot read that folder.
   const planner = await readPlanner(file, { stat: (f) => stat(f).catch(() => null), readFile: (f) => readFile(f, 'utf8'), fs: { realpath: fsp.realpath, open: fsp.open }, maxBytes: MAX_OPEN_BYTES });
-  if (!planner.ok) {
-    dialog.showErrorBox(APP_NAME, `Could not open ${file}.`);
-    return;
-  }
+  if (!planner.ok) return { ok: false, reason: planner.reason };
   app.addRecentDocument(file);
   await win.webContents.executeJavaScript(`window.__heritageOpen && window.__heritageOpen(${JSON.stringify(planner.text)}, ${JSON.stringify(planner.name)})`);
   if (win.isMinimized()) win.restore();
   win.focus();
+  return { ok: true };
 }
 
 /** Opens a file; a failure (unreadable file, page reloading) is told to the user, never left unhandled. @param {string} file */
 function safeOpen(file) {
-  openPlannerFile(file).catch(() => dialog.showErrorBox(APP_NAME, `Could not open ${file}.`));
+  openPlannerFile(file)
+    .then((r) => {
+      if (!r.ok) dialog.showErrorBox(APP_NAME, `Could not open ${file}.`);
+    })
+    .catch(() => dialog.showErrorBox(APP_NAME, `Could not open ${file}.`));
 }
 
 // macOS delivers the file through this event (also before the app is ready).

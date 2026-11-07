@@ -86,7 +86,7 @@ export async function saveDesignToFile(design: Design, saveAs: boolean): Promise
 async function adopt(assets: Array<{ id: string; bytes: Uint8Array }>, fonts: Array<{ id: string; bytes: Uint8Array; spec: Partial<FontSpec> }>, dropped = 0): Promise<string[]> {
   for (const a of assets) {
     await saveAsset(a.id, a.bytes);
-    resources.assetBytes.set(a.id, a.bytes);
+    resources.putAsset(a.id, a.bytes);
   }
   const notices: string[] = [];
   for (const fo of fonts) {
@@ -111,6 +111,8 @@ export type Imported =
 
 async function importDesignObject(data: unknown): Promise<{ design: Design; notices: string[]; unread: number }> {
   const { design, assets, fonts, droppedFonts } = await importDesignData(data);
+  // Una agenda que se abre de un archivo no hereda el archivo donde se guardó antes otra con la misma id («Guardar» no pisa ese).
+  handles.delete(design.id);
   const adopted = await adopt(assets, fonts, droppedFonts);
   await saveDesign(design);
   const notices: string[] = [];
@@ -158,7 +160,9 @@ export async function importText(text: string): Promise<Imported> {
 export async function openFile(): Promise<Imported | null> {
   // En el escritorio lo abre el proceso principal (con las imágenes que están junto al archivo): la agenda llega por `__heritageOpen`.
   if (isDesktopShell()) {
-    await chooseAndOpenPlanner();
+    const result = await chooseAndOpenPlanner();
+    if (result === 'too-large') useStore.getState().setNotice(tNow('file.openTooLarge'));
+    else if (result === 'unreadable') useStore.getState().setNotice(tNow('file.openUnreadable'));
     return null;
   }
   const w = window as PickerWindow;

@@ -1,7 +1,7 @@
 /** Cuánto achicar una imagen, el filtro que la achica y la caché: la parte de remuestreo que no depende de ningún códec. */
 import { describe, expect, it, vi } from 'vitest';
 import { canResample, areaResize, cachedResampler, pickSmaller, resampleTarget } from '../src/core/assets/resample';
-import { jpegOrientation } from '../src/core/assets/image';
+import { jpegOrientation, rasterInfo } from '../src/core/assets/image';
 import { hasTransparentPixels } from '../src/core/util/pixels';
 import { makePng } from './helpers/png';
 
@@ -118,6 +118,31 @@ describe('qué se puede remuestrear', () => {
     expect(canResample(jpegWithOrientation(6))).toBe(false);
     expect(canResample(new Uint8Array([1, 2, 3, 4, 5]))).toBe(false);
     expect(canResample(makePng(4, 4, [1, 1, 1]))).toBe(true);
+  });
+
+  it('un JPEG CMYK (4 componentes) y una imagen de miles de megapíxeles no se remuestrean', () => {
+    const cmyk = jpegWithOrientation(null);
+    // SOF0: la cantidad de componentes está después del ancho (8 bytes después del código del marcador).
+    const at = cmyk.indexOf(0xc0, 2);
+    expect(cmyk[at + 8]).toBe(3);
+    cmyk[at + 8] = 4;
+    expect(canResample(cmyk)).toBe(false);
+    const huge = makePng(4, 4, [1, 1, 1]);
+    new DataView(huge.buffer).setUint32(16, 20000);
+    new DataView(huge.buffer).setUint32(20, 20000);
+    expect(canResample(huge)).toBe(false);
+  });
+
+  it('con orientación EXIF de costado el ancho y el alto de la imagen son los de la imagen girada', () => {
+    expect(rasterInfo(jpegWithOrientation(null))).toMatchObject({ width: 4, height: 4 });
+    // La cabecera de prueba es cuadrada: se cambia el alto para ver el intercambio.
+    const tall = jpegWithOrientation(6);
+    const at = tall.indexOf(0xc0, 2);
+    new DataView(tall.buffer).setUint16(at + 4, 8);
+    expect(rasterInfo(tall)).toMatchObject({ width: 8, height: 4 });
+    const upright = jpegWithOrientation(1);
+    new DataView(upright.buffer).setUint16(upright.indexOf(0xc0, 2) + 4, 8);
+    expect(rasterInfo(upright)).toMatchObject({ width: 4, height: 8 });
   });
 
   it('hasTransparentPixels mira solo el alfa', () => {

@@ -9,7 +9,7 @@ import { ASSET_MAX_BYTES } from '@core/assets/prepare';
 import { matchRelinkFiles, type RelinkFile } from '@core/assets/relink';
 import { assetInfoFromBytes } from '@core/resources';
 import { ASSET_EXTENSION, bytesMatchExtension } from '@core/util/relpath';
-import { sha256Hex } from '@core/util/digest';
+import { trySha256Hex } from '@core/util/digest';
 import { plural } from '../i18n/ui';
 import { saveAsset } from './persist';
 import { resources } from './resources';
@@ -19,6 +19,8 @@ import { tNow } from './tNow';
 /** Hasta dónde se baja y cuántos archivos se miran: una carpeta enorme no tiene por qué colgar la ventana. */
 const MAX_DEPTH = 8;
 const MAX_FILES = 5000;
+/** Entradas (archivos y carpetas) que se miran como mucho: una carpeta con cientos de miles de archivos de otros tipos no se recorre entera. */
+const MAX_ENTRIES = 50_000;
 
 /** Un archivo de la carpeta elegida: se lee solo si hace falta. */
 interface FolderFile extends RelinkFile {
@@ -42,12 +44,12 @@ const isAbort = (e: unknown): boolean => (e as DOMException | undefined)?.name =
 /** Las imágenes y PDF que una agenda puede pedir por ruta (no las fuentes: acá no se reencuentran). */
 const WANTED = ASSET_EXTENSION;
 
-async function walk(dir: DirectoryHandle, prefix: string, depth: number, out: FolderFile[]): Promise<void> {
+async function walk(dir: DirectoryHandle, prefix: string, depth: number, out: FolderFile[], seen = { n: 0 }): Promise<void> {
   for await (const entry of dir.values()) {
-    if (out.length >= MAX_FILES) return;
+    if (out.length >= MAX_FILES || ++seen.n > MAX_ENTRIES) return;
     if (entry.name.startsWith('.')) continue;
     if (entry.kind === 'directory') {
-      if (depth < MAX_DEPTH) await walk(entry, `${prefix}${entry.name}/`, depth + 1, out);
+      if (depth < MAX_DEPTH) await walk(entry, `${prefix}${entry.name}/`, depth + 1, out, seen);
     } else if (WANTED.test(entry.name)) {
       out.push({ path: `${prefix}${entry.name}`, name: entry.name, read: () => entry.getFile() });
     }
@@ -117,31 +119,33 @@ export async function relinkAssets(): Promise<void> {
   }
   if (folder === null) return;
   const { matched, missing } = matchRelinkFiles(wanted, folder);
-  const loaded: Array<{ id: string; bytes: Uint8Array; info: Awaited<ReturnType<typeof assetInfoFromBytes>>; hash: string }> = [];
   const failed = new Set<string>(missing);
+  const loaded: Array<{ id: string; info: Awaited<ReturnType<typeof assetInfoFromBytes>> }> = [];
   const design = useStore.getState().design;
+  // Una por una, guardando cada imagen apenas se lee: no se juntan en memoria decenas de fotos grandes.
   for (const m of matched) {
     const ref = design?.assets.find((a) => a.id === m.id);
+    if (!ref) continue;
     try {
-      if (!ref) continue;
       const file = await m.file.read();
       if (file.size > ASSET_MAX_BYTES) throw new Error('too large');
       const bytes = new Uint8Array(await file.arrayBuffer());
       // Lo que dice la extensión y lo que la agenda espera de ese recurso: una imagen no puede ser otra cosa.
       if (!bytesMatchExtension(m.file.name, bytes) || (ref.kind === 'raster' && !rasterInfo(bytes))) throw new Error('not the expected file');
-      loaded.push({ id: m.id, bytes, info: await assetInfoFromBytes(ref, bytes), hash: await sha256Hex(bytes) });
+      const info = await assetInfoFromBytes(ref, bytes);
+      // Mientras se leía, la persona pudo abrir otra agenda: a esa no se le agrega nada.
+      if (useStore.getState().design?.id !== designId) return;
+      resources.putAsset(m.id, bytes, info);
+      const hash = await trySha256Hex(bytes);
+      if (hash) resources.assetHashes.set(m.id, hash);
+      await saveAsset(m.id, bytes);
+      loaded.push({ id: m.id, info });
     } catch {
       failed.add(m.id);
     }
   }
-  // Mientras se leía, la persona pudo abrir otra agenda: a esa no se le agrega nada.
   if (useStore.getState().design?.id !== designId) return;
-  for (const l of loaded) {
-    resources.assetBytes.set(l.id, l.bytes);
-    resources.assetInfos.set(l.id, l.info);
-    resources.assetHashes.set(l.id, l.hash);
-    await saveAsset(l.id, l.bytes);
-  }
+  // (Las imágenes grandes entran como vienen, sin achicarlas: son las del archivo; el PDF sí las achica al exportar.)
   if (loaded.length > 0) {
     useStore.getState().update((d) => {
       for (const l of loaded) {

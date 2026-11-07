@@ -18,9 +18,11 @@ import { themeFile, themeFromDesign } from '../core/design/themeFile';
 import { EXPORT_KINDS } from '../core/document';
 import { documentSummary } from '../core/document/summary';
 import type { LiveDesign, LiveFontAdded, LiveInfo, LiveLibraryItem, LiveOpened, LivePatchResult, LiveReveal } from '../core/live/protocol';
-import { cachedResampler, IMAGE_DPI_OPTIONS } from '../core/assets/resample';
+import { cachedResampler, IMAGE_DPI_OPTIONS, parseImageDpi } from '../core/assets/resample';
 import { defaultImageDpi } from '../core/document';
 import { nodeResampler } from '../node/resample';
+import { clampArea, renderSize, RENDER_INLINE_PX, RENDER_MAX_SIDE_PX, RENDER_PREVIEW_PX } from '../core/render/size';
+import { withPngDpi } from '../node/png';
 import { newLayoutWarnings, type LayoutFeedback } from '../core/document/feedback';
 import { fixesFor } from '../core/document/fixes';
 import { listPages, pageRenderInfo } from '../core/document/inspect';
@@ -596,25 +598,56 @@ export function createServer(opts: ServerOptions): McpServer {
     'render_page',
     {
       title: 'Ver página',
-      description: 'Dibuja una página de la agenda (como queda impresa) y la devuelve como imagen PNG, con su lado (recto: derecha, verso: izquierda), su zona de contenido y sus bloques (id, nombre y caja [x, y, ancho, alto] en mm, para alinear o ajustar elementos), y sus avisos.',
-      inputSchema: { ...source, page: z.number().int().min(1).describe('Número de página, desde 1'), width: z.number().int().min(200).max(1600).optional().describe('Ancho de la imagen en píxeles (800 por defecto)') },
-      annotations: { readOnlyHint: true },
+      description:
+        'Dibuja una página de la agenda (como queda impresa) y la devuelve como imagen PNG, con su lado (recto: derecha, verso: izquierda), su zona de contenido y sus bloques (id, nombre y caja [x, y, ancho, alto] en mm, para alinear o ajustar elementos), y sus avisos. Calidad: «dpi» (p. ej. 300) o «width» (píxeles) eligen la resolución; «area» ({x, y, w, h} en mm) dibuja solo esa zona, ideal para mirar un detalle en grande; «out» (.png) guarda la imagen a la resolución pedida, con sus ppp anotados, para entregarla (la que se ve acá nunca pasa de 1600 px, o de 1000 si se guarda). La respuesta dice a cuántos píxeles por mm salió, para pasar de un punto de la imagen a milímetros.',
+      inputSchema: {
+        ...source,
+        page: z.number().int().min(1).describe('Número de página, desde 1'),
+        width: z.number().int().min(200).max(RENDER_MAX_SIDE_PX).optional().describe('Ancho de la imagen en píxeles (800 por defecto); no se combina con «dpi»'),
+        dpi: z.number().int().min(36).max(600).optional().describe('Resolución en píxeles por pulgada (300 para imprimir): el ancho sale del tamaño de la página (o de «area»). No se combina con «width»'),
+        area: z.object({ x: z.number().min(0), y: z.number().min(0), w: z.number().positive(), h: z.number().positive() }).optional().describe('Solo esta zona de la página, en mm desde su esquina superior izquierda. Sin «width» ni «dpi» sale a 300 ppp'),
+        transparent: z.boolean().optional().describe('Fondo transparente en lugar de blanco'),
+        out: z.string().optional().describe('Archivo que se escribe (.png), relativo a la carpeta de trabajo: guarda la imagen a la resolución pedida'),
+      },
+      annotations: { readOnlyHint: false },
     },
-    async ({ page, width, ...input }) => {
+    async ({ page, width, dpi, area, transparent, out, ...input }) => {
+      if (width !== undefined && dpi !== undefined) throw new Error('Indicá la resolución con «width» (píxeles) o con «dpi», no con los dos.');
       const { design, baseDir } = await load(input);
       const { doc, assetHref } = await open(design, baseDir);
       if (page > doc.pageCount) throw new Error(`La agenda tiene ${doc.pageCount} páginas.`);
       const model = doc.page(page - 1);
-      const svg = pageToSvg(model, { fonts: doc.ctx.fonts, assetHref }, { background: '#ffffff' });
+      const view = area ? clampArea(area, model.w, model.h) : undefined;
+      const zone = view ?? { x: 0, y: 0, w: model.w, h: model.h };
+      const target = renderSize(zone, { width, dpi, zoomed: view !== undefined });
+      const svg = pageToSvg(model, { fonts: doc.ctx.fonts, assetHref }, { ...(transparent ? {} : { background: '#ffffff' }), ...(view ? { view } : {}) });
       const info = pageRenderInfo(doc, page - 1);
+      const render = { widthPx: target.w, heightPx: target.h, pxPerMm: Math.round((target.w / zone.w) * 1000) / 1000, dpi: Math.round((target.w / zone.w) * 25.4), area: { x: zone.x, y: zone.y, w: zone.w, h: zone.h } };
+      // Lo que se ve acá cuesta en lo que lee el modelo: tiene un tope más bajo que el archivo guardado.
+      const seen = Math.min(target.w, out ? RENDER_PREVIEW_PX : RENDER_INLINE_PX);
+      let full: Uint8Array;
       let png: Uint8Array;
       try {
-        png = await opts.rasterize(svg, width ?? 800);
+        full = await opts.rasterize(svg, out ? target.w : seen);
+        png = out && seen < target.w ? await opts.rasterize(svg, seen) : full;
       } catch (err) {
         // Sin PNG la página igual se puede ver: va el SVG, con el motivo.
-        return text({ ...info, note: `No se pudo dibujar la imagen PNG (${(err as Error).message}): va el SVG.`, svg });
+        return text({ ...info, render, note: `No se pudo dibujar la imagen PNG (${(err as Error).message}): va el SVG.`, svg });
       }
-      return { content: [{ type: 'image', data: toBase64(png), mimeType: 'image/png' }, { type: 'text', text: JSON.stringify(info, null, 2) }] };
+      const notes: string[] = [];
+      if (!out && target.w > seen) notes.push(`La imagen que se ve acá se redujo a ${seen} px de ancho (pediste ${target.w}); con «out» se guarda a ${target.w} px.`);
+      let saved: string | undefined;
+      if (out) {
+        const file = await ws.write(out, withPngDpi(full, render.dpi), { extensions: ['.png'], overwrite: true });
+        saved = ws.show(file);
+      }
+      const shown = out || target.w <= seen ? render : { ...render, shownWidthPx: seen };
+      return {
+        content: [
+          { type: 'image', data: toBase64(png), mimeType: 'image/png' },
+          { type: 'text', text: JSON.stringify({ ...info, render: shown, ...(saved ? { saved: { path: saved, bytes: full.length, widthPx: target.w, dpi: render.dpi } } : {}), ...(notes.length > 0 ? { notes } : {}) }, null, 2) },
+        ],
+      };
     },
   );
 
@@ -632,7 +665,7 @@ export function createServer(opts: ServerOptions): McpServer {
         mode: z.enum(EXPORT_KINDS).optional().describe('Nombre anterior de «kind» (se sigue aceptando)'),
         signature: z.number().int().min(1).optional().describe('Con kind=signature: el cuadernillo, desde 1'),
         imageDpi: z
-          .union([z.literal('original'), z.literal(300), z.literal(150)])
+          .union([z.literal('original'), z.literal(300), z.literal(150), z.literal('300'), z.literal('150')])
           .optional()
           .describe(`Resolución de las imágenes en el PDF: ${IMAGE_DPI_OPTIONS.join(', ')}. 300 (imprimir) o 150 (pantalla) achican solo las imágenes que tienen más ppp de los que hacen falta al tamaño en que se imprimen, sin perder calidad visible; original no las toca. Por defecto, 300 para imprimir y 150 si la agenda es para pantalla.`),
         out: z.string().describe('Archivo que se escribe (.pdf), relativo a la carpeta de trabajo'),
@@ -645,7 +678,8 @@ export function createServer(opts: ServerOptions): McpServer {
       if (kind === 'signature' && signature === undefined) throw new Error('Con kind=signature indicá el cuadernillo en «signature» (1, 2, 3…).');
       const { design, baseDir } = await load(input);
       const { doc, bytes } = await open(design, baseDir);
-      const dpi = imageDpi ?? defaultImageDpi(design.binding);
+      // (Algunos clientes mandan los números como texto: "300" vale lo mismo que 300.)
+      const dpi = imageDpi === undefined ? defaultImageDpi(design.binding) : parseImageDpi(String(imageDpi));
       const pdf = await doc.exportPdf(kind, { assetBytes: (id) => bytes.get(id), imageDpi: dpi, resample: cachedResampler(nodeResampler), ...(signature !== undefined ? { signature: signature - 1 } : {}) });
       const full = await ws.write(out, pdf, { extensions: ['.pdf'], overwrite: true });
       return text({ path: ws.show(full), bytes: pdf.length, pages: doc.pageCount, imageDpi: dpi });

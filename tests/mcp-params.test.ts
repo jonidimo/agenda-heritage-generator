@@ -67,6 +67,9 @@ describe('nombres de los parámetros', () => {
       expect(res.isError, res.text).toBe(false);
       expect((JSON.parse(res.text) as { imageDpi: unknown }).imageDpi).toBe(imageDpi);
     }
+    // Los números como texto también valen.
+    const asText = await call('export_pdf', { path: 'dpi.agenda.json', kind: 'calibration', imageDpi: '150', out: 'dpi-d.pdf' });
+    expect((JSON.parse(asText.text) as { imageDpi: unknown }).imageDpi).toBe(150);
     expect((await call('export_pdf', { path: 'dpi.agenda.json', kind: 'calibration', imageDpi: 200, out: 'dpi-c.pdf' })).isError).toBe(true);
   });
 

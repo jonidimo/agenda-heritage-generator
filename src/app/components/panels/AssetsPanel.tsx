@@ -41,9 +41,10 @@ export function AssetsPanel() {
       return;
     }
     let cancelled = false;
+    // Con un retraso: maquetar todas las páginas es lo más caro del panel y no hace falta rehacerlo en cada cambio seguido.
     const id = window.setTimeout(() => {
       if (!cancelled) setPlacements(imagePlacements(doc, { cover: true }));
-    }, 0);
+    }, 400);
     return () => {
       cancelled = true;
       window.clearTimeout(id);

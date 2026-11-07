@@ -280,6 +280,8 @@ export class AgendaDocument {
       } catch {
         /* se queda con la imagen original */
       }
+      // Entre una imagen y otra se cede el control: la ventana y el aviso de avance no se quedan congelados (una foto grande tarda).
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
     }
     return (id) => smaller.get(id) ?? opts.assetBytes(id);
   }

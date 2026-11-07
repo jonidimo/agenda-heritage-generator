@@ -176,14 +176,18 @@ export function pageInnerSvg(page: PageModel, opts: SvgRenderOptions): { body: s
   return { body, sink };
 }
 
-/** SVG autónomo de una página (con sus glifos incrustados): para exportar o depurar. */
-export function pageToSvg(page: PageModel, opts: SvgRenderOptions, extra: { background?: string } = {}): string {
+/**
+ * SVG autónomo de una página (con sus glifos incrustados): para exportar o depurar. Con `view` muestra solo esa
+ * zona de la página (en mm), con el mismo dibujo: sirve para mirar un detalle en grande.
+ */
+export function pageToSvg(page: PageModel, opts: SvgRenderOptions, extra: { background?: string; view?: { x: number; y: number; w: number; h: number } } = {}): string {
   const sink = new GlyphSink();
   const prefix = opts.glyphPrefix ?? 'g';
   const { body } = pageInnerSvg(page, { ...opts, glyphSink: sink });
   const defs = sink.defs(opts.fonts, prefix);
   const bg = extra.background ? `<rect width="${fmt(page.w)}" height="${fmt(page.h)}" fill="${esc(extra.background)}"/>` : '';
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${fmt(page.w)}mm" height="${fmt(page.h)}mm" viewBox="0 0 ${fmt(page.w)} ${fmt(page.h)}"><defs>${defs}</defs>${bg}${body}</svg>`;
+  const v = extra.view ?? { x: 0, y: 0, w: page.w, h: page.h };
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${fmt(v.w)}mm" height="${fmt(v.h)}mm" viewBox="${fmt(v.x)} ${fmt(v.y)} ${fmt(v.w)} ${fmt(v.h)}"><defs>${defs}</defs>${bg}${body}</svg>`;
 }
 
 /** SVG autónomo de primitivas sueltas (hojas impuestas, tapa, calibración). */

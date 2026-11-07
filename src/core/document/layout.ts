@@ -191,22 +191,22 @@ function collectTextBoxes(prims: Prim[], m: Matrix, label: string, block: string
   }
 }
 
-/** Escala lineal de una matriz (la raíz de su determinante): cuánto agranda o achica lo que transforma. */
-const matrixScale = (m: Matrix): number => Math.sqrt(Math.abs(m[0] * m[3] - m[1] * m[2]));
-
 /**
- * Las imágenes de un conjunto de primitivas con su tamaño impreso en mm (ancho y alto), ya con la escala
- * de los grupos que las contienen y la de `outer` (la matriz del bloque, si la tiene).
+ * Las imágenes de un conjunto de primitivas con su tamaño impreso en mm (ancho y alto), ya con TODAS las
+ * transformaciones de los grupos que las contienen y la de `outer` (la matriz del bloque, si la tiene). Se
+ * compone la matriz entera —no un solo número de escala— porque un dibujo estirado (2× a lo ancho y 0,5× a lo
+ * alto) tiene la misma «escala» que uno sin estirar y medirlo así lo daría por del tamaño original; el ancho y el
+ * alto impresos son el largo de lo que los ejes de la imagen se vuelven.
  */
 export function imagesIn(prims: Prim[], outer?: Matrix): Array<{ asset: string; w: number; h: number }> {
   const out: Array<{ asset: string; w: number; h: number }> = [];
-  const walk = (ps: Prim[], k: number): void => {
+  const walk = (ps: Prim[], m: Matrix): void => {
     for (const p of ps) {
-      if (p.t === 'image') out.push({ asset: p.asset, w: p.w * k, h: p.h * k });
-      else if (p.t === 'group') walk(p.children, p.m ? k * matrixScale(p.m) : k);
+      if (p.t === 'image') out.push({ asset: p.asset, w: p.w * Math.hypot(m[0], m[1]), h: p.h * Math.hypot(m[2], m[3]) });
+      else if (p.t === 'group') walk(p.children, p.m ? compose(m, p.m) : m);
     }
   };
-  walk(prims, outer ? matrixScale(outer) : 1);
+  walk(prims, outer ?? IDENTITY);
   return out;
 }
 
@@ -647,8 +647,9 @@ export function verifyPage(doc: Pick<DocContext, 'design' | 'binding' | 'fonts' 
   for (const b of page.blocks) {
     for (const im of imagesIn(b.prims, b.m)) {
       const info = doc.assets.get(im.asset);
-      if (!info?.pxWidth || im.w <= 0) continue;
-      const dpi = effectiveDpi(info.pxWidth, im.w);
+      if (!info?.pxWidth || im.w <= 0 || im.h <= 0) continue;
+      // La resolución es la del eje que menos píxeles tiene por mm (una imagen estirada solo en un sentido se pixela en ese).
+      const dpi = Math.min(effectiveDpi(info.pxWidth, im.w), info.pxHeight ? effectiveDpi(info.pxHeight, im.h) : Infinity);
       const name = names.get(im.asset) ?? im.asset;
       if (dpi < LOW_DPI) warn('lowDpi', `«${name}» se imprime a ${dpi} ppp (se recomiendan 300 o más): se verá pixelada.`, { dpi, name });
       else if (dpi > HIGH_DPI) warn('overDpi', `«${name}» se imprime a ${dpi} ppp: más de ${HIGH_DPI} no se nota y el PDF pesa más (al exportar se puede bajar la resolución).`, { dpi, name });

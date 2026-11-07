@@ -4,11 +4,11 @@
  * pasa del tope de lado, no guarda dos veces el mismo archivo, guarda los bytes en el dispositivo y agrega la
  * referencia al diseño. Lo usan el panel de imágenes, la marca de agua y el menú contextual.
  */
-import { rasterInfo } from '@core/assets/image';
-import { ASSET_MAX_BYTES, fitWithin, outputFormatFor, renameForFormat, UPLOAD_JPEG_QUALITY } from '@core/assets/prepare';
+import { jpegOrientation, rasterInfo } from '@core/assets/image';
+import { ASSET_MAX_BYTES, ASSET_MAX_SIDE_PX, fitWithin, outputFormatFor, renameForFormat, UPLOAD_JPEG_QUALITY } from '@core/assets/prepare';
 import type { Design } from '@core/design/schema';
 import { assetInfoFromBytes } from '@core/resources';
-import { sha256Hex } from '@core/util/digest';
+import { trySha256Hex } from '@core/util/digest';
 import { newId } from '@core/util/hash';
 import { hasTransparentPixels } from '@core/util/pixels';
 import { scaleDown } from '../../workers/resample';
@@ -74,7 +74,8 @@ async function hashesOf(design: Design): Promise<void> {
   for (const a of design.assets) {
     if (a.builtin || resources.assetHashes.has(a.id)) continue;
     const bytes = resources.assetBytes.get(a.id);
-    if (bytes) resources.assetHashes.set(a.id, await sha256Hex(bytes));
+    const hash = bytes ? await trySha256Hex(bytes) : null;
+    if (hash) resources.assetHashes.set(a.id, hash);
   }
 }
 
@@ -89,7 +90,19 @@ export interface UploadResult {
  * agenda, no se le agregan a esa (los bytes quedan y se limpian si nadie los usa).
  */
 /** `coalesce`: la clave de historial del cambio que va a usar la imagen (así subirla y usarla es un solo «Deshacer»). */
-export async function addAssetFiles(files: Iterable<File>, unsupported: (name: string) => string, coalesce?: string): Promise<UploadResult> {
+export function addAssetFiles(files: Iterable<File>, unsupported: (name: string) => string, coalesce?: string): Promise<UploadResult> {
+  // De a una: dos subidas del mismo archivo a la vez (el panel y el menú, o soltarlo dos veces) no se pisan al buscar repetidos.
+  const run = queue.then(() => addFiles(Array.from(files), unsupported, coalesce));
+  queue = run.then(
+    () => undefined,
+    () => undefined,
+  );
+  return run;
+}
+
+let queue: Promise<void> = Promise.resolve();
+
+async function addFiles(files: File[], unsupported: (name: string) => string, coalesce?: string): Promise<UploadResult> {
   const out: UploadResult = { ids: [], messages: [] };
   const designId = useStore.getState().design?.id;
   for (const file of files) {
@@ -102,24 +115,28 @@ export async function addAssetFiles(files: Iterable<File>, unsupported: (name: s
     let k = kindOf(file, bytes);
     // Lo que el navegador abre pero el PDF no, o un PNG/JPEG de más píxeles que el tope: se prepara antes de guardarlo.
     const info0 = k?.kind === 'raster' ? rasterInfo(bytes) : null;
-    if (!k || (info0 && fitWithin(info0.width, info0.height))) {
+    // Un JPEG con orientación EXIF se vuelve a guardar derecho: esa marca la leen unos programas y otros no (el PDF sí, el dibujo de una página en el servidor no).
+    const turned = k?.mime === 'image/jpeg' && jpegOrientation(bytes) !== 1;
+    if (!k || turned || (info0 && fitWithin(info0.width, info0.height))) {
       const prepared = await prepareRaster(file, bytes, k);
       if (prepared) {
         bytes = prepared.bytes;
         name = prepared.name;
         k = { kind: 'raster', mime: prepared.mime };
         if (prepared.resized) out.messages.push(tNow('assets.resized', { name: prepared.name, from: prepared.resized.from, to: prepared.resized.to }));
+      } else if (k && info0 && fitWithin(info0.width, info0.height)) {
+        // El navegador no pudo abrirla para achicarla: se guarda como vino, y se dice.
+        out.messages.push(tNow('assets.notResized', { name: file.name, max: ASSET_MAX_SIDE_PX }));
       }
-      // (Un PNG o JPEG enorme que el navegador no pudo abrir se guarda como vino.)
     }
     if (!k) {
       out.messages.push(unsupported(file.name));
       continue;
     }
     // El mismo archivo ya está en la agenda: se usa ese, en lugar de guardarlo otra vez.
-    const hash = await sha256Hex(bytes);
+    const hash = await trySha256Hex(bytes);
     const current = useStore.getState().design;
-    if (current && current.id === designId) {
+    if (hash && current && current.id === designId) {
       await hashesOf(current);
       const twin = current.assets.find((a) => resources.assetHashes.get(a.id) === hash);
       if (twin) {
@@ -132,9 +149,8 @@ export async function addAssetFiles(files: Iterable<File>, unsupported: (name: s
     const ref = { id, name, kind: k.kind, mime: k.mime, width: 0, height: 0, builtin: null };
     try {
       const info = await assetInfoFromBytes(ref, bytes);
-      resources.assetBytes.set(id, bytes);
-      resources.assetInfos.set(id, info);
-      resources.assetHashes.set(id, hash);
+      resources.putAsset(id, bytes, info);
+      if (hash) resources.assetHashes.set(id, hash);
       await saveAsset(id, bytes);
       if (useStore.getState().design?.id !== designId) continue;
       useStore.getState().update((d) => void d.assets.push({ ...ref, width: info.width, height: info.height, ...(info.pages ? { pages: info.pages } : {}) }), coalesce);

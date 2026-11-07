@@ -45,6 +45,17 @@ export class Resources {
   readonly assetInfos = new Map<string, AssetInfo>();
   /** SHA-256 de los bytes de cada imagen, para no guardar dos veces el mismo archivo (se calcula al subir). */
   readonly assetHashes = new Map<string, string>();
+
+  /**
+   * Guarda los bytes de una imagen. Si esa id ya tenía otros (dos agendas pueden llamar «logo» a imágenes
+   * distintas), lo que se sabía de los de antes —sus medidas y su hash— ya no vale y se descarta.
+   */
+  putAsset(id: string, bytes: Uint8Array, info?: AssetInfo): void {
+    this.assetBytes.set(id, bytes);
+    this.assetHashes.delete(id);
+    if (info) this.assetInfos.set(id, info);
+    else this.assetInfos.delete(id);
+  }
   /** Fuentes subidas por el usuario: id → bytes (para el Worker de PDF). */
   readonly userFontBytes = new Map<string, { bytes: Uint8Array; spec: FontSpec }>();
   /** Problemas al cargar (se muestran en la interfaz). */

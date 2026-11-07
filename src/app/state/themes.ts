@@ -56,8 +56,7 @@ export async function importThemeFile(): Promise<UserTheme | null> {
     if (!a.data) continue;
     const bytes = fromBase64(a.data);
     const info = await assetInfoFromBytes({ ...a, data: null }, bytes);
-    resources.assetBytes.set(a.id, bytes);
-    resources.assetInfos.set(a.id, info);
+    resources.putAsset(a.id, bytes, info);
     await saveAsset(a.id, bytes);
     assets.push({ ...a, data: null });
   }

@@ -152,7 +152,10 @@ export function App() {
   /** Muestra los problemas de carga nuevos (fuentes, feriados, imágenes). */
   const reportResourceErrors = useCallback((): void => {
     if (resources.errors.length > shownErrors) {
-      setNotice(resources.errors.slice(shownErrors).join(' · '));
+      // Si el aviso que hay trae un botón (p. ej. buscar la carpeta de las imágenes), se suma el texto y el botón queda.
+      const { notice: current, noticeAction } = useStore.getState();
+      const fresh = resources.errors.slice(shownErrors).join(' · ');
+      setNotice(noticeAction && current ? `${current} ${fresh}` : fresh, noticeAction);
       shownErrors = resources.errors.length;
     }
   }, [setNotice]);

@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { createDesign } from '../src/core/design/defaults';
 import { parseDesign, type Design } from '../src/core/design/schema';
 import { imagePlacements } from '../src/core/document/imageUse';
+import { imagesIn } from '../src/core/document/layout';
 import { formatBytes } from '../src/core/util/bytes';
 import { toBase64 } from '../src/core/resources';
 import { makePng } from './helpers/png';
@@ -55,6 +56,24 @@ describe('imagePlacements', () => {
     });
     const { doc } = await openDocument(d);
     expect(imagePlacements(doc).get('foto')?.maxWmm).toBeCloseTo(40, 1);
+  });
+});
+
+describe('imagesIn', () => {
+  const image = (w: number, h: number) => ({ t: 'image' as const, asset: 'a', x: 0, y: 0, w, h });
+  it('un dibujo estirado mide su ancho y su alto por separado (no una sola escala)', () => {
+    // 2× a lo ancho y 0,5× a lo alto: la raíz del determinante daría 1 y la imagen de 100×100 parecería de 100×100.
+    const stretched = [{ t: 'group' as const, m: [2, 0, 0, 0.5, 0, 0] as const, children: [image(100, 100)] }];
+    expect(imagesIn(stretched)).toEqual([{ asset: 'a', w: 200, h: 50 }]);
+  });
+
+  it('compone los grupos anidados y la matriz del bloque; un giro de 90° intercambia los ejes', () => {
+    const nested = [{ t: 'group' as const, m: [2, 0, 0, 1, 0, 0] as const, children: [{ t: 'group' as const, m: [1, 0, 0, 3, 0, 0] as const, children: [image(10, 10)] }] }];
+    expect(imagesIn(nested)).toEqual([{ asset: 'a', w: 20, h: 30 }]);
+    const [turned] = imagesIn([image(40, 10)], [0, 1, -1, 0, 0, 0]);
+    expect(turned).toMatchObject({ w: 40, h: 10 });
+    const [outer] = imagesIn([image(10, 10)], [3, 0, 0, 2, 5, 5]);
+    expect(outer).toMatchObject({ w: 30, h: 20 });
   });
 });
 

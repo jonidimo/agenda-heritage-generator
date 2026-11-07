@@ -2893,6 +2893,19 @@ test.describe('imágenes: al subirlas', () => {
     expect((await assets(page)).length).toBe(1);
   });
 
+  test('dos copias del mismo archivo subidas a la vez son un solo recurso', async ({ page }) => {
+    await openQuiet(page);
+    await page.getByRole('tab', { name: 'Recursos / Vectores', exact: true }).click();
+    const { readFileSync } = await import('node:fs');
+    const buffer = readFileSync('docs/images/tapa.jpg');
+    await page.locator('input[type="file"][accept*="pdf"]').setInputFiles([
+      { name: 'uno.jpg', mimeType: 'image/jpeg', buffer },
+      { name: 'dos.jpg', mimeType: 'image/jpeg', buffer },
+    ]);
+    await expect(page.getByText(/«dos.jpg» ya está en la agenda como «uno.jpg»/)).toBeVisible();
+    expect((await assets(page)).map((a) => a.name)).toEqual(['uno.jpg']);
+  });
+
   test('una imagen de más de 4000 px de lado se achica y se avisa', async ({ page }) => {
     await openQuiet(page);
     await page.getByRole('tab', { name: 'Recursos / Vectores', exact: true }).click();

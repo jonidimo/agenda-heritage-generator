@@ -10,6 +10,8 @@ export interface RasterInfo {
   height: number;
   /** ppp declarados en el archivo (si existen). */
   dpi: number | null;
+  /** Solo JPEG: cuántos componentes de color tiene (1 gris, 3 RGB, 4 CMYK). */
+  components?: number;
 }
 
 export function rasterInfo(bytes: Uint8Array): RasterInfo | null {
@@ -57,7 +59,11 @@ function jpegInfo(b: Uint8Array): RasterInfo | null {
       else if (units === 2 && xd > 0) dpi = Math.round(xd * 2.54);
     }
     if ((marker >= 0xc0 && marker <= 0xc3) || (marker >= 0xc5 && marker <= 0xc7) || (marker >= 0xc9 && marker <= 0xcb) || (marker >= 0xcd && marker <= 0xcf)) {
-      return { mime: 'image/jpeg', height: u16(b, o + 5), width: u16(b, o + 7), dpi };
+      const height = u16(b, o + 5);
+      const width = u16(b, o + 7);
+      // Con una orientación EXIF de 5 a 8 el lector la muestra de costado: el ancho y el alto que cuentan son los de la imagen girada.
+      const sideways = jpegOrientation(b) > 4;
+      return { mime: 'image/jpeg', height: sideways ? width : height, width: sideways ? height : width, dpi, components: b[o + 9] ?? 3 };
     }
     o += 2 + len;
   }
