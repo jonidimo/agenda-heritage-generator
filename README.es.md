@@ -235,8 +235,9 @@ Para usarla en el navegador, mirá [Cómo usarla](#cómo-usarla).
 - **Guardar como plantilla** conserva el diseño completo para empezar otras agendas: otro
   año, otra persona u otro idioma. Las plantillas se pueden exportar y compartir como
   archivos.
-- **Copia de seguridad de todo** guarda todas las agendas y plantillas en un solo
-  archivo; al abrirlo se restauran.
+- **Copia de seguridad de todo** guarda todas las agendas y plantillas, y las fuentes subidas, en
+  un solo archivo; al abrirlo se restauran. Una fuente de un archivo que se abre no reemplaza a la
+  que este equipo ya tenga con el mismo nombre: queda la de acá, y se avisa.
 - Las agendas también quedan en el navegador, pero solo en ese navegador y en esa
   dirección de la aplicación: los archivos son la copia segura.
 - Los paneles **Imágenes** y **Fuentes** dicen dónde se usa cada imagen (marca de agua, tapa, elementos, páginas, ornamentos) y la quitan junto con todo lo que la usaba; las fuentes muestran qué caracteres faltan y dónde se usa cada familia, y las tuyas se pueden quitar.

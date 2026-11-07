@@ -4,7 +4,7 @@
  * servidor. Exportar/importar `.agenda.json` permite llevar el trabajo a otra
  * computadora o teléfono.
  */
-import { parseDesign, UserThemeZ, type Design, type UserTheme } from '@core/design/schema';
+import { droppedUserFonts, parseDesign, UserThemeZ, type Design, type UserTheme } from '@core/design/schema';
 import { facesForDesign, fromBase64, toBase64 } from '@core/resources';
 import type { FontSpec } from '@core/text/fonts';
 import { createStore, del, get, keys, set } from 'idb-keyval';
@@ -198,12 +198,12 @@ export async function exportDesignFile(d: Design, assetBytes: ReadonlyMap<string
   return new Blob([JSON.stringify(withData, null, 2)], { type: 'application/json' });
 }
 
-export async function importDesignFile(text: string): Promise<{ design: Design; assets: Array<{ id: string; bytes: Uint8Array }>; fonts: Array<{ id: string; bytes: Uint8Array; spec: Partial<FontSpec> }> }> {
+export async function importDesignFile(text: string): ReturnType<typeof importDesignData> {
   return importDesignData(JSON.parse(text));
 }
 
 /** Como `importDesignFile`, a partir del objeto ya leído (archivos de plantilla y copias de seguridad). */
-export async function importDesignData(data: unknown): Promise<{ design: Design; assets: Array<{ id: string; bytes: Uint8Array }>; fonts: Array<{ id: string; bytes: Uint8Array; spec: Partial<FontSpec> }> }> {
+export async function importDesignData(data: unknown): Promise<{ design: Design; assets: Array<{ id: string; bytes: Uint8Array }>; fonts: Array<{ id: string; bytes: Uint8Array; spec: Partial<FontSpec> }>; droppedFonts: number }> {
   const design = parseDesign(data);
   const assetsOut: Array<{ id: string; bytes: Uint8Array }> = [];
   for (const a of design.assets) if (a.data) assetsOut.push({ id: a.id, bytes: fromBase64(a.data) });
@@ -212,5 +212,5 @@ export async function importDesignData(data: unknown): Promise<{ design: Design;
   // Los bytes quedan en IndexedDB; el diseño no repite el base64 (ni de las imágenes ni de las fuentes).
   const clean = parseDesign({ ...design, assets: design.assets.map((a) => ({ ...a, data: null })), userFonts: undefined });
   delete clean.userFonts;
-  return { design: clean, assets: assetsOut, fonts: fontsOut };
+  return { design: clean, assets: assetsOut, fonts: fontsOut, droppedFonts: droppedUserFonts(data).length };
 }

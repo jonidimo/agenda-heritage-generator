@@ -541,8 +541,12 @@ export const CoverZ = z
   })
   .prefault({});
 
-/** Hasta cuánto base64 puede tener una fuente incrustada (unos 22 MB de archivo). */
-export const USER_FONT_MAX_CHARS = 30_000_000;
+/** Hasta cuánto base64 puede tener una fuente incrustada (unos 45 MB de archivo: entran las más grandes, como Arial Unicode). */
+export const USER_FONT_MAX_CHARS = 60_000_000;
+/** Lo que pesa, como mucho, el archivo de una fuente incrustada (lo que entra en `USER_FONT_MAX_CHARS` de base64). */
+export const USER_FONT_MAX_BYTES = (USER_FONT_MAX_CHARS / 4) * 3;
+/** El nombre de familia más largo de una fuente incrustada. */
+export const USER_FONT_FAMILY_MAX = 80;
 /** Fuentes incrustadas en un archivo, como mucho. */
 export const USER_FONTS_MAX = 40;
 
@@ -554,13 +558,39 @@ export const USER_FONTS_MAX = 40;
 export const UserFontZ = z.object({
   id: z.string().min(1).max(100),
   spec: z.object({
-    family: z.string().trim().min(1).max(80),
+    family: z.string().trim().min(1).max(USER_FONT_FAMILY_MAX),
     weight: z.number().int().min(1).max(1000).default(400),
     style: z.enum(['normal', 'italic']).default('normal'),
   }),
   data: z.string().min(4).max(USER_FONT_MAX_CHARS).regex(/^[A-Za-z0-9+/]*={0,2}$/, 'base64'),
 });
 export type UserFont = z.infer<typeof UserFontZ>;
+
+/**
+ * Una lista de fuentes incrustadas que nunca hace fallar el archivo: una entrada que no es válida (o
+ * más allá de las primeras `USER_FONTS_MAX`) se deja afuera sola, y las demás se usan.
+ */
+export const UserFontsZ = z.array(z.unknown()).transform((list) => list.flatMap((item) => {
+  const r = UserFontZ.safeParse(item);
+  return r.success ? [r.data] : [];
+}).slice(0, USER_FONTS_MAX));
+
+/**
+ * Las posiciones de `userFonts` que se dejan afuera al abrir un archivo (no válidas, o de más), para
+ * avisarlo: sin esto, una fuente desaparece sin que nadie lo sepa y sus textos salen con la de reserva.
+ */
+export function droppedUserFonts(raw: unknown): Array<{ index: number; reason: 'invalid' | 'tooMany' }> {
+  const list = typeof raw === 'object' && raw !== null && !Array.isArray(raw) ? (raw as { userFonts?: unknown }).userFonts : undefined;
+  if (!Array.isArray(list)) return [];
+  const out: Array<{ index: number; reason: 'invalid' | 'tooMany' }> = [];
+  let kept = 0;
+  list.forEach((item: unknown, index) => {
+    if (!UserFontZ.safeParse(item).success) out.push({ index, reason: 'invalid' });
+    else if (kept >= USER_FONTS_MAX) out.push({ index, reason: 'tooMany' });
+    else kept++;
+  });
+  return out;
+}
 
 export const DesignZ = z.object({
   schemaVersion: z.literal(SCHEMA_VERSION).default(SCHEMA_VERSION),
@@ -591,8 +621,8 @@ export const DesignZ = z.object({
   links: LinksZ,
   assets: z.array(AssetRefZ).default([]),
   cover: CoverZ,
-  /** Fuentes que viajan con el archivo. Si alguna no es válida se descartan todas (la agenda abre igual, con las de reserva). */
-  userFonts: z.array(UserFontZ).max(USER_FONTS_MAX).optional().catch(undefined),
+  /** Fuentes que viajan con el archivo. Una que no es válida se deja afuera (la agenda abre igual; sus textos, con la de reserva). */
+  userFonts: UserFontsZ.optional().catch(undefined),
 });
 
 export type Design = z.infer<typeof DesignZ>;

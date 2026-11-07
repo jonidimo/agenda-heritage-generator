@@ -425,10 +425,10 @@ export function LibraryDialog() {
         setNotice(r.notices.length > 0 ? r.notices.join(' ') : null);
         setShow(false);
       } else if (r.kind === 'template') {
-        setInfo(t('file.templateAdded', { name: r.template.name }));
+        setInfo([t('file.templateAdded', { name: r.template.name }), ...r.notices].join(' '));
         refreshTemplates();
       } else {
-        setInfo(t('file.restored', { designs: r.designs, templates: r.templates }));
+        setInfo([t('file.restored', { designs: r.designs, templates: r.templates }), ...r.notices].join(' '));
         refresh();
         refreshTemplates();
       }

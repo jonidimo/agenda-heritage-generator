@@ -223,8 +223,9 @@ instead, see [Run it](#run-it).
   In Chrome, Edge and the desktop app, the next saves rewrite the same file.
 - **Save as template** keeps a whole design to start new planners from it, for another
   year, person or language. Templates can be exported and shared as files.
-- **Back up everything** saves all planners and templates in one file; opening it
-  restores them.
+- **Back up everything** saves all planners and templates, and the uploaded fonts, in one file;
+  opening it restores them. A font in a file you open does not replace the one this device already
+  has with the same name: the one here stays, and you are told.
 - Planners are also kept in the browser, but only in that browser and at that app
   address, so files are the safe copy.
 - The **Images** and **Fonts** panels say where each image is used (watermark, cover, elements, pages, ornaments) and remove it together with everything that used it; fonts show which characters are missing and where each family is used, and your own can be removed.

@@ -81,11 +81,21 @@ async function patchDesign(params: { patch: JsonPatchOp[]; baseRevision?: number
   const result = applyDesignPatch(current, params.patch);
   if (!result.ok) return { applied: false, reason: 'invalid', issues: result.issues };
   // Fuentes que llegaron dentro de la agenda: quedan en este equipo, como al abrir un archivo, y la
-  // agenda no guarda su base64.
+  // agenda no guarda su base64. No pisan a las que este equipo ya tenga con su nombre (otras agendas las
+  // usan): un modelo que quiere cambiar una fuente usa add_font.
   const { userFonts, ...design } = result.design;
-  for (const f of userFonts ?? []) await addUserFont(fromBase64(f.data), f.spec, f.id);
-  // Mientras se guardaban, la persona pudo cambiar la agenda: ese cambio no se pisa.
-  if (useStore.getState().revision !== s.revision) throw new LiveFailure(LIVE_CODES.conflict, 'La agenda cambió en la aplicación mientras se aplicaba el cambio: volvé a leerla.');
+  const changed = (): boolean => useStore.getState().revision !== s.revision;
+  const conflict = (): LiveFailure => new LiveFailure(LIVE_CODES.conflict, 'La agenda cambió en la aplicación mientras se aplicaba el cambio: volvé a leerla.');
+  for (const f of userFonts ?? []) {
+    // Mientras se guardaba la anterior, la persona pudo cambiar la agenda: no se sigue (ese cambio no se pisa).
+    if (changed()) throw conflict();
+    try {
+      await addUserFont(fromBase64(f.data), f.spec, { id: f.id, mode: 'keep' });
+    } catch (err) {
+      throw new LiveFailure(LIVE_CODES.invalid, `La fuente «${f.spec.family}» no se pudo leer: ${(err as Error).message}`);
+    }
+  }
+  if (changed()) throw conflict();
   // Una clave única por pedido: cada cambio de un modelo es su propio paso de «Deshacer».
   useStore.getState().update(() => design, `live:${Date.now()}:${Math.random()}`);
   const after = useStore.getState();
@@ -146,7 +156,8 @@ async function loadNew(params: { design: Record<string, unknown> }): Promise<Liv
 /** Una fuente propia que manda un modelo (por el servidor MCP): queda en este equipo, para todas las agendas. */
 async function addFont(params: { id?: string | undefined; spec: { family: string; weight: number; style: 'normal' | 'italic' }; data: string }): Promise<LiveFontAdded> {
   try {
-    return await addUserFont(fromBase64(params.data), params.spec, params.id);
+    const f = await addUserFont(fromBase64(params.data), params.spec, { id: params.id, mode: 'replace' });
+    return { id: f.id, family: f.family, weight: f.weight, style: f.style, glyphs: f.glyphs };
   } catch (err) {
     throw new LiveFailure(LIVE_CODES.invalid, `La fuente no se pudo leer: ${(err as Error).message}`);
   }

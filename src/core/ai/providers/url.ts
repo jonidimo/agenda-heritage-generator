@@ -5,12 +5,15 @@
  * por 127.0.0.1 (o [::1]); así se usa, aunque la persona haya escrito la otra.
  */
 
-const LISTEN_ALL: Readonly<Record<string, string>> = { '0.0.0.0': '127.0.0.1', '[::]': '[::1]' };
+const LISTEN_ALL: ReadonlyMap<string, string> = new Map([
+  ['0.0.0.0', '127.0.0.1'],
+  ['[::]', '[::1]'],
+]);
 
 /** ¿La dirección usa la de «todas las interfaces» (0.0.0.0 o [::])? */
 export function listensOnAll(url: string): boolean {
   try {
-    return new URL(url.trim()).hostname in LISTEN_ALL;
+    return LISTEN_ALL.has(new URL(url.trim()).hostname);
   } catch {
     return false;
   }
@@ -25,7 +28,7 @@ export function connectableBase(url: string): string {
   } catch {
     return trimmed;
   }
-  const to = LISTEN_ALL[u.hostname];
+  const to = LISTEN_ALL.get(u.hostname);
   if (!to) return trimmed;
   u.hostname = to;
   return u.toString().replace(/\/+$/, '');

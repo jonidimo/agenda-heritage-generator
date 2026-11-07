@@ -6,7 +6,7 @@
 import { Ajv2020, type ErrorObject, type ValidateFunction } from 'ajv/dist/2020.js';
 import { designJsonSchema } from '../core/design/jsonSchema';
 import { migrateDesignInput } from '../core/design/migrations';
-import { DesignZ, type Design } from '../core/design/schema';
+import { DesignZ, droppedUserFonts, USER_FONTS_MAX, type Design } from '../core/design/schema';
 import { pageFormat } from '../core/document/context';
 import { escapePointerKey } from '../core/util/jsonPatch';
 
@@ -117,7 +117,11 @@ export function checkDesignData(input: unknown): CheckResult {
       });
   const explained = new Set(fromSchema.filter((i) => i.severity === 'error').map((i) => i.path));
   const placement = parsed.success ? offPageElements(parsed.data) : [];
-  const issues: CheckIssue[] = [...blocking.filter((i) => !explained.has(i.path)).map((i) => ({ ...i, severity: 'error' as const })), ...fromSchema, ...placement];
+  // Una fuente incrustada que no vale se deja afuera sola (la agenda abre igual): se dice cuál, para que no desaparezca en silencio.
+  const fonts: CheckIssue[] = parsed.success
+    ? droppedUserFonts(raw).map((d) => ({ path: `/userFonts/${d.index}`, message: d.reason === 'invalid' ? 'la fuente no es válida y se deja afuera: sus textos salen con la de reserva' : `hay más de ${USER_FONTS_MAX} fuentes: esta se deja afuera`, severity: 'adjusted' as const }))
+    : [];
+  const issues: CheckIssue[] = [...blocking.filter((i) => !explained.has(i.path)).map((i) => ({ ...i, severity: 'error' as const })), ...fonts, ...fromSchema, ...placement];
   const seen = new Set<string>();
   const unique = issues
     .filter((i) => {

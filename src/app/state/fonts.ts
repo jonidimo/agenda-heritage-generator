@@ -2,19 +2,20 @@
  * Fuentes de la agenda en el editor: qué caracteres le faltan a cada cara que se usa, dónde se usa cada
  * familia, y subir o quitar fuentes propias (se guardan en este equipo y valen para todas las agendas).
  */
-import type { Design } from '@core/design/schema';
+import { USER_FONT_FAMILY_MAX, USER_FONT_MAX_BYTES, type Design } from '@core/design/schema';
 import { resolveThemeFor } from '@core/design/themes';
 import { holidayName } from '@core/holidays';
 import { langOf, listStringKeys, resolveStrings } from '@core/i18n';
 import { facesForDesign } from '@core/resources';
 import { detectFaceMeta, parseFontSpec, type FontSpec } from '@core/text/fonts';
 import { PROSE_ROLES, punctuationOf } from '@core/text/punctuation';
-import { hasGlyph } from '@core/text/shape';
+import { hasGlyph, isInvisible } from '@core/text/shape';
 import { openFont } from '@core/text/fontkit';
 import { newId } from '@core/util/hash';
 import { deleteUserFont, saveUserFont } from './persist';
 import { resources } from './resources';
 import { useStore } from './store';
+import { tNow } from './tNow';
 
 /** Lo que una familia no tiene de los textos de la agenda. */
 export interface FamilyCoverage {
@@ -53,7 +54,8 @@ function computeCoverage(design: Design): Map<string, FamilyCoverage> {
     ...Object.values(design.holidays.renamed),
   ];
   const text = [...listStringKeys(strings).map((r) => r.value), design.persona.name, design.persona.title, design.persona.dedication, ...design.persona.phrases, ...design.personalDates.map((p) => p.label), ...holidayNames, ...own].join(' ');
-  const cps = [...new Set(Array.from(text).map((c) => c.codePointAt(0)!))].filter((cp) => cp > 32);
+  // Los invisibles (unión de ancho cero, selectores de variante) no son caracteres que falten.
+  const cps = [...new Set(Array.from(text).filter((c) => !isInvisible(c)).map((c) => c.codePointAt(0)!))].filter((cp) => cp > 32);
   const fallbacks = resolveThemeFor(design.theme).fallbacks;
   const used = new Map(
     // Las que la agenda usa (no las de reserva: esas solo prestan caracteres).
@@ -111,30 +113,62 @@ export function fontUses(design: Design): Map<string, FontUse> {
   return out;
 }
 
+/** Qué pasó con una fuente que llegó: se agregó, ya estaba igual, o había otra con su nombre y quedó esa. */
+export type FontAddStatus = 'added' | 'same' | 'kept';
+
+export interface AddedFont extends FontSpec {
+  id: string;
+  glyphs: number;
+  status: FontAddStatus;
+}
+
+const sameBytes = (a: Uint8Array, b: Uint8Array): boolean => a.length === b.length && a.every((v, i) => v === b[i]);
+const sameSpec = (a: FontSpec, b: FontSpec): boolean => a.family === b.family && a.weight === b.weight && a.style === b.style;
+
 /**
- * Una fuente propia que llega con sus bytes (un archivo subido, el servidor MCP): se registra, se guarda
- * en este equipo y queda disponible para todas las agendas. Familia, peso y estilo salen de la fuente,
- * salvo los que se indiquen. Con un `id` que ya existía, la reemplaza.
+ * Una fuente propia que llega con sus bytes: se registra, se guarda en este equipo y queda disponible
+ * para todas las agendas. Familia, peso y estilo salen de la fuente, salvo los que se indiquen.
+ *
+ * Con `mode: 'replace'` (una subida, o un modelo que la manda a propósito) reemplaza a la que tenga su
+ * id o su misma familia, peso y estilo: si no, la vieja quedaría guardada sin usarse. Con `mode: 'keep'`
+ * (la que viene dentro de un archivo que se abre, o de un cambio de un modelo) no pisa nada: si ya está
+ * igual no hace nada, y si este equipo tiene otra con el mismo nombre se queda con la de este equipo (las
+ * demás agendas la usan) y lo dice en `status`.
  */
-export async function addUserFont(bytes: Uint8Array, meta: Partial<FontSpec> = {}, id: string = newId('font')): Promise<FontSpec & { id: string; glyphs: number }> {
+export async function addUserFont(bytes: Uint8Array, meta: Partial<FontSpec> = {}, opts: { id?: string | undefined; mode?: 'replace' | 'keep' } = {}): Promise<AddedFont> {
+  if (bytes.length > USER_FONT_MAX_BYTES) throw new Error(tNow('fonts.tooBig', { mb: Math.round(USER_FONT_MAX_BYTES / 1_000_000) }));
   const font = openFont(bytes);
   const detected = detectFaceMeta(font);
-  const spec: FontSpec = { family: meta.family ?? detected.family, weight: meta.weight ?? detected.weight, style: meta.style ?? detected.style };
-  if (resources.userFontBytes.has(id)) resources.fonts.unregisterFile(id);
-  // La misma familia, peso y estilo con otra id (subida otra vez): la nueva la reemplaza; si no, la
-  // vieja quedaría guardada sin usarse y viajaría igual en los archivos.
-  for (const [other, f] of resources.userFontBytes) {
-    if (other === id || f.spec.family !== spec.family || f.spec.weight !== spec.weight || f.spec.style !== spec.style) continue;
-    resources.fonts.unregisterFile(other);
-    resources.userFontBytes.delete(other);
-    await deleteUserFont(other);
+  // Como la valida el archivo (`UserFontZ`): si no, la fuente se usaría acá pero no viajaría al guardar.
+  const family = (meta.family ?? detected.family).trim().slice(0, USER_FONT_FAMILY_MAX).trim();
+  if (!family) throw new Error(tNow('fonts.noFamily'));
+  const spec: FontSpec = { family, weight: meta.weight ?? detected.weight, style: meta.style ?? detected.style };
+  const mode = opts.mode ?? 'replace';
+  let id = opts.id ?? newId('font');
+  if (mode === 'keep') {
+    const same = resources.userFontBytes.get(id);
+    if (same && sameBytes(same.bytes, bytes) && sameSpec(same.spec, spec)) return { id, ...same.spec, glyphs: font.numGlyphs, status: 'same' };
+    for (const [other, f] of resources.userFontBytes) {
+      if (!sameSpec(f.spec, spec)) continue;
+      return { id: other, ...f.spec, glyphs: font.numGlyphs, status: sameBytes(f.bytes, bytes) ? 'same' : 'kept' };
+    }
+    // Otra fuente (con otro nombre) tiene esta id: esta entra con una id propia.
+    if (same) id = newId('font');
+  } else {
+    if (resources.userFontBytes.has(id)) resources.fonts.unregisterFile(id);
+    for (const [other, f] of resources.userFontBytes) {
+      if (other === id || !sameSpec(f.spec, spec)) continue;
+      resources.fonts.unregisterFile(other);
+      resources.userFontBytes.delete(other);
+      await deleteUserFont(other);
+    }
   }
   resources.fonts.register(bytes, { ...spec, source: 'user', file: id });
   resources.userFontBytes.set(id, { bytes, spec });
   await saveUserFont(id, bytes, spec);
   resources.bump();
   useStore.getState().bumpResources(resources.version);
-  return { id, ...spec, glyphs: font.numGlyphs };
+  return { id, ...spec, glyphs: font.numGlyphs, status: 'added' };
 }
 
 /** Agrega fuentes subidas por quien usa la agenda; los errores de cada archivo se devuelven (los demás se cargan igual). */

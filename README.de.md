@@ -240,8 +240,9 @@ selbst baust. Wenn du sie lieber im Browser nutzen willst, siehe [Lokal ausführ
 - **Als Vorlage speichern** bewahrt ein ganzes Design auf, um neue Planer daraus zu
   beginnen, für ein anderes Jahr, eine andere Person oder Sprache. Vorlagen lassen sich als
   Dateien exportieren und teilen.
-- **Alles sichern** speichert alle Planer und Vorlagen in einer Datei; wenn du sie öffnest,
-  werden sie wiederhergestellt.
+- **Alles sichern** speichert alle Planer und Vorlagen sowie die hochgeladenen Schriften in einer
+  Datei; wenn du sie öffnest, werden sie wiederhergestellt. Eine Schrift aus einer geöffneten Datei
+  ersetzt nicht die gleichnamige, die dieses Gerät schon hat: Die hiesige bleibt, mit einem Hinweis.
 - Planer werden auch im Browser aufbewahrt, aber nur in diesem Browser und unter dieser
   App-Adresse, daher sind Dateien die sichere Kopie.
 - Die Panels **Bilder** und **Schriften** zeigen, wo jedes Bild verwendet wird (Wasserzeichen, Umschlag, Elemente, Seiten, Ornamente), und entfernen es zusammen mit allem, was es verwendet hat; bei Schriften siehst du, welche Zeichen fehlen und wo jede Familie verwendet wird, und deine eigenen lassen sich entfernen.

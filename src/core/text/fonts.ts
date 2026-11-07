@@ -74,6 +74,9 @@ export interface GlyphFallback {
   faces: readonly FontFace[];
 }
 
+/** La familia integrada de cobertura amplia: siempre cargada, es la reserva por carácter después de las del tema. */
+export const WIDE_FALLBACK = 'Manrope';
+
 /**
  * Registro de caras tipográficas cargadas. La resolución sigue el algoritmo de
  * coincidencia de pesos de CSS Fonts 4 dentro de la familia pedida.
@@ -105,6 +108,14 @@ export class FontRegistry {
       variable: Object.keys(font.variationAxes ?? {}).length > 0,
       ...(meta.file ? { file: meta.file } : {}),
     };
+    return this.add(face);
+  }
+
+  /**
+   * Suma una cara ya leída (de otro registro, o de una caché por contenido): la misma cara en dos
+   * registros comparte sus formas y contornos en las cachés, en lugar de leer la fuente otra vez.
+   */
+  add(face: FontFace): FontFace {
     const prev = this.faces.get(face.key);
     if (prev && prev.source === 'builtin' && face.source === 'user') this.shadowed.set(face.key, prev);
     this.faces.set(face.key, face);
@@ -186,15 +197,21 @@ export class FontRegistry {
 
   /**
    * Las caras de reserva por carácter para `primary`, como hace un navegador: primero las familias de
-   * reserva del tema, después las demás cargadas (en el orden en que se cargaron); de cada familia, la
-   * cara más parecida en peso y estilo. La familia de `primary` no cuenta: si a una cara le falta un
-   * signo, a sus hermanas casi siempre también.
+   * reserva del tema; después Manrope (la de cobertura amplia, cargada siempre: en la aplicación, en la
+   * línea de comandos y en el servidor MCP); después las demás integradas y al final las subidas, cada
+   * grupo por nombre. El orden no depende de cuál terminó de cargarse antes: el mismo texto toma el
+   * mismo signo de la misma fuente en pantalla y en el PDF. De cada familia, la cara más parecida en peso
+   * y estilo. La familia de `primary` no cuenta: si a una cara le falta un signo, a sus hermanas casi
+   * siempre también.
    */
   glyphFallback(primary: FontFace, fallbacks: readonly string[] = []): GlyphFallback {
     const cacheKey = `${primary.key}\u0001${fallbacks.join('\u0002')}`;
     const hit = this.fallbackCache.get(cacheKey);
     if (hit) return hit;
-    const families = [...fallbacks, ...new Set(this.list().map((f) => f.family))];
+    const builtin = new Set(this.list().flatMap((f) => (f.source === 'builtin' ? [f.family] : [])));
+    const rank = (family: string): number => (family === WIDE_FALLBACK ? 0 : builtin.has(family) ? 1 : 2);
+    const rest = [...new Set(this.list().map((f) => f.family))].sort((a, b) => rank(a) - rank(b) || (a < b ? -1 : a > b ? 1 : 0));
+    const families = [...fallbacks, ...rest];
     const seen = new Set<string>([primary.key]);
     const faces: FontFace[] = [];
     for (const family of families) {

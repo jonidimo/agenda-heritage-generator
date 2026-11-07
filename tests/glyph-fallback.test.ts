@@ -16,9 +16,9 @@ import { parseDesign, type CustomBlock } from '../src/core/design/schema';
 import type { TextPrim } from '../src/core/layout/prims';
 import { renderPdf } from '../src/core/render/pdf';
 import { primsToStandaloneSvg } from '../src/core/render/svg';
-import type { FontFace, FontRegistry, GlyphFallback } from '../src/core/text/fonts';
+import { FontRegistry, type FontFace, type GlyphFallback } from '../src/core/text/fonts';
 import { outlineRun } from '../src/core/text/outline';
-import { glyphPath, inkBounds, measureText, segmentsOf, shapeText, wrapText } from '../src/core/text/shape';
+import { glyphPath, hasGlyph, inkBounds, measureText, segmentsOf, shapeText, wrapText } from '../src/core/text/shape';
 import { ptToMm } from '../src/core/util/geometry';
 import { loadFonts } from '../src/node/env';
 import { openDocument, ROOT, sharedFonts } from './helpers/node-env';
@@ -51,6 +51,75 @@ describe('la lista de reserva', () => {
     // Se recuerda: la misma lista (y la misma clave de caché) para lo mismo.
     expect(fonts.glyphFallback(atk, ['Manrope'])).toBe(fallback);
     expect(fonts.glyphFallback(atk, ['Cormorant Garamond']).key).not.toBe(fallback.key);
+  });
+
+  it('el orden no depende de cuál fuente se cargó antes: las del tema, Manrope, las demás integradas por nombre y al final las subidas', () => {
+    const faces = fonts.list();
+    const build = (order: readonly FontFace[]): FontRegistry => {
+      const r = new FontRegistry();
+      for (const f of order) r.add(f);
+      return r;
+    };
+    const a = build(faces);
+    const b = build([...faces].reverse());
+    const user = { ...faces.find((f) => f.family === 'Manrope')!, family: 'Aaa Propia', key: 'Aaa Propia|400|normal', source: 'user' as const };
+    a.add(user);
+    b.add(user);
+    const families = (r: FontRegistry) => r.glyphFallback(r.resolve(atk)!, ['Cormorant Garamond']).faces.map((f) => f.family);
+    expect(families(a)).toEqual(families(b));
+    const list = families(a);
+    expect(list.slice(0, 2)).toEqual(['Cormorant Garamond', 'Manrope']);
+    // La subida va al final aunque su nombre sea el primero por orden alfabético.
+    expect(list.at(-1)).toBe('Aaa Propia');
+    const builtins = list.slice(2, -1);
+    expect(builtins).toEqual([...builtins].sort((x, y) => (x < y ? -1 : x > y ? 1 : 0)));
+  });
+});
+
+describe('caracteres que no se dibujan solos', () => {
+  it('un invisible que la fuente no tiene (unión de ancho cero, selector de variante) no falta, no se toma prestado y no se dibuja', () => {
+    const run = shapeText(atk, 'A\u200DB\uFE0F', 12, { fallback });
+    expect(run.missing).toEqual([]);
+    expect(run.borrowed).toBeUndefined();
+    // Se dibuja (y el PDF recibe) el texto sin ellos: las dos letras, sin cuadrados.
+    expect(segmentsOf(run).map((sg) => sg.text)).toEqual(['AB']);
+    expect(run.glyphs.map((g) => g.id)).toEqual(shapeText(atk, 'AB', 12).glyphs.map((g) => g.id));
+  });
+
+  it('después de un invisible, lo que falta sigue avisando y no se vuelve un espacio (el glifo vacío de fontkit es uno solo por fuente)', () => {
+    // Una cara recién leída: el glifo vacío todavía no se pidió para ningún carácter.
+    const fresh = new FontRegistry().register(atk.bytes, { family: 'Atkinson Prueba' });
+    shapeText(fresh, 'x\uFE0F', 12);
+    const run = shapeText(fresh, 'A ✓ B', 12);
+    expect(run.missing).toEqual([CHECK]);
+    expect(run.glyphs.map((g) => g.id)).toContain(0);
+  });
+
+  it('una letra con su marca se toma entera de la primera fuente que tenga las dos; si ninguna, de la que tiene la letra', () => {
+    const ACUTE = 0x0301;
+    expect(hasGlyph(atk, ACUTE)).toBe(true);
+    expect(hasGlyph(manrope, ACUTE)).toBe(false);
+    // «→» no está en Atkinson. Manrope (la primera de reserva) tiene la flecha pero no el acento: el
+    // grupo va entero con la siguiente que tiene los dos.
+    const run = shapeText(atk, 'A \u2192\u0301 B', 12, { fallback });
+    const segs = segmentsOf(run);
+    const whole = fallback.faces.find((f) => hasGlyph(f, ARROW) && hasGlyph(f, ACUTE))!;
+    expect(whole.family).not.toBe('Manrope');
+    expect(segs.map((sg) => sg.text)).toEqual(['A ', '\u2192\u0301', ' B']);
+    expect(segs[1]!.face).toBe(whole.key);
+    expect(run.borrowed).toEqual([ARROW, ACUTE]);
+    expect(run.missing).toEqual([]);
+    // Si solo hay reserva para la letra, el grupo va con ella y falta el acento.
+    const onlyManrope = shapeText(atk, '\u2192\u0301', 12, { fallback: { key: 'solo-manrope', faces: [manrope] } });
+    expect(segmentsOf(onlyManrope).map((sg) => sg.face)).toEqual([manrope.key]);
+    expect(onlyManrope.borrowed).toEqual([ARROW]);
+    expect(onlyManrope.missing).toEqual([ACUTE]);
+    // Una letra que la fuente del texto tiene, con un acento que no: si una de reserva tiene las dos, va entera con ella.
+    const dorsalLike = fonts.glyphFallback(manrope, ['Atkinson Hyperlegible Next']);
+    // (Sin forma compuesta: «é» se normaliza a un solo carácter, que Manrope tiene.)
+    const accented = shapeText(manrope, 'q\u0301', 12, { fallback: dorsalLike });
+    expect(segmentsOf(accented).map((sg) => [sg.text, sg.face])).toEqual([['q\u0301', atk.key]]);
+    expect(accented.missing).toEqual([]);
   });
 });
 

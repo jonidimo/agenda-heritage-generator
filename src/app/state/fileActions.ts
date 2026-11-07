@@ -25,8 +25,8 @@ function applyImported(r: Imported): void {
     st.setShowWelcome(false);
     st.setShowLibrary(false);
     st.setNotice(r.notices.length > 0 ? r.notices.join(' ') : null);
-  } else if (r.kind === 'template') st.setNotice(t('file.templateAdded', { name: r.template.name }));
-  else st.setNotice(t('file.restored', { designs: r.designs, templates: r.templates }));
+  } else if (r.kind === 'template') st.setNotice([t('file.templateAdded', { name: r.template.name }), ...r.notices].join(' '));
+  else st.setNotice([t('file.restored', { designs: r.designs, templates: r.templates }), ...r.notices].join(' '));
 }
 
 export async function openAnyFile(): Promise<void> {

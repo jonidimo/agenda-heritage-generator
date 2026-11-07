@@ -236,8 +236,9 @@ A font of your own is used like any other, by family, weight and style: in
 `/theme/tokens/fonts/<role>` or as the font of an own text element (`props.font`).
 
 **Characters a font does not have.** If the font of a text lacks a character, that character is
-drawn with the first font in `/theme/tokens/fallbacks` that has it (then with the other loaded
-fonts), as a browser does, on screen and in the PDF. Only what no font has gives a warning
+drawn with the first font in `/theme/tokens/fallbacks` that has it (then with Manrope, which is
+always there, and last with the other loaded fonts, by name), as a browser does, on screen and in
+the PDF. Only what no font has gives a warning
 (`missingGlyphs`). A numbers or jersey font often has no comma, full stop or parentheses: it looks
 best in `display` and `number` (the big year, the figures), not in roles with sentences (`title`,
 `heading`, `body`, `label`, `quote`). `add_font` and `check_design` say which punctuation it
@@ -245,11 +246,17 @@ lacks and which font it comes from.
 
 ```json
 [
-  { "op": "replace", "path": "/theme/tokens/fonts/display", "value": { "family": "My Jersey", "weight": 400, "style": "normal" } },
-  { "op": "replace", "path": "/theme/tokens/fonts/number", "value": { "family": "My Jersey", "weight": 400, "style": "normal" } },
-  { "op": "replace", "path": "/theme/tokens/fallbacks", "value": ["Manrope", "Cormorant Garamond"] }
+  { "op": "add", "path": "/theme/tokens/fonts", "value": {
+      "display": { "family": "My Jersey", "weight": 400, "style": "normal" },
+      "number": { "family": "My Jersey", "weight": 400, "style": "normal" } } },
+  { "op": "add", "path": "/theme/tokens/fallbacks", "value": ["Manrope", "Cormorant Garamond"] }
 ]
 ```
+
+Use `add`, not `replace`: in a new planner `/theme/tokens` is empty, and `replace` fails when the
+key does not exist. If `/theme/tokens/fonts` already has other roles, add each one on its own
+(`"path": "/theme/tokens/fonts/display"`) so they are not removed; `add_font` with `roles` does it
+for you.
 
 ## 8. Scope of an element: pageType and pageKey
 

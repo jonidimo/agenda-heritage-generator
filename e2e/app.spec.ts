@@ -2654,3 +2654,100 @@ test.describe('2.4: íconos y formas', () => {
     await page.screenshot({ path: 'test-results/shape-fields.png' });
   });
 });
+
+test.describe('revisión de la 2.5', () => {
+  const uploadDorsal = async (page: Page): Promise<void> => {
+    await page.keyboard.press('Control+7');
+    const [chooser] = await Promise.all([page.waitForEvent('filechooser'), page.getByRole('button', { name: 'Subir fuentes' }).click()]);
+    await chooser.setFiles('e2e/fixtures/dorsal-prueba.ttf');
+    await expect(page.getByTestId('font-list').locator('[data-font="Dorsal Prueba"]')).toBeVisible();
+  };
+
+  test('la copia de seguridad lleva todas las fuentes subidas (aunque ninguna agenda las use) y al abrirla vuelven', async ({ page }) => {
+    await openQuiet(page);
+    await uploadDorsal(page);
+    await page.evaluate(() => {
+      (globalThis as unknown as { showSaveFilePicker?: unknown }).showSaveFilePicker = undefined;
+    });
+    await page.locator('header').getByRole('button', { name: 'Archivo', exact: true }).click();
+    const [dl] = await Promise.all([page.waitForEvent('download'), page.getByRole('menuitem', { name: 'Copia de seguridad de todo' }).click()]);
+    const { readFileSync } = await import('node:fs');
+    const text = readFileSync((await dl.path())!, 'utf8');
+    const backup = JSON.parse(text) as { userFonts?: Array<{ spec: { family: string } }>; designs: Array<{ userFonts?: unknown[] }> };
+    expect(backup.userFonts?.map((f) => f.spec.family)).toEqual(['Dorsal Prueba']);
+    // Ninguna agenda la usa: no va repetida adentro de cada una.
+    expect(backup.designs.every((d) => (d.userFonts ?? []).length === 0)).toBe(true);
+    const other = await page.context().browser()!.newContext();
+    const fresh = await other.newPage();
+    await openQuiet(fresh);
+    await fresh.evaluate((t) => (globalThis as unknown as { __heritageOpen: (t: string) => Promise<unknown> }).__heritageOpen(t), text);
+    await fresh.keyboard.press('Control+7');
+    await expect(fresh.getByTestId('font-list').locator('[data-font="Dorsal Prueba"]')).toContainText('propia');
+    await other.close();
+  });
+
+  test('una fuente que llega en un archivo no pisa a la de este equipo con el mismo nombre: queda la de acá y se avisa', async ({ page }) => {
+    await openQuiet(page);
+    await uploadDorsal(page);
+    const { readFileSync } = await import('node:fs');
+    const fileWith = async (path: string): Promise<string> =>
+      page.evaluate(
+        ([data]) => {
+          const d = (globalThis as unknown as { __agenda: { getState: () => { design: Record<string, unknown> } } }).__agenda.getState().design;
+          return JSON.stringify({ ...d, id: 'otra-agenda', userFonts: [{ id: 'font-ajena', spec: { family: 'Dorsal Prueba', weight: 400, style: 'normal' }, data }] });
+        },
+        [readFileSync(path).toString('base64')],
+      );
+    const openText = (text: string) => page.evaluate((t) => (globalThis as unknown as { __heritageOpen: (t: string) => Promise<unknown> }).__heritageOpen(t), text);
+    // Otra fuente (Manrope Bold) con el nombre de la de acá.
+    await openText(await fileWith('public/fonts/manrope/Manrope-Bold.ttf'));
+    await expect(page.getByText(/ya tiene otra fuente «Dorsal Prueba»/)).toBeVisible();
+    await page.keyboard.press('Control+7');
+    // Sigue siendo la de acá: sin signos de puntuación (Manrope Bold los tiene todos).
+    await expect(page.getByTestId('font-list').locator('[data-font="Dorsal Prueba"]')).toHaveCount(1);
+    // La misma fuente (los mismos bytes) no avisa nada.
+    await openText(await fileWith('e2e/fixtures/dorsal-prueba.ttf'));
+    await expect(page.getByText(/ya tiene otra fuente/)).toHaveCount(0);
+  });
+
+  test('Esc en el número del tamaño de la interfaz descarta lo escrito aunque cierre el menú', async ({ page }) => {
+    await openQuiet(page);
+    await page.locator('header').getByRole('button', { name: 'Ajustes', exact: true }).click();
+    const field = page.getByTestId('ui-scale').getByRole('spinbutton');
+    await field.fill('140');
+    await field.press('Escape');
+    await expect(page.getByRole('menu')).toHaveCount(0);
+    await frames(page);
+    expect((await state(page)).uiScale).toBe(1);
+    expect(await page.evaluate('document.documentElement.style.zoom')).not.toBe('1.4');
+  });
+
+  test('la barra espaciadora sobre un botón del área de trabajo lo activa y no prepara el arrastre', async ({ page }) => {
+    await openQuiet(page);
+    await page.evaluate('globalThis.__agenda.getState().setView("book")');
+    const desk = page.locator('.desk');
+    const button = desk.getByRole('button').first();
+    await button.focus();
+    await page.keyboard.down('Space');
+    await expect(desk).not.toHaveAttribute('data-pan', /.*/);
+    await page.keyboard.up('Space');
+  });
+
+  test('el lápiz de un feriado está en el que va impreso ese día, aunque se haya quitado el primero', async ({ page }) => {
+    await openQuiet(page);
+    await page.evaluate(`globalThis.__agenda.getState().update((d) => { d.holidays.country = 'US'; d.holidays.subdivision = null; d.holidays.types = ['public', 'optional']; d.holidays.removed = ['2027-12-24|Navidad']; }, 'e2e-us')`);
+    await page.getByRole('tab', { name: 'Calendario', exact: true }).click();
+    const rows = page.getByTestId('holiday-list').locator('[data-holiday="2027-12-24"]');
+    await expect(rows).toHaveCount(2);
+    const navidad = rows.filter({ hasText: 'Navidad' });
+    const nochebuena = rows.filter({ hasText: 'Nochebuena' });
+    await expect(navidad.getByRole('button', { name: /^Cambiar el nombre/ })).toHaveCount(0);
+    await nochebuena.getByRole('button', { name: /^Cambiar el nombre/ }).click();
+    // Mientras se escribe, la fila muestra el campo en lugar del nombre.
+    const field = rows.getByRole('textbox', { name: /Nochebuena/ });
+    await field.fill('Víspera');
+    await field.press('Enter');
+    await expect.poll(() => page.evaluate<Record<string, string>>('globalThis.__agenda.getState().design.holidays.renamed')).toEqual({ '2027-12-24': 'Víspera' });
+    await expect(nochebuena).toContainText('Víspera');
+  });
+});

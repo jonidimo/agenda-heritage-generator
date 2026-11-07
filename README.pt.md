@@ -235,8 +235,9 @@ ficam as suas agendas e como gerar o aplicativo. Para usar no navegador, veja
 - **Salvar como modelo** guarda o design completo para começar outras agendas: outro ano,
   outra pessoa ou outro idioma. Os modelos podem ser exportados e compartilhados como
   arquivos.
-- **Backup de tudo** salva todas as agendas e modelos num só arquivo; ao abri-lo, eles são
-  restaurados.
+- **Backup de tudo** salva todas as agendas e modelos, e as fontes enviadas, num só arquivo; ao
+  abri-lo, eles são restaurados. Uma fonte de um arquivo aberto não substitui a que este
+  dispositivo já tem com o mesmo nome: fica a daqui, com um aviso.
 - As agendas também ficam no navegador, mas só nesse navegador e nesse endereço do
   aplicativo: os arquivos são a cópia segura.
 - Os painéis **Imagens** e **Fontes** dizem onde cada imagem é usada (marca d’água, capa, elementos, páginas, ornamentos) e a removem junto com tudo o que a usava; as fontes mostram que caracteres faltam e onde cada família é usada, e as suas podem ser removidas.

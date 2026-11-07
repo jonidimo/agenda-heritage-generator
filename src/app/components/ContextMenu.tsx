@@ -79,8 +79,10 @@ export function ContextMenuHost() {
         return;
       }
       if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
-      // Dentro de un control del menú (un deslizador, un número) las flechas cambian su valor.
-      if (document.activeElement instanceof Element && document.activeElement.closest('[data-menu-custom]')) return;
+      // En un campo de un control del menú (un deslizador, un número) las flechas cambian su valor; desde
+      // un botón de ese control (Restablecer) siguen recorriendo el menú.
+      const focused = document.activeElement;
+      if (focused instanceof HTMLInputElement && focused.closest('[data-menu-custom]')) return;
       const items = Array.from(ref.current?.querySelectorAll<HTMLButtonElement>('button[role="menuitem"]:not([disabled])') ?? []);
       const i = items.indexOf(document.activeElement as HTMLButtonElement);
       items[(i + (e.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length]?.focus();

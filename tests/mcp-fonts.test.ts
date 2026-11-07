@@ -96,6 +96,11 @@ describe('la guía y las recetas', () => {
     expect(fonts.text).not.toContain('## 8.');
     expect((await call('get_guide', { section: 'traducir' })).text).toContain('/locale');
     expect((await call('get_guide', { lang: 'en', section: 'scope' })).text).toContain('pageKey');
+    // Una palabra del otro idioma encuentra la misma sección en el idioma pedido.
+    const crossed = await call('get_guide', { section: 'fonts of your own' });
+    expect(crossed.isError, crossed.text).toBe(false);
+    expect(crossed.text.startsWith('## 7. Fuentes propias')).toBe(true);
+    expect((await call('get_guide', { lang: 'en', section: 'alcance' })).text.startsWith('## 8. Scope')).toBe(true);
     const none = await call('get_guide', { section: 'no existe' });
     expect(none.isError).toBe(true);
     expect(none.text).toContain('Secciones:');
@@ -122,7 +127,7 @@ describe('la guía y las recetas', () => {
   it('las instrucciones del servidor nombran get_guide y lo que más cuesta adivinar', async () => {
     const { client } = await connect();
     const instructions = client.getInstructions() ?? '';
-    for (const word of ['get_guide', 'pageKey null', 'paper: true', '/locale', 'add_font', 'fallbacks', 'fix']) expect(instructions, word).toContain(word);
+    for (const word of ['get_guide', 'agenda://guide/es', 'pageKey null', 'paper: true', '/locale', 'add_font', 'fallbacks', 'fix']) expect(instructions, word).toContain(word);
   });
 });
 
@@ -156,6 +161,22 @@ describe('add_font', () => {
     // render_page dibuja con ella.
     const page = await call('render_page', { path: 'a.agenda.json', page: 1, width: 200 });
     expect(page.isError).toBe(false);
+  });
+
+  it('la puntuación que le falta se toma de la reserva de ESA agenda (su tema), no de una fija', async () => {
+    const { call } = await connect();
+    await call('create_design', { template: 'heritage', year: 2027, out: 'c.agenda.json' });
+    // Primero Cormorant Garamond en la reserva del tema: de ahí salen la coma y los paréntesis.
+    expect((await call('update_design', { path: 'c.agenda.json', patch: [{ op: 'add', path: '/theme/tokens/fallbacks', value: ['Cormorant Garamond', 'Manrope'] }] })).isError).toBe(false);
+    const res = await call('add_font', { font: 'dorsal.ttf', path: 'c.agenda.json' });
+    expect(res.isError, res.text).toBe(false);
+    expect((res.bodies[0] as { font: { punctuation: { from: string } } }).font.punctuation.from).toBe('Cormorant Garamond');
+  });
+
+  it('no escribe una agenda que después no podría volver a abrir', async () => {
+    const { Workspace, MAX_READ_BYTES } = await import('../src/mcp/workspace');
+    const ws = new Workspace(dir);
+    await expect(ws.write('enorme.agenda.json', 'x'.repeat(MAX_READ_BYTES + 1), { extensions: ['.agenda.json'], overwrite: true })).rejects.toThrow(/más de lo que se puede volver a abrir/);
   });
 
   it('pide una sola agenda, y solo lee fuentes de la carpeta de trabajo', async () => {

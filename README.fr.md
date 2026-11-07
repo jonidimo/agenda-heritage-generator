@@ -240,8 +240,9 @@ l’application vous-même. Pour l’utiliser plutôt dans le navigateur, voir [
 - **Enregistrer comme modèle** conserve tout un design pour démarrer de nouveaux agendas à partir
   de celui-ci, pour une autre année, une autre personne ou une autre langue. Les modèles peuvent
   être exportés et partagés sous forme de fichiers.
-- **Tout sauvegarder** enregistre tous les agendas et modèles dans un seul fichier ; l’ouvrir les
-  restaure.
+- **Tout sauvegarder** enregistre tous les agendas et modèles, ainsi que les polices importées, dans
+  un seul fichier ; l’ouvrir les restaure. Une police d’un fichier ouvert ne remplace pas celle du
+  même nom que cet appareil a déjà : celle d’ici reste, avec un avis.
 - Les agendas sont aussi conservés dans le navigateur, mais seulement dans ce navigateur et à
   cette adresse de l’application : les fichiers sont donc la copie sûre.
 - Les panneaux **Images** et **Polices** indiquent où chaque image est utilisée (filigrane, couverture, éléments, pages, ornements) et la suppriment avec tout ce qui l’utilisait ; les polices montrent les caractères manquants et où chaque famille est utilisée, et les vôtres peuvent être supprimées.

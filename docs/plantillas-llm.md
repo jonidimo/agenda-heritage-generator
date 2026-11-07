@@ -238,8 +238,9 @@ Una fuente propia se usa como cualquier otra, por su familia, peso y estilo: en
 `/theme/tokens/fonts/<rol>` o en la fuente de un texto propio (`props.font`).
 
 **Caracteres que una fuente no tiene.** Si a la fuente de un texto le falta un carácter, ese
-carácter se dibuja con la primera fuente de `/theme/tokens/fallbacks` que lo tenga (después, con
-las demás cargadas), como hace un navegador, en pantalla y en el PDF. Solo avisa
+carácter se dibuja con la primera fuente de `/theme/tokens/fallbacks` que lo tenga (después con
+Manrope, que siempre está, y al final con las demás cargadas, por nombre), como hace un navegador,
+en pantalla y en el PDF. Solo avisa
 (`missingGlyphs`) lo que no tiene ninguna. Una fuente de números o de camiseta suele no tener
 coma, punto ni paréntesis: luce mejor en `display` y `number` (el año grande, las cifras), y no en
 los tipos de texto con frases (`title`, `heading`, `body`, `label`, `quote`). `add_font` y
@@ -247,11 +248,17 @@ los tipos de texto con frases (`title`, `heading`, `body`, `label`, `quote`). `a
 
 ```json
 [
-  { "op": "replace", "path": "/theme/tokens/fonts/display", "value": { "family": "Mi Dorsal", "weight": 400, "style": "normal" } },
-  { "op": "replace", "path": "/theme/tokens/fonts/number", "value": { "family": "Mi Dorsal", "weight": 400, "style": "normal" } },
-  { "op": "replace", "path": "/theme/tokens/fallbacks", "value": ["Manrope", "Cormorant Garamond"] }
+  { "op": "add", "path": "/theme/tokens/fonts", "value": {
+      "display": { "family": "Mi Dorsal", "weight": 400, "style": "normal" },
+      "number": { "family": "Mi Dorsal", "weight": 400, "style": "normal" } } },
+  { "op": "add", "path": "/theme/tokens/fallbacks", "value": ["Manrope", "Cormorant Garamond"] }
 ]
 ```
+
+Va `add` y no `replace`: en una agenda nueva `/theme/tokens` está vacío, y `replace` falla si la
+clave no existe. Si `/theme/tokens/fonts` ya tiene otros tipos de texto, agregá cada uno por
+separado (`"path": "/theme/tokens/fonts/display"`) para no borrarlos; `add_font` con `roles` lo hace
+solo.
 
 ## 8. Alcance de un elemento: pageType y pageKey
 

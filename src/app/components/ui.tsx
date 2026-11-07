@@ -139,8 +139,20 @@ export function NumberInput(props: { value: number; onChange: (v: number) => voi
     },
     [],
   );
+  // Esc descarta lo escrito aunque quien contiene al campo (un menú) se cierre con esa misma tecla antes
+  // de que el campo la vea: se escucha antes que nadie, sin frenarla.
+  const field = useRef<HTMLInputElement | null>(null);
+  useEffect(() => {
+    if (!onEnter) return;
+    const onKey = (e: globalThis.KeyboardEvent): void => {
+      if (e.key === 'Escape' && field.current !== null && document.activeElement === field.current) pending.current = null;
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, [onEnter]);
   return (
     <input
+      ref={field}
       className={clsx(inputCls, 'tabular-nums', props.className)}
       type="number"
       aria-label={props.ariaLabel}

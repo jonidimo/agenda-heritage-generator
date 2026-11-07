@@ -89,34 +89,72 @@ export function hasGlyph(face: FontFace, codePoint: number): boolean {
 }
 
 /**
- * El texto en tramos de una sola cara: cada carácter con la cara del texto si la tiene; si no, con la
- * primera de reserva que lo tenga; si ninguna, con la del texto (que dibuja su glifo vacío y avisa).
- * `null` cuando no se toma nada prestado: el texto se conforma entero, como siempre.
+ * Caracteres que no se dibujan solos: los invisibles (unión y no unión de ancho cero, selectores de
+ * variante, guion blando…) no tienen glifo propio en casi ninguna fuente, y no son «un carácter que
+ * falta»; los acentos y marcas que se combinan (`\p{M}`) van con su letra. Los dos quedan en el tramo
+ * del carácter anterior, para que la fuente que conforma la letra los conforme con ella.
+ */
+const IGNORABLE = /^\p{Default_Ignorable_Code_Point}$/u;
+const ATTACHES = /^[\p{M}\p{Default_Ignorable_Code_Point}]$/u;
+
+/** ¿Es un carácter invisible, que no hace falta que una fuente tenga? (Un punto de código.) */
+export const isInvisible = (ch: string): boolean => IGNORABLE.test(ch);
+
+const HAS_IGNORABLE = /\p{Default_Ignorable_Code_Point}/u;
+
+/**
+ * El texto sin los invisibles que la cara no tiene. fontkit cambia un invisible sin glifo por un espacio
+ * de ancho cero, pero lo hace sobre su glifo vacío, que es uno solo por fuente y recuerda el primer
+ * carácter con que se pidió: si ese fue un invisible, desde entonces todo carácter que falta se vuelve un
+ * espacio invisible (y no avisa); si no, el invisible sale como un cuadrado. Sin pasárselos, ninguna de
+ * las dos cosas pasa, ni acá ni en el PDF (que conforma el mismo texto con su propia copia de la fuente).
+ */
+function drawable(face: FontFace, text: string): string {
+  if (!HAS_IGNORABLE.test(text)) return text;
+  let out = '';
+  for (const ch of text) if (!IGNORABLE.test(ch) || hasGlyph(face, ch.codePointAt(0)!)) out += ch;
+  return out;
+}
+
+/** El texto en grupos: un carácter con las marcas e invisibles que lo siguen (al principio, solos). */
+function clusters(text: string): string[] {
+  const out: string[] = [];
+  for (const ch of text) {
+    if (out.length > 0 && ATTACHES.test(ch)) out[out.length - 1] += ch;
+    else out.push(ch);
+  }
+  return out;
+}
+
+/** ¿La cara tiene todo lo visible del grupo? */
+const covers = (face: FontFace, cluster: string): boolean => {
+  for (const ch of cluster) if (!IGNORABLE.test(ch) && !hasGlyph(face, ch.codePointAt(0)!)) return false;
+  return true;
+};
+
+/**
+ * El texto en tramos de una sola cara, por grupos (una letra con sus marcas), como un navegador: la
+ * cara del texto si tiene el grupo entero; si no, la primera de reserva que lo tenga entero; si
+ * ninguna, la primera (la del texto antes que las de reserva) que tenga la letra; y si nadie la tiene,
+ * la del texto (que dibuja su glifo vacío y avisa). `null` cuando no se toma nada prestado: el texto se
+ * conforma entero, como siempre.
  */
 function coverageSplit(primary: FontFace, text: string, faces: readonly FontFace[]): Array<{ face: FontFace; text: string }> | null {
-  let complete = true;
-  for (const ch of text) {
-    if (!hasGlyph(primary, ch.codePointAt(0)!)) {
-      complete = false;
-      break;
-    }
-  }
-  if (complete) return null;
+  if (covers(primary, text)) return null;
   const parts: Array<{ face: FontFace; text: string }> = [];
   let borrowed = false;
-  for (const ch of text) {
-    const cp = ch.codePointAt(0)!;
+  for (const cluster of clusters(text)) {
     let face = primary;
-    if (!hasGlyph(primary, cp)) {
-      const alt = faces.find((f) => hasGlyph(f, cp));
-      if (alt) {
-        face = alt;
-        borrowed = true;
-      }
+    if (!covers(primary, cluster)) {
+      const base = cluster.codePointAt(0)!;
+      const whole = faces.find((f) => covers(f, cluster));
+      const letter = hasGlyph(primary, base) ? primary : faces.find((f) => hasGlyph(f, base));
+      face = whole ?? letter ?? primary;
+      if (face !== primary) borrowed = true;
     }
     const last = parts[parts.length - 1];
-    if (last && last.face === face) last.text += ch;
-    else parts.push({ face, text: ch });
+    if (last && last.face === face) last.text += cluster;
+    else parts.push({ face, text: cluster });
   }
   return borrowed ? parts : null;
 }
@@ -124,13 +162,13 @@ function coverageSplit(primary: FontFace, text: string, faces: readonly FontFace
 /**
  * Los puntos de código del texto que la cara no tiene, sin repetir y en orden. Se miran en su tabla de
  * caracteres: fontkit reusa un mismo glifo vacío para todos los que faltan (con los puntos de código
- * del primero), así que preguntarle al glifo diría siempre el primero.
+ * del primero), así que preguntarle al glifo diría siempre el primero. Los invisibles no cuentan.
  */
 function uncovered(face: FontFace, text: string): number[] {
   const out = new Set<number>();
   for (const ch of text) {
     const cp = ch.codePointAt(0)!;
-    if (!hasGlyph(face, cp)) out.add(cp);
+    if (!IGNORABLE.test(ch) && !hasGlyph(face, cp)) out.add(cp);
   }
   return [...out];
 }
@@ -185,16 +223,20 @@ export function shapeText(face: FontFace, rawText: string, sizePt: number, opts:
   const parts = fallback && fallback.faces.length > 0 && text.length > 0 ? coverageSplit(face, text, fallback.faces) : null;
   let extra: Pick<ShapedRun, 'segments' | 'borrowed'> = {};
   if (!parts) {
-    if (text.length > 0) {
-      const run = font.layout(text, [...features]);
+    const drawn = drawable(face, text);
+    if (drawn.length > 0) {
+      const run = font.layout(drawn, [...features]);
       for (let i = 0; i < run.glyphs.length; i++) {
         const g = run.glyphs[i]!;
         const p = run.positions[i]!;
         glyphs.push({ id: g.id, x: x + p.xOffset * unit, y: -p.yOffset * unit });
         x += p.xAdvance * unit + tracking;
       }
-      if (glyphs.some((g) => g.id === 0)) missing.push(...uncovered(face, text));
+      // Por la tabla de caracteres, no por el glifo vacío (ver `drawable`).
+      if (glyphs.some((g) => g.id === 0) || drawn !== text) missing.push(...uncovered(face, text));
     }
+    // Se dibuja el texto sin los invisibles: un tramo con él, para que el PDF reciba ese texto.
+    if (drawn !== text) extra = { segments: [{ face: face.key, text: drawn, x: 0, from: 0, to: glyphs.length, unit }] };
   } else {
     const segments: ShapedSegment[] = [];
     const borrowed = new Set<number>();
@@ -202,16 +244,19 @@ export function shapeText(face: FontFace, rawText: string, sizePt: number, opts:
       const u = size / part.face.font.unitsPerEm;
       const from = glyphs.length;
       const start = x;
-      const run = part.face.font.layout(part.text, [...features]);
+      const drawn = drawable(part.face, part.text);
+      const run = part.face.font.layout(drawn, [...features]);
       for (let i = 0; i < run.glyphs.length; i++) {
         const g = run.glyphs[i]!;
         const p = run.positions[i]!;
         glyphs.push({ id: g.id, x: x + p.xOffset * u, y: -p.yOffset * u });
         x += p.xAdvance * u + tracking;
       }
-      if (part.face !== face) for (const ch of part.text) borrowed.add(ch.codePointAt(0)!);
-      else missing.push(...uncovered(face, part.text).filter((cp) => !missing.includes(cp)));
-      segments.push({ face: part.face.key, text: part.text, x: start, from, to: glyphs.length, unit: u });
+      // Lo que sí tiene la de reserva se tomó prestado; una marca que siguió a su letra y la de reserva no tiene, falta.
+      const lacks = uncovered(part.face, part.text);
+      if (part.face !== face) for (const ch of part.text) if (!IGNORABLE.test(ch) && !lacks.includes(ch.codePointAt(0)!)) borrowed.add(ch.codePointAt(0)!);
+      missing.push(...lacks.filter((cp) => !missing.includes(cp)));
+      segments.push({ face: part.face.key, text: drawn, x: start, from, to: glyphs.length, unit: u });
     }
     extra = { segments, borrowed: [...borrowed] };
   }
@@ -241,15 +286,23 @@ export function measureText(face: FontFace, text: string, sizePt: number, opts: 
   return shapeText(face, text, sizePt, opts).width;
 }
 
-const glyphPathCache = new Map<string, string>();
+/**
+ * Contornos ya calculados, por cara: cuando una cara deja de usarse (una fuente propia quitada, una
+ * agenda que el servidor MCP ya no abre) se van con ella, y cada una tiene a lo sumo un contorno por glifo.
+ */
+const glyphPathCache = new WeakMap<FontFace, Map<number, string>>();
 
 /** Contorno de un glifo como `d` de SVG en unidades de diseño (Y hacia arriba). */
 export function glyphPath(face: FontFace, glyphId: number): string {
-  const key = `${faceId(face)}#${glyphId}`;
-  const hit = glyphPathCache.get(key);
+  let paths = glyphPathCache.get(face);
+  if (!paths) {
+    paths = new Map();
+    glyphPathCache.set(face, paths);
+  }
+  const hit = paths.get(glyphId);
   if (hit !== undefined) return hit;
   const d = face.font.getGlyph(glyphId).path.toSVG();
-  glyphPathCache.set(key, d);
+  paths.set(glyphId, d);
   return d;
 }
 

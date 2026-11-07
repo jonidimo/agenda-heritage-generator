@@ -200,6 +200,14 @@ describe('fuentes propias', () => {
     expect(r).toMatchObject({ applied: true });
     expect(useStore.getState().revision).toBeGreaterThan(before);
     expect(useStore.getState().design).not.toHaveProperty('userFonts');
-    expect(resources.userFontBytes.get('font-del-modelo')?.bytes.length).toBe(DORSAL.length);
+    // Queda una sola «Dorsal Prueba» (si ya estaba igual, no se duplica), con sus bytes.
+    const dorsal = () => [...resources.userFontBytes.values()].filter((f) => f.spec.family === DORSAL_SPEC.family);
+    expect(dorsal().map((f) => f.bytes.length)).toEqual([DORSAL.length]);
+    expect(resources.fonts.resolve(DORSAL_SPEC)?.source).toBe('user');
+    // Otra fuente con el mismo nombre no pisa la de este equipo (otras agendas la usan).
+    const other = new Uint8Array(readFileSync('public/fonts/manrope/Manrope-Bold.ttf'));
+    expect(await ok('design.patch', { patch: [{ op: 'replace', path: '/name', value: 'Otra' }, { op: 'add', path: '/userFonts', value: [{ id: 'font-ajena', spec: DORSAL_SPEC, data: toBase64(other) }] }] })).toMatchObject({ applied: true });
+    expect(dorsal().map((f) => f.bytes.length)).toEqual([DORSAL.length]);
+    expect(resources.userFontBytes.has('font-ajena')).toBe(false);
   });
 });

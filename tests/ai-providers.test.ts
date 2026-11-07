@@ -159,6 +159,9 @@ describe('OpenAI y compatibles', () => {
     expect(listensOnAll('http://[::]:8080/v1')).toBe(true);
     expect(listensOnAll('http://127.0.0.1:8080')).toBe(false);
     expect(listensOnAll('no es una dirección')).toBe(false);
+    // Un nombre de máquina que coincide con una propiedad de cualquier objeto no es «todas las interfaces».
+    expect(listensOnAll('http://constructor:8080')).toBe(false);
+    expect(connectableBase('http://tostring:8080')).toBe('http://tostring:8080');
     expect(connectableBase('http://0.0.0.0:8080/v1/')).toBe('http://127.0.0.1:8080/v1');
     expect(connectableBase(' http://0.0.0.0:8080 ')).toBe('http://127.0.0.1:8080');
     expect(connectableBase('http://[::]:8080')).toBe('http://[::1]:8080');

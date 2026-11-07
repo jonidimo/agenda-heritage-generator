@@ -7,11 +7,12 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { createDesign } from '../src/core/design/defaults';
-import { parseDesign, type Design } from '../src/core/design/schema';
+import { droppedUserFonts, parseDesign, USER_FONTS_MAX, type Design } from '../src/core/design/schema';
 import { documentSummary } from '../src/core/document/summary';
 import type { TextPrim, Prim } from '../src/core/layout/prims';
 import { toBase64, withUserFonts } from '../src/core/resources';
 import { glyphPath, shapeText } from '../src/core/text/shape';
+import { checkDesignData } from '../src/node/check';
 import { openNodeDocument } from '../src/node/env';
 import { ROOT, sharedFonts } from './helpers/node-env';
 
@@ -67,9 +68,30 @@ describe('fuentes propias en el archivo', () => {
     expect(documentSummary(doc, errors).fonts.roles.find((r) => r.role === 'title')).toMatchObject({ source: 'missing', drawnWith: 'Manrope' });
   });
 
-  it('una lista mal formada se descarta entera y la agenda abre igual', () => {
-    const d = parseDesign({ ...createDesign('minimal', { year: 2027 }), userFonts: [{ id: 'x', spec: { family: '' }, data: 'no es base64!' }] });
-    expect(d.userFonts).toBeUndefined();
+  it('una fuente mal formada se deja afuera sola (las demás se usan), la revisión dice cuál, y la agenda abre igual', () => {
+    const good = { id: 'font-dorsal', spec, data: toBase64(DORSAL) };
+    const raw = { ...createDesign('minimal', { year: 2027 }), userFonts: [{ id: 'x', spec: { family: '' }, data: 'no es base64!' }, good] };
+    expect(parseDesign(raw).userFonts?.map((f) => f.id)).toEqual(['font-dorsal']);
+    expect(droppedUserFonts(raw)).toEqual([{ index: 0, reason: 'invalid' }]);
+    const check = checkDesignData(raw);
+    expect(check.design).not.toBeNull();
+    expect(check.issues).toContainEqual(expect.objectContaining({ path: '/userFonts/0', severity: 'adjusted', message: expect.stringContaining('se deja afuera') }));
+    // Una lista que no es una lista no impide abrir.
+    expect(parseDesign({ ...raw, userFonts: 'nada' }).userFonts).toBeUndefined();
+    // De más: las primeras USER_FONTS_MAX quedan.
+    const many = { ...raw, userFonts: Array.from({ length: USER_FONTS_MAX + 2 }, (_, i) => ({ ...good, id: `f${i}` })) };
+    expect(parseDesign(many).userFonts).toHaveLength(USER_FONTS_MAX);
+    expect(droppedUserFonts(many)).toEqual([USER_FONTS_MAX, USER_FONTS_MAX + 1].map((index) => ({ index, reason: 'tooMany' })));
+  });
+
+  it('abrir la misma agenda otra vez reusa sus fuentes ya leídas (el servidor MCP la abre en cada pedido)', async () => {
+    const shared = await sharedFonts();
+    const fonts = [{ id: 'font-dorsal', spec, data: toBase64(DORSAL) }];
+    const a = withUserFonts(shared, fonts).registry.resolve(spec)!;
+    const b = withUserFonts(shared, JSON.parse(JSON.stringify(fonts)) as typeof fonts).registry.resolve(spec)!;
+    expect(b).toBe(a);
+    // Otros bytes con el mismo nombre: otra cara.
+    expect(withUserFonts(shared, [{ ...fonts[0]!, data: toBase64(MANROPE_BOLD) }]).registry.resolve(spec)).not.toBe(a);
   });
 
   it('dos fuentes distintas con el mismo nombre (en dos agendas) no comparten formas ni contornos', async () => {

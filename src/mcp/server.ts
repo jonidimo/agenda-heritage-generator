@@ -11,7 +11,8 @@ import { dirname, relative, resolve, sep } from 'node:path';
 import { z } from 'zod';
 import { createDesign, TEMPLATES, type TemplateId } from '../core/design/defaults';
 import { designJsonSchema, schemaPart } from '../core/design/jsonSchema';
-import { PAPER_PRESETS, PaperPresetZ, SCREEN_PRESETS, USER_FONTS_MAX, type Design } from '../core/design/schema';
+import { PAPER_PRESETS, PaperPresetZ, SCREEN_PRESETS, USER_FONT_FAMILY_MAX, USER_FONT_MAX_BYTES, USER_FONTS_MAX, type Design, type UserFont } from '../core/design/schema';
+import { resolveThemeFor } from '../core/design/themes';
 import { changePaper } from '../core/document/paper';
 import { themeFile, themeFromDesign } from '../core/design/themeFile';
 import { EXPORT_KINDS } from '../core/document';
@@ -21,7 +22,7 @@ import { newLayoutWarnings, type LayoutFeedback } from '../core/document/feedbac
 import { fixesFor } from '../core/document/fixes';
 import { listPages, pageRenderInfo } from '../core/document/inspect';
 import { pageToSvg } from '../core/render/svg';
-import { toBase64 } from '../core/resources';
+import { toBase64, withUserFonts } from '../core/resources';
 import { detectFaceMeta, type FontRegistry } from '../core/text/fonts';
 import { openFont, type FKFont } from '../core/text/fontkit';
 import { punctuationOf } from '../core/text/punctuation';
@@ -54,15 +55,15 @@ function parseJson(body: string, path: string): unknown {
 }
 
 const INSTRUCTIONS = `Diseño de agendas imprimibles (Agenda Heritage Studio). Una agenda es un archivo JSON (.agenda.json).
-Si no conocés el formato, empezá por get_guide (la guía completa, o una sección con «section»; también está en el recurso agenda://guide).
+Si no conocés el formato, empezá por get_guide (la guía completa, o una sección con «section»; también está en los recursos agenda://guide/es, en castellano, y agenda://guide, en inglés).
 Flujo: create_design (desde una plantilla) → update_design (JSON Patch) → check_design hasta que no queden problemas → render_page para ver páginas → export_pdf / export_theme.
 Referencia: list_catalogue (secciones con sus opciones, temas, ornamentos, variables de texto) y get_schema (con «part» para leer solo una parte, p. ej. "theme.tokens.lines").
 Con la aplicación de escritorio abierta: app_status dice qué agenda tiene; con «app: true» check_design, render_page, update_design y las demás trabajan sobre ESA agenda (los cambios son un paso que la persona puede deshacer; si ella la tocó mientras tanto, volvé a leerla), app_reveal le muestra una página y app_library/app_open cambian de agenda.
 Claves: un elemento propio (customBlocks) con pageKey null vale para todas las páginas de su pageType, con una pageKey solo para esa página; paper: true le pone fondo blanco que tapa los renglones de abajo. «/locale» traduce todo lo que la agenda genera en una operación. Las fuentes por tipo de texto van en /theme/tokens/fonts/<rol>; una fuente propia se agrega con add_font (viaja en userFonts) y lo que no tiene sale de /theme/tokens/fallbacks. Las imágenes y SVG van en assets (kind raster, vector, pdf) o como "icon:<id>". Cada aviso de check_design trae «fix»: cómo corregirlo.
 Medidas en milímetros; colores #rrggbb; las rutas de archivo son relativas a la carpeta de trabajo.`;
 
-/** Una fuente que se puede incrustar: el archivo pesa como mucho esto (en base64 entra en `userFonts`). */
-const MAX_FONT_BYTES = 20 * 1024 * 1024;
+/** Una fuente que se puede incrustar: el archivo pesa como mucho esto (lo mismo que acepta la aplicación; en base64 entra en `userFonts`). */
+const MAX_FONT_BYTES = USER_FONT_MAX_BYTES;
 const FONT_EXT = ['.ttf', '.otf', '.woff', '.woff2'] as const;
 const TEXT_ROLES = ['display', 'title', 'label', 'labelStrong', 'heading', 'body', 'number', 'quote'] as const;
 
@@ -268,9 +269,16 @@ export function createServer(opts: ServerOptions): McpServer {
       const markdown = await (lang === 'en' ? opts.guides.en() : opts.guides.es());
       if (!section) return text(markdown);
       const sections = guideSections(markdown);
-      const found = sections.filter((x) => fold(x.title).includes(fold(section)));
-      if (found.length === 0) throw new Error(`No hay una sección con «${section}». Secciones: ${sections.map((x) => x.title).join(' · ')}`);
-      return text(found.map((x) => x.text).join('\n\n'));
+      const matching = (list: ReadonlyArray<{ title: string; text: string }>) => list.filter((x) => fold(x.title).includes(fold(section)));
+      const found = matching(sections);
+      if (found.length > 0) return text(found.map((x) => x.text).join('\n\n'));
+      // Las dos guías tienen las mismas secciones con el mismo número: una palabra del otro idioma
+      // («fonts» en la castellana) encuentra la sección allá y se devuelve la de este idioma.
+      const other = guideSections(await (lang === 'en' ? opts.guides.es() : opts.guides.en()));
+      const numbers = new Set(matching(other).map((x) => x.title.split('.')[0]));
+      const translated = sections.filter((x) => numbers.has(x.title.split('.')[0]));
+      if (translated.length > 0) return text(translated.map((x) => x.text).join('\n\n'));
+      throw new Error(`No hay una sección con «${section}». Secciones: ${sections.map((x) => x.title).join(' · ')}`);
     },
   );
 
@@ -421,7 +429,7 @@ export function createServer(opts: ServerOptions): McpServer {
     {
       title: 'Agregar una fuente',
       description:
-        'Agrega una fuente propia (un archivo .ttf, .otf, .woff o .woff2 de la carpeta de trabajo) a una agenda: en un archivo .agenda.json («path», viaja adentro en userFonts) o en la aplicación de escritorio abierta («app: true», queda en la aplicación para todas las agendas). Familia, peso y estilo salen de la fuente salvo que los indiques. Con «roles», la pone en esos tipos de texto (/theme/tokens/fonts/<rol>). Devuelve cuántos glifos tiene y qué puntuación le falta: una fuente sin coma ni paréntesis (de números o de camiseta) va mejor en display y number; lo que no tiene sale de /theme/tokens/fallbacks.',
+        'Agrega una fuente propia (un archivo .ttf, .otf, .woff o .woff2 de la carpeta de trabajo) a una agenda: en un archivo .agenda.json («path», viaja adentro en userFonts) o en la aplicación de escritorio abierta («app: true», queda en la aplicación para todas las agendas). Familia, peso y estilo salen de la fuente salvo que los indiques. Con «roles», la pone en esos tipos de texto (/theme/tokens/fonts/<rol>) y devuelve los avisos nuevos de ese cambio; sin «roles» no cambia ninguna agenda (la fuente queda disponible para usarla). Devuelve cuántos glifos tiene y qué puntuación le falta (y de qué fuente de reserva de esa agenda sale): una fuente sin coma ni paréntesis (de números o de camiseta) va mejor en display y number; lo que no tiene sale de /theme/tokens/fallbacks.',
       inputSchema: {
         font: z.string().describe('El archivo de la fuente, relativo a la carpeta de trabajo'),
         path: z.string().optional().describe('La agenda (.agenda.json) que se lee y donde queda incrustada la fuente, relativa a la carpeta de trabajo'),
@@ -442,21 +450,36 @@ export function createServer(opts: ServerOptions): McpServer {
         throw new Error(`«${font}» no es una fuente que se pueda leer: ${(err as Error).message}`, { cause: err });
       }
       const detected = detectFaceMeta(opened);
-      const spec = { family: family ?? detected.family, weight: weight ?? detected.weight, style: style ?? detected.style };
-      // Lo que le falta, medido con las integradas como reserva (las de la agenda pueden ser otras: check_design lo dice).
-      const probe = (await sharedFonts()).fork();
-      const face = probe.register(bytes, { ...spec, source: 'user', file: 'probe' });
-      const info = { ...spec, glyphs: opened.numGlyphs, punctuation: punctuationOf(probe, face, ['Manrope']) };
+      const spec = { family: (family ?? detected.family).trim().slice(0, USER_FONT_FAMILY_MAX).trim() || 'Sin nombre', weight: weight ?? detected.weight, style: style ?? detected.style };
+      /**
+       * Cuántos glifos tiene y qué puntuación le falta, con las fuentes de reserva de ESA agenda (su
+       * tema, y las fuentes propias que ya trae): de ahí van a salir los signos al dibujar.
+       */
+      const describeFont = async (design: unknown): Promise<{ family: string; weight: number; style: 'normal' | 'italic'; glyphs: number; punctuation: ReturnType<typeof punctuationOf> }> => {
+        const parsed = checkDesignData(design).design;
+        const own: UserFont[] = (parsed?.userFonts ?? []).filter((f) => f.spec.family !== spec.family || f.spec.weight !== spec.weight || f.spec.style !== spec.style);
+        const probe = withUserFonts(await sharedFonts(), own).registry.fork();
+        const face = probe.register(bytes, { ...spec, source: 'user', file: 'probe' });
+        const fallbacks = parsed ? resolveThemeFor(parsed.theme).fallbacks : ['Manrope'];
+        return { ...spec, glyphs: opened.numGlyphs, punctuation: punctuationOf(probe, face, fallbacks) };
+      };
       const roleList = roles ?? [];
       if (app === true) {
         const added = await appLink.request<LiveFontAdded>('fonts.add', { spec, data: toBase64(bytes) });
-        if (roleList.length === 0) return text({ added: true, font: { ...info, id: added.id } });
-        const got = await appLink.request<LiveDesign>('design.get', {});
+        if (roleList.length === 0) {
+          // Sin roles no cambia la agenda abierta (la fuente queda para elegirla), así que no hay avisos
+          // nuevos; si no hay una abierta, la puntuación se mide con la reserva de siempre.
+          const open = await appLink.request<LiveDesign>('design.get', { fonts: true }).catch(() => null);
+          return text({ added: true, font: { ...(await describeFont(open?.design)), id: added.id }, roles: [] });
+        }
+        const got = await appLink.request<LiveDesign>('design.get', { fonts: true });
+        const info = await describeFont(got.design);
         const result = await updateInApp(fontRoleOps(got.design, roleList, spec));
         return { ...result, content: [{ type: 'text', text: JSON.stringify({ font: { ...info, id: added.id }, roles: roleList }, null, 2) }, ...result.content] };
       }
       const { full, text: body } = await ws.read(path!, DESIGN_EXT);
       const raw = parseJson(body, path!);
+      const info = await describeFont(raw);
       const list = (raw as { userFonts?: unknown } | null)?.userFonts;
       const fonts = Array.isArray(list) ? list : [];
       // La misma familia, peso y estilo se reemplaza (con su id): no quedan dos fuentes iguales.

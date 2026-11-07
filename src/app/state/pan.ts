@@ -31,12 +31,18 @@ export function startsPan(e: { button: number; pointerType: string }, spaceHeld:
 
 /**
  * La barra espaciadora prepara el arrastre solo con el foco en el área de trabajo o en ninguna parte:
- * en un campo escribe un espacio, y en un botón o una casilla de un panel los activa, como siempre.
+ * en un campo escribe un espacio, y en un botón o una casilla (de un panel o del área de trabajo) los
+ * activa, como siempre.
  */
-function spaceArms(target: EventTarget | null, desk: HTMLElement): boolean {
+const CONTROLS = 'button, a[href], select, summary, [role="button"], [role="menuitem"], [role="slider"], [role="checkbox"], [role="tab"]';
+
+export function spaceArms(target: EventTarget | null, desk: HTMLElement): boolean {
   if (isTyping(target)) return false;
   if (!(target instanceof Node)) return true;
-  return target === document.body || target === document.documentElement || desk.contains(target);
+  if (target === document.body || target === document.documentElement) return true;
+  // Un botón dentro del área de trabajo (anterior y siguiente, los de una página) se activa con la barra, como siempre.
+  if (target instanceof Element && target.closest(CONTROLS)) return false;
+  return desk.contains(target);
 }
 
 /** Instala el arrastre en el área de trabajo (el elemento que se desplaza); devuelve cómo quitarlo. */

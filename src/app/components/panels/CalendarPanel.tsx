@@ -44,10 +44,16 @@ export function CalendarPanel() {
   }, [c.year, c.startMonth, c.monthCount]);
   const list = useMemo(() => {
     if (!data) return [];
-    const all = computeHolidays(data, { subdivision: design.holidays.subdivision, types: HOLIDAY_TYPES, lang, from: span.from, to: span.to });
-    // De un mismo día se muestra primero el que va en la agenda (el que un nombre propio reemplaza).
-    return [...all.entries()].sort(([a], [b]) => (a < b ? -1 : 1)).flatMap(([, hs]) => hs.map((h, i) => ({ ...h, first: i === 0 })));
-  }, [data, span, design.holidays.subdivision, lang]);
+    const q = { subdivision: design.holidays.subdivision, lang, from: span.from, to: span.to };
+    const all = computeHolidays(data, { ...q, types: HOLIDAY_TYPES });
+    // El que va impreso cada día (y al que un nombre propio reemplaza) es el primero de los que quedan con
+    // los tipos elegidos y lo quitado o agregado a mano: puede no ser el primero de la lista completa.
+    const printed = computeHolidays(data, { ...q, types: design.holidays.types as HolidayType[], edits: { added: design.holidays.added, removed: design.holidays.removed, renamed: {} } });
+    return [...all.entries()].sort(([a], [b]) => (a < b ? -1 : 1)).flatMap(([date, hs]) => {
+      const shown = printed.get(date)?.[0];
+      return hs.map((h) => ({ ...h, first: shown !== undefined && !shown.custom && shown.name === h.name }));
+    });
+  }, [data, span, design.holidays.subdivision, design.holidays.types, design.holidays.added, design.holidays.removed, lang]);
   // El feriado cuyo nombre se está cambiando (su fecha) y lo escrito.
   const [renaming, setRenaming] = useState<{ date: string; text: string } | null>(null);
   // Esc cierra el campo sin guardar: el `blur` que pueda llegar al cerrarse no debe guardar.
@@ -202,6 +208,10 @@ export function CalendarPanel() {
                           e.stopPropagation();
                           cancelled.current = true;
                           setRenaming(null);
+                          // Solo para el `blur` de este cierre: si no llega, no debe tragarse el próximo cambio de nombre.
+                          setTimeout(() => {
+                            cancelled.current = false;
+                          }, 0);
                         }
                       }}
                     />

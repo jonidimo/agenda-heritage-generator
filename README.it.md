@@ -233,8 +233,9 @@ Per usarla nel browser, vedi [Come usarla](#come-usarla).
 - **Salva come modello** conserva tutto il progetto per iniziare altre agende: un altro
   anno, un’altra persona o un’altra lingua. I modelli si possono esportare e condividere
   come file.
-- **Backup di tutto** salva tutte le agende e i modelli in un solo file; aprendolo vengono
-  ripristinati.
+- **Backup di tutto** salva tutte le agende e i modelli, e i font caricati, in un solo file;
+  aprendolo vengono ripristinati. Un font di un file che si apre non sostituisce quello che questo
+  dispositivo ha già con lo stesso nome: resta quello di qui, con un avviso.
 - Le agende restano anche nel browser, ma solo in quel browser e a quell’indirizzo
   dell’app: i file sono la copia sicura.
 - I pannelli **Immagini** e **Caratteri** dicono dove si usa ogni immagine (filigrana, copertina, elementi, pagine, ornamenti) e la rimuovono insieme a tutto ciò che la usava; i caratteri mostrano quali caratteri mancano e dove si usa ogni famiglia, e i tuoi si possono rimuovere.

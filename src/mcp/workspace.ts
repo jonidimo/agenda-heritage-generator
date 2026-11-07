@@ -7,8 +7,12 @@ import { lstat, mkdir, readFile, realpath, writeFile } from 'node:fs/promises';
 import { realpathSync } from 'node:fs';
 import { dirname, relative, resolve, sep } from 'node:path';
 
-/** Tope de lectura: un `.agenda.json` con imágenes incrustadas puede pesar varios MB. */
-const MAX_READ_BYTES = 64 * 1024 * 1024;
+/**
+ * Tope de lectura: un `.agenda.json` con imágenes y fuentes incrustadas puede pesar decenas de MB (una
+ * fuente grande, como Arial Unicode, son unos 30 MB en base64). Lo que este servidor escribe como texto
+ * no puede pasarlo: si no, no lo podría volver a abrir.
+ */
+export const MAX_READ_BYTES = 128 * 1024 * 1024;
 
 export class Workspace {
   readonly root: string;
@@ -67,6 +71,9 @@ export class Workspace {
     const full = this.lexical(path);
     const lower = full.toLowerCase();
     if (!opts.extensions.some((e) => lower.endsWith(e))) throw new Error(`El archivo tiene que terminar en ${opts.extensions.join(' o ')}.`);
+    if (typeof data === 'string' && Buffer.byteLength(data, 'utf8') > MAX_READ_BYTES) {
+      throw new Error(`«${path}» quedaría de ${Math.round(Buffer.byteLength(data, 'utf8') / 1024 / 1024)} MB, más de lo que se puede volver a abrir (${MAX_READ_BYTES / 1024 / 1024} MB): sacá imágenes o fuentes incrustadas que no uses, o usá archivos más livianos.`);
+    }
     // Antes de crear carpetas: la más cercana que ya existe tiene que estar adentro (un enlace
     // simbólico en el camino no puede hacer crear carpetas en otro lado).
     let existing = dirname(full);

@@ -10,7 +10,8 @@ import { effectiveAssets } from './assets/icons';
 import { themeFaces, resolveThemeFor } from './design/themes';
 import type { HolidayCountryData, HolidayIndex } from './holidays';
 import type { AssetInfo } from './layout/context';
-import { faceKey, FontRegistry, parseFontSpec, type FontSpec } from './text/fonts';
+import { faceKey, FontRegistry, parseFontSpec, type FontFace, type FontSpec } from './text/fonts';
+import { fnv1a } from './util/hash';
 
 export interface ResourceIO {
   read(path: string): Promise<Uint8Array>;
@@ -86,6 +87,14 @@ export function facesForDesign(design: Design, opts: { fallbacks?: boolean } = {
 }
 
 /**
+ * Las fuentes propias ya leídas, por contenido: el servidor MCP y la línea de comandos abren la misma
+ * agenda una y otra vez, y cada vez serían caras nuevas (otra lectura de la fuente, y cachés de formas
+ * y contornos que no se vuelven a usar). Pocas: pueden pesar decenas de MB cada una.
+ */
+const userFaceCache = new Map<string, FontFace>();
+const USER_FACE_CACHE = 12;
+
+/**
  * El registro con las fuentes que viajan en el archivo de la agenda (`userFonts`): una copia de
  * `registry` con esas caras encima, o el mismo si no trae ninguna. Una fuente que no se puede leer no
  * impide las demás: vuelve en `errors`, y los textos que la usaban salen con la de reserva.
@@ -96,7 +105,14 @@ export function withUserFonts(registry: FontRegistry, fonts: readonly UserFont[]
   const errors: string[] = [];
   for (const f of fonts) {
     try {
-      out.register(fromBase64(f.data), { ...f.spec, source: 'user', file: f.id });
+      const key = `${f.id}\u0001${f.spec.family}\u0001${f.spec.weight}\u0001${f.spec.style}\u0001${f.data.length}\u0001${fnv1a(f.data)}`;
+      let face = userFaceCache.get(key);
+      if (face) userFaceCache.delete(key);
+      else face = new FontRegistry().register(fromBase64(f.data), { ...f.spec, source: 'user', file: f.id });
+      // La más reciente al final: se descartan primero las que hace más que no se usan.
+      userFaceCache.set(key, face);
+      while (userFaceCache.size > USER_FACE_CACHE) userFaceCache.delete(userFaceCache.keys().next().value!);
+      out.add(face);
     } catch (err) {
       errors.push(`La fuente «${f.spec.family}» (${f.id}) no se pudo leer: ${err instanceof Error ? err.message : String(err)}`);
     }

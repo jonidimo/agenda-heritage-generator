@@ -4,21 +4,30 @@
  */
 import { BLEND_NAMES } from '@core/design/blend';
 import type { Prim } from '@core/layout/prims';
-import type { FontRegistry } from '@core/text/fonts';
+import type { FontFace, FontRegistry } from '@core/text/fonts';
 import { glyphPath, segmentsOf } from '@core/text/shape';
 import { assetHref } from '../state/assetUrls';
 
-const pathCache = new Map<string, Path2D>();
+/**
+ * Trazos por cara (no por su nombre): dos fuentes distintas con la misma familia, peso y estilo (la de
+ * este equipo y la de otra agenda, o una subida que reemplaza a otra) no comparten trazos.
+ */
+const pathCache = new WeakMap<FontFace, Map<number, Path2D>>();
 const imgCache = new Map<string, HTMLImageElement>();
 
 function glyph(fonts: FontRegistry, face: string, gid: number): Path2D | null {
-  const k = `${face}#${gid}`;
-  let p = pathCache.get(k);
-  if (p) return p;
   const f = fonts.get(face);
   if (!f) return null;
-  p = new Path2D(glyphPath(f, gid));
-  pathCache.set(k, p);
+  let paths = pathCache.get(f);
+  if (!paths) {
+    paths = new Map();
+    pathCache.set(f, paths);
+  }
+  let p = paths.get(gid);
+  if (!p) {
+    p = new Path2D(glyphPath(f, gid));
+    paths.set(gid, p);
+  }
   return p;
 }
 
