@@ -82,6 +82,8 @@ export class ToolSettingsStore {
     this.volatile = new Map();
     /** @type {Promise<void> | null} */
     this.saving = null;
+    /** @type {Promise<unknown> | null} */
+    this.queue = null;
   }
 
   /** @returns {Promise<ToolsFile>} */
@@ -106,6 +108,17 @@ export class ToolSettingsStore {
     }
     this.cache = data;
     return data;
+  }
+
+  /**
+   * Runs a read-modify-write one at a time: two changes at once (two agendas getting their folders, a key saved
+   * while a tool call remembers a folder) must not each start from the same old copy and lose the other's change.
+   * @template T @param {() => Promise<T>} fn @returns {Promise<T>}
+   */
+  exclusive(fn) {
+    const run = (this.queue ??= Promise.resolve()).catch(() => undefined).then(fn);
+    this.queue = run;
+    return run;
   }
 
   /** @param {ToolsFile} data */
@@ -149,25 +162,29 @@ export class ToolSettingsStore {
 
   /** @param {{ enabled?: boolean, trustedHosts?: string, imageHosts?: string }} change */
   async update(change) {
-    const data = await this.load();
-    const next = { ...data };
-    if (typeof change.enabled === 'boolean') next.enabled = change.enabled;
-    if (change.trustedHosts !== undefined) next.trustedHosts = change.trustedHosts;
-    if (change.imageHosts !== undefined) next.imageHosts = change.imageHosts;
-    await this.save(next);
+    return this.exclusive(async () => {
+      const data = await this.load();
+      const next = { ...data };
+      if (typeof change.enabled === 'boolean') next.enabled = change.enabled;
+      if (change.trustedHosts !== undefined) next.trustedHosts = change.trustedHosts;
+      if (change.imageHosts !== undefined) next.imageHosts = change.imageHosts;
+      await this.save(next);
+    });
   }
 
   /** @param {ServiceKey} name @param {string | null} value A value already checked with `isSecret` (or `null` to remove it). */
   async setKey(name, value) {
-    const data = await this.load();
-    const next = { ...data, keys: { ...data.keys } };
-    this.volatile.delete(name);
-    delete next.keys[name];
-    if (value !== null && value !== '') {
-      if (this.safeStorage.isEncryptionAvailable()) next.keys[name] = this.safeStorage.encryptString(value).toString('base64');
-      else this.volatile.set(name, value);
-    }
-    await this.save(next);
+    return this.exclusive(async () => {
+      const data = await this.load();
+      const next = { ...data, keys: { ...data.keys } };
+      this.volatile.delete(name);
+      delete next.keys[name];
+      if (value !== null && value !== '') {
+        if (this.safeStorage.isEncryptionAvailable()) next.keys[name] = this.safeStorage.encryptString(value).toString('base64');
+        else this.volatile.set(name, value);
+      }
+      await this.save(next);
+    });
   }
 
   /** @param {ServiceKey} name @returns {Promise<string | null>} */
@@ -208,21 +225,25 @@ export class ToolSettingsStore {
       const info = await this.fs.stat(dir).catch(() => null);
       if (!info?.isDirectory()) throw new Error('missing');
     }
-    await this.save({ ...(await this.load()), root: dir });
+    await this.exclusive(async () => this.save({ ...(await this.load()), root: dir }));
   }
 
   /** @param {string} dir An existing absolute folder. */
   async addFolder(dir) {
-    const data = await this.load();
-    if (data.folders.includes(dir)) return;
-    if (data.folders.length >= MAX_FOLDERS) throw new Error('too-many');
-    await this.save({ ...data, folders: [...data.folders, dir] });
+    return this.exclusive(async () => {
+      const data = await this.load();
+      if (data.folders.includes(dir)) return;
+      if (data.folders.length >= MAX_FOLDERS) throw new Error('too-many');
+      await this.save({ ...data, folders: [...data.folders, dir] });
+    });
   }
 
   /** @param {string} dir */
   async removeFolder(dir) {
-    const data = await this.load();
-    await this.save({ ...data, folders: data.folders.filter((f) => f !== dir) });
+    return this.exclusive(async () => {
+      const data = await this.load();
+      await this.save({ ...data, folders: data.folders.filter((f) => f !== dir) });
+    });
   }
 
   /**
@@ -239,7 +260,10 @@ export class ToolSettingsStore {
     const known = Object.hasOwn(data.projects, id) && typeof data.projects[id] === 'string' ? data.projects[id] : undefined;
     const isDir = async (/** @type {string} */ p) => (await fs.stat(p).catch(() => null))?.isDirectory() === true;
     const remember = async (/** @type {string} */ dir) => {
-      if (data.projects[id] !== dir) await this.save({ ...(await this.load()), projects: Object.assign(Object.create(null), (await this.load()).projects, { [id]: dir }) });
+      await this.exclusive(async () => {
+        const now = await this.load();
+        if (now.projects[id] !== dir) await this.save({ ...now, projects: Object.assign(Object.create(null), now.projects, { [id]: dir }) });
+      });
       await fs.writeFile(path.join(dir, PROJECT_MARKER), `${JSON.stringify({ v: 1, id })}\n`, { mode: 0o644 }).catch(() => undefined);
       return dir;
     };
