@@ -55,16 +55,64 @@ export function hostAllowed(host: string, allow: readonly string[]): boolean {
 }
 
 /**
+ * Un dominio (o dirección) que la persona declara de confianza con `AGENDA_TRUSTED_HOSTS`: se visita aunque sea de su
+ * red local o privada, por `http` o `https`, en el puerto que indique (80 y 443 por defecto). Es una decisión y una
+ * responsabilidad suya: ver el aviso de la guía. Todo lo demás sigue con las protecciones de siempre.
+ */
+export interface TrustedHost {
+  /** Nombre exacto, `*.sufijo` o una dirección IPv4. */
+  host: string;
+  wildcard: boolean;
+  /** Puerto permitido (null: 80 y 443). */
+  port: number | null;
+}
+
+/** Sufijos de una sola etiqueta que se admiten con comodín: los que se usan en redes propias. */
+const LOCAL_SUFFIXES = new Set(['lan', 'local', 'home', 'internal', 'localdomain', 'intranet', 'corp']);
+
+/** Lee la lista (separada por comas): `nas.lan`, `*.casa.lan`, `192.168.1.20:8080`, `fotos.ejemplo.org`. Lo que no es un nombre válido se descarta (nunca `*` solo ni `*.com`). */
+export function parseTrustedHosts(value: string | undefined): TrustedHost[] {
+  const out: TrustedHost[] = [];
+  for (const raw of (value ?? '').split(',')) {
+    const m = /^(\*\.)?([a-z0-9](?:[a-z0-9.-]{0,251}[a-z0-9])?)(?::(\d{1,5}))?$/.exec(raw.trim().toLowerCase());
+    if (!m) continue;
+    const wildcard = m[1] !== undefined;
+    const host = m[2]!;
+    const port = m[3] ? Number(m[3]) : null;
+    if (port !== null && (port < 1 || port > 65535)) continue;
+    if (isIP(host) === 6) continue;
+    if (wildcard) {
+      const labels = host.split('.');
+      if (isIP(host) !== 0 || (labels.length < 2 && !LOCAL_SUFFIXES.has(host))) continue;
+    }
+    if (!wildcard && isIP(host) === 0 && !/^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)*[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(host)) continue;
+    out.push({ host, wildcard, port });
+  }
+  return out;
+}
+
+/** ¿Esta dirección es de un dominio declarado de confianza (y en un puerto que se admite)? */
+export function isTrusted(url: URL, trusted: readonly TrustedHost[]): boolean {
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') return false;
+  if (url.username || url.password) return false;
+  const host = url.hostname.replace(/^\[|\]$/g, '').toLowerCase().replace(/\.$/, '');
+  const port = url.port !== '' ? Number(url.port) : url.protocol === 'https:' ? 443 : 80;
+  return trusted.some((t) => (t.wildcard ? host.endsWith(`.${t.host}`) : host === t.host) && (t.port === null ? port === 80 || port === 443 : port === t.port));
+}
+
+/**
  * Valida una dirección antes de pedirla: `https`, sin usuario ni contraseña, puerto 443, un nombre de
  * dominio (no una dirección IP) de la lista. Devuelve la dirección ya normalizada.
  */
-export function checkUrl(raw: string, allow: readonly string[]): URL {
+export function checkUrl(raw: string, allow: readonly string[], trusted: readonly TrustedHost[] = []): URL {
   let url: URL;
   try {
     url = new URL(raw);
   } catch {
     throw new WebError('bad-url', 'La dirección no es válida.');
   }
+  // Un dominio que la persona declaró de confianza (su red, sus sitios): se visita tal como lo declaró.
+  if (trusted.length > 0 && isTrusted(url, trusted)) return url;
   if (url.protocol !== 'https:') throw new WebError('blocked-host', `Solo se visitan direcciones https (no «${url.protocol.replace(':', '')}»).`);
   if (url.username || url.password) throw new WebError('blocked-host', 'No se admiten direcciones con usuario o contraseña.');
   if (url.port !== '' && url.port !== '443') throw new WebError('blocked-host', 'Solo se admite el puerto estándar (443).');

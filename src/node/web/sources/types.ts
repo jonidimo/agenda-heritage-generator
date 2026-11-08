@@ -3,13 +3,14 @@
  * cada imagen y qué sabe hacer cada servicio.
  */
 import type { Cache } from '../cache';
+import type { TrustedHost } from '../guard';
 import type { HttpClient } from '../http';
 
 export type ProviderId = 'openverse' | 'pixabay' | 'unsplash';
 export const PROVIDER_IDS: readonly ProviderId[] = ['openverse', 'pixabay', 'unsplash'];
 
 /** Clase de licencia, para filtrar y para decidir qué crédito pide. */
-export type LicenseKind = 'cc0' | 'pdm' | 'by' | 'by-sa' | 'by-nc' | 'cc-other' | 'unsplash' | 'pixabay';
+export type LicenseKind = 'cc0' | 'pdm' | 'by' | 'by-sa' | 'by-nc' | 'cc-other' | 'unsplash' | 'pixabay' | 'unknown';
 
 /** Licencias libres de verdad: dominio público y CC BY (CC BY-SA obliga a compartir igual lo derivado; las NC no valen para vender). */
 export const FREE_LICENSES: readonly LicenseKind[] = ['cc0', 'pdm', 'by'];
@@ -34,7 +35,8 @@ export interface SearchRequest {
 export interface ImageHit {
   /** `servicio:identificador`. */
   id: string;
-  provider: ProviderId;
+  /** El servicio, `web` (un enlace directo) o `local` (un archivo de la carpeta de trabajo). */
+  provider: ProviderId | 'web' | 'local';
   title: string;
   creator: string;
   creatorUrl: string | null;
@@ -66,6 +68,8 @@ export interface SourceContext {
   cache: Cache;
   /** Dominios de donde se bajan archivos de imagen (los fijos más los que agregó la persona). */
   fileHosts: readonly string[];
+  /** Dominios que la persona declaró de confianza (`AGENDA_TRUSTED_HOSTS`). */
+  trusted: readonly TrustedHost[];
 }
 
 export interface ImageSource {

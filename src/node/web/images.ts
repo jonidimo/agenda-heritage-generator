@@ -12,7 +12,7 @@ import { jpegOrientation } from '../../core/assets/image';
 import { orientRgba } from '../../core/assets/crop';
 import { sniffImage } from './prepareImage';
 import type { Cache } from './cache';
-import { extraHosts, IMAGE_FILE_HOSTS, WebError } from './guard';
+import { extraHosts, IMAGE_FILE_HOSTS, parseTrustedHosts, WebError } from './guard';
 import type { HttpClient } from './http';
 import { openverse } from './sources/openverse';
 import { pixabay } from './sources/pixabay';
@@ -23,7 +23,7 @@ export const SOURCES: Readonly<Record<ProviderId, ImageSource>> = { openverse, p
 
 /** El contexto de los servicios: el cliente web, las variables de entorno, la caché y los dominios de archivos. */
 export function sourceContext(deps: { http: HttpClient; env: Readonly<Record<string, string | undefined>>; cache: Cache }): SourceContext {
-  return { ...deps, fileHosts: [...IMAGE_FILE_HOSTS, ...extraHosts(deps.env.AGENDA_IMAGE_HOSTS)] };
+  return { ...deps, fileHosts: [...IMAGE_FILE_HOSTS, ...extraHosts(deps.env.AGENDA_IMAGE_HOSTS)], trusted: parseTrustedHosts(deps.env.AGENDA_TRUSTED_HOSTS) };
 }
 
 export interface SearchReport {
@@ -98,7 +98,7 @@ export interface Downloaded {
 
 /** Baja el archivo de la imagen (solo de los dominios permitidos); un SVG se limpia. */
 export async function downloadImage(hit: ImageHit, ctx: SourceContext): Promise<Downloaded> {
-  const res = await ctx.http.get(hit.fileUrl, { allow: ctx.fileHosts, headers: { accept: 'image/png,image/jpeg,image/svg+xml,image/*;q=0.5' }, maxBytes: IMAGE_DOWNLOAD_MAX_BYTES, timeoutMs: 60_000, accept: (t) => t.startsWith('image/') || t === 'application/octet-stream' || t === '' });
+  const res = await ctx.http.get(hit.fileUrl, { allow: ctx.fileHosts, trusted: ctx.trusted, headers: { accept: 'image/png,image/jpeg,image/svg+xml,image/*;q=0.5' }, maxBytes: IMAGE_DOWNLOAD_MAX_BYTES, timeoutMs: 60_000, accept: (t) => t.startsWith('image/') || t === 'application/octet-stream' || t === '' });
   const kind = sniffImage(res.body);
   if (!kind) throw new WebError('bad-type', 'El archivo no es una imagen PNG, JPEG o SVG (los WebP, GIF y AVIF no se importan).');
   if (kind === 'svg') {
@@ -114,7 +114,7 @@ export async function downloadImage(hit: ImageHit, ctx: SourceContext): Promise<
 /** Avisa al servicio de la descarga si lo pide (Unsplash). Un fallo no importa. */
 export async function notifyDownload(hit: ImageHit, ctx: SourceContext): Promise<void> {
   try {
-    await SOURCES[hit.provider].downloaded?.(hit, ctx);
+    if (hit.provider !== 'web' && hit.provider !== 'local') await SOURCES[hit.provider].downloaded?.(hit, ctx);
   } catch {
     // es solo un contador del servicio
   }
@@ -163,7 +163,7 @@ export function shrinkToJpeg(bytes: Uint8Array, maxWidth: number, quality = 72):
 export async function fetchThumbnail(hit: ImageHit, ctx: SourceContext): Promise<{ data: Uint8Array; mime: string } | null> {
   if (!hit.thumbUrl) return null;
   try {
-    const res = await ctx.http.get(hit.thumbUrl, { allow: ctx.fileHosts, headers: { accept: 'image/jpeg,image/png,image/*;q=0.5' }, maxBytes: 3 * 1024 * 1024, timeoutMs: 15_000, accept: (t) => t.startsWith('image/') });
+    const res = await ctx.http.get(hit.thumbUrl, { allow: ctx.fileHosts, trusted: ctx.trusted, headers: { accept: 'image/jpeg,image/png,image/*;q=0.5' }, maxBytes: 3 * 1024 * 1024, timeoutMs: 15_000, accept: (t) => t.startsWith('image/') });
     const small = shrinkToJpeg(res.body, THUMB_PX);
     if (small) return { data: small, mime: 'image/jpeg' };
     // Un formato que no se decodifica acá (WebP…): se pasa tal cual si es chico.

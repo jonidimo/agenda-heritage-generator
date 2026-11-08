@@ -10,7 +10,8 @@ import { request as httpsRequest } from 'node:https';
 import type { LookupFunction } from 'node:net';
 import { pipeline, type Readable } from 'node:stream';
 import { createBrotliDecompress, createGunzip, createInflate } from 'node:zlib';
-import { checkUrl, guardedLookup, redactUrl, WebError } from './guard';
+import { request as httpRequest } from 'node:http';
+import { checkUrl, guardedLookup, isTrusted, redactUrl, WebError, type TrustedHost } from './guard';
 
 export const DEFAULT_TIMEOUT_MS = 20_000;
 export const DEFAULT_MAX_BYTES = 8 * 1024 * 1024;
@@ -24,6 +25,8 @@ export interface GetOptions {
   maxBytes?: number;
   /** Tiempo máximo de todo el pedido, desde que se abre la conexión hasta el último byte. */
   timeoutMs?: number;
+  /** Dominios que la persona declaró de confianza: se visitan aunque sean de su red local, por http o https (ver `AGENDA_TRUSTED_HOSTS`). */
+  trusted?: readonly TrustedHost[];
   /** Si no acepta el tipo de contenido que anuncia el servidor, el pedido se corta sin bajar el cuerpo. */
   accept?: (contentType: string) => boolean;
 }
@@ -49,7 +52,8 @@ export interface TransportResponse {
 }
 
 /** Quien hace de verdad la conexión (las pruebas ponen uno falso). */
-export type Transport = (url: URL, init: { headers: Record<string, string>; signal: AbortSignal }) => Promise<TransportResponse>;
+/** `relaxed`: la dirección es de un dominio de confianza de la persona: puede ser local o privada y puede ser `http`. */
+export type Transport = (url: URL, init: { headers: Record<string, string>; signal: AbortSignal; relaxed?: boolean }) => Promise<TransportResponse>;
 
 function flatten(headers: IncomingHttpHeaders): Record<string, string> {
   const out: Record<string, string> = {};
@@ -67,9 +71,11 @@ export interface TransportOptions {
 /** La conexión real: `https`, con la resolución de nombres que solo deja pasar direcciones públicas. */
 export function createHttpsTransport(options: TransportOptions = {}): Transport {
   const lookup = options.lookup ?? (guardedLookup() as LookupFunction);
-  return (url, { headers, signal }) =>
+  return (url, { headers, signal, relaxed }) =>
     new Promise((resolve, reject) => {
-      const req = httpsRequest(url, { method: 'GET', headers, signal, agent: false, lookup, ...(options.ca ? { ca: options.ca } : {}) }, (res) => {
+      // Un dominio de confianza se resuelve como siempre (puede ser de la red local) y puede ser http; lo demás, solo https y direcciones públicas.
+      const request = relaxed && url.protocol === 'http:' ? httpRequest : httpsRequest;
+      const req = request(url, { method: 'GET', headers, signal, agent: false, ...(relaxed ? {} : { lookup }), ...(options.ca ? { ca: options.ca } : {}) } as never, (res) => {
         const encoding = String(res.headers['content-encoding'] ?? '').trim().toLowerCase();
         const decoder = encoding === 'gzip' || encoding === 'x-gzip' ? createGunzip() : encoding === 'deflate' ? createInflate() : encoding === 'br' ? createBrotliDecompress() : null;
         // `pipeline` pasa los errores del origen al descompresor, que es lo que se lee.
@@ -93,17 +99,17 @@ export function createHttpClient(opts: { transport?: Transport; userAgent: strin
     async get(raw, o) {
       const maxBytes = o.maxBytes ?? DEFAULT_MAX_BYTES;
       const timeoutMs = o.timeoutMs ?? DEFAULT_TIMEOUT_MS;
-      let url = checkUrl(raw, o.allow);
+      let url = checkUrl(raw, o.allow, o.trusted);
       const control = new AbortController();
       const timer = setTimeout(() => control.abort(), timeoutMs);
       let headers: Record<string, string> = { 'user-agent': opts.userAgent, 'accept-encoding': 'gzip, deflate, br', ...lowerKeys(o.headers) };
       try {
         for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
-          const res = await transport(url, { headers, signal: control.signal });
+          const res = await transport(url, { headers, signal: control.signal, relaxed: o.trusted !== undefined && isTrusted(url, o.trusted) });
           const location = res.headers['location'];
           if (REDIRECTS.has(res.status) && location) {
             await discard(res.body);
-            const next = checkUrl(new URL(location, url).href, o.allow);
+            const next = checkUrl(new URL(location, url).href, o.allow, o.trusted);
             if (next.host !== url.host) headers = Object.fromEntries(Object.entries(headers).filter(([k]) => !SENSITIVE_HEADERS.includes(k)));
             url = next;
             continue;

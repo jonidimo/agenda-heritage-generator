@@ -23,6 +23,9 @@ import { createCache } from '../src/node/web/cache';
 import { createSubsetter } from '../src/node/subset';
 import { fakeWeb, type FakeWeb, type Route } from './helpers/web';
 import { googleList, imageRoutes, OV_ID, OV_ID2, OV_ID3 } from './helpers/services';
+import { makeJpeg } from './helpers/jpeg';
+import { makePng } from './helpers/png';
+import { writeFile } from 'node:fs/promises';
 
 type Part = { type: string; text?: string; data?: string; mimeType?: string };
 let dir = '';
@@ -143,6 +146,118 @@ describe('nada se aplica a ciegas', () => {
     expect(await exists('imagenes')).toBe(false);
     // Con la propuesta de verdad, sí.
     expect((await call('import_image', { id: `openverse:${OV_ID}`, path: 'a.agenda.json', sizeMm: { w: 60, h: 40 }, confirm: true }, { raw: true })).isError).toBe(false);
+  });
+});
+
+describe('imágenes propias: archivo, enlace y páginas', () => {
+  const lan = (): Route[] => [
+    { match: 'http://fotos.lan/galeria', type: 'text/html', body: '<title>Mis imágenes</title><img src="/ia/uno.jpg" alt="Una ilustración"><img src="http://cdn.otro.example/x.jpg"><a href="/galeria?p=2">Siguiente</a>' },
+    { match: 'http://fotos.lan/ia/uno.jpg', type: 'image/jpeg', body: makeJpeg(1200, 800) },
+    { match: 'http://nas.otra.lan/dos.png', type: 'image/png', body: makePng(800, 600, [200, 100, 50]) },
+  ];
+
+  it('un archivo de la carpeta de trabajo: mismo tratamiento, sin crédito inventado y con el aviso de responsabilidad', async () => {
+    await withAgenda();
+    await writeFile(join(dir, 'ia.png'), makePng(1500, 1000, [10, 200, 90]));
+    const dry = await call('import_image', { image: 'ia.png', path: 'a.agenda.json', sizeMm: { w: 50, h: 100 } });
+    expect(dry.isError, dry.text).toBe(false);
+    expect(dry.body.proposal.credit).toBeUndefined();
+    expect(dry.body.warnings.join(' ')).toMatch(/Aviso de responsabilidad/);
+    expect(dry.body.proposal.size).toBe('500×1000 px');
+    const done = await call('import_image', { image: 'ia.png', path: 'a.agenda.json', sizeMm: { w: 50, h: 100 }, name: 'Portada IA', confirm: true });
+    expect(done.isError, done.text).toBe(false);
+    const a = (await agenda()).assets.find((x: { id: string }) => x.id === done.body.assetId);
+    expect(a).toMatchObject({ name: 'Portada IA', kind: 'raster', mime: 'image/png', width: 500, height: 1000 });
+    expect(a.credit).toBeUndefined();
+    // Otra vez la misma: se reconoce por el contenido.
+    const again = await call('import_image', { image: 'ia.png', path: 'a.agenda.json', sizeMm: { w: 50, h: 100 } });
+    expect(again.body.duplicate).toMatchObject({ assetId: done.body.assetId });
+  });
+
+  it('con author y license guarda el crédito (sin verificar) y entra en la página de créditos', async () => {
+    await withAgenda();
+    await writeFile(join(dir, 'ia.png'), makePng(600, 400, [1, 2, 3]));
+    const r = await call('import_image', { image: 'ia.png', path: 'a.agenda.json', author: 'Jonatan', license: 'Propia', embed: true, confirm: true });
+    expect(r.isError, r.text).toBe(false);
+    const a = (await agenda()).assets.find((x: { id: string }) => x.id === r.body.assetId);
+    expect(a.credit).toMatchObject({ source: 'local', author: 'Jonatan', license: 'Propia', verified: false });
+  });
+
+  it('un archivo que dice ser imagen y no lo es, o que no existe, o fuera de la carpeta, se rechaza', async () => {
+    await withAgenda();
+    await writeFile(join(dir, 'falsa.png'), 'no soy una imagen');
+    expect((await call('import_image', { image: 'falsa.png', path: 'a.agenda.json' })).text).toMatch(/no es una imagen/);
+    expect((await call('import_image', { image: 'no-esta.png', path: 'a.agenda.json' })).isError).toBe(true);
+    expect((await call('import_image', { image: '../fuera.png', path: 'a.agenda.json' })).isError).toBe(true);
+    expect((await call('import_image', { image: 'a.agenda.json', path: 'a.agenda.json' })).isError).toBe(true);
+  });
+
+  it('un SVG propio también se limpia', async () => {
+    await withAgenda();
+    await writeFile(join(dir, 'm.svg'), '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10" width="20mm" height="20mm"><script>x()</script><rect width="5" height="5"/></svg>');
+    const r = await call('import_image', { image: 'm.svg', path: 'a.agenda.json', folder: 'vec', confirm: true });
+    expect(r.isError, r.text).toBe(false);
+    expect(await readFile(join(dir, 'vec', (await readdir(join(dir, 'vec')))[0]!), 'utf8')).not.toMatch(/script/);
+  });
+
+  it('exige una sola fuente: id, url o file', async () => {
+    await withAgenda();
+    expect((await call('import_image', { path: 'a.agenda.json' })).text).toMatch(/una sola/);
+    expect((await call('import_image', { id: `openverse:${OV_ID}`, image: 'x.png', path: 'a.agenda.json' })).text).toMatch(/una sola/);
+  });
+
+  it('browse_page: abre una página de un dominio declarado y lista sus imágenes con miniatura, y marca las de otro dominio', async () => {
+    await withAgenda({ AGENDA_TRUSTED_HOSTS: 'fotos.lan' }, lan());
+    const r = await call('browse_page', { url: 'http://fotos.lan/galeria' });
+    expect(r.isError, r.text).toBe(false);
+    expect(r.body.page.title).toBe('Mis imágenes');
+    expect(r.body.notice).toMatch(/Aviso de responsabilidad/);
+    expect(r.body.images[0]).toMatchObject({ n: 1, url: 'http://fotos.lan/ia/uno.jpg', alt: 'Una ilustración', importable: true });
+    expect(r.body.images[1]).toMatchObject({ importable: false, blocked: expect.stringContaining('AGENDA_TRUSTED_HOSTS') });
+    expect(r.body.blockedHosts).toEqual(['cdn.otro.example (1)']);
+    expect(r.body.links).toEqual([{ url: 'http://fotos.lan/galeria?p=2', text: 'Siguiente' }]);
+    expect(r.parts.filter((p) => p.type === 'image')).toHaveLength(1);
+    expect(web.requests.some((u) => u.includes('otro.example'))).toBe(false);
+    expect((await call('browse_page', { url: 'http://fotos.lan/galeria', importableOnly: true, thumbnails: 0 })).body.images).toHaveLength(1);
+  });
+
+  it('browse_page: un dominio que no declaraste no se abre y el mensaje explica cómo y de quién es la responsabilidad', async () => {
+    await withAgenda({ AGENDA_TRUSTED_HOSTS: 'fotos.lan' }, lan());
+    for (const url of ['http://xtrafondos.com/tags/x', 'https://www.wallpaperalchemy.com/es/x', 'http://127.0.0.1/', 'http://169.254.169.254/latest/', 'ftp://fotos.lan/x']) {
+      const r = await call('browse_page', { url });
+      expect(r.isError, url).toBe(true);
+    }
+    const msg = (await call('browse_page', { url: 'http://xtrafondos.com/' })).text;
+    expect(msg).toContain('AGENDA_TRUSTED_HOSTS');
+    expect(msg).toMatch(/responsabilidad/);
+    expect(web.requests).toEqual([]);
+    // Sin ningún dominio declarado, tampoco.
+    await rmAll();
+    await start({ env: {}, routes: lan() });
+    expect((await call('browse_page', { url: 'http://fotos.lan/galeria' })).isError).toBe(true);
+  });
+
+  async function rmAll(): Promise<void> {
+    for (const close of closers.splice(0)) await close();
+  }
+
+  it('import_image con url: de un dominio declarado, con aviso; de otro, no', async () => {
+    await withAgenda({ AGENDA_TRUSTED_HOSTS: 'fotos.lan,*.otra.lan' }, lan());
+    const dry = await call('import_image', { url: 'http://fotos.lan/ia/uno.jpg', path: 'a.agenda.json', sizeMm: { w: 60, h: 40 }, pageUrl: 'https://fotos.ejemplo.org/p/1' });
+    expect(dry.isError, dry.text).toBe(false);
+    expect(dry.body.proposal.name).toBe('uno');
+    expect(dry.body.warnings.join(' ')).toMatch(/Aviso de responsabilidad/);
+    expect(dry.body.proposal.credit).toBeUndefined();
+    const done = await call('import_image', { url: 'http://nas.otra.lan/dos.png', path: 'a.agenda.json', author: 'Yo', license: 'Propia', embed: true, confirm: true });
+    expect(done.isError, done.text).toBe(false);
+    expect((await agenda()).assets.find((x: { id: string }) => x.id === done.body.assetId).credit).toMatchObject({ source: 'web', author: 'Yo', verified: false });
+    const blocked = await call('import_image', { url: 'http://cdn.otro.example/x.jpg', path: 'a.agenda.json' });
+    expect(blocked.isError).toBe(true);
+    expect(blocked.text).toMatch(/AGENDA_TRUSTED_HOSTS/);
+    expect(web.requests.some((u) => u.includes('otro.example'))).toBe(false);
+    // Un enlace que no es una imagen se rechaza por su contenido.
+    const html = await call('import_image', { url: 'http://fotos.lan/galeria', path: 'a.agenda.json' });
+    expect(html.isError).toBe(true);
   });
 });
 

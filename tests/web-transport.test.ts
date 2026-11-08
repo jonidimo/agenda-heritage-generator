@@ -7,7 +7,7 @@ import { createServer, type Server } from 'node:https';
 import type { AddressInfo } from 'node:net';
 import { brotliCompressSync, gzipSync } from 'node:zlib';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { WebError } from '../src/node/web/guard';
+import { parseTrustedHosts, WebError } from '../src/node/web/guard';
 import { createHttpClient, createHttpsTransport } from '../src/node/web/http';
 
 const KEY = `-----BEGIN PRIVATE KEY-----
@@ -174,5 +174,38 @@ describe('la resolución de nombres de verdad cierra el paso a lo local', () => 
     expect(blocked).toBeInstanceOf(WebError);
     expect((blocked as WebError).code).toBe('blocked-address');
     expect(hits).toBe(before);
+  });
+});
+
+describe('dominios de confianza con la conexión real', () => {
+  it('un servidor de la red local, declarado de confianza, se visita por http; sin declararlo, no', async () => {
+    const http = await import('node:http');
+    let served = 0;
+    const lan = http.createServer((req, res) => {
+      served++;
+      if (req.url === '/redir') res.writeHead(302, { location: 'http://127.0.0.1:1/otro' }).end();
+      else res.writeHead(200, { 'content-type': 'text/html' }).end('<img src="/a.png">');
+    });
+    await new Promise<void>((resolve) => lan.listen(0, '127.0.0.1', resolve));
+    const lanPort = (lan.address() as AddressInfo).port;
+    try {
+      const client = createHttpClient({ userAgent: 'x' });
+      const trusted = parseTrustedHosts(`127.0.0.1:${lanPort}`);
+      const res = await client.get(`http://127.0.0.1:${lanPort}/galeria`, { allow: [], trusted });
+      expect(text(res.body)).toBe('<img src="/a.png">');
+      expect(served).toBe(1);
+      // Sin declararlo, la misma dirección está cerrada, y el servidor no recibe nada.
+      await expect(client.get(`http://127.0.0.1:${lanPort}/galeria`, { allow: [] })).rejects.toBeInstanceOf(WebError);
+      // Otro puerto de la misma máquina tampoco.
+      await expect(client.get(`http://127.0.0.1:${lanPort + 1}/x`, { allow: [], trusted })).rejects.toBeInstanceOf(WebError);
+      expect(served).toBe(1);
+      // Una redirección a algo que no declaró se corta.
+      const redirected = await client.get(`http://127.0.0.1:${lanPort}/redir`, { allow: [], trusted }).catch((e: unknown) => e);
+      expect(redirected).toBeInstanceOf(WebError);
+      expect(['blocked-host', 'blocked-address']).toContain((redirected as WebError).code);
+    } finally {
+      lan.closeAllConnections();
+      await new Promise<void>((resolve) => lan.close(() => resolve()));
+    }
   });
 });

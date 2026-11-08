@@ -1,6 +1,6 @@
 /** Qué direcciones puede visitar el servidor: solo https, solo los dominios de las APIs, nunca direcciones locales ni privadas. */
 import { describe, expect, it } from 'vitest';
-import { checkUrl, extraHosts, FONT_HOSTS, guardedLookup, hostAllowed, IMAGE_API_HOSTS, IMAGE_FILE_HOSTS, isPublicAddress, redactUrl, WebError } from '../src/node/web/guard';
+import { checkUrl, extraHosts, FONT_HOSTS, guardedLookup, hostAllowed, IMAGE_API_HOSTS, IMAGE_FILE_HOSTS, isPublicAddress, parseTrustedHosts, redactUrl, WebError } from '../src/node/web/guard';
 
 describe('isPublicAddress', () => {
   it.each(['8.8.8.8', '1.1.1.1', '93.184.216.34', '172.32.0.1', '100.63.255.255', '2606:4700:4700::1111', '2a00:1450:4009:81f::200e', '::ffff:8.8.8.8'])('%s es pública', (ip) => {
@@ -93,5 +93,48 @@ describe('guardedLookup', () => {
     const { err } = await run(guardedLookup(), true, 'localhost');
     expect(err).toBeInstanceOf(WebError);
     expect((err as WebError).code).toBe('blocked-address');
+  });
+});
+
+describe('dominios de confianza (AGENDA_TRUSTED_HOSTS)', () => {
+  it('lee nombres, comodines, puertos y direcciones, y descarta lo peligroso o raro', () => {
+    const list = parseTrustedHosts('nas.lan, *.casa.lan, 192.168.1.20:8080, fotos.ejemplo.org:8443, *.local, *, *.com, *.co.uk.x, [::1], http://x.lan, ex ample.lan, 10.0.0.1:99999, ');
+    expect(list).toEqual([
+      { host: 'nas.lan', wildcard: false, port: null },
+      { host: 'casa.lan', wildcard: true, port: null },
+      { host: '192.168.1.20', wildcard: false, port: 8080 },
+      { host: 'fotos.ejemplo.org', wildcard: false, port: 8443 },
+      { host: 'local', wildcard: true, port: null },
+      { host: 'co.uk.x', wildcard: true, port: null },
+    ]);
+    expect(parseTrustedHosts(undefined)).toEqual([]);
+  });
+
+  it('un dominio de confianza se visita por http o https, aunque sea de la red local, en su puerto; lo demás sigue cerrado', () => {
+    const trusted = parseTrustedHosts('nas.lan,*.casa.lan,192.168.1.20:8080');
+    const ok = (u: string): boolean => {
+      try {
+        checkUrl(u, IMAGE_API_HOSTS, trusted);
+        return true;
+      } catch {
+        return false;
+      }
+    };
+    expect(ok('http://nas.lan/fotos/a.png')).toBe(true);
+    expect(ok('https://nas.lan:443/a.png')).toBe(true);
+    expect(ok('http://nas.lan:8080/a.png')).toBe(false);
+    expect(ok('http://galeria.casa.lan/x')).toBe(true);
+    expect(ok('http://casa.lan/x')).toBe(false);
+    expect(ok('http://192.168.1.20:8080/a.png')).toBe(true);
+    expect(ok('http://192.168.1.20/a.png')).toBe(false);
+    expect(ok('http://192.168.1.21:8080/a.png')).toBe(false);
+    expect(ok('http://127.0.0.1/')).toBe(false);
+    expect(ok('http://169.254.169.254/latest/meta-data/')).toBe(false);
+    expect(ok('http://evil.example.com/')).toBe(false);
+    expect(ok('http://user:clave@nas.lan/')).toBe(false);
+    expect(ok('ftp://nas.lan/')).toBe(false);
+    expect(ok('http://nas.lan.evil.com/')).toBe(false);
+    // Sin lista de confianza, http nunca.
+    expect(() => checkUrl('http://nas.lan/', IMAGE_API_HOSTS)).toThrow(WebError);
   });
 });
