@@ -56,7 +56,9 @@ export function openverseHit(raw: unknown, fileHosts: readonly string[]): ImageH
   const thumb = httpsUrl(raw.thumbnail);
   const host = original ? new URL(original).hostname : '';
   const full = original !== null && hostAllowed(host, fileHosts);
-  const fileUrl = full ? original : thumb;
+  // La copia reducida también tiene que estar en un dominio permitido (si no, el resultado se listaría y no se podría importar).
+  const thumbOk = thumb !== null && hostAllowed(new URL(thumb).hostname, fileHosts);
+  const fileUrl = full ? original : thumbOk ? thumb : null;
   if (!fileUrl) return null;
   const type = str(raw.filetype, 10).toLowerCase();
   const format = type === 'jpg' || type === 'jpeg' ? 'jpeg' : type === 'png' ? 'png' : type === 'svg' ? 'svg' : 'other';

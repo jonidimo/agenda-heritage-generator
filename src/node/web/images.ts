@@ -8,6 +8,8 @@ import { PNG } from 'pngjs';
 import { sanitizeSvg } from '../../core/assets/sanitizeSvg';
 import { areaResize } from '../../core/assets/resample';
 import { rasterInfo } from '../../core/assets/image';
+import { jpegOrientation } from '../../core/assets/image';
+import { orientRgba } from '../../core/assets/crop';
 import { sniffImage } from './prepareImage';
 import type { Cache } from './cache';
 import { extraHosts, IMAGE_FILE_HOSTS, WebError } from './guard';
@@ -38,7 +40,7 @@ function cacheKey(provider: ProviderId, q: SearchRequest): string {
 
 /** Busca en los servicios pedidos (o en todos los que están listos). Un servicio que falla no tira a los demás. */
 export async function searchImages(q: SearchRequest, providers: readonly ProviderId[] | undefined, ctx: SourceContext): Promise<SearchReport> {
-  const wanted = providers && providers.length > 0 ? providers : PROVIDER_IDS.filter((id) => SOURCES[id].ready(ctx.env));
+  const wanted = providers && providers.length > 0 ? [...new Set(providers)] : PROVIDER_IDS.filter((id) => SOURCES[id].ready(ctx.env));
   const notConfigured = wanted.filter((id) => !SOURCES[id].ready(ctx.env)).map((id) => ({ provider: id, needs: SOURCES[id].needs }));
   const active = wanted.filter((id) => SOURCES[id].ready(ctx.env));
   const results = await Promise.all(
@@ -85,7 +87,7 @@ export async function resolveHit(id: string, ctx: SourceContext): Promise<ImageH
 
 /** El máximo que se baja de una imagen. */
 export const IMAGE_DOWNLOAD_MAX_BYTES = 40 * 1024 * 1024;
-export const SVG_MAX_BYTES = 4 * 1024 * 1024;
+export const SVG_MAX_BYTES = 1024 * 1024;
 
 export interface Downloaded {
   bytes: Uint8Array;
@@ -137,10 +139,12 @@ export function shrinkToJpeg(bytes: Uint8Array, maxWidth: number, quality = 72):
             const p = PNG.sync.read(Buffer.from(bytes));
             return { data: new Uint8Array(p.data.buffer, p.data.byteOffset, p.data.length), width: p.width, height: p.height };
           })();
-    const scale = Math.min(1, maxWidth / img.width);
-    const w = Math.max(1, Math.round(img.width * scale));
-    const h = Math.max(1, Math.round(img.height * scale));
-    const small = w === img.width ? img.data : areaResize(img.data, img.width, img.height, w, h);
+    // La miniatura se ve como se va a ver la imagen: derecha, según su orientación EXIF.
+    const upright = kind === 'jpeg' ? orientRgba(img.data, img.width, img.height, jpegOrientation(bytes)) : { data: img.data, w: img.width, h: img.height };
+    const scale = Math.min(1, maxWidth / upright.w);
+    const w = Math.max(1, Math.round(upright.w * scale));
+    const h = Math.max(1, Math.round(upright.h * scale));
+    const small = w === upright.w ? upright.data : areaResize(upright.data, upright.w, upright.h, w, h);
     const flat = new Uint8Array(small.length);
     for (let i = 0; i < small.length; i += 4) {
       const a = small[i + 3]! / 255;

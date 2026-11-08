@@ -13,15 +13,22 @@ export interface XmlNode {
 
 const ENTITIES: Record<string, string> = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ' };
 
+/** Un punto de código que se puede escribir en un XML (`&#1;` o `&#x110000;` no valen: quedan como texto). */
+function codePointText(n: number, raw: string): string {
+  const ok = Number.isInteger(n) && n <= 0x10ffff && (n === 9 || n === 10 || n === 13 || (n >= 0x20 && n < 0xd800) || (n >= 0xe000 && n <= 0x10ffff && n !== 0xfffe && n !== 0xffff));
+  return ok ? String.fromCodePoint(n) : raw;
+}
+
 export function decodeEntities(s: string): string {
   return s.replace(/&(#x[0-9a-fA-F]+|#\d+|\w+);/g, (m, e: string) => {
-    if (e.startsWith('#x')) return String.fromCodePoint(parseInt(e.slice(2), 16));
-    if (e.startsWith('#')) return String.fromCodePoint(parseInt(e.slice(1), 10));
+    if (e.startsWith('#x')) return codePointText(parseInt(e.slice(2), 16), m);
+    if (e.startsWith('#')) return codePointText(parseInt(e.slice(1), 10), m);
     return ENTITIES[e] ?? m;
   });
 }
 
-export function parseXml(src: string): XmlNode {
+/** Con `maxDepth`, un documento con elementos anidados más hondo falla (sin eso, cerrar etiquetas que no coinciden recorre toda la pila: cuadrático). */
+export function parseXml(src: string, maxDepth = Infinity): XmlNode {
   const root: XmlNode = { name: '#document', attrs: {}, children: [], text: '' };
   const stack: XmlNode[] = [root];
   let i = 0;
@@ -121,7 +128,10 @@ export function parseXml(src: string): XmlNode {
     }
     const node: XmlNode = { name, attrs, children: [], text: '' };
     top().children.push(node);
-    if (!selfClosing) stack.push(node);
+    if (!selfClosing) {
+      stack.push(node);
+      if (stack.length > maxDepth + 1) throw new Error('El XML tiene elementos anidados a demasiada profundidad.');
+    }
     i = j;
   }
   return root;

@@ -24,6 +24,8 @@ export interface PrepareOptions {
   crop?: { x: number; y: number; w: number; h: number } | undefined;
   /** Calidad JPEG de salida (0 a 1). */
   quality?: number | undefined;
+  /** Lado mayor que se admite en la salida (4000 por defecto; una tapa grande necesita más para llegar a los ppp). */
+  maxSide?: number | undefined;
 }
 
 export interface PreparedImage {
@@ -46,6 +48,21 @@ export interface PreparedImage {
 
 export class ImageError extends Error {}
 
+/** Más megapíxeles que esto no se decodifican al importar (un PNG sólido de 100 MP son cientos de MB en memoria y varios segundos sin atender nada). */
+export const IMPORT_MAX_MEGAPIXELS = 50;
+
+/** ¿Lleva un bloque EXIF (ubicación GPS, número de serie de la cámara…)? */
+function hasExif(b: Uint8Array): boolean {
+  let o = 2;
+  while (o + 4 <= b.length && b[o] === 0xff) {
+    const marker = b[o + 1]!;
+    if (marker === 0xda || marker === 0xd9) return false;
+    if (marker === 0xe1 && b[o + 4] === 0x45 && b[o + 5] === 0x78 && b[o + 6] === 0x69 && b[o + 7] === 0x66) return true;
+    o += 2 + ((b[o + 2]! << 8) | b[o + 3]!);
+  }
+  return false;
+}
+
 /** Qué formato tienen estos bytes: `png`, `jpeg`, `svg`, o `null` (webp, gif, avif… no se importan). */
 export function sniffImage(b: Uint8Array): 'png' | 'jpeg' | 'svg' | null {
   if (b.length > 8 && b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47) return 'png';
@@ -61,7 +78,7 @@ export function prepareRaster(bytes: Uint8Array, opts: PrepareOptions): Prepared
   if (kind !== 'png' && kind !== 'jpeg') throw new ImageError('Solo se importan imágenes PNG, JPEG o SVG.');
   const head = rasterInfo(bytes);
   if (!head) throw new ImageError('No se pudo leer la cabecera de la imagen.');
-  if ((head.width * head.height) / 1_000_000 > RESAMPLE_MAX_MEGAPIXELS) throw new ImageError(`La imagen es demasiado grande (${head.width} × ${head.height} px).`);
+  if ((head.width * head.height) / 1_000_000 > IMPORT_MAX_MEGAPIXELS) throw new ImageError(`La imagen es demasiado grande (${head.width} × ${head.height} px).`);
 
   let rgba: Uint8Array;
   let w: number;
@@ -87,14 +104,14 @@ export function prepareRaster(bytes: Uint8Array, opts: PrepareOptions): Prepared
 
   const aspect = opts.sizeMm && opts.sizeMm.w > 0 && opts.sizeMm.h > 0 ? opts.sizeMm.w / opts.sizeMm.h : undefined;
   const kept = planCrop({ w, h }, { aspect, focus: opts.focus, crop: opts.crop });
-  const out = outputSize(kept, opts.sizeMm ?? null, opts.dpi, ASSET_MAX_SIDE_PX);
+  const out = outputSize(kept, opts.sizeMm ?? null, opts.dpi, opts.maxSide ?? ASSET_MAX_SIDE_PX);
   const whole = kept.x === 0 && kept.y === 0 && kept.w === w && kept.h === h;
   const effectiveDpi = opts.sizeMm && opts.sizeMm.w > 0 ? Math.round((out.w / opts.sizeMm.w) * 25.4) : null;
   const upscaleNeeded = effectiveDpi !== null && effectiveDpi < opts.dpi * 0.95;
   const common = { sourceWidth: w, sourceHeight: h, kept, effectiveDpi, upscaleNeeded };
 
-  // Nada que cambiar: el original queda tal cual (volver a codificar un JPEG lo degrada).
-  if (whole && out.w === w && out.h === h && orientation === 1) return { ...common, bytes, mime, width: w, height: h, untouched: true };
+  // Nada que cambiar: el original queda tal cual (volver a codificar un JPEG lo degrada), salvo que traiga EXIF (ubicación, cámara): ese no se incrusta.
+  if (whole && out.w === w && out.h === h && orientation === 1 && !(mime === 'image/jpeg' && hasExif(bytes))) return { ...common, bytes, mime, width: w, height: h, untouched: true };
 
   let pixels = whole ? rgba : cropRgba(rgba, w, kept);
   if (out.w !== kept.w || out.h !== kept.h) pixels = areaResize(pixels, kept.w, kept.h, out.w, out.h);

@@ -16,7 +16,7 @@ import { z } from 'zod';
 import { LOW_DPI } from '../core/assets/image';
 import { assetInfoFromBytes, fromBase64, toBase64 } from '../core/resources';
 import { usedAssetIds } from '../core/design/assetUse';
-import type { Design } from '../core/design/schema';
+import { USER_FONTS_MAX, type Design } from '../core/design/schema';
 import type { OpenedDocument } from '../node/env';
 import { folderIO } from '../node/env';
 import type { LiveDesign } from '../core/live/protocol';
@@ -99,6 +99,38 @@ export function registerSourcingTools(server: McpServer, deps: SourcingDeps): vo
   const ctx = sourceContext({ http: deps.http, env: deps.env, cache: deps.cache });
   const recent = new Map<string, { at: number; value: Downloaded; hit: ImageHit }>();
 
+  /**
+   * Una confirmación solo vale si antes se hizo la propuesta con los mismos parámetros: «confirm: true» a ciegas no
+   * aplica nada (un título de una foto no puede convencer a un modelo de saltearse la aprobación de la persona).
+   */
+  const proposals = new Map<string, number>();
+  const PROPOSAL_MS = 30 * 60_000;
+  const stable = (v: unknown): string => JSON.stringify(v, (_k, x: unknown) => (x && typeof x === 'object' && !Array.isArray(x) ? Object.fromEntries(Object.entries(x as object).sort(([p], [q]) => p.localeCompare(q))) : x));
+  const proposalKey = (tool: string, args: Record<string, unknown>): string => `${tool}:${sha256(new TextEncoder().encode(stable({ ...args, confirm: undefined })))}`;
+  const recordProposal = (tool: string, args: Record<string, unknown>): void => {
+    const now = Date.now();
+    for (const [k, at] of proposals) if (now - at > PROPOSAL_MS) proposals.delete(k);
+    proposals.set(proposalKey(tool, args), now);
+  };
+  const hasProposal = (tool: string, args: Record<string, unknown>): boolean => {
+    const at = proposals.get(proposalKey(tool, args));
+    return at !== undefined && Date.now() - at <= PROPOSAL_MS;
+  };
+  const NO_PROPOSAL = 'Primero pedí la propuesta (la misma llamada sin confirm), mostrásela a la persona y, si la aprueba, repetí la llamada con confirm: true y los mismos parámetros.';
+
+  /** Una escritura a la vez por archivo: dos llamadas seguidas no se pisan el cambio. */
+  const locks = new Map<string, Promise<unknown>>();
+  async function withLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
+    const before = locks.get(key) ?? Promise.resolve();
+    const run = before.catch(() => undefined).then(fn);
+    locks.set(key, run);
+    try {
+      return await run;
+    } finally {
+      if (locks.get(key) === run) locks.delete(key);
+    }
+  }
+
   /** La agenda que recibe lo importado: un archivo o la aplicación abierta; `null` si no se indicó ninguna. */
   async function readTarget(input: { path?: string | undefined; app?: boolean | undefined }): Promise<Target | null> {
     if (input.path !== undefined && input.app === true) throw new Error('Indicá «path» (un archivo) o «app: true» (la aplicación abierta), no las dos.');
@@ -152,6 +184,7 @@ export function registerSourcingTools(server: McpServer, deps: SourcingDeps): vo
         count: report.hits.length,
         services: report.services,
         ...(report.notConfigured.length > 0 ? { notConfigured: report.notConfigured.map((n) => `${n.provider} (necesita ${n.needs})`) } : {}),
+        ...(withThumbs ? { thumbnails: { shown: thumbs.filter(Boolean).length, missing: thumbs.filter((t) => !t).length } } : {}),
         results: report.hits.map((h, i) => ({
           n: i + 1,
           id: h.id,
@@ -216,7 +249,7 @@ export function registerSourcingTools(server: McpServer, deps: SourcingDeps): vo
     {
       title: 'Importar una imagen',
       description:
-        'Baja una imagen que devolvió search_images (por su «id»), la limpia (un SVG queda sin scripts ni enlaces externos), la endereza, la recorta a la proporción del lugar donde va y la achica a unos 300 ppp, y la agrega a «assets» de una agenda (archivo «path» o aplicación abierta «app: true») con su autor, licencia y dirección en «credit». SIN «confirm: true» no cambia nada: devuelve la propuesta (tamaño, ppp que alcanza, de quién es y con qué licencia, si ya estaba, y una vista previa) para que la persona la apruebe; con «confirm: true» la aplica. Tamaño: «for» cover (la tapa entera, con sangrado y lomo), page (una página) o «sizeMm» ({w, h} a mano). «focus» ({x, y} de 0 a 1) o «crop» ({x, y, w, h} de 0 a 1 sobre la imagen derecha) eligen qué parte queda; sin ellos, el centro. En un archivo, la imagen se guarda en una carpeta junto a la agenda (imagenes/) y se referencia por «path»; con «embed: true» va adentro del JSON. Después se coloca con update_design (portada del mes, tapa, un elemento image…) usando el id del recurso. No importa dos veces la misma imagen (compara el contenido).',
+        'Baja una imagen que devolvió search_images (por su «id»), la limpia (un SVG queda sin scripts ni enlaces externos), la endereza, la recorta a la proporción del lugar donde va y la achica a unos 300 ppp, y la agrega a «assets» de una agenda (archivo «path» o aplicación abierta «app: true») con su autor, licencia y dirección en «credit». SIN «confirm: true» no cambia nada: devuelve la propuesta (tamaño, ppp que alcanza, de quién es y con qué licencia, si ya estaba, y una vista previa) para que la persona la apruebe; con «confirm: true» y los MISMOS parámetros la aplica (una confirmación sin esa propuesta previa se rechaza). Tamaño: «for» cover (la tapa entera, con sangrado y lomo), page (una página) o «sizeMm» ({w, h} a mano). «focus» ({x, y} de 0 a 1) o «crop» ({x, y, w, h} de 0 a 1 sobre la imagen derecha) eligen qué parte queda; sin ellos, el centro. En un archivo, la imagen se guarda en una carpeta junto a la agenda (imagenes/) y se referencia por «path»; con «embed: true» va adentro del JSON. Después se coloca con update_design (portada del mes, tapa, un elemento image…) usando el id del recurso. No importa dos veces la misma imagen (compara el contenido).',
       inputSchema: {
         id: z.string().trim().min(3).max(220).describe('El id que devolvió search_images («openverse:…», «pixabay:…», «unsplash:…»)'),
         name: z.string().trim().min(1).max(120).optional().describe('Nombre del recurso en la agenda (por defecto, el título de la imagen)'),
@@ -239,10 +272,15 @@ export function registerSourcingTools(server: McpServer, deps: SourcingDeps): vo
       const target = await readTarget(a);
       if (a.for !== undefined && !target) throw new Error('«for» necesita la agenda: indicá «path» o «app: true».');
       if (a.confirm === true && !target) throw new Error('Para agregar la imagen indicá la agenda con «path» o «app: true».');
+      if (a.confirm === true && !hasProposal('import_image', a)) return failure({ applied: false, error: NO_PROPOSAL });
       let sizeMm = a.sizeMm ? { w: a.sizeMm.w, h: a.sizeMm.h } : null;
+      let coverNote: string | null = null;
       if (a.for && target) {
         const { doc } = await deps.open(target.design, target.baseDir);
         sizeMm = a.for === 'cover' ? doc.coverSize() : doc.pageSize();
+        if (a.for === 'cover' && target.design.cover.style !== 'wrap') {
+          coverNote = `La tapa de esta agenda es de estilo «${target.design.cover.style}»: el tamaño es el del tablero con su sobremedida, sin lomo ni sangrado de tapa blanda (con /cover/style «wrap» la imagen cubre dos páginas, el lomo y el sangrado).`;
+        }
       }
 
       const hit = await resolveHit(a.id, ctx);
@@ -251,6 +289,16 @@ export function registerSourcingTools(server: McpServer, deps: SourcingDeps): vo
       const rawId = hit.id.slice(hit.provider.length + 1);
       const warnings: string[] = [];
       if (hit.fileKind === 'preview') warnings.push('Solo se pudo bajar la copia reducida que sirve el servicio (el original está en un dominio que no se visita): la resolución es la de esa copia. Agregá el dominio del original en AGENDA_IMAGE_HOSTS si querés bajarlo.');
+      const licenseWarning: Partial<Record<ImageHit['licenseKind'], string>> = {
+        'by-sa': 'Licencia CC BY-SA: lo derivado (como esta imagen recortada) tiene que compartirse con la misma licencia.',
+        'by-nc': 'Licencia con restricciones (no comercial y/o sin derivadas): no sirve para una agenda que se vende, y recortarla puede ser una obra derivada. Mirá la licencia antes de usarla.',
+        'cc-other': 'Licencia con restricciones (p. ej. «sin derivadas»): recortar y achicar la imagen puede no estar permitido. Mirá la licencia antes de usarla.',
+        pixabay: 'Licencia propia de Pixabay: se puede usar libremente, pero no es Creative Commons y no se puede redistribuir la imagen sola.',
+        unsplash: 'Licencia propia de Unsplash: se puede usar libremente, pero no es Creative Commons y no se puede redistribuir la imagen sola.',
+      };
+      const restriction = licenseWarning[hit.licenseKind];
+      if (restriction) warnings.push(restriction);
+      if (coverNote) warnings.push(coverNote);
       if (hit.provider === 'pixabay') warnings.push('Pixabay sirve como mucho 1280 px de lado sin permisos especiales: alcanza para un tamaño chico, no para una tapa a 300 ppp.');
 
       let bytes = got.bytes;
@@ -261,6 +309,7 @@ export function registerSourcingTools(server: McpServer, deps: SourcingDeps): vo
       let height = 0;
       let dpiAtSize: number | null = null;
       let kept: unknown = null;
+      let modified = false;
       if (got.kind === 'svg') {
         if (a.crop || a.focus) warnings.push('«crop» y «focus» no se aplican a un SVG: queda entero (un dibujo vectorial se ajusta al tamaño sin perder calidad).');
         if (got.removed.length > 0) warnings.push(`Se limpió el SVG: se sacó ${got.removed.join(', ')}.`);
@@ -268,7 +317,7 @@ export function registerSourcingTools(server: McpServer, deps: SourcingDeps): vo
         kind = 'vector';
         ext = '.svg';
       } else {
-        const prepared = prepareRaster(got.bytes, { sizeMm: sizeMm ?? undefined, dpi: a.dpi ?? 300, focus: a.focus, crop: a.crop });
+        const prepared = prepareRaster(got.bytes, { sizeMm: sizeMm ?? undefined, dpi: a.dpi ?? 300, focus: a.focus, crop: a.crop, ...(sizeMm ? { maxSide: 12_000 } : {}) });
         bytes = prepared.bytes;
         mime = prepared.mime;
         kind = 'raster';
@@ -276,6 +325,7 @@ export function registerSourcingTools(server: McpServer, deps: SourcingDeps): vo
         width = prepared.width;
         height = prepared.height;
         dpiAtSize = prepared.effectiveDpi;
+        modified = !prepared.untouched;
         kept = { x: prepared.kept.x, y: prepared.kept.y, w: prepared.kept.w, h: prepared.kept.h, of: `${prepared.sourceWidth}×${prepared.sourceHeight}` };
         if (prepared.upscaleNeeded && prepared.effectiveDpi !== null) {
           warnings.push(
@@ -305,6 +355,7 @@ export function registerSourcingTools(server: McpServer, deps: SourcingDeps): vo
         url: hit.landingUrl,
         sourceSha256: sourceSha,
         verified: true,
+        modified,
       };
       const embed = a.embed === true || target?.kind !== 'file';
       const proposal = {
@@ -322,6 +373,7 @@ export function registerSourcingTools(server: McpServer, deps: SourcingDeps): vo
       };
 
       if (a.confirm !== true) {
+        recordProposal('import_image', a);
         const preview = kind === 'raster' ? shrinkToJpeg(bytes, 480) : null;
         const body = { applied: false, proposal, ...(duplicate ? { duplicate: { ...duplicate, hint: `Ya está como «${duplicate.name}» (${duplicate.assetId}): usá ese recurso, o repetí con allowDuplicate: true.` } } : {}), warnings, next: duplicate && a.allowDuplicate !== true ? 'No hace falta importarla otra vez.' : target ? 'Si la propuesta está bien, repetí la llamada con confirm: true.' : 'Indicá la agenda (path o app) y confirm: true para agregarla.' };
         return { content: [{ type: 'text', text: JSON.stringify(body, null, 2) }, ...(preview ? [{ type: 'image' as const, data: toBase64(preview), mimeType: 'image/jpeg' }] : [])] };
@@ -351,33 +403,43 @@ export function registerSourcingTools(server: McpServer, deps: SourcingDeps): vo
         return json({ applied: true, assetId: entry.id, proposal, warnings, app: JSON.parse((result.content[0] as { text: string }).text) as unknown });
       }
 
-      // En un archivo: la imagen junto a la agenda (o adentro con embed) y la entrada en «assets».
-      if (embed) entry.data = toBase64(bytes);
-      else {
-        entry.path = rel;
-        const file = resolve(dirname(target!.full!), rel);
+      // En un archivo: la imagen junto a la agenda (o adentro con embed) y la entrada en «assets». Una escritura a la vez por agenda.
+      const outcome = await withLock(target!.full!, async (): Promise<ToolResult | null> => {
+        if (embed) entry.data = toBase64(bytes);
+        else {
+          entry.path = rel;
+          const file = resolve(dirname(target!.full!), rel);
+          try {
+            created = await ws.write(file, bytes, { extensions: [ext], overwrite: false });
+          } catch (err) {
+            // Ya hay un archivo con ese nombre (lleva el hash del contenido): si es el mismo, se reutiliza.
+            if (!/ya existe/.test((err as Error).message)) throw err;
+            const same = await ws.readBytes(file, [ext], bytes.length + 1);
+            if (sha256(same.bytes) !== outSha) throw new Error(`Ya hay otro archivo «${basename(file)}» en «${folder}»: elegí otra carpeta con «folder».`, { cause: err });
+          }
+        }
         try {
-          created = await ws.write(file, bytes, { extensions: [ext], overwrite: false });
+          // Se vuelve a leer la agenda: pudo cambiar mientras se bajaba la imagen, y la imagen pudo haberse importado en el medio.
+          const fresh = deps.parseJson((await ws.read(a.path!, DESIGN_EXT)).text, a.path!);
+          const freshDesign = checkDesignData(fresh).design;
+          const again = a.allowDuplicate === true || !freshDesign ? null : await findDuplicate({ ...target!, design: freshDesign }, hit, [sourceSha, outSha]);
+          if (again) {
+            if (created) await unlink(created).catch(() => undefined);
+            return failure({ applied: false, duplicate: again, hint: `Ya está en la agenda como «${again.name}» (${again.assetId}).` });
+          }
+          const next = applyJsonPatch(fresh, patchFor(fresh));
+          const check = checkDesignData(next);
+          if (!check.design || !check.design.assets.some((x) => x.id === entry.id)) {
+            throw new Error(`La agenda no quedó válida con la imagen:\n${(check.issues ?? []).map((i) => `${i.path}: ${i.message}`).join('\n')}`);
+          }
+          await ws.write(target!.full!, `${JSON.stringify(deps.stamp(next), null, 2)}\n`, { extensions: DESIGN_EXT, overwrite: true });
         } catch (err) {
-          // Ya hay un archivo con ese nombre (lleva el hash del contenido): si es el mismo, se reutiliza.
-          if (!/ya existe/.test((err as Error).message)) throw err;
-          const same = await ws.readBytes(file, [ext], bytes.length + 1);
-          if (sha256(same.bytes) !== outSha) throw new Error(`Ya hay otro archivo «${basename(file)}» en «${folder}»: elegí otra carpeta con «folder».`, { cause: err });
+          if (created) await unlink(created).catch(() => undefined);
+          throw err;
         }
-      }
-      try {
-        // Se vuelve a leer la agenda: pudo cambiar mientras se bajaba la imagen.
-        const fresh = deps.parseJson((await ws.read(a.path!, DESIGN_EXT)).text, a.path!);
-        const next = applyJsonPatch(fresh, patchFor(fresh));
-        const check = checkDesignData(next);
-        if (!check.design || !check.design.assets.some((x) => x.id === entry.id)) {
-          throw new Error(`La agenda no quedó válida con la imagen:\n${(check.issues ?? []).map((i) => `${i.path}: ${i.message}`).join('\n')}`);
-        }
-        await ws.write(target!.full!, `${JSON.stringify(deps.stamp(next), null, 2)}\n`, { extensions: DESIGN_EXT, overwrite: true });
-      } catch (err) {
-        if (created) await unlink(created).catch(() => undefined);
-        throw err;
-      }
+        return null;
+      });
+      if (outcome) return outcome;
       await notifyDownload(hit, ctx);
       return json({ applied: true, assetId: entry.id, ...(embed ? {} : { file: ws.show(resolve(dirname(target!.full!), rel)) }), proposal, warnings, hint: 'Colocala con update_design usando este assetId (portada del mes, tapa, elemento image, marca de agua…).' });
     },
@@ -386,12 +448,14 @@ export function registerSourcingTools(server: McpServer, deps: SourcingDeps): vo
   /* ---------- build_credits_page ---------- */
 
   const CREDIT_PAGE_PREFIX = 'credits-img';
+  /** Las páginas que arma esta herramienta (y solo ellas se reemplazan o se quitan). */
+  const isCreditPage = (id: unknown): boolean => typeof id === 'string' && /^credits-img(?:-\d+)?$/.test(id);
   server.registerTool(
     'build_credits_page',
     {
       title: 'Página de créditos de las imágenes',
       description:
-        'Arma (o actualiza) la página de créditos al final de la agenda con el autor, la licencia y la dirección de cada imagen importada con import_image que la agenda usa (con «onlyUsed: false», todas). Es una página propia de texto, que se reemplaza cada vez: se puede repetir después de cambiar imágenes. Las licencias CC BY y similares piden este crédito. Se reparte en varias páginas si hace falta. Devuelve los avisos de maquetación del cambio.',
+        'Arma (o actualiza) la página de créditos al final de la agenda con el autor, la licencia y la dirección de cada imagen importada con import_image que la agenda usa (con «onlyUsed: false», todas). Es una página propia de texto, que se reemplaza cada vez: se puede repetir después de cambiar imágenes. Las licencias CC BY y similares piden este crédito. Se reparte en varias páginas si hace falta. Sin «confirm: true» solo propone (qué páginas se crean, reemplazan o quitan); con él y los mismos parámetros aplica. Solo toca sus propias páginas (credits-img…). Devuelve los avisos de maquetación del cambio.',
       inputSchema: {
         path: z.string().optional().describe('La agenda (.agenda.json) que se lee y recibe la página, relativa a la carpeta de trabajo'),
         app: z.boolean().optional().describe('La aplicación de escritorio abierta, en lugar de un archivo'),
@@ -399,19 +463,22 @@ export function registerSourcingTools(server: McpServer, deps: SourcingDeps): vo
         intro: z.string().trim().max(400).optional().describe('Una línea antes de la lista'),
         onlyUsed: z.boolean().optional().describe('Solo las imágenes que la agenda usa (sí por defecto)'),
         perPage: z.number().int().min(3).max(20).optional().describe('Créditos por página (8 por defecto)'),
+        confirm: z.boolean().optional().describe('true: aplicar. Sin esto solo se devuelve la propuesta (qué páginas se crean, reemplazan o quitan)'),
       },
     },
-    async ({ path, app, title, intro, onlyUsed, perPage }) => {
+    async ({ path, app, title, intro, onlyUsed, perPage, confirm }) => {
       if ((path === undefined) === (app !== true)) throw new Error('Indicá la agenda con «path» o con «app: true», una de las dos.');
+      const args = { path, app, title, intro, onlyUsed, perPage };
+      if (confirm === true && !hasProposal('build_credits_page', args)) return failure({ applied: false, error: NO_PROPOSAL });
       const target = (await readTarget({ path, app }))!;
       const used = usedAssetIds(target.design);
       const credited = target.design.assets.filter((x) => x.credit && (onlyUsed === false || used.has(x.id)));
-      const existing = (target.design.customPages ?? []).filter((p) => p.id.startsWith(CREDIT_PAGE_PREFIX));
+      const existing = (target.design.customPages ?? []).filter((p) => isCreditPage(p.id));
       if (credited.length === 0 && existing.length === 0) {
         return json({ changed: false, reason: onlyUsed === false ? 'Ninguna imagen de la agenda tiene crédito (se agregan con import_image).' : 'Ninguna imagen con crédito está en uso en la agenda (onlyUsed: false las incluye todas).' });
       }
       // Después de la última página que no sea de créditos.
-      const rest = { ...target.design, customPages: target.design.customPages.filter((p) => !p.id.startsWith(CREDIT_PAGE_PREFIX)) } as Design;
+      const rest = { ...target.design, customPages: target.design.customPages.filter((p) => !isCreditPage(p.id)) } as Design;
       const { doc } = await deps.open(rest, target.baseDir);
       // (Las hojas en blanco que completan los cuadernillos van siempre al final de todo: los créditos, antes.)
       const last = [...doc.plan.pages].reverse().find((p) => p.type !== 'filler')?.key ?? null;
@@ -419,7 +486,8 @@ export function registerSourcingTools(server: McpServer, deps: SourcingDeps): vo
       const lines = credited.map((x) => {
         const c = x.credit!;
         const what = c.title || x.name;
-        return `${what}${c.author ? ` — ${c.author}` : ''} · ${c.license}${c.url ? `\n${c.url}` : ''}`;
+        // Lo que piden las licencias: título, autor, licencia (con su enlace), dónde está, y si se la modificó.
+        return `${what}${c.author ? ` — ${c.author}` : ''} · ${c.license}${c.modified ? ' (adaptada: recortada y achicada)' : ''}${c.url ? `\n${c.url}` : ''}${c.licenseUrl ? `\n${c.licenseUrl}` : ''}`;
       });
       const size = perPage ?? 8;
       const chunks: string[][] = [];
@@ -432,21 +500,36 @@ export function registerSourcingTools(server: McpServer, deps: SourcingDeps): vo
         title: chunks.length > 1 ? `${heading} (${i + 1}/${chunks.length})` : heading,
         content: { kind: 'text', text: `${i === 0 && intro ? `${intro}\n\n` : ''}${chunk.join('\n\n')}`, area: 'content', background: 'blank' },
       }));
-      const others = (target.raw as { customPages?: unknown } | null)?.customPages;
-      const kept = Array.isArray(others) ? others.filter((p) => !(typeof p === 'object' && p !== null && typeof (p as { id?: unknown }).id === 'string' && (p as { id: string }).id.startsWith(CREDIT_PAGE_PREFIX))) : [];
-      const patch: JsonPatchOp[] = [Array.isArray(others) ? { op: 'replace', path: '/customPages', value: [...kept, ...pages] } : { op: 'add', path: '/customPages', value: pages }];
+      /** El parche sobre una lectura de la agenda: quita las páginas de créditos de antes y pone las nuevas. */
+      const patchFor = (raw: unknown): JsonPatchOp[] => {
+        const others = (raw as { customPages?: unknown } | null)?.customPages;
+        const kept = Array.isArray(others) ? others.filter((p) => !(typeof p === 'object' && p !== null && isCreditPage((p as { id?: unknown }).id))) : [];
+        return [Array.isArray(others) ? { op: 'replace', path: '/customPages', value: [...kept, ...pages] } : { op: 'add', path: '/customPages', value: pages }];
+      };
       const summary = { pages: pages.length, credits: credited.map((x) => ({ asset: x.id, name: x.name, author: x.credit!.author, license: x.credit!.license })) };
+      if (confirm !== true) {
+        recordProposal('build_credits_page', args);
+        return json({
+          applied: false,
+          proposal: { createOrReplace: pages.map((p) => ({ id: p.id, title: p.title, text: p.content.text })), remove: existing.filter((e) => !pages.some((p) => p.id === e.id)).map((e) => e.id), after: last, ...summary },
+          next: 'Si está bien, repetí la llamada con confirm: true.',
+        });
+      }
       if (target.kind === 'app') {
-        const result = await deps.updateInApp(patch);
+        const result = await deps.updateInApp(patchFor(target.raw));
         return result.isError ? result : { ...result, content: [{ type: 'text', text: JSON.stringify({ changed: true, ...summary }, null, 2) }, ...result.content] };
       }
-      const next = applyJsonPatch(target.raw, patch);
-      const check = checkDesignData(next);
-      if (!check.design) return failure({ written: false, issues: check.issues });
-      const written = await ws.write(target.full!, `${JSON.stringify(deps.stamp(next), null, 2)}\n`, { extensions: DESIGN_EXT, overwrite: true });
-      const layout = await newLayoutWarnings((d) => deps.open(d, dirname(written)), checkDesignJson(JSON.stringify(target.raw)).design, check.design);
-      const fixes = fixesFor(layout.notes.map((n) => n.code));
-      return json({ changed: true, written: true, path: ws.show(written), ...summary, warnings: layout.notes, ...(Object.keys(fixes).length > 0 ? { fixes } : {}) });
+      return withLock(target.full!, async () => {
+        // Se vuelve a leer la agenda: pudo cambiar mientras se armaba la página.
+        const fresh = deps.parseJson((await ws.read(path!, DESIGN_EXT)).text, path!);
+        const next = applyJsonPatch(fresh, patchFor(fresh));
+        const check = checkDesignData(next);
+        if (!check.design) return failure({ written: false, issues: check.issues });
+        const written = await ws.write(target.full!, `${JSON.stringify(deps.stamp(next), null, 2)}\n`, { extensions: DESIGN_EXT, overwrite: true });
+        const layout = await newLayoutWarnings((d) => deps.open(d, dirname(written)), checkDesignJson(JSON.stringify(fresh)).design, check.design);
+        const fixes = fixesFor(layout.notes.map((n) => n.code));
+        return json({ changed: true, written: true, path: ws.show(written), ...summary, warnings: layout.notes, ...(Object.keys(fixes).length > 0 ? { fixes } : {}) });
+      });
     },
   );
 
@@ -506,12 +589,13 @@ export function registerSourcingTools(server: McpServer, deps: SourcingDeps): vo
     },
     async (a) => {
       if (a.confirm === true && (a.path === undefined) === (a.app !== true)) throw new Error('Para agregar la fuente indicá la agenda con «path» o con «app: true», una de las dos.');
+      if (a.confirm === true && !hasProposal('import_font', a)) return failure({ applied: false, error: NO_PROPOSAL });
       const weights = [...new Set(a.weights ?? [400])];
       const wanted: FontVariant[] = [...weights.map((w) => ({ weight: w, style: 'normal' as const })), ...(a.italic ? weights.map((w) => ({ weight: w, style: 'italic' as const })) : [])];
       const resolved = await resolveFontFiles(a.family, wanted, ctx);
       const availableWeights = new Set(resolved.variantsAvailable.map(parseVariant).filter((v): v is FontVariant => v !== null).map((v) => v.weight)).size;
       const extra = a.extraText ?? '';
-      const variants: Array<{ variant: FontVariant; original: number; bytes: Uint8Array; assessment: FontAssessment; subset: boolean }> = [];
+      const variants: Array<{ variant: FontVariant; original: number; bytes: Uint8Array; assessment: FontAssessment; subset: boolean; dropped: number; variable: boolean }> = [];
       for (const f of resolved.files) {
         const original = await downloadFont(f.url, ctx);
         let opened;
@@ -523,6 +607,7 @@ export function registerSourcingTools(server: McpServer, deps: SourcingDeps): vo
         const assessment = assessFont(opened, { category: resolved.category, weights: availableWeights || undefined });
         let bytes = original;
         let subset = false;
+        let dropped = 0;
         if (a.subset !== 'none' && deps.subset) {
           const small = await deps.subset(original, LATIN_SUBSET + extra).catch(() => null);
           // Se queda con el recorte solo si pesa menos y sigue teniendo lo que tenía la fuente completa.
@@ -532,16 +617,24 @@ export function registerSourcingTools(server: McpServer, deps: SourcingDeps): vo
               if (again.fit === assessment.fit) {
                 bytes = small;
                 subset = true;
+                // Lo que la fuente tenía y el recorte no conserva (otras escrituras, símbolos): se dice cuánto.
+                const keep = new Set([...(LATIN_SUBSET + extra)].map((c) => c.codePointAt(0)!));
+                dropped = opened.characterSet.filter((cp) => !keep.has(cp)).length;
               }
             } catch {
               // el recorte no se pudo leer: queda la fuente entera
             }
           }
         }
-        variants.push({ variant: f, original: original.length, bytes, assessment, subset });
+        variants.push({ variant: f, original: original.length, bytes, assessment, subset, dropped, variable: Object.keys(opened.variationAxes ?? {}).length > 0 });
       }
       const worst = variants.some((v) => v.assessment.fit === 'unsuitable') ? 'unsuitable' : variants.some((v) => v.assessment.fit === 'incomplete') ? 'incomplete' : 'complete';
       const first = variants[0]!.assessment;
+      // Una fuente variable viene en un solo archivo para todos los pesos: se incrusta una vez (el peso no se fija: sale el del archivo).
+      const variable = variants.some((v) => v.variable);
+      const sameFile = new Set(variants.map((v) => sha256(v.bytes))).size < variants.length;
+      const toInstall = variable && sameFile ? variants.slice(0, 1) : variants;
+      const dropped = Math.max(0, ...variants.map((v) => v.dropped));
       const report = {
         family: resolved.family,
         category: resolved.category || 'desconocida',
@@ -554,23 +647,33 @@ export function registerSourcingTools(server: McpServer, deps: SourcingDeps): vo
         variants: variants.map((v) => ({ weight: v.variant.weight, style: v.variant.style, glyphs: v.assessment.glyphs, originalBytes: v.original, storedBytes: v.bytes.length, subset: v.subset })),
         storedTotal: mb(variants.reduce((n, v) => n + v.bytes.length, 0)),
         notes: [
+          ...(variable ? ['Es una fuente variable (un solo archivo para varios pesos): el programa no elige el peso dentro del archivo, así que todos salen con el peso por defecto. Para negrita real, buscá una familia con archivos estáticos por peso.'] : []),
+          ...(dropped > 0 ? [`El recorte descartó ${dropped} caracteres que no son de las lenguas de la aplicación (otras escrituras, símbolos). Si el texto los usa, repetí con extraText o con subset: "none".`] : []),
           ...(a.subset !== 'none' && !deps.subset ? ['Este servidor no tiene el módulo de recorte: la fuente se incrusta entera.'] : []),
           'El PDF incrusta solo los glifos que aparecen en el texto, venga la fuente recortada o entera; el recorte achica el archivo .agenda.json.',
         ],
       };
+      if (a.confirm !== true) recordProposal('import_font', a);
       if (a.confirm !== true) return json({ applied: false, ...report, canApply: worst !== 'unsuitable' || a.allowIncomplete === true, next: worst === 'unsuitable' && a.allowIncomplete !== true ? 'Le faltan letras del castellano: elegí otra fuente, o repetí con allowIncomplete: true si solo la vas a usar con texto en inglés.' : 'Si el informe está bien, repetí la llamada con confirm: true y path o app.' });
       if (worst === 'unsuitable' && a.allowIncomplete !== true) return failure({ applied: false, ...report, hint: 'Le faltan letras del castellano. Elegí otra fuente, o repetí con allowIncomplete: true.' });
 
+      // Antes de escribir nada: que entren todas (el esquema deja afuera en silencio las que pasan del máximo).
+      const target = await readTarget({ path: a.path, app: a.app });
+      const have = target?.design.userFonts ?? [];
+      const fresh = toInstall.filter((v) => !have.some((f) => f.spec.family === resolved.family && f.spec.weight === v.variant.weight && f.spec.style === v.variant.style)).length;
+      if (have.length + fresh > USER_FONTS_MAX) return failure({ applied: false, error: `La agenda ya tiene ${have.length} fuentes propias y el máximo es ${USER_FONTS_MAX}: no entran ${fresh} más. Quitá alguna de userFonts.` });
       const installed: unknown[] = [];
+      let last: { issues?: unknown; warnings?: unknown; fixes?: unknown } = {};
       // Los tipos de texto se asignan con la variante regular (o la primera).
-      const main = variants.find((v) => v.variant.weight === 400 && v.variant.style === 'normal') ?? variants[0]!;
-      for (const v of [main, ...variants.filter((x) => x !== main)]) {
-        const last = await deps.installFont({ bytes: v.bytes, label: `${resolved.family} ${variantName(v.variant)}`, path: a.path, app: a.app, family: resolved.family, weight: v.variant.weight, style: v.variant.style, roles: v === main ? a.roles : undefined });
-        if (last.isError) return last;
-        const body = JSON.parse((last.content.find((c) => c.type === 'text') as { text: string }).text) as { font?: unknown; replaced?: unknown };
+      const main = toInstall.find((v) => v.variant.weight === 400 && v.variant.style === 'normal') ?? toInstall[0]!;
+      for (const v of [main, ...toInstall.filter((x) => x !== main)]) {
+        const result = await deps.installFont({ bytes: v.bytes, label: `${resolved.family} ${variantName(v.variant)}`, path: a.path, app: a.app, family: resolved.family, weight: v.variant.weight, style: v.variant.style, roles: v === main ? a.roles : undefined });
+        if (result.isError) return { ...result, content: [{ type: 'text', text: JSON.stringify({ partial: installed.length > 0, installedBefore: installed }) }, ...result.content] };
+        const body = JSON.parse((result.content.find((c) => c.type === 'text') as { text: string }).text) as { font?: unknown; replaced?: unknown; issues?: unknown; warnings?: unknown; fixes?: unknown };
+        last = body;
         installed.push({ font: body.font, ...(body.replaced === true ? { replaced: true } : {}) });
       }
-      return json({ applied: true, ...report, installed, roles: a.roles ?? [], hint: a.roles?.length ? undefined : 'Para usarla, pasala a los tipos de texto con update_design en /theme/tokens/fonts/<rol>, o repetí con «roles».' });
+      return json({ applied: true, ...report, installed, roles: a.roles ?? [], ...(last.issues && (last.issues as unknown[]).length > 0 ? { issues: last.issues } : {}), ...(last.warnings && (last.warnings as unknown[]).length > 0 ? { warnings: last.warnings, fixes: last.fixes } : {}), hint: a.roles?.length ? undefined : 'Para usarla, pasala a los tipos de texto con update_design en /theme/tokens/fonts/<rol>, o repetí con «roles».' });
     },
   );
 

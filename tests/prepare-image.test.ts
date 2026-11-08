@@ -104,4 +104,28 @@ describe('prepareRaster', () => {
     const broken = makeJpeg(100, 100).subarray(0, 300);
     expect(() => prepareRaster(broken, { dpi: 300 })).toThrow(/dañada|leer/);
   });
+
+  it('una tapa grande llega a los 300 ppp: el tope de 4000 px es para el resto, no para ella', () => {
+    // 434 × 303 mm a 300 ppp son 5126 px de ancho: más que el tope normal.
+    const src = makePng(6000, 4200, [10, 20, 30]);
+    const capped = prepareRaster(src, { dpi: 300, sizeMm: { w: 434, h: 303 } });
+    expect(rasterInfo(capped.bytes)!.width).toBe(4000);
+    expect(capped.upscaleNeeded).toBe(true);
+    const full = prepareRaster(src, { dpi: 300, sizeMm: { w: 434, h: 303 }, maxSide: 12_000 });
+    expect(full.effectiveDpi).toBeGreaterThanOrEqual(285);
+    expect(full.upscaleNeeded).toBe(false);
+  }, 30_000);
+
+  it('un JPEG con EXIF (ubicación, cámara) no se incrusta con él, aunque no haga falta tocarlo', () => {
+    const withExif = withOrientation(makeJpeg(100, 50), 1);
+    const out = prepareRaster(withExif, { dpi: 300 });
+    expect(out.untouched).toBe(false);
+    expect(Buffer.from(out.bytes).includes(Buffer.from('Exif'))).toBe(false);
+    expect(rasterInfo(out.bytes)).toMatchObject({ width: 100, height: 50 });
+  });
+
+  it('una imagen de demasiados megapíxeles se rechaza antes de decodificarla', () => {
+    expect(() => prepareRaster(makePng(8000, 7000, [1, 2, 3]), { dpi: 300 })).toThrow(/demasiado grande/);
+  }, 30_000);
 });
+

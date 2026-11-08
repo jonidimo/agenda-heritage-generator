@@ -93,9 +93,9 @@ export function createHttpClient(opts: { transport?: Transport; userAgent: strin
     async get(raw, o) {
       const maxBytes = o.maxBytes ?? DEFAULT_MAX_BYTES;
       const timeoutMs = o.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+      let url = checkUrl(raw, o.allow);
       const control = new AbortController();
       const timer = setTimeout(() => control.abort(), timeoutMs);
-      let url = checkUrl(raw, o.allow);
       let headers: Record<string, string> = { 'user-agent': opts.userAgent, 'accept-encoding': 'gzip, deflate, br', ...lowerKeys(o.headers) };
       try {
         for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
@@ -110,7 +110,7 @@ export function createHttpClient(opts: { transport?: Transport; userAgent: strin
           }
           if (res.status === 401 || res.status === 403) {
             await discard(res.body);
-            throw new WebError('auth', `${url.host} rechazó el pedido (${res.status}): revisá la clave de la API.`, res.status);
+            throw new WebError('auth', `${url.host} rechazó el pedido (${res.status}): puede ser la clave de la API, el límite de uso o que el sitio no permita la descarga.`, res.status);
           }
           if (res.status === 429) {
             await discard(res.body);

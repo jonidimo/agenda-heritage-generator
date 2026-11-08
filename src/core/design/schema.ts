@@ -509,6 +509,8 @@ export const AssetCreditZ = z.object({
   sourceSha256: z.string().regex(/^[0-9a-f]{64}$/).optional().catch(undefined),
   /** Falso si los datos los dio quien pidió la importación y no el servicio. */
   verified: z.boolean().catch(true).default(true),
+  /** La imagen se recortó o se achicó respecto de la original (varias licencias piden decirlo). */
+  modified: z.boolean().catch(false).default(false),
 });
 export type AssetCredit = z.infer<typeof AssetCreditZ>;
 

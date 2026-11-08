@@ -41,7 +41,7 @@ export function createCache(opts: { dir: string | null; now?: () => number; ttlM
   const ttl = opts.ttlMs ?? CACHE_TTL_MS;
   const memoryMax = opts.memoryMax ?? 300;
   const memory = new Map<string, Entry>();
-  let pruned = false;
+  let writes = 0;
 
   const remember = (name: string, entry: Entry): void => {
     memory.delete(name);
@@ -53,7 +53,10 @@ export function createCache(opts: { dir: string | null; now?: () => number; ttlM
   /** Borra los archivos más viejos si hay demasiados (una vez por proceso, sin esperar). */
   const prune = async (dir: string): Promise<void> => {
     try {
-      const names = (await readdir(dir)).filter((n) => n.endsWith('.json'));
+      const all = await readdir(dir);
+      // Los archivos temporales que quedaron de una escritura cortada.
+      await Promise.all(all.filter((n) => n.endsWith('.tmp')).map((n) => unlink(join(dir, n)).catch(() => undefined)));
+      const names = all.filter((n) => n.endsWith('.json'));
       if (names.length <= CACHE_MAX_FILES) return;
       const dated = await Promise.all(names.map(async (n) => ({ n, t: (await stat(join(dir, n))).mtimeMs })));
       dated.sort((a, b) => a.t - b.t);
@@ -94,10 +97,8 @@ export function createCache(opts: { dir: string | null; now?: () => number; ttlM
         const temp = join(opts.dir, `${name}.${process.pid}.tmp`);
         await writeFile(temp, JSON.stringify(entry), { mode: 0o600 });
         await rename(temp, join(opts.dir, name));
-        if (!pruned) {
-          pruned = true;
-          void prune(opts.dir);
-        }
+        // Se limpia al principio y cada tantas escrituras (un proceso largo no deja crecer la carpeta).
+        if (writes++ % 50 === 0) void prune(opts.dir);
       } catch {
         // sin disco la caché sigue en memoria
       }

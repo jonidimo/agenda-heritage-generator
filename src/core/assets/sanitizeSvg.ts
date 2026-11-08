@@ -37,15 +37,17 @@ const internal = (v: string): boolean => /^\s*#[^\s]*\s*$/.test(v);
 /** Una imagen incrustada en datos: solo mapas de bits (un SVG adentro podría traer scripts). */
 const safeDataImage = (v: string): boolean => /^\s*data:image\/(?:png|jpe?g|gif|webp);base64,[A-Za-z0-9+/=\s]+$/i.test(v);
 
-/** Quita de un valor CSS lo que carga cosas de afuera o ejecuta código. */
-function cleanCss(css: string, count: (what: string) => void): string {
-  let out = css.replace(/\/\*[\s\S]*?\*\//g, '');
-  const before = out;
-  out = out.replace(/@import\b[^;]*;?/gi, '');
-  out = out.replace(/url\(\s*(?!['"]?#)[^)]*\)/gi, 'none');
-  out = out.replace(/expression\s*\([^)]*\)/gi, 'none').replace(/javascript\s*:/gi, '').replace(/-moz-binding\s*:[^;}]*/gi, '').replace(/behavior\s*:[^;}]*/gi, '');
-  if (out !== before) count('estilo con referencias externas');
-  return out;
+/**
+ * ¿Es un valor CSS que no carga nada de afuera ni ejecuta nada? Estricto a propósito: nada de escapes (`\72l(` es
+ * `url(`), arrobas (`@import`), `image-set`, `image(`, `src(`, ni un `url(` que no sea `url(#elemento)` bien cerrado.
+ * Lo que no pasa se saca entero (un estilo menos es mejor que uno que rastrea).
+ */
+export function safeCss(css: string): boolean {
+  const text = css.replace(/\/\*[\s\S]*?\*\//g, '');
+  if (/[\\@]|image-set|image\(|src\(|expression|javascript|behavior|binding|<!--|-->/i.test(text)) return false;
+  const urls = text.match(/url\(/gi)?.length ?? 0;
+  const safe = text.match(/url\(\s*(?:"#[^"\s)]*"|'#[^'\s)]*'|#[^'"\s)]*)\s*\)/gi)?.length ?? 0;
+  return urls === safe;
 }
 
 /** Los atributos que se conservan de un elemento, ya limpios. */
@@ -77,18 +79,9 @@ function cleanAttrs(el: string, attrs: Record<string, string>, count: (what: str
     }
     // Atributos de otros espacios de nombres (inkscape:, sodipodi:…) y nombres raros.
     if (!/^[A-Za-z][A-Za-z0-9-]*$/.test(name)) continue;
-    if (lower === 'style') {
-      const cleaned = cleanCss(value, count);
-      if (cleaned.trim()) out.push([name, cleaned]);
-      continue;
-    }
-    if (/javascript\s*:|data\s*:\s*text|expression\s*\(/i.test(value)) {
-      count('valor con código');
-      continue;
-    }
-    // `fill="url(https://…)"`, `filter="url(…)"`, `clip-path`…: solo a elementos del mismo archivo.
-    if (/url\(/i.test(value) && /url\(\s*(?!['"]?#)/i.test(value)) {
-      count('referencia externa');
+    // Todo valor se mira como CSS (los atributos de presentación lo son): `fill="u\72l(https://…)"` también carga.
+    if (!safeCss(value)) {
+      count(lower === 'style' ? 'estilo con referencias externas o código' : 'valor con referencia externa o código');
       continue;
     }
     out.push([name, value]);
@@ -102,7 +95,7 @@ function cleanAttrs(el: string, attrs: Record<string, string>, count: (what: str
 export function sanitizeSvg(source: string): SanitizedSvg {
   const counts = new Map<string, number>();
   const count = (what: string): void => void counts.set(what, (counts.get(what) ?? 0) + 1);
-  const doc = parseXml(source.charCodeAt(0) === 0xfeff ? source.slice(1) : source);
+  const doc = parseXml(source.charCodeAt(0) === 0xfeff ? source.slice(1) : source, MAX_DEPTH);
   const root = doc.children.find((c) => localName(c.name).toLowerCase() === 'svg');
   if (!root) throw new Error('No es un SVG.');
   let nodes = 0;
@@ -125,7 +118,11 @@ export function sanitizeSvg(source: string): SanitizedSvg {
     const attrs = cleanAttrs(name, node.attrs, count);
     if (name === 'svg' && node === root && !attrs.some(([k]) => k.toLowerCase() === 'xmlns')) attrs.unshift(['xmlns', 'http://www.w3.org/2000/svg']);
     const open = `<${name}${attrs.map(([k, v]) => ` ${k}="${escAttr(v)}"`).join('')}`;
-    const text = TEXTUAL.has(name) ? (name === 'style' ? cleanCss(node.text, count) : node.text) : '';
+    let text = TEXTUAL.has(name) ? node.text : '';
+    if (name === 'style' && !safeCss(text)) {
+      count('estilo con referencias externas o código');
+      text = '';
+    }
     const children = inner();
     return text === '' && children === '' ? `${open}/>` : `${open}>${esc(text)}${children}</${name}>`;
   };

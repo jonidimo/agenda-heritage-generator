@@ -46,7 +46,12 @@ async function start(opts: { env?: Record<string, string>; routes?: Route[]; app
   });
 }
 
-async function call(name: string, args: Record<string, unknown> = {}) {
+/** Las herramientas que solo aplican lo que antes se propuso. */
+const NEEDS_PROPOSAL = new Set(['import_image', 'import_font', 'build_credits_page']);
+
+/** Como una persona aprobaría: antes de una llamada con `confirm: true` se hace la propuesta, con los mismos parámetros (salvo `raw`). */
+async function call(name: string, args: Record<string, unknown> = {}, opts: { raw?: boolean } = {}) {
+  if (args.confirm === true && NEEDS_PROPOSAL.has(name) && !opts.raw) await client.callTool({ name, arguments: { ...args, confirm: undefined } });
   const res = (await client.callTool({ name, arguments: args })) as { content: Part[]; isError?: boolean };
   const text = res.content.find((c) => c.type === 'text')?.text ?? '';
   const body = ((): Record<string, any> => { // eslint-disable-line @typescript-eslint/no-explicit-any
@@ -118,6 +123,26 @@ describe('search_images', () => {
     for (const args of [{ query: '' }, { query: 'x'.repeat(201) }, { query: 'a', limit: 99 }, { query: 'a', license: 'todas' }, { query: 'a', provider: ['evil'] }]) {
       expect((await call('search_images', args)).isError, JSON.stringify(args)).toBe(true);
     }
+  });
+});
+
+describe('nada se aplica a ciegas', () => {
+  it('confirm sin propuesta previa, o con otros parámetros, no cambia nada', async () => {
+    await withAgenda(KEYS, [{ match: /fonts\.googleapis\.com\/css2/, type: 'text/css', body: css('Roboto', 400, 'normal', 'https://fonts.gstatic.com/s/roboto/r.ttf') }, { match: 'https://fonts.gstatic.com/s/roboto/r.ttf', type: 'font/ttf', body: garamond('EBGaramond-Regular.ttf') }]);
+    const before = await readFile(join(dir, 'a.agenda.json'), 'utf8');
+    const blind = await call('import_image', { id: `openverse:${OV_ID}`, path: 'a.agenda.json', confirm: true }, { raw: true });
+    expect(blind.isError).toBe(true);
+    expect(blind.body.error).toMatch(/Primero pedí la propuesta/);
+    expect((await call('import_font', { family: 'Roboto', path: 'a.agenda.json', confirm: true }, { raw: true })).isError).toBe(true);
+    expect((await call('build_credits_page', { path: 'a.agenda.json', confirm: true }, { raw: true })).isError).toBe(true);
+    // Se propuso una cosa y se confirma otra: tampoco.
+    await call('import_image', { id: `openverse:${OV_ID}`, path: 'a.agenda.json', sizeMm: { w: 60, h: 40 } });
+    const other = await call('import_image', { id: `openverse:${OV_ID}`, path: 'a.agenda.json', sizeMm: { w: 90, h: 40 }, confirm: true }, { raw: true });
+    expect(other.isError).toBe(true);
+    expect(await readFile(join(dir, 'a.agenda.json'), 'utf8')).toBe(before);
+    expect(await exists('imagenes')).toBe(false);
+    // Con la propuesta de verdad, sí.
+    expect((await call('import_image', { id: `openverse:${OV_ID}`, path: 'a.agenda.json', sizeMm: { w: 60, h: 40 }, confirm: true }, { raw: true })).isError).toBe(false);
   });
 });
 
@@ -210,6 +235,20 @@ describe('import_image', () => {
     expect(pw / ph).toBeCloseTo(w / h, 1);
   });
 
+  it('el crédito dice que la imagen se adaptó, y una imagen sin tocar no lo dice', async () => {
+    await withAgenda();
+    const r = await call('import_image', { id: `openverse:${OV_ID}`, path: 'a.agenda.json', sizeMm: { w: 60, h: 40 }, confirm: true });
+    expect((await agenda()).assets.find((x: { id: string }) => x.id === r.body.assetId).credit.modified).toBe(true);
+  });
+
+  it('una tapa que no es envolvente avisa que no tiene lomo ni sangrado', async () => {
+    await withAgenda();
+    const r = await call('import_image', { id: `openverse:${OV_ID}`, path: 'a.agenda.json', for: 'cover' });
+    expect(r.isError, r.text).toBe(false);
+    const style = (await agenda()).cover?.style ?? 'board';
+    if (style !== 'wrap') expect(r.body.warnings.join(' ')).toMatch(/sin lomo ni sangrado/);
+  });
+
   it('una foto apaisada se recorta para una portada vertical, alrededor del foco', async () => {
     await withAgenda();
     const r = await call('import_image', { id: `openverse:${OV_ID}`, path: 'a.agenda.json', sizeMm: { w: 50, h: 100 }, focus: { x: 0, y: 0.5 }, dpi: 150, confirm: true });
@@ -253,6 +292,8 @@ describe('import_image', () => {
     expect(svg).not.toMatch(/script|onclick|alert/);
     expect(svg).toContain('<rect');
     expect(a.credit).toMatchObject({ license: 'CC BY-SA 4.0' });
+    // La licencia pide compartir igual: se avisa antes de importar.
+    expect(r.body.warnings.join(' ')).toMatch(/BY-SA/);
   });
 
   it('si solo se pudo bajar la copia reducida, lo dice', async () => {
@@ -349,7 +390,7 @@ describe('build_credits_page', () => {
     await placed();
     // Otra imagen importada que no se usa: no figura.
     await call('import_image', { id: `openverse:${OV_ID3}`, path: 'a.agenda.json', confirm: true });
-    const r = await call('build_credits_page', { path: 'a.agenda.json' });
+    const r = await call('build_credits_page', { path: 'a.agenda.json', confirm: true });
     expect(r.isError, r.text).toBe(false);
     expect(r.body).toMatchObject({ changed: true, pages: 1 });
     expect(r.body.credits).toHaveLength(1);
@@ -364,17 +405,41 @@ describe('build_credits_page', () => {
     const real = (pages.pages as Array<{ type: string; title: string }>).filter((p) => p.type !== 'filler');
     expect(real[real.length - 1]!.title).toBe('Créditos de las imágenes');
     // Repetirla no duplica nada.
-    const again = await call('build_credits_page', { path: 'a.agenda.json' });
+    const again = await call('build_credits_page', { path: 'a.agenda.json', confirm: true });
     expect(again.isError).toBe(false);
     expect((await agenda()).customPages.filter((p: { id: string }) => p.id.startsWith('credits-img'))).toHaveLength(1);
     // Con onlyUsed: false entran todas.
-    await call('build_credits_page', { path: 'a.agenda.json', onlyUsed: false });
+    await call('build_credits_page', { path: 'a.agenda.json', onlyUsed: false, confirm: true });
     expect((await agenda()).customPages.find((p: { id: string }) => p.id === 'credits-img').content.text).toContain('Escudo');
     // La página se dibuja sin avisos.
     const creditsAt = (pages.pages as Array<{ page: number; type: string }>).find((p) => p.type === 'custom')!.page;
     const render = await call('render_page', { path: 'a.agenda.json', page: creditsAt });
     expect(render.isError).toBe(false);
     expect(JSON.stringify(render.body)).not.toMatch(/overflow|textOverflow/);
+  });
+
+  it('sin confirm solo propone: qué páginas se crean y cuáles se quitan, sin escribir', async () => {
+    await withAgenda();
+    await placed();
+    const before = await readFile(join(dir, 'a.agenda.json'), 'utf8');
+    const r = await call('build_credits_page', { path: 'a.agenda.json' });
+    expect(r.body.applied).toBe(false);
+    expect(r.body.proposal.createOrReplace[0].text).toContain('Jane Doe');
+    expect(r.body.proposal.createOrReplace[0].text).toContain('https://creativecommons.org/licenses/by/2.0/');
+    expect(r.body.proposal.createOrReplace[0].text).toContain('adaptada');
+    expect(await readFile(join(dir, 'a.agenda.json'), 'utf8')).toBe(before);
+  });
+
+  it('solo toca sus propias páginas: una de la persona con un id parecido queda', async () => {
+    await withAgenda();
+    await placed();
+    const raw = await agenda();
+    raw.customPages.push({ id: 'credits-imagenes-mias', after: null, title: 'Mía', content: { kind: 'text', text: 'hola' } });
+    const { writeFile } = await import('node:fs/promises');
+    await writeFile(join(dir, 'a.agenda.json'), JSON.stringify(raw));
+    await call('build_credits_page', { path: 'a.agenda.json', confirm: true });
+    const ids = (await agenda()).customPages.map((p: { id: string }) => p.id);
+    expect(ids).toEqual(expect.arrayContaining(['credits-imagenes-mias', 'credits-img']));
   });
 
   it('con muchas imágenes reparte en varias páginas, y con título e introducción propios', async () => {
@@ -386,7 +451,7 @@ describe('build_credits_page', () => {
     raw.customBlocks.push(...blocks);
     const { writeFile } = await import('node:fs/promises');
     await writeFile(join(dir, 'a.agenda.json'), JSON.stringify(raw));
-    const r = await call('build_credits_page', { path: 'a.agenda.json', perPage: 3, title: 'Image credits', intro: 'Photos from Openverse.' });
+    const r = await call('build_credits_page', { path: 'a.agenda.json', perPage: 3, title: 'Image credits', intro: 'Photos from Openverse.', confirm: true });
     expect(r.isError, r.text).toBe(false);
     expect(r.body.pages).toBe(3);
     const pages = (await agenda()).customPages.filter((p: { id: string }) => p.id.startsWith('credits-img'));
@@ -396,7 +461,7 @@ describe('build_credits_page', () => {
     raw.customBlocks = blocks.slice(0, 2);
     raw.customPages = pages;
     await writeFile(join(dir, 'a.agenda.json'), JSON.stringify(raw));
-    await call('build_credits_page', { path: 'a.agenda.json' });
+    await call('build_credits_page', { path: 'a.agenda.json', confirm: true });
     expect((await agenda()).customPages.filter((p: { id: string }) => p.id.startsWith('credits-img'))).toHaveLength(1);
   });
 
@@ -500,6 +565,18 @@ describe('fuentes', () => {
     const forced = await call('import_font', { family: 'Chica', path: 'a.agenda.json', allowIncomplete: true, confirm: true });
     expect(forced.isError, forced.text).toBe(false);
     expect((await agenda()).userFonts).toHaveLength(1);
+  });
+
+  it('si no entran todas las variantes en el máximo de fuentes propias, no instala ninguna', async () => {
+    await withAgenda(KEYS, fontRoutes());
+    const raw = await agenda();
+    raw.userFonts = Array.from({ length: 39 }, (_, i) => ({ id: `f${i}`, spec: { family: `Otra ${i}`, weight: 400, style: 'normal' }, data: 'AAAA' }));
+    const { writeFile } = await import('node:fs/promises');
+    await writeFile(join(dir, 'a.agenda.json'), JSON.stringify(raw));
+    const r = await call('import_font', { family: 'Roboto', weights: [400, 700], path: 'a.agenda.json', confirm: true });
+    expect(r.isError).toBe(true);
+    expect(r.body.error).toMatch(/máximo es 40/);
+    expect((await agenda()).userFonts).toHaveLength(39);
   });
 
   it('una hoja de estilos que apunta a otro dominio no se sigue', async () => {

@@ -48,8 +48,8 @@ describe('sanitizeSvg', () => {
     const src = wrap('<style>@import url("https://evil.example/a.css"); .a{fill:url(https://evil.example/p.png);stroke:url(#ok)} .b{behavior:url(x.htc);width:expression(alert(1))}</style><rect class="a" style="fill:url(//evil.example/x); stroke:#000" width="1" height="1"/>');
     const { svg, removed } = sanitizeSvg(src);
     expect(svg).not.toMatch(/evil|@import|expression|behavior/);
-    expect(svg).toContain('stroke:url(#ok)');
-    expect(svg).toContain('stroke:#000');
+    // Un estilo con algo de afuera se saca entero (uno menos es mejor que uno que rastrea).
+    expect(svg).not.toContain('stroke:url(#ok)');
     expect(removed.some((r) => r.startsWith('estilo'))).toBe(true);
   });
 
@@ -85,4 +85,40 @@ describe('sanitizeSvg', () => {
     expect(() => sanitizeSvg('')).toThrow('No es un SVG');
     expect(() => sanitizeSvg(wrap('<g>'.repeat(300) + '</g>'.repeat(300)))).toThrow(/profundidad/);
   });
+
+  it('el CSS con escapes, image-set o sin cerrar no pasa (la revisión lo encontró)', () => {
+    const casos = [
+      '<style>rect{fill:u\\72l(https://evil.example/x.svg#a)}</style><rect width="1" height="1"/>',
+      '<style>@\\69mport "https://evil.example/a.css";</style><rect width="1" height="1"/>',
+      '<style>rect{fill:url(https://evil.example/x</style><rect width="1" height="1"/>',
+      '<rect style="fill:url(https://evil.example/x" width="1" height="1"/>',
+      `<rect style="background:image-set('https://evil.example/a.png' 1x)" width="1" height="1"/>`,
+      '<rect style="cursor:image-set(\'https://evil.example/a.png\' 1x)" width="1" height="1"/>',
+      '<rect fill="u\\72l(https://evil.example/x)" width="1" height="1"/>',
+      '<rect style="background:image(\'https://evil.example/a.png\')" width="1" height="1"/>',
+    ];
+    for (const c of casos) {
+      const { svg, removed } = sanitizeSvg(wrap(c));
+      expect(svg, c).not.toMatch(/evil/);
+      expect(removed.length, c).toBeGreaterThan(0);
+    }
+    // Lo legítimo sigue: colores, url(#id) cerrado, clases.
+    const ok = sanitizeSvg(wrap('<style>.a{fill:#f00;stroke:url(#g)}</style><rect class="a" style="fill:url(\'#g\');opacity:.5" width="1" height="1"/>'));
+    expect(ok.removed).toEqual([]);
+    expect(ok.svg).toContain('.a{fill:#f00;stroke:url(#g)}');
+  });
+
+  it('elementos anidados que no cierran bien no cuelgan el proceso', () => {
+    const t0 = Date.now();
+    expect(() => sanitizeSvg(wrap('<g>'.repeat(40_000) + '</a>'.repeat(40_000)))).toThrow(/profundidad/);
+    expect(Date.now() - t0).toBeLessThan(1500);
+  });
+
+  it('una entidad numérica fuera de rango o de control no rompe ni queda en la salida', () => {
+    const { svg } = sanitizeSvg(wrap('<text>a&#x110000;b&#1;c&#65;</text>'));
+    expect(svg).toContain('aA'.slice(0, 1));
+    expect([...svg].some((c) => c.charCodeAt(0) < 9)).toBe(false);
+    expect(svg).toContain('A');
+  });
 });
+
