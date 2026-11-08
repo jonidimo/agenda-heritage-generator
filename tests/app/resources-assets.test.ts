@@ -1,6 +1,6 @@
 /** Los bytes de una imagen que se reemplazan no dejan atrás lo que se sabía de los anteriores; sin Web Crypto no se cae nada. */
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { resources } from '../../src/app/state/resources';
+import { io, resources } from '../../src/app/state/resources';
 import { trySha256Hex, sha256Hex } from '../../src/core/util/digest';
 import type { AssetInfo } from '../../src/core/layout/context';
 
@@ -40,3 +40,16 @@ describe('hash sin Web Crypto', () => {
     expect(await trySha256Hex(new TextEncoder().encode('abc'))).toBe('ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad');
   });
 });
+
+describe('io.read', () => {
+  it('un servidor que contesta con su página de inicio a lo que no existe no vale como el archivo', async () => {
+    vi.stubGlobal('fetch', async () => new Response('<!doctype html><title>app</title>', { status: 200, headers: { 'content-type': 'text/html; charset=utf-8' } }));
+    await expect(io.read('watermarks/no-existe.svg')).rejects.toThrow(/No existe el recurso integrado/);
+  });
+
+  it('lo que existe se lee', async () => {
+    vi.stubGlobal('fetch', async () => new Response('<svg/>', { status: 200, headers: { 'content-type': 'image/svg+xml' } }));
+    expect(new TextDecoder().decode(await io.read('icons/lucide/moon.svg'))).toBe('<svg/>');
+  });
+});
+

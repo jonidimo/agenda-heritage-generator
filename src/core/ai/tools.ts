@@ -47,6 +47,11 @@ export interface ToolHost {
   document(): AgendaDocument | null;
   /** Una agenda armada para un diseño cualquiera (para comparar avisos antes y después de un cambio). */
   documentFor(design: Design): AgendaDocument | null;
+  /**
+   * Cargar lo que un diseño necesita antes de armarlo (íconos por nombre, imágenes integradas, fuentes): sin esto, los
+   * avisos de una propuesta dirían que faltan archivos que todavía no se cargaron.
+   */
+  prepare?: ((design: Design) => Promise<void>) | undefined;
   /** Dibujar una página como imagen (solo si se permite que el asistente mire las páginas). */
   render?: ((index: number, width: number) => Promise<AiImagePart>) | undefined;
   reveal(req: { page?: number | undefined; key?: string | undefined; blockId?: string | undefined }): RevealResult;
@@ -217,6 +222,7 @@ const TOOLS = [
       const result = applyDesignPatch(current, patch);
       if (!result.ok) return fail('El cambio no se puede aplicar.', { issues: result.issues });
       const open = async (d: Design): Promise<{ doc: AgendaDocument }> => {
+        await host.prepare?.(d);
         const doc = host.documentFor(d);
         if (!doc) throw new Error('la agenda no se puede armar ahora');
         await host.pace?.(doc);

@@ -230,3 +230,24 @@ describe('historial y texto de sistema', () => {
     expect(contextBlock(ctx())).toMatch(/^<context>\n\{.*\}\n<\/context>$/s);
   });
 });
+
+describe('propose_change carga lo que la propuesta necesita antes de revisarla', () => {
+  it('llama a prepare (íconos, imágenes integradas) con el diseño nuevo antes de armarlo', async () => {
+    const order: string[] = [];
+    const h = host({
+      prepare: async (d) => {
+        order.push(`prepare:${d.name}`);
+      },
+      documentFor: (d) => {
+        order.push(`documentFor:${d.name}`);
+        return new AgendaDocument(d, doc.resources, {}, { reuse: doc });
+      },
+    });
+    const out = await executeTool('propose_change', { patch: [{ op: 'replace', path: '/name', value: 'Con íconos' }], summary: 'Cambia el nombre' }, h);
+    expect((out as { proposal?: unknown }).proposal).toBeTruthy();
+    // La propuesta se arma después de preparar el diseño nuevo.
+    expect(order.indexOf('prepare:Con íconos')).toBeGreaterThanOrEqual(0);
+    expect(order.indexOf('prepare:Con íconos')).toBeLessThan(order.indexOf('documentFor:Con íconos'));
+  });
+});
+

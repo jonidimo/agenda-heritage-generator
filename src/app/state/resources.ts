@@ -32,6 +32,8 @@ export const io: ResourceIO = {
   async read(path: string): Promise<Uint8Array> {
     const res = await fetch(`${BASE}${path}`);
     if (!res.ok) throw new Error(`No se pudo cargar ${path} (${res.status})`);
+    // Un servidor que contesta con su página de inicio a lo que no existe (la versión de escritorio): no es el archivo.
+    if ((res.headers.get('content-type') ?? '').includes('text/html') && !path.endsWith('.html')) throw new Error(`No existe el recurso integrado «${path}»`);
     return new Uint8Array(await res.arrayBuffer());
   },
 };

@@ -109,6 +109,7 @@ export function appToolHost({ vision, signal, draft }: HostOptions): ToolHost {
     design: () => draft ?? useStore.getState().design,
     document: doc,
     documentFor,
+    prepare: (d) => resources.ensureFor(d),
     render: vision
       ? async (index, width) => {
           const d = doc();
