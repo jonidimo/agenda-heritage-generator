@@ -10,10 +10,11 @@
  */
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { createHash } from 'node:crypto';
-import { unlink } from 'node:fs/promises';
-import { basename, dirname, extname, resolve } from 'node:path';
+import { lstat, readdir, realpath, unlink } from 'node:fs/promises';
+import { basename, delimiter, dirname, extname, isAbsolute, join, resolve, sep } from 'node:path';
 import { z } from 'zod';
 import { LOW_DPI } from '../core/assets/image';
+import { creditPages, isCreditPage } from '../core/assets/creditsPage';
 import { assetInfoFromBytes, fromBase64, toBase64 } from '../core/resources';
 import { usedAssetIds } from '../core/design/assetUse';
 import { USER_FONTS_MAX, type Design } from '../core/design/schema';
@@ -247,6 +248,99 @@ export function registerSourcingTools(server: McpServer, deps: SourcingDeps): vo
     },
   );
 
+  /* ---------- Carpetas que se pueden leer ---------- */
+
+  /**
+   * Las carpetas de lectura: la de trabajo y las que la persona declaró en AGENDA_MCP_READ_DIRS (separadas por «:» en
+   * Linux y macOS, «;» en Windows). Solo se leen imágenes, y siempre adentro de una de ellas (también siguiendo enlaces).
+   */
+  const readRoots: Workspace[] = [ws];
+  for (const dir of (deps.env.AGENDA_MCP_READ_DIRS ?? '').split(delimiter).filter(Boolean)) {
+    try {
+      readRoots.push(new Workspace(dir));
+    } catch {
+      // una carpeta que no existe no impide el resto
+    }
+  }
+  const IMAGE_EXTS = ['.png', '.jpg', '.jpeg', '.svg'];
+  /** Lee una imagen por una ruta relativa a la carpeta de trabajo, o absoluta adentro de una carpeta de lectura. */
+  async function readLocal(path: string, maxBytes: number): Promise<{ bytes: Uint8Array }> {
+    if (!isAbsolute(path)) return ws.readBytes(path, IMAGE_EXTS, maxBytes);
+    let last: unknown = null;
+    for (const root of readRoots) {
+      try {
+        return await root.readBytes(path, IMAGE_EXTS, maxBytes);
+      } catch (err) {
+        last = err;
+      }
+    }
+    throw new Error(`«${path}» no está en la carpeta de trabajo ni en una carpeta de lectura (AGENDA_MCP_READ_DIRS).${last instanceof Error && !/fuera de la carpeta/.test(last.message) ? ` ${last.message}` : ''}`);
+  }
+
+  server.registerTool(
+    'list_images',
+    {
+      title: 'Ver las imágenes de una carpeta',
+      description:
+        'Lista las imágenes (PNG, JPEG, SVG) de una carpeta con una miniatura de cada una: la carpeta de trabajo o una de las carpetas de lectura que la persona declaró en AGENDA_MCP_READ_DIRS (por ejemplo su carpeta de Descargas). Después se importa una con import_image y «image» (ruta relativa a la carpeta de trabajo, o absoluta si es de una carpeta de lectura). Sin «folder» lista la carpeta de trabajo y las de lectura. No sale de esas carpetas.',
+      inputSchema: {
+        folder: z.string().max(500).optional().describe('Una carpeta de lectura (ruta absoluta) o una subcarpeta de la de trabajo; por defecto, todas'),
+        thumbnails: z.number().int().min(0).max(12).optional().describe('Cuántas miniaturas mostrar (6 por defecto)'),
+        limit: z.number().int().min(1).max(200).optional(),
+      },
+      annotations: { readOnlyHint: true },
+    },
+    async ({ folder, thumbnails, limit }) => {
+      const roots = folder === undefined ? readRoots : isAbsolute(folder) ? readRoots.filter((r) => folder === r.root || folder.startsWith(r.root + sep)) : [ws];
+      if (roots.length === 0) return failure({ error: `«${folder}» no está en la carpeta de trabajo ni en una carpeta de lectura (AGENDA_MCP_READ_DIRS).`, readFolders: readRoots.map((r) => r.root) });
+      const groups: Array<{ folder: string; images: Array<{ path: string; size: string }> }> = [];
+      const content: ToolResult['content'] = [];
+      let budget = thumbnails ?? 6;
+      for (const root of roots) {
+        const start = folder === undefined || isAbsolute(folder) ? (folder ?? root.root) : resolve(root.root, folder);
+        const found: Array<{ full: string; size: number }> = [];
+        const walk = async (dir: string, depth: number): Promise<void> => {
+          let names: string[];
+          try {
+            names = (await readdir(dir)).sort();
+          } catch {
+            return;
+          }
+          for (const name of names) {
+            if (found.length >= (limit ?? 100)) return;
+            if (name.startsWith('.')) continue;
+            const full = join(dir, name);
+            const info = await lstat(full).catch(() => null);
+            if (!info || info.isSymbolicLink()) continue;
+            if (info.isDirectory()) {
+              if (depth < 3) await walk(full, depth + 1);
+            } else if (info.isFile() && IMAGE_EXTS.includes(extname(name).toLowerCase())) found.push({ full, size: info.size });
+          }
+        };
+        // La carpeta pedida tiene que quedar adentro de la raíz (también por enlaces).
+        const real = await realpath(start).catch(() => null);
+        if (!real || (real !== root.root && !real.startsWith(root.root + sep))) continue;
+        await walk(real, 0);
+        const shown = (full: string): string => (root === ws ? ws.show(full) : full);
+        groups.push({ folder: root.root, images: found.map((f) => ({ path: shown(f.full), size: mb(f.size) })) });
+        for (const f of found) {
+          if (budget <= 0) break;
+          try {
+            const { bytes } = await root.readBytes(f.full, IMAGE_EXTS, 12 * 1024 * 1024);
+            const small = sniffImage(bytes) === 'svg' ? null : shrinkToJpeg(bytes, 320);
+            if (small) {
+              content.push({ type: 'text', text: shown(f.full) }, { type: 'image', data: toBase64(small), mimeType: 'image/jpeg' });
+              budget--;
+            }
+          } catch {
+            // una miniatura que no se pudo leer no cambia la lista
+          }
+        }
+      }
+      return { content: [{ type: 'text', text: JSON.stringify({ folders: groups, readFolders: readRoots.map((r) => r.root), next: 'import_image con «image» y la ruta.' }, null, 2) }, ...content] };
+    },
+  );
+
   /* ---------- import_image ---------- */
 
   /** La imagen ya bajada, si se bajó hace poco (propuesta y confirmación comparten la descarga). */
@@ -291,7 +385,7 @@ export function registerSourcingTools(server: McpServer, deps: SourcingDeps): vo
       inputSchema: {
         id: z.string().trim().min(3).max(220).optional().describe('El id que devolvió search_images («openverse:…», «wikimedia:…», «pexels:…», «pixabay:…», «unsplash:…», «deviantart:…»)'),
         url: z.string().trim().max(1000).optional().describe('Un enlace directo a un archivo de imagen (PNG, JPEG o SVG) de un dominio de AGENDA_TRUSTED_HOSTS; browse_page lista los de una página'),
-        image: z.string().trim().max(300).optional().describe('Un archivo de imagen (.png, .jpg, .jpeg, .svg) que se lee de la carpeta de trabajo, relativo a ella'),
+        image: z.string().trim().max(300).optional().describe('Un archivo de imagen (.png, .jpg, .jpeg, .svg) de la carpeta de trabajo (ruta relativa) o de una carpeta de lectura declarada en AGENDA_MCP_READ_DIRS (ruta absoluta); ver list_images'),
         author: z.string().trim().max(200).optional().describe('Con url o image: de quién es la imagen (para el crédito)'),
         license: z.string().trim().max(100).optional().describe('Con url o image: bajo qué licencia (p. ej. «Propia», «CC BY 4.0»)'),
         licenseUrl: z.string().trim().max(1000).optional().describe('Con url o image: dirección https de la licencia'),
@@ -366,7 +460,7 @@ export function registerSourcingTools(server: McpServer, deps: SourcingDeps): vo
         hit = manualHit('web', a.url, a.url, a.name ?? (safeDecode(basename(new URL(a.url).pathname)).replace(/\.[a-z0-9]{2,5}$/i, '') || 'imagen'));
         got = await fetchImage(hit);
       } else {
-        const { bytes: raw } = await ws.readBytes(a.image!, ['.png', '.jpg', '.jpeg', '.svg'], ASSET_MAX_BYTES);
+        const { bytes: raw } = await readLocal(a.image!, ASSET_MAX_BYTES);
         const kind = sniffImage(raw);
         if (!kind) throw new Error(`«${a.image}» no es una imagen PNG, JPEG o SVG (por dentro).`);
         let bytes = raw;
@@ -617,9 +711,6 @@ export function registerSourcingTools(server: McpServer, deps: SourcingDeps): vo
 
   /* ---------- build_credits_page ---------- */
 
-  const CREDIT_PAGE_PREFIX = 'credits-img';
-  /** Las páginas que arma esta herramienta (y solo ellas se reemplazan o se quitan). */
-  const isCreditPage = (id: unknown): boolean => typeof id === 'string' && /^credits-img(?:-\d+)?$/.test(id);
   server.registerTool(
     'build_credits_page',
     {
@@ -652,24 +743,7 @@ export function registerSourcingTools(server: McpServer, deps: SourcingDeps): vo
       const { doc } = await deps.open(rest, target.baseDir);
       // (Las hojas en blanco que completan los cuadernillos van siempre al final de todo: los créditos, antes.)
       const last = [...doc.plan.pages].reverse().find((p) => p.type !== 'filler')?.key ?? null;
-      const heading = title ?? 'Créditos de las imágenes';
-      const lines = credited.map((x) => {
-        const c = x.credit!;
-        const what = c.title || x.name;
-        // Lo que piden las licencias: título, autor, licencia (con su enlace), dónde está, y si se la modificó.
-        return `${what}${c.author ? ` — ${c.author}` : ''} · ${c.license}${c.modified ? ' (adaptada: recortada y achicada)' : ''}${c.url ? `\n${c.url}` : ''}${c.licenseUrl ? `\n${c.licenseUrl}` : ''}`;
-      });
-      const size = perPage ?? 8;
-      const chunks: string[][] = [];
-      for (let i = 0; i < lines.length; i += size) chunks.push(lines.slice(i, i + size));
-      const pages = chunks.map((chunk, i) => ({
-        id: i === 0 ? CREDIT_PAGE_PREFIX : `${CREDIT_PAGE_PREFIX}-${i + 1}`,
-        after: last,
-        fallback: null,
-        startOn: 'any',
-        title: chunks.length > 1 ? `${heading} (${i + 1}/${chunks.length})` : heading,
-        content: { kind: 'text', text: `${i === 0 && intro ? `${intro}\n\n` : ''}${chunk.join('\n\n')}`, area: 'content', background: 'blank' },
-      }));
+      const pages = creditPages(credited, { title, intro, perPage, after: last });
       /** El parche sobre una lectura de la agenda: quita las páginas de créditos de antes y pone las nuevas. */
       const patchFor = (raw: unknown): JsonPatchOp[] => {
         const others = (raw as { customPages?: unknown } | null)?.customPages;

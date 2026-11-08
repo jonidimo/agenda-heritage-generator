@@ -35,7 +35,30 @@ export async function buildMcpBundle(outfile = join(root, 'dist-mcp', 'main.mjs'
   return outfile;
 }
 
+/**
+ * Compila las herramientas de internet y de carpetas del asistente de la aplicación (`dist-mcp/tools.mjs`): el proceso
+ * principal de Electron las carga al hacer falta. Sin servidor MCP, sin resvg.
+ */
+export async function buildToolsBundle(outfile = join(root, 'dist-mcp', 'tools.mjs')): Promise<string> {
+  const { version } = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')) as { version: string };
+  await build({
+    entryPoints: [join(root, 'src/node/starTools.ts')],
+    outfile,
+    bundle: true,
+    platform: 'node',
+    format: 'esm',
+    target: 'node22',
+    banner: { js: "import { createRequire as __heritageCreateRequire } from 'node:module';\nconst require = __heritageCreateRequire(import.meta.url);" },
+    define: { __APP_VERSION__: JSON.stringify(version) },
+    legalComments: 'eof',
+    logLevel: 'warning',
+  });
+  return outfile;
+}
+
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const out = await buildMcpBundle();
   console.log(`Servidor MCP compilado en ${out} (${(readFileSync(out).length / 1024 / 1024).toFixed(1)} MB)`);
+  const tools = await buildToolsBundle();
+  console.log(`Herramientas del asistente compiladas en ${tools} (${(readFileSync(tools).length / 1024 / 1024).toFixed(1)} MB)`);
 }

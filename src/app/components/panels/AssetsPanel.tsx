@@ -19,6 +19,8 @@ import { placeAsset } from '../../state/actions';
 import { assetAspect } from '../canvas/StampLayer';
 import { WatermarkFields } from '../Inspector';
 import { Badge, Button, Field, Group, Select, Toggle } from '../ui';
+import { isDesktopShell } from '../../state/desktopBridge';
+import { FolderPreview } from './FolderPreview';
 import { PAGE_TYPES } from '@core/sections/registry';
 
 export function AssetsPanel() {
@@ -239,6 +241,7 @@ export function AssetsPanel() {
         </ul>
       </Group>
 
+      {isDesktopShell() && <FolderPreview onMessage={setError} />}
       <Group title={t('assets.watermarks')}>
         {design.watermarks.map((wm) => (
           <div key={wm.id} className="mb-2 rounded-md border border-line bg-white/60 p-2">

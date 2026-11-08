@@ -85,7 +85,7 @@ export async function runTurn(input: TurnInput): Promise<TurnOutcome> {
   const last = input.history.at(-1);
   if (last?.role === 'assistant' && last.toolCalls.length > 0) throw new AiError('protocol', 'Hay una propuesta sin decidir: se decide antes de pedir otra cosa.');
   const ctx = host.context();
-  const system = systemPrompt(ctx.uiLanguage, host.render !== undefined);
+  const system = systemPrompt(ctx.uiLanguage, host.render !== undefined, host.web !== undefined);
   const tools = toolSpecs(host);
   const messages: AiMessage[] = [...input.history, { role: 'user', parts: [{ type: 'text', text: contextBlock(ctx) }, { type: 'text', text: input.userText }] }];
 
@@ -119,7 +119,7 @@ export async function runTurn(input: TurnInput): Promise<TurnOutcome> {
       if ('proposal' in out) found.push({ proposal: out.proposal, call });
       else results.set(call.id, { callId: call.id, name: call.name, content: out.content, ...(out.isError ? { isError: true } : {}) });
     };
-    const parallel = reply.toolCalls.filter((c) => isReadOnlyTool(c.name) && !c.inputError);
+    const parallel = reply.toolCalls.filter((c) => isReadOnlyTool(c.name, host) && !c.inputError);
     await Promise.all(parallel.map(run));
     for (const call of reply.toolCalls) if (!parallel.includes(call)) await run(call);
     checkAbort(signal);

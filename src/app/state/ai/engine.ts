@@ -12,6 +12,7 @@ import { appToolHost } from './host';
 import { isDesktopShell } from '../desktopBridge';
 import { ensureDesktopBase, sendDesktop } from './desktop';
 import { sendWeb } from './transport';
+import { loadWebTools } from './webTools';
 
 export type { PendingProposal, ProposalDecision, TurnEvent, TurnOutcome };
 
@@ -51,7 +52,7 @@ export async function turn(r: TurnRequest): Promise<TurnOutcome> {
     adapter,
     cfg: configOf(r),
     send: sender(r.provider),
-    host: appToolHost({ vision: r.vision, signal: r.signal, draft: r.draft }),
+    host: appToolHost({ vision: r.vision, signal: r.signal, draft: r.draft, web: await loadWebTools(r.signal) }),
     signal: r.signal,
     onEvent: r.onEvent,
     sleep,

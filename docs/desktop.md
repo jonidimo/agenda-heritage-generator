@@ -303,3 +303,13 @@ created with the files that were built; once the Mac job succeeds on a re-run, r
   window, no menu, nothing written to standard output except the protocol. `npm run
   build:mcp` creates the bundle, and `scripts/mcp-smoke.ts` checks any build of the server
   end to end.
+
+
+## The assistant's internet and folders (2.6.0)
+
+The in-app assistant (the star) uses the same sourcing code as the MCP server, run by the main process (`dist-mcp/tools.mjs`, built by `npm run build:mcp`): `search_images`, `browse_page`, `list_local_images`, `choose_folder`, `import_image`, `search_fonts`, `import_font`, plus `build_credits_page` in the page. The page reaches it through `app://heritage/_sys/tools/*` (`electron/lib/starBridge.mjs`).
+
+- **Folders.** Every planner gets its own folder, made when first needed, inside `Documents/Heritage Studio` (or the folder chosen in *Settings → Internet and folders*; where the system has no documents folder, `~/Documents`). It holds `imagenes/` and `fuentes/`, and a hidden `.heritage-project.json` with the planner's id: if the folder is moved or renamed inside the base folder the app finds it again, and if it is deleted a new one is made. The assistant reads only that folder and the extra folders the person added or picked in the system dialog (images only, read-only, no symbolic links).
+- **Settings** are in `<userData>/tools.json`: the API keys are encrypted with `safeStorage` (kept only in memory where there is no keyring) and the page never gets them back; each service has a **Test** button that runs a one-result search.
+- Importing adds the prepared image to *Resources* (undoable) with its credit; placing it on a page is a normal proposal.
+- An external MCP client reads other folders with `AGENDA_MCP_READ_DIRS` and `list_images`.

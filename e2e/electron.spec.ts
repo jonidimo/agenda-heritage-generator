@@ -45,7 +45,8 @@ test.afterEach(async () => {
  * entorno aislado de Chromium (y esta prueba no trata de eso).
  */
 async function launch(...flags: string[]): Promise<ElectronApplication> {
-  app = await electron.launch({ args: [ROOT, '--no-sandbox', ...flags], env: { ...process.env, XDG_CONFIG_HOME: profile, APPDATA: profile } });
+  // HOME también: «Documentos» (donde cada agenda tiene su carpeta) sale de ahí.
+  app = await electron.launch({ args: [ROOT, '--no-sandbox', ...flags], env: { ...process.env, XDG_CONFIG_HOME: profile, APPDATA: profile, HOME: profile } });
   return app;
 }
 
@@ -132,14 +133,14 @@ test('con --mcp es un servidor MCP: sin ventana, la salida estándar es solo del
     env: { XDG_CONFIG_HOME: profile, APPDATA: profile },
   });
   expect(report.problems).toEqual([]);
-  expect(report.tools).toHaveLength(21);
+  expect(report.tools).toHaveLength(22);
 });
 
 test('como Node puro (ELECTRON_RUN_AS_NODE) también es un servidor MCP: es la forma que funciona en Windows', async () => {
   // Sin AGENDA_PUBLIC_DIR: el paquete encuentra la carpeta dist/ que lo acompaña.
   const report = await smokeMcp({ command: ELECTRON, args: [join(ROOT, 'dist-mcp', 'main.mjs')], env: { ELECTRON_RUN_AS_NODE: '1' } });
   expect(report.problems).toEqual([]);
-  expect(report.tools).toHaveLength(21);
+  expect(report.tools).toHaveLength(22);
 });
 
 test('el editor de texto en su lugar abre sin violar la política de seguridad (la letra se carga desde sus bytes)', async () => {
@@ -433,4 +434,60 @@ test.describe('asistente de IA en el escritorio', () => {
       server.close();
     }
   });
+});
+
+test('internet y carpetas: la carpeta por defecto es Documentos, las claves no vuelven, la estrella recibe las herramientas y Ajustes las prueba', async () => {
+  const file = join(profile, 'Boca 2027.agenda.json');
+  await writeFile(file, JSON.stringify({ name: 'Boca 2027', calendar: { year: 2027 } }));
+  const electronApp = await launch(file);
+  const win = await electronApp.firstWindow();
+  await expect.poll(() => win.evaluate<string | null>('globalThis.__agenda?.getState().design?.name ?? null'), { timeout: 60_000 }).toBe('Boca 2027');
+  const id = await win.evaluate<string>('globalThis.__agenda.getState().design.id');
+
+  const api = (route: string, method: string, body?: unknown) =>
+    win.evaluate<{ status: number; body: Record<string, any> }>( // eslint-disable-line @typescript-eslint/no-explicit-any
+      `fetch('/_sys/tools/${route}', { method: ${JSON.stringify(method)}${body === undefined ? '' : `, headers: { 'content-type': 'application/json' }, body: ${JSON.stringify(JSON.stringify(body))}`} }).then(async (r) => ({ status: r.status, body: await r.json() }))`,
+    );
+
+  // La carpeta de las agendas es «Documentos/Heritage Studio», no el escritorio, y todavía no existe.
+  const config = await api('config', 'GET');
+  expect(config.body.root).toBe(join(profile, 'Documents', 'Heritage Studio'));
+  expect(config.body.rootIsDefault).toBe(true);
+  expect(await stat(config.body.root).catch(() => null)).toBeNull();
+
+  // La clave se guarda, pero la página nunca la vuelve a ver.
+  const saved = await api('config', 'PUT', { keys: { PEXELS_API_KEY: 'clave-secreta-123' } });
+  expect(saved.body.hasKey.PEXELS_API_KEY).toBe(true);
+  expect(JSON.stringify(saved.body)).not.toContain('clave-secreta-123');
+  expect((await readFile(join(profile, 'Heritage Studio (dev)', 'tools.json'), 'utf8').catch(() => '')).includes('clave-secreta-123')).toBe(false);
+
+  // La estrella recibe las herramientas del proceso principal.
+  const listed = await api('list', 'GET');
+  expect(listed.body.enabled).toBe(true);
+  expect((listed.body.tools as Array<{ name: string }>).map((t) => t.name)).toEqual(expect.arrayContaining(['search_images', 'import_image', 'list_local_images', 'import_font']));
+
+  // Una imagen en la carpeta de la agenda se lista y se importa lista para la agenda.
+  const lone = await api('call', 'POST', { name: 'list_local_images', input: {}, agenda: { id, name: 'Boca 2027' } });
+  const project = join(profile, 'Documents', 'Heritage Studio', 'Boca 2027');
+  expect((await stat(project)).isDirectory()).toBe(true);
+  expect(lone.status).toBe(200);
+  const { makeJpeg } = await import('../tests/helpers/jpeg');
+  await mkdir(join(project, 'imagenes'), { recursive: true });
+  await writeFile(join(project, 'imagenes', 'tapa.jpg'), makeJpeg(900, 600));
+  const imported = await api('call', 'POST', { name: 'import_image', input: { image: 'imagenes/tapa.jpg', sizeMm: { w: 50, h: 50 }, dpi: 150 }, agenda: { id, name: 'Boca 2027' } });
+  expect(imported.body.assets[0]).toMatchObject({ kind: 'raster', mime: 'image/jpeg', width: 295, height: 295 });
+  const shown = await api('browse', 'POST', { folder: 'proyecto', agenda: { id, name: 'Boca 2027' } });
+  expect(shown.body.images.map((i: { path: string }) => i.path)).toEqual(expect.arrayContaining(['imagenes/tapa.jpg']));
+
+  // Ajustes → Internet y carpetas: la carpeta se ve, y «Probar» dice cómo le fue (acá no hay red: tiene que decirlo sin romperse).
+  await win.getByRole('button', { name: 'Ajustes' }).click();
+  await win.getByRole('menuitem', { name: /Internet y carpetas/ }).click();
+  const dialog = win.getByTestId('tools-settings');
+  await expect(dialog.getByTestId('tools-root')).toHaveText(join(profile, 'Documents', 'Heritage Studio'));
+  await dialog.getByTestId('tools-service-openverse').getByRole('button', { name: 'Probar' }).click();
+  await expect(dialog.getByTestId('tools-result-openverse')).toBeVisible({ timeout: 60_000 });
+  await expect(dialog.getByTestId('tools-service-pexels')).toContainText('Clave guardada');
+
+  // Y la estrella ve las herramientas: el texto de sistema habla de ellas.
+  await win.keyboard.press('Escape');
 });

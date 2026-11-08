@@ -18,6 +18,7 @@ import { reloadWindow } from '../../state/ai/lazy';
 import { shortcutHint } from '../../state/shortcutHints';
 import { useStore } from '../../state/store';
 import { ErrorBoundary } from '../ErrorBoundary';
+import { ToolsSettings } from './ToolsSettings';
 import { AssistantSettings } from './AssistantSettings';
 
 const ERROR_KEYS: Record<string, UiKey> = {
@@ -67,7 +68,7 @@ function Dock({ footer }: { footer: boolean }) {
   }, [a.focusTick]);
 
   // Oculta (menú Ver), la píldora no se dibuja; sus ajustes se pueden abrir igual desde el menú Archivo.
-  if (!hasDesign || (!a.settings.pill && !a.open)) return a.showSettings ? createPortal(<AssistantSettings onClose={() => a.setShowSettings(false)} />, document.body) : null;
+  if (!hasDesign || (!a.settings.pill && !a.open)) return a.showSettings || a.showTools ? createPortal(<>{a.showSettings && <AssistantSettings onClose={() => a.setShowSettings(false)} />}{a.showTools && <ToolsSettings onClose={() => a.setShowTools(false)} />}</>, document.body) : null;
 
   const collapse = (): void => {
     a.setOpen(false);
@@ -147,6 +148,7 @@ function Dock({ footer }: { footer: boolean }) {
         {working ? a.activity : a.proposal ? a.proposal.summary : (a.reply ?? '')}
       </span>
       {a.showSettings && createPortal(<AssistantSettings onClose={() => a.setShowSettings(false)} />, document.body)}
+      {a.showTools && createPortal(<ToolsSettings onClose={() => a.setShowTools(false)} />, document.body)}
     </div>
   );
 }

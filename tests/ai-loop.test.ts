@@ -251,3 +251,56 @@ describe('propose_change carga lo que la propuesta necesita antes de revisarla',
   });
 });
 
+
+describe('herramientas de internet y carpetas (escritorio)', () => {
+  const failed = (o: Awaited<ReturnType<typeof executeTool>>): boolean => 'isError' in o && o.isError === true;
+  const web = (calls: Array<{ name: string; input: unknown }> = []): NonNullable<ToolHost['web']> => ({
+    specs: [
+      { name: 'search_images', description: 'busca', inputSchema: { type: 'object' }, readOnly: true },
+      { name: 'import_image', description: 'importa', inputSchema: { type: 'object' }, readOnly: false },
+    ],
+    call: async (name, input) => (calls.push({ name, input }), { content: [{ type: 'text', text: JSON.stringify({ ok: true, name }) }] }),
+  });
+
+  it('se ofrecen solo si el anfitrión las trae, y el texto de sistema lo dice', () => {
+    expect(toolSpecs(host()).map((t) => t.name)).not.toContain('search_images');
+    expect(toolSpecs(host({ web: web() })).map((t) => t.name)).toEqual(expect.arrayContaining(['search_images', 'import_image', 'build_credits_page']));
+    expect(systemPrompt('es', false, true)).toContain('search_images');
+    expect(systemPrompt('es', false, false)).toContain('cannot search the internet');
+    expect(systemPrompt('es', false, true)).not.toBe(systemPrompt('es', false, false));
+  });
+
+  it('las ejecuta el anfitrión; una de lectura va junto con las demás y una que escribe, en orden', async () => {
+    const calls: Array<{ name: string; input: unknown }> = [];
+    const { send, seen } = scripted([{ tool_calls: [call('a', 'search_images', { query: 'estadio' }), call('b', 'import_image', { id: 'openverse:x' })] }, { content: 'Listo.' }]);
+    const out = await runTurn(base(send, { host: host({ web: web(calls) }) }));
+    expect(out.kind).toBe('answer');
+    expect(calls.map((c) => c.name)).toEqual(['search_images', 'import_image']);
+    expect(JSON.stringify(seen[1]!.messages)).toContain('{\\"ok\\":true');
+    expect(failed(await executeTool('import_image', {}, host()))).toBe(true);
+  });
+
+  it('un fallo de la herramienta vuelve como error que el modelo puede leer', async () => {
+    const broken: NonNullable<ToolHost['web']> = { ...web(), call: async () => Promise.reject(new Error('sin red')) };
+    const out = await executeTool('search_images', {}, host({ web: broken }));
+    expect(failed(out)).toBe(true);
+    expect(JSON.stringify(out.content)).toContain('sin red');
+  });
+
+  it('build_credits_page propone la página de créditos de las imágenes usadas y la reemplaza al repetirse', async () => {
+    const withCredit = parseDesign({
+      ...design,
+      assets: [{ id: 'img-1', name: 'Estadio', kind: 'raster', mime: 'image/jpeg', width: 100, height: 100, builtin: null, credit: { source: 'openverse', id: 'x', title: 'Estadio', author: 'Jane Doe', authorUrl: null, license: 'CC BY 2.0', licenseUrl: 'https://creativecommons.org/licenses/by/2.0/', url: 'https://openverse.org/image/x', sourceSha256: 'a'.repeat(64), verified: true, modified: true } }],
+      cover: { ...design.cover, imageAssetId: 'img-1' },
+    });
+    const h = host({ design: () => withCredit, documentFor: (d) => new AgendaDocument(d, doc.resources, {}, {}) });
+    const out = await executeTool('build_credits_page', { onlyUsed: false }, h);
+    if (!('proposal' in out)) throw new Error(JSON.stringify(out.content));
+    const pages = out.proposal.design.customPages.filter((p) => p.id.startsWith('credits-img'));
+    expect(pages).toHaveLength(1);
+    expect(JSON.stringify(pages[0]!.content)).toContain('Jane Doe');
+    expect(JSON.stringify(pages[0]!.content)).toContain('CC BY 2.0');
+    const none = await executeTool('build_credits_page', {}, host());
+    expect(failed(none)).toBe(true);
+  });
+});

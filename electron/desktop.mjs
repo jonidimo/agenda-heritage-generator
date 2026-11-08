@@ -15,6 +15,8 @@ import { app, BrowserWindow, dialog, Menu, net, protocol, safeStorage, screen, s
 import { AiSettingsStore, AUTH, aiTargetAllowed, cleanBaseUrl, isLocalHost, isProviderId, KEY_PATTERN, MAX_KEY_LENGTH, parseChatRequest } from './lib/ai.mjs';
 import { agendaFileFromArgv, MAX_OPEN_BYTES, usesWayland, withDisabledFeature } from './lib/args.mjs';
 import { readPlanner } from './lib/openPlanner.mjs';
+import { StarBridge } from './lib/starBridge.mjs';
+import { documentsFolder, ToolSettingsStore } from './lib/toolSettings.mjs';
 import { createCloseGuard } from './lib/closing.mjs';
 import { DownloadLog, sysRequestAllowed, sysRoute } from './lib/downloads.mjs';
 import { createLiveBroker, LIVE_ERRORS, LIVE_INFO_FILE, LIVE_PROTOCOL, liveEndpoint, newToken, writeLiveInfo } from './lib/live.mjs';
@@ -67,6 +69,7 @@ async function sys(request) {
   if (!sysRequestAllowed(request.headers.get('origin'), request.headers.get('sec-fetch-site'))) return json({ error: 'forbidden' }, 403);
   if (route === 'ai-config') return aiConfig(request);
   if (route === 'ai-chat') return aiChat(request);
+  if (route === 'tools-config' || route === 'tools-action' || route === 'tools-list' || route === 'tools-call' || route === 'tools-check' || route === 'tools-browse') return starTools(route, request);
   if (route === 'downloads') {
     if (request.method !== 'GET') return json({ error: 'method' }, 405);
     const after = Number.parseInt(url.searchParams.get('after') ?? '0', 10) || 0;
@@ -109,6 +112,66 @@ async function choosePlanner() {
   // The page tells the person (in their language) when it could not be opened.
   const opened = await openPlannerFile(file).catch(() => ({ ok: false, reason: 'unreadable' }));
   return json({ ok: true, cancelled: false, opened: opened.ok, ...(opened.ok ? {} : { reason: opened.reason }) });
+}
+
+/* ---------- The assistant's internet and folder tools (src/node/starTools.ts, dist-mcp/tools.mjs) ---------- */
+
+/** @type {StarBridge | null} */
+let starBridge = null;
+function bridge() {
+  return (starBridge ??= new StarBridge({
+    store: new ToolSettingsStore({ file: path.join(app.getPath('userData'), 'tools.json'), documentsDir: documentsFolder(app.getPath('documents'), app.getPath('home')), fs: fsp, safeStorage }),
+    loadTools: async () => {
+      const { createStarTools } = await import(pathToFileURL(path.join(app.getAppPath(), 'dist-mcp', 'tools.mjs')).href);
+      return createStarTools({ version: app.getVersion(), cacheDir: path.join(app.getPath('userData'), 'web-cache') });
+    },
+    chooseDirectory: async (purpose) => {
+      const win = mainWindow;
+      const options = { properties: /** @type {Array<'openDirectory' | 'createDirectory'>} */ (['openDirectory', 'createDirectory']), defaultPath: app.getPath('documents'), title: purpose === 'root' ? 'Heritage Studio' : 'Heritage Studio — imágenes' };
+      const chosen = win && !win.isDestroyed() ? await dialog.showOpenDialog(win, options) : await dialog.showOpenDialog(options);
+      return chosen.canceled ? null : (chosen.filePaths[0] ?? null);
+    },
+    openPath: (dir) => shell.openPath(dir),
+    fs: fsp,
+  }));
+}
+
+/**
+ * @param {'tools-config' | 'tools-action' | 'tools-list' | 'tools-call' | 'tools-check' | 'tools-browse'} route
+ * @param {Request} request
+ */
+async function starTools(route, request) {
+  const b = bridge();
+  try {
+    if (route === 'tools-config' && request.method === 'GET') return json(await b.config());
+    if (route === 'tools-list' && request.method === 'GET') return json(await b.list());
+    if (request.method !== (route === 'tools-config' ? 'PUT' : 'POST')) return json({ error: 'method' }, 405);
+    /** @type {unknown} */
+    let body;
+    try {
+      body = await readJsonBody(request);
+    } catch {
+      return json({ error: 'body' }, 400);
+    }
+    if (route === 'tools-config') {
+      const out = await b.updateConfig(body);
+      return 'error' in out ? json(out, 400) : json(out.status);
+    }
+    if (route === 'tools-action') {
+      const out = await b.action(body);
+      return json(out, 'error' in out ? 400 : 200);
+    }
+    if (route === 'tools-browse') {
+      const out = /** @type {Record<string, unknown>} */ (await b.browse(body));
+      return json(out, 'error' in out ? 400 : 200);
+    }
+    if (route === 'tools-check') return json(await b.check(body && typeof body === 'object' ? /** @type {{ service?: unknown }} */ (body).service : undefined));
+    /** @type {Record<string, unknown>} */
+    const out = /** @type {Record<string, unknown>} */ (await b.call(body, request.signal));
+    return json(out, 'error' in out ? 400 : 200);
+  } catch (err) {
+    return json({ error: 'failed', message: err instanceof Error ? err.message : String(err) }, 500);
+  }
 }
 
 /* ---------- The AI assistant: keys in the main process, requests through it ---------- */

@@ -121,6 +121,7 @@ export function settingsMenu(t: T): MenuItem[] {
     { label: t('file.autoReveal'), checked: st.autoReveal, onSelect: () => st.setAutoReveal(!st.autoReveal) },
     { separator: true },
     { label: t('file.aiSettings'), icon: <Sparkles size={14} />, onSelect: () => useAssistant.getState().setShowSettings(true) },
+    ...(isDesktopShell() ? [{ label: t('tools.menu'), icon: <Sparkles size={14} />, onSelect: () => useAssistant.getState().setShowTools(true) }] : []),
     // El puente con un modelo de IA existe solo en la aplicación de escritorio.
     ...(isDesktopShell() ? [{ label: t('file.liveLink'), checked: st.liveLink, onSelect: () => st.setLiveLink(!st.liveLink) }] : []),
   ];

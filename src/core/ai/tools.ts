@@ -9,6 +9,8 @@
  */
 import { z } from 'zod';
 import { AiError } from './errors';
+import { creditPages, isCreditPage } from '../assets/creditsPage';
+import { usedAssetIds } from '../design/assetUse';
 import { designCatalogue, designJsonSchema, schemaPart } from '../design/jsonSchema';
 import { applyDesignPatch } from '../design/patch';
 import type { Design } from '../design/schema';
@@ -40,8 +42,16 @@ export interface RevealResult {
   message?: string;
 }
 
+/** Las herramientas de internet y carpetas que solo da la aplicación de escritorio (ver `app/state/ai/webTools.ts`). */
+export interface WebToolsHost {
+  specs: readonly AiToolSpec[];
+  call(name: string, input: unknown, signal?: AbortSignal): Promise<{ content: AiPart[]; isError?: boolean }>;
+}
+
 /** Lo que la aplicación pone a disposición de las herramientas. */
 export interface ToolHost {
+  /** Buscar e importar imágenes y fuentes, leer carpetas autorizadas (solo en el escritorio, y si la persona no lo apagó). */
+  web?: WebToolsHost | undefined;
   context(): AiContext;
   design(): Design | null;
   document(): AgendaDocument | null;
@@ -112,6 +122,25 @@ function needDocument(host: ToolHost): AgendaDocument {
   const doc = host.document();
   if (!doc) throw new ToolFailure('La agenda todavía no se puede armar (faltan las fuentes o no hay una abierta).');
   return doc;
+}
+
+/** Arma la propuesta de un cambio (sin aplicarlo): lo valida, mide los avisos que agrega y deja el resultado. */
+async function makeProposal(host: ToolHost, patch: JsonPatchOp[], summary: string): Promise<ToolOutcome> {
+  const current = host.design();
+  if (!current) return fail('No hay una agenda abierta.');
+  const result = applyDesignPatch(current, patch);
+  if (!result.ok) return fail('El cambio no se puede aplicar.', { issues: result.issues });
+  const open = async (d: Design): Promise<{ doc: AgendaDocument }> => {
+    await host.prepare?.(d);
+    const doc = host.documentFor(d);
+    if (!doc) throw new Error('la agenda no se puede armar ahora');
+    await host.pace?.(doc);
+    return { doc };
+  };
+  const layout = await newLayoutWarnings(open, host.baseline?.() ?? current, result.design);
+  const proposal: Proposal = { design: result.design, patch, summary, warnings: layout.notes, omittedWarnings: layout.omitted, ignored: result.stripped };
+  const fixes = fixesFor(layout.notes.map((n) => n.code));
+  return { proposal, content: json({ ok: true, pendingApproval: true, warnings: layout.notes, ...(Object.keys(fixes).length > 0 ? { fixes } : {}), ignoredKeys: result.stripped }) };
 }
 
 class ToolFailure extends Error {}
@@ -215,23 +244,31 @@ const TOOLS = [
       summary: z.string().min(1).max(300).describe('What the change does, in one sentence in the interface language, for the person to read before approving.'),
     }),
     readOnly: false,
+    run: (input, host) => makeProposal(host, input.patch as JsonPatchOp[], input.summary),
+  }),
+  define({
+    name: 'build_credits_page',
+    description:
+      'Proposes (or updates) the credits page at the end of the planner: author, license and link of every image imported with import_image that the planner uses (onlyUsed false: all of them). It is an own text page replaced every time, so it can be repeated after changing images. CC BY and similar licenses ask for this credit. The person approves it like any proposal. Only touches its own pages (credits-img…).',
+    schema: z.strictObject({ title: z.string().trim().max(80).optional(), intro: z.string().trim().max(400).optional(), onlyUsed: z.boolean().optional(), perPage: z.number().int().min(3).max(20).optional() }),
+    readOnly: false,
     run: async (input, host) => {
       const current = host.design();
       if (!current) return fail('No hay una agenda abierta.');
-      const patch = input.patch as JsonPatchOp[];
-      const result = applyDesignPatch(current, patch);
-      if (!result.ok) return fail('El cambio no se puede aplicar.', { issues: result.issues });
-      const open = async (d: Design): Promise<{ doc: AgendaDocument }> => {
-        await host.prepare?.(d);
-        const doc = host.documentFor(d);
-        if (!doc) throw new Error('la agenda no se puede armar ahora');
-        await host.pace?.(doc);
-        return { doc };
-      };
-      const layout = await newLayoutWarnings(open, host.baseline?.() ?? current, result.design);
-      const proposal: Proposal = { design: result.design, patch, summary: input.summary, warnings: layout.notes, omittedWarnings: layout.omitted, ignored: result.stripped };
-      const fixes = fixesFor(layout.notes.map((n) => n.code));
-      return { proposal, content: json({ ok: true, pendingApproval: true, warnings: layout.notes, ...(Object.keys(fixes).length > 0 ? { fixes } : {}), ignoredKeys: result.stripped }) };
+      const used = usedAssetIds(current);
+      const credited = current.assets.filter((x) => x.credit && (input.onlyUsed === false || used.has(x.id)));
+      const existing = (current.customPages ?? []).filter((p) => isCreditPage(p.id));
+      if (credited.length === 0 && existing.length === 0) return fail(input.onlyUsed === false ? 'Ninguna imagen de la agenda tiene crédito (lo agrega import_image).' : 'Ninguna imagen con crédito está en uso en la agenda (onlyUsed: false las incluye todas).');
+      // Después de la última página que no sea de créditos ni de relleno.
+      const rest = { ...current, customPages: (current.customPages ?? []).filter((p) => !isCreditPage(p.id)) } as Design;
+      await host.prepare?.(rest);
+      const doc = host.documentFor(rest);
+      if (!doc) return fail('La agenda no se puede armar ahora.');
+      const last = [...doc.plan.pages].reverse().find((p) => p.type !== 'filler')?.key ?? null;
+      const pages = creditPages(credited, { title: input.title, intro: input.intro, perPage: input.perPage, after: last });
+      const kept = (current.customPages ?? []).filter((p) => !isCreditPage(p.id));
+      const patch: JsonPatchOp[] = [{ op: 'replace', path: '/customPages', value: [...kept, ...pages] }];
+      return makeProposal(host, patch, `Página de créditos de ${credited.length} imagen${credited.length === 1 ? '' : 'es'}`);
     },
   }),
   define({
@@ -263,14 +300,22 @@ const schemaOf = (t: AnyTool): Record<string, unknown> => {
 
 /** Las herramientas que se ofrecen con este anfitrión (sin visión, no hay `render_page`). */
 export function toolSpecs(host: ToolHost): AiToolSpec[] {
-  return ALL.filter((t) => !t.available || t.available(host)).map((t) => ({ name: t.name, description: t.description, inputSchema: schemaOf(t), readOnly: t.readOnly }));
+  return [...ALL.filter((t) => !t.available || t.available(host)).map((t) => ({ name: t.name, description: t.description, inputSchema: schemaOf(t), readOnly: t.readOnly })), ...(host.web?.specs ?? [])];
 }
 
-export const isReadOnlyTool = (name: string): boolean => ALL.find((t) => t.name === name)?.readOnly ?? false;
+export const isReadOnlyTool = (name: string, host?: ToolHost): boolean => ALL.find((t) => t.name === name)?.readOnly ?? host?.web?.specs.find((t) => t.name === name)?.readOnly ?? false;
 
 /** Ejecuta una llamada. Solo lanza si se detuvo el turno (`AiError` «aborted»): todo otro problema vuelve como un resultado de error que el modelo puede leer. */
 export async function executeTool(name: string, input: unknown, host: ToolHost): Promise<ToolOutcome> {
   const tool = ALL.find((t) => t.name === name && (!t.available || t.available(host)));
+  if (!tool && host.web?.specs.some((t) => t.name === name)) {
+    try {
+      return await host.web.call(name, input ?? {}, undefined);
+    } catch (err) {
+      if ((err as { name?: unknown } | null)?.name === 'AbortError') throw new AiError('aborted', 'Cancelado.');
+      return fail(err instanceof Error ? err.message : String(err));
+    }
+  }
   if (!tool) return fail(`No existe la herramienta «${name}».`);
   const parsed = tool.schema.safeParse(input ?? {});
   if (!parsed.success) return fail('Entrada no válida.', { issues: parsed.error.issues.slice(0, 20).map((i) => ({ path: `/${i.path.map(String).join('/')}`, message: i.message })) });

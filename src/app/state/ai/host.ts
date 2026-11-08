@@ -3,7 +3,7 @@
  * qué está mirando la persona, la agenda abierta, mostrar una página, cambiar la vista y, si se permite,
  * dibujar páginas como imágenes. Nada de acá cambia la agenda: eso solo pasa al aprobar una propuesta.
  */
-import type { AiContext, RevealResult, ToolHost } from '@core/ai/tools';
+import type { AiContext, RevealResult, ToolHost, WebToolsHost } from '@core/ai/tools';
 import { AgendaDocument } from '@core/document';
 import type { Design } from '@core/design/schema';
 import { blockBounds } from '@core/document/layout';
@@ -94,10 +94,12 @@ export interface HostOptions {
   signal?: AbortSignal | undefined;
   /** Una propuesta que la persona pidió ajustar: las herramientas leen y cambian esto, no la agenda confirmada. */
   draft?: Design | null | undefined;
+  /** Las herramientas de internet y carpetas (solo escritorio). */
+  web?: WebToolsHost | undefined;
 }
 
 /** El anfitrión de las herramientas; con `vision`, también puede dibujar páginas. */
-export function appToolHost({ vision, signal, draft }: HostOptions): ToolHost {
+export function appToolHost({ vision, signal, draft, web }: HostOptions): ToolHost {
   let draftDoc: AgendaDocument | null = null;
   const doc = (): AgendaDocument | null => {
     if (!draft) return currentDocument();
@@ -105,6 +107,7 @@ export function appToolHost({ vision, signal, draft }: HostOptions): ToolHost {
     return draftDoc;
   };
   return {
+    web,
     context,
     design: () => draft ?? useStore.getState().design,
     document: doc,

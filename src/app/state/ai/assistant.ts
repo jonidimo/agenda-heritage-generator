@@ -73,6 +73,9 @@ interface AssistantState {
   turns: Turn[];
   showHistory: boolean;
   showSettings: boolean;
+  /** Ajustes → Internet y carpetas (solo escritorio). */
+  showTools: boolean;
+  setShowTools(v: boolean): void;
   settings: AiSettings;
 
   setOpen(open: boolean): void;
@@ -133,6 +136,14 @@ const ACTIVITY: Record<string, Parameters<typeof tNow>[0]> = {
   propose_change: 'ai.act.proposing',
   reveal: 'ai.act.showing',
   set_view: 'ai.act.showing',
+  search_images: 'ai.act.searching',
+  browse_page: 'ai.act.searching',
+  search_fonts: 'ai.act.searching',
+  list_local_images: 'ai.act.folder',
+  choose_folder: 'ai.act.folder',
+  import_image: 'ai.act.importing',
+  import_font: 'ai.act.importing',
+  build_credits_page: 'ai.act.proposing',
 };
 
 function activityOf(e: TurnEvent): string {
@@ -203,6 +214,8 @@ export const useAssistant = create<AssistantState>((set, get) => {
     turns: [],
     showHistory: false,
     showSettings: false,
+    showTools: false,
+    setShowTools: (showTools) => set({ showTools }),
     settings: normalizeAiSettings(prefs.ai.read()),
 
     setOpen: (open) => set({ open }),

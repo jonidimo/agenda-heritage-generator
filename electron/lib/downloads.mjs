@@ -139,7 +139,7 @@ export function sysRequestAllowed(origin, site) {
 /**
  * The route of a `_sys` URL, or `null` when it is not one of them.
  * @param {string} pathname
- * @returns {'downloads' | 'reveal' | 'open' | 'open-planner' | 'ai-config' | 'ai-chat' | null}
+ * @returns {'downloads' | 'reveal' | 'open' | 'open-planner' | 'ai-config' | 'ai-chat' | 'tools-config' | 'tools-action' | 'tools-list' | 'tools-call' | 'tools-check' | 'tools-browse' | null}
  */
 export function sysRoute(pathname) {
   switch (pathname) {
@@ -147,6 +147,18 @@ export function sysRoute(pathname) {
       return 'ai-config';
     case '/_sys/ai/chat':
       return 'ai-chat';
+    case '/_sys/tools/config':
+      return 'tools-config';
+    case '/_sys/tools/action':
+      return 'tools-action';
+    case '/_sys/tools/list':
+      return 'tools-list';
+    case '/_sys/tools/call':
+      return 'tools-call';
+    case '/_sys/tools/check':
+      return 'tools-check';
+    case '/_sys/tools/browse':
+      return 'tools-browse';
     case '/_sys/downloads':
       return 'downloads';
     case '/_sys/reveal':

@@ -6,7 +6,7 @@
  */
 import { jpegOrientation, rasterInfo } from '@core/assets/image';
 import { ASSET_MAX_BYTES, ASSET_MAX_SIDE_PX, fitWithin, outputFormatFor, renameForFormat, UPLOAD_JPEG_QUALITY } from '@core/assets/prepare';
-import type { Design } from '@core/design/schema';
+import { AssetCreditZ, type Design } from '@core/design/schema';
 import { assetInfoFromBytes } from '@core/resources';
 import { trySha256Hex } from '@core/util/digest';
 import { newId } from '@core/util/hash';
@@ -163,6 +163,53 @@ async function addFiles(files: File[], unsupported: (name: string) => string, co
     }
   }
   return out;
+}
+
+export interface PreparedAsset {
+  name: string;
+  kind: 'raster' | 'vector';
+  mime: string;
+  bytes: Uint8Array;
+  /** Autor, licencia y origen (se descarta lo que no cumpla `AssetCreditZ`). */
+  credit?: unknown;
+}
+
+/**
+ * Agrega a los recursos de la agenda abierta una imagen que ya viene preparada (la baja y limpia el asistente
+ * en el proceso principal). Mismo camino que una subida: sin repetir lo que ya está, bytes guardados en el
+ * dispositivo. No la coloca en ninguna página.
+ */
+export async function addPreparedAsset(a: PreparedAsset): Promise<{ id: string; duplicate: boolean; name: string; width: number; height: number }> {
+  const run = queue.then(() => addPrepared(a));
+  queue = run.then(
+    () => undefined,
+    () => undefined,
+  );
+  return run;
+}
+
+async function addPrepared(a: PreparedAsset): Promise<{ id: string; duplicate: boolean; name: string; width: number; height: number }> {
+  const design = useStore.getState().design;
+  if (!design) throw new Error('No hay una agenda abierta.');
+  const hash = await trySha256Hex(a.bytes);
+  if (hash) {
+    await hashesOf(design);
+    const twin = design.assets.find((x) => resources.assetHashes.get(x.id) === hash);
+    if (twin) return { id: twin.id, duplicate: true, name: twin.name, width: twin.width, height: twin.height };
+  }
+  const id = newId('img');
+  const ref = { id, name: a.name, kind: a.kind, mime: a.mime, width: 0, height: 0, builtin: null };
+  const info = await assetInfoFromBytes(ref, a.bytes);
+  const credit = a.credit === undefined ? undefined : AssetCreditZ.safeParse(a.credit);
+  resources.putAsset(id, a.bytes, info);
+  if (hash) resources.assetHashes.set(id, hash);
+  await saveAsset(id, a.bytes);
+  if (useStore.getState().design?.id !== design.id) throw new Error('Se abrió otra agenda mientras se importaba.');
+  const entry = { ...ref, width: info.width, height: info.height, ...(info.pages ? { pages: info.pages } : {}), ...(credit?.success ? { credit: credit.data } : {}) };
+  useStore.getState().update((d) => void d.assets.push(entry));
+  resources.bump();
+  useStore.getState().bumpResources(resources.version);
+  return { id, duplicate: false, name: a.name, width: info.width, height: info.height };
 }
 
 /** Abre el selector de archivos del sistema (sin un `<input>` en la página). */
