@@ -46,7 +46,14 @@ test.afterEach(async () => {
  */
 async function launch(...flags: string[]): Promise<ElectronApplication> {
   // HOME también: «Documentos» (donde cada agenda tiene su carpeta) sale de ahí.
-  app = await electron.launch({ args: [ROOT, '--no-sandbox', ...flags], env: { ...process.env, XDG_CONFIG_HOME: profile, APPDATA: profile, HOME: profile } });
+  const options = { args: [ROOT, '--no-sandbox', ...flags], env: { ...process.env, XDG_CONFIG_HOME: profile, APPDATA: profile, HOME: profile } };
+  try {
+    app = await electron.launch(options);
+  } catch {
+    // Volver a abrir enseguida después de cerrar puede toparse con el servidor gráfico virtual de CI todavía soltando la pantalla: un intento más.
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+    app = await electron.launch(options);
+  }
   return app;
 }
 

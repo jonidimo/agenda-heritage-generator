@@ -204,7 +204,12 @@ export interface StarToolsOptions {
 export function createStarTools(options: StarToolsOptions): StarTools {
   const http = options.http ?? createHttpClient({ userAgent: `HeritageStudio/${options.version} (+https://github.com/jonidimo/agenda-heritage-generator)` });
   const cache = options.cache ?? createCache({ dir: options.cacheDir === undefined ? defaultCacheDir(process.env) : options.cacheDir });
-  const ctxOf = (c: StarContext, useCache: Cache = cache) => sourceContext({ http, env: c.env, cache: useCache });
+  /** Todo pedido de una llamada se corta si la persona detiene el turno. */
+  const ctxOf = (c: StarContext, useCache: Cache = cache) => {
+    const signal = c.signal;
+    const bound: HttpClient = signal ? { get: (url, o) => http.get(url, { ...o, signal }) } : http;
+    return sourceContext({ http: bound, env: c.env, cache: useCache });
+  };
 
   /** Una carpeta autorizada por su alias (sin alias: la de la agenda). */
   async function folderOf(alias: string | undefined, c: StarContext): Promise<StarFolder> {

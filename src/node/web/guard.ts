@@ -7,7 +7,7 @@ import { lookup as dnsLookup, type LookupAddress, type LookupOptions } from 'nod
 import { isIP } from 'node:net';
 
 /** Un error de red con un código estable (para que quien llama decida) y un mensaje que se puede mostrar tal cual. */
-export type WebErrorCode = 'blocked-host' | 'blocked-address' | 'bad-url' | 'timeout' | 'too-large' | 'too-many-redirects' | 'http' | 'rate-limit' | 'auth' | 'network' | 'bad-type';
+export type WebErrorCode = 'blocked-host' | 'blocked-address' | 'bad-url' | 'timeout' | 'too-large' | 'too-many-redirects' | 'http' | 'rate-limit' | 'auth' | 'network' | 'bad-type' | 'aborted';
 
 export class WebError extends Error {
   constructor(

@@ -29,6 +29,8 @@ export interface GetOptions {
   trusted?: readonly TrustedHost[];
   /** Si no acepta el tipo de contenido que anuncia el servidor, el pedido se corta sin bajar el cuerpo. */
   accept?: (contentType: string) => boolean;
+  /** Cancela el pedido (la persona detuvo lo que estaba haciendo): se corta la conexión y no se sigue bajando. */
+  signal?: AbortSignal;
 }
 
 export interface HttpResponse {
@@ -105,7 +107,10 @@ export function createHttpClient(opts: { transport?: Transport; userAgent: strin
       let url = checkUrl(raw, o.allow, trusted);
       if (trusted && !isTrusted(url, trusted)) trusted = undefined;
       const control = new AbortController();
+      if (o.signal?.aborted) throw new WebError('aborted', 'Cancelado.');
       const timer = setTimeout(() => control.abort(), timeoutMs);
+      const onAbort = (): void => control.abort();
+      o.signal?.addEventListener('abort', onAbort, { once: true });
       let headers: Record<string, string> = { 'user-agent': opts.userAgent, 'accept-encoding': 'gzip, deflate, br', ...lowerKeys(o.headers) };
       try {
         for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
@@ -154,6 +159,7 @@ export function createHttpClient(opts: { transport?: Transport; userAgent: strin
         throw new WebError('too-many-redirects', `${url.host} redirige demasiadas veces.`);
       } catch (err) {
         if (err instanceof WebError) throw err;
+        if (o.signal?.aborted) throw new WebError('aborted', 'Cancelado.');
         if (control.signal.aborted) throw new WebError('timeout', `${url.host} no respondió en ${Math.round(timeoutMs / 1000)} s.`, undefined);
         const code = (err as NodeJS.ErrnoException).code;
         // La resolución de nombres que rechaza una dirección no pública lleva su propio error.
@@ -162,6 +168,7 @@ export function createHttpClient(opts: { transport?: Transport; userAgent: strin
         throw new WebError('network', `No se pudo conectar con ${url.host}${code ? ` (${code})` : ''}.`);
       } finally {
         clearTimeout(timer);
+        o.signal?.removeEventListener('abort', onAbort);
       }
     },
   };

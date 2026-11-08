@@ -147,3 +147,28 @@ describe('herramientas de internet y carpetas del asistente', () => {
     expect(web.requests.length).toBeGreaterThan(before);
   });
 });
+
+describe('cancelar y límites de descarga', () => {
+  it('detener el turno corta una descarga en curso, sin escribir nada', async () => {
+    const slow = fakeWeb([...imageRoutes().filter((r) => r.match !== 'https://live.staticflickr.com/65535/estadio_b.jpg'), { match: 'https://live.staticflickr.com/65535/estadio_b.jpg', hang: true }]);
+    const t = createStarTools({ version: 'test', http: slow.http, cache: createCache({ dir: null }) });
+    const stop = new AbortController();
+    const running = t.call('import_image', { id: `openverse:${OV_ID}` }, { ...ctx, signal: stop.signal });
+    setTimeout(() => stop.abort(), 100);
+    const r = await running;
+    expect(r.isError).toBe(true);
+    expect(textOf(r)).toContain('Cancelado');
+    await expect(readFile(path.join(project, 'imagenes'))).rejects.toThrow();
+  });
+
+  it('una imagen que anuncia varios GB se rechaza sin bajarla, y una que no lo anuncia se corta al pasar el tope', async () => {
+    const huge = fakeWeb([
+      ...imageRoutes().filter((r) => r.match !== 'https://live.staticflickr.com/65535/estadio_b.jpg'),
+      { match: 'https://live.staticflickr.com/65535/estadio_b.jpg', type: 'image/jpeg', body: new Uint8Array(1), headers: { 'content-length': String(5 * 1024 ** 3) } },
+    ]);
+    const t = createStarTools({ version: 'test', http: huge.http, cache: createCache({ dir: null }) });
+    const r = await t.call('import_image', { id: `openverse:${OV_ID}` }, ctx);
+    expect(r.isError).toBe(true);
+    expect(textOf(r)).toMatch(/pesa|máximo/);
+  });
+});
