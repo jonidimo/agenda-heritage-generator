@@ -93,6 +93,19 @@ describe('ajustes de las herramientas del asistente', () => {
     expect(b).toBe(path.join(docs, 'Heritage Studio', 'Boca Juniors 2027 (2)'));
   });
 
+  it('guardados a la vez no se pisan, un id raro no rompe nada y una carpeta borrada vuelve con su nombre', async () => {
+    await Promise.all([store.projectDir('a', 'Uno'), store.projectDir('b', 'Dos'), store.setKey('PEXELS_API_KEY', 'k1')]);
+    const saved = JSON.parse(await readFile(path.join(dir, 'user', 'tools.json'), 'utf8'));
+    expect(Object.keys(saved.projects).sort()).toEqual(['a', 'b']);
+    for (const id of ['__proto__', 'constructor', 'toString']) {
+      const d = await store.projectDir(id, 'Rara');
+      expect((await stat(d)).isDirectory()).toBe(true);
+    }
+    const a = await store.projectDir('a', 'Uno');
+    await rm(a, { recursive: true });
+    expect(await store.projectDir('a', 'Uno')).toBe(a);
+  });
+
   it('listar no crea la carpeta de una agenda que todavía no la tiene', async () => {
     expect(await store.existingProjectDir('id-x')).toBeNull();
     expect(await stat(path.join(docs, 'Heritage Studio')).catch(() => null)).toBeNull();

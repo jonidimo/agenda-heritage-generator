@@ -6,6 +6,7 @@
  * Pure apart from what is injected (the settings store, the tool loader, the dialogs and the file system), so
  * it is tested without Electron.
  */
+import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { cleanHostList, isSecret, isServiceKey, MAX_FOLDERS } from './toolSettings.mjs';
 
@@ -45,7 +46,8 @@ export class StarBridge {
   /** The folders the assistant may read besides the planner's own, with the aliases the model uses. @returns {Promise<Folder[]>} */
   async folders() {
     const { folders } = await this.deps.store.load();
-    return folders.map((root, i) => ({ alias: `carpeta-${i + 1}`, label: labelOf(root), root }));
+    // El alias sale de la ruta: quitar una carpeta no renumera las otras ni cambia a qué carpeta apunta un alias viejo.
+    return folders.map((root) => ({ alias: `carpeta-${createHash('sha1').update(root).digest('hex').slice(0, 6)}`, label: labelOf(root), root }));
   }
 
   async config() {

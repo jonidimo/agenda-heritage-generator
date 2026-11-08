@@ -63,8 +63,12 @@ function Service({ row, status, onStatus }: { row: ServiceRow; status: ToolsStat
   const forget = async (): Promise<void> => {
     const keys: Partial<Record<ServiceKeyName, null>> = {};
     for (const k of row.keys) keys[k] = null;
-    onStatus(await toolsUpdate({ keys }));
-    setResult(null);
+    try {
+      onStatus(await toolsUpdate({ keys }));
+      setResult(null);
+    } catch (err) {
+      setResult({ state: 'done', ok: false, message: (err as Error).message });
+    }
   };
 
   return (
@@ -157,7 +161,7 @@ export function ToolsSettings({ onClose }: { onClose: () => void }) {
                   {t('tools.useDefault')}
                 </Button>
               )}
-              <Button variant="outline" onClick={() => void toolsAction('open-root')}>
+              <Button variant="outline" onClick={() => void toolsAction('open-root').catch(() => setError(true))}>
                 {t('tools.open')}
               </Button>
             </div>

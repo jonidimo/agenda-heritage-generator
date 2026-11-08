@@ -65,7 +65,7 @@ export function FolderPreview({ onMessage }: { onMessage: (m: string) => void })
             {t('assets.foldersRefresh')}
           </Button>
           {agenda && (
-            <Button variant="outline" title={t('assets.folderOpen')} onClick={() => void toolsOpenProject(agenda)}>
+            <Button variant="outline" title={t('assets.folderOpen')} onClick={() => void toolsOpenProject(agenda).catch(() => undefined)}>
               <FolderOpen size={14} />
             </Button>
           )}

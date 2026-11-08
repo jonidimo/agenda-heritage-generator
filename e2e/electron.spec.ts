@@ -488,6 +488,4 @@ test('internet y carpetas: la carpeta por defecto es Documentos, las claves no v
   await expect(dialog.getByTestId('tools-result-openverse')).toBeVisible({ timeout: 60_000 });
   await expect(dialog.getByTestId('tools-service-pexels')).toContainText('Clave guardada');
 
-  // Y la estrella ve las herramientas: el texto de sistema habla de ellas.
-  await win.keyboard.press('Escape');
 });

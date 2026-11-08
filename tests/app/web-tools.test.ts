@@ -34,14 +34,14 @@ afterEach(() => vi.unstubAllGlobals());
 describe('herramientas web de la estrella', () => {
   it('no hay herramientas fuera del escritorio ni si la persona las apagó', async () => {
     vi.stubGlobal('location', { protocol: 'https:' });
-    expect(await loadWebTools()).toBeUndefined();
+    expect(await loadWebTools(true)).toBeUndefined();
     vi.stubGlobal('location', { protocol: 'app:' });
     enabled = false;
-    expect(await loadWebTools()).toBeUndefined();
+    expect(await loadWebTools(true)).toBeUndefined();
   });
 
   it('las herramientas llegan con "for" agregado a import_image, y el pedido lleva la agenda abierta y el tamaño en mm', async () => {
-    const web = (await loadWebTools())!;
+    const web = (await loadWebTools(true))!;
     expect(web.specs.map((s) => s.name)).toEqual(['import_image', 'search_images']);
     expect(JSON.stringify(web.specs[0]!.inputSchema)).toContain('"for"');
     const design = useStore.getState().design!;
@@ -56,7 +56,7 @@ describe('herramientas web de la estrella', () => {
   });
 
   it('la imagen preparada entra a Recursos con su crédito y el modelo recibe el id; la misma imagen no se agrega dos veces', async () => {
-    const web = (await loadWebTools())!;
+    const web = (await loadWebTools(true))!;
     const asset = { name: 'Estadio', kind: 'raster', mime: 'image/jpeg', data: toBase64(makeJpeg(300, 200)), credit: { source: 'openverse', id: 'x', title: 'Estadio', author: 'Jane', authorUrl: null, license: 'CC BY 2.0', licenseUrl: null, url: null, sourceSha256: 'a'.repeat(64), verified: true, modified: false } };
     respond = () => ({ content: [{ type: 'text', text: '{"ok":true}' }, { type: 'image', mime: 'image/jpeg', data: 'AAAA' }], assets: [asset] });
     const first = await web.call('import_image', { id: 'openverse:x' });
@@ -72,7 +72,7 @@ describe('herramientas web de la estrella', () => {
   });
 
   it('una fuente instalada queda disponible en el registro', async () => {
-    const web = (await loadWebTools())!;
+    const web = (await loadWebTools(true))!;
     respond = () => ({ content: [{ type: 'text', text: '{"ok":true}' }], fonts: [{ family: 'Dorsal Prueba', weight: 400, style: 'normal', data: toBase64(DORSAL), label: 'Dorsal Prueba 400' }] });
     const out = await web.call('import_image', {});
     expect(JSON.stringify(out.content)).toContain('Fuente instalada');
@@ -80,9 +80,18 @@ describe('herramientas web de la estrella', () => {
   });
 
   it('un error del proceso principal vuelve como error legible', async () => {
-    const web = (await loadWebTools())!;
+    const web = (await loadWebTools(true))!;
     respond = () => ({ error: 'name' });
     const out = await web.call('search_images', {});
     expect(out.isError).toBe(true);
+  });
+});
+
+describe('sin visión', () => {
+  it('no se le pasan imágenes a un modelo que no las ve', async () => {
+    const web = (await loadWebTools(false))!;
+    respond = () => ({ content: [{ type: 'text', text: '{"ok":true}' }, { type: 'image', mime: 'image/jpeg', data: 'AAAA' }] });
+    const out = await web.call('search_images', {});
+    expect(out.content.every((p) => p.type === 'text')).toBe(true);
   });
 });

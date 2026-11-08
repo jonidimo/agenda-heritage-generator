@@ -83,10 +83,10 @@ function adapt(spec: AiToolSpec): AiToolSpec {
 }
 
 /** Lo que vuelve para la agenda se agrega y se le cuenta al modelo con qué id quedó. */
-async function absorb(result: StarResult): Promise<AiPart[]> {
+async function absorb(result: StarResult, vision: boolean): Promise<AiPart[]> {
   const parts: AiPart[] = result.content.flatMap((p): AiPart[] => {
     if (p.type === 'text' && p.text !== undefined) return [{ type: 'text', text: p.text }];
-    if (p.type === 'image' && p.data && (p.mime === 'image/png' || p.mime === 'image/jpeg')) return [{ type: 'image', mime: p.mime, data: p.data }];
+    if (p.type === 'image' && vision && p.data && (p.mime === 'image/png' || p.mime === 'image/jpeg')) return [{ type: 'image', mime: p.mime, data: p.data }];
     return [];
   });
   const notes: string[] = [];
@@ -107,7 +107,7 @@ async function absorb(result: StarResult): Promise<AiPart[]> {
 }
 
 /** Las herramientas, si es el escritorio y la persona no las apagó; si no, `undefined` (sin ellas). */
-export async function loadWebTools(signal?: AbortSignal): Promise<WebToolsHost | undefined> {
+export async function loadWebTools(vision: boolean, signal?: AbortSignal): Promise<WebToolsHost | undefined> {
   if (!isDesktopShell()) return undefined;
   let listed: { enabled: boolean; tools: AiToolSpec[] };
   try {
@@ -131,7 +131,7 @@ export async function loadWebTools(signal?: AbortSignal): Promise<WebToolsHost |
       if (!res.json) return textOf('El proceso principal no contestó.', true);
       if (!res.ok || !res.json.content) return textOf(res.json.error ?? `Error ${res.status}.`, true);
       try {
-        return { content: await absorb(res.json), ...(res.json.isError ? { isError: true } : {}) };
+        return { content: await absorb(res.json, vision), ...(res.json.isError ? { isError: true } : {}) };
       } catch (err) {
         return textOf(`No se pudo agregar a la agenda: ${(err as Error).message}`, true);
       }

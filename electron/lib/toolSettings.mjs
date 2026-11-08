@@ -66,7 +66,7 @@ export function folderName(name) {
 }
 
 /** @returns {ToolsFile} */
-const empty = () => ({ v: 1, enabled: true, root: null, folders: [], trustedHosts: '', imageHosts: '', keys: {}, projects: {} });
+const empty = () => ({ v: 1, enabled: true, root: null, folders: [], trustedHosts: '', imageHosts: '', keys: {}, projects: Object.create(null) });
 
 export class ToolSettingsStore {
   /** @param {{ file: string, documentsDir: string, fs: FsLike, safeStorage: SafeStorageLike }} deps */
@@ -80,6 +80,8 @@ export class ToolSettingsStore {
     /** Keys that could not be encrypted (no keyring): kept in memory only. */
     /** @type {Map<ServiceKey, string>} */
     this.volatile = new Map();
+    /** @type {Promise<void> | null} */
+    this.saving = null;
   }
 
   /** @returns {Promise<ToolsFile>} */
@@ -107,7 +109,15 @@ export class ToolSettingsStore {
   }
 
   /** @param {ToolsFile} data */
-  async save(data) {
+  save(data) {
+    // De a una: dos guardados a la vez no se pisan el archivo temporal.
+    const run = (this.saving ??= Promise.resolve()).catch(() => undefined).then(() => this.write(data));
+    this.saving = run;
+    return run;
+  }
+
+  /** @param {ToolsFile} data */
+  async write(data) {
     this.cache = data;
     await this.fs.mkdir(path.dirname(this.file), { recursive: true });
     const tmp = `${this.file}.${process.pid}.tmp`;
@@ -226,10 +236,10 @@ export class ToolSettingsStore {
    */
   async resolveProject(id, name, fs, create) {
     const data = await this.load();
-    const known = data.projects[id];
+    const known = Object.hasOwn(data.projects, id) && typeof data.projects[id] === 'string' ? data.projects[id] : undefined;
     const isDir = async (/** @type {string} */ p) => (await fs.stat(p).catch(() => null))?.isDirectory() === true;
     const remember = async (/** @type {string} */ dir) => {
-      if (data.projects[id] !== dir) await this.save({ ...(await this.load()), projects: { ...(await this.load()).projects, [id]: dir } });
+      if (data.projects[id] !== dir) await this.save({ ...(await this.load()), projects: Object.assign(Object.create(null), (await this.load()).projects, { [id]: dir }) });
       await fs.writeFile(path.join(dir, PROJECT_MARKER), `${JSON.stringify({ v: 1, id })}\n`, { mode: 0o644 }).catch(() => undefined);
       return dir;
     };
@@ -246,9 +256,8 @@ export class ToolSettingsStore {
     }
     if (!create) return null;
     const base = folderName(name);
-    const taken = new Set(Object.values(data.projects));
     let dir = path.join(root, base);
-    for (let n = 2; n < 1000 && (taken.has(dir) || (await isDir(dir))); n++) dir = path.join(root, `${base} (${n})`);
+    for (let n = 2; n < 1000 && (await isDir(dir)); n++) dir = path.join(root, `${base} (${n})`);
     await fs.mkdir(dir, { recursive: true });
     return remember(dir);
   }

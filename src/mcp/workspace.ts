@@ -24,7 +24,7 @@ export class Workspace {
   }
 
   private inside(full: string): boolean {
-    return full === this.root || full.startsWith(this.root + sep);
+    return full === this.root || full.startsWith(this.root.endsWith(sep) ? this.root : this.root + sep);
   }
 
   /** Ruta para mostrar (relativa a la carpeta de trabajo). */

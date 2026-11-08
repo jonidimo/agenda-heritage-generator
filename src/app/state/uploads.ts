@@ -195,12 +195,23 @@ async function addPrepared(a: PreparedAsset): Promise<{ id: string; duplicate: b
   if (hash) {
     await hashesOf(design);
     const twin = design.assets.find((x) => resources.assetHashes.get(x.id) === hash);
-    if (twin) return { id: twin.id, duplicate: true, name: twin.name, width: twin.width, height: twin.height };
+    if (twin) {
+      // Estaba sin crédito y ahora llega con uno válido: se lo queda (si no, la página de créditos la omitiría).
+      const parsed = a.credit === undefined ? null : AssetCreditZ.safeParse(a.credit);
+      if (!twin.credit && parsed?.success) {
+        useStore.getState().update((d) => {
+          const t = d.assets.find((x) => x.id === twin.id);
+          if (t) t.credit = parsed.data;
+        });
+      }
+      return { id: twin.id, duplicate: true, name: twin.name, width: twin.width, height: twin.height };
+    }
   }
   const id = newId('img');
   const ref = { id, name: a.name, kind: a.kind, mime: a.mime, width: 0, height: 0, builtin: null };
   const info = await assetInfoFromBytes(ref, a.bytes);
   const credit = a.credit === undefined ? undefined : AssetCreditZ.safeParse(a.credit);
+  if (credit && !credit.success) throw new Error('El crédito de la imagen no es válido (autor, licencia o dirección demasiado largos): no se importó.');
   resources.putAsset(id, a.bytes, info);
   if (hash) resources.assetHashes.set(id, hash);
   await saveAsset(id, a.bytes);

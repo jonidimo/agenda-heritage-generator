@@ -19,8 +19,16 @@ export interface CreditPageOptions {
 
 /** Los créditos en texto: título, autor, licencia (con su enlace), dónde está, y si se la modificó. */
 export function creditLines(assets: readonly Design['assets'][number][]): string[] {
+  // La misma foto importada dos veces (con otro recorte) se acredita una sola vez.
+  const seen = new Set<string>();
   return assets
-    .filter((x) => x.credit)
+    .filter((x) => {
+      if (!x.credit) return false;
+      const key = `${x.credit.source}:${x.credit.id}`;
+      if (x.credit.verified && seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
     .map((x) => {
       const c = x.credit!;
       const what = c.title || x.name;

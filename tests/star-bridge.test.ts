@@ -76,7 +76,9 @@ describe('puente de herramientas del escritorio', () => {
     expect((await bridge.action({ action: 'choose-root' })).cancelled).toBe(true);
     picks.push(path.join(dir, 'Descargas'));
     await bridge.action({ action: 'add-folder' });
-    expect(await bridge.folders()).toEqual([{ alias: 'carpeta-1', label: 'Descargas', root: path.join(dir, 'Descargas') }]);
+    const [first] = await bridge.folders();
+    expect(first).toMatchObject({ label: 'Descargas', root: path.join(dir, 'Descargas') });
+    expect(first?.alias).toMatch(/^carpeta-[0-9a-f]{6}$/);
     expect((await bridge.action({ action: 'reset-root' })).status?.rootIsDefault).toBe(true);
     await bridge.action({ action: 'remove-folder', folder: path.join(dir, 'Descargas') });
     expect(await bridge.folders()).toEqual([]);
@@ -88,7 +90,7 @@ describe('puente de herramientas del escritorio', () => {
     await bridge.call({ name: 'search_images', input: {} });
     picks.push(path.join(dir, 'Fotos'));
     const found = await (calls[0]!.ctx.chooseFolder as () => Promise<{ alias: string } | null>)();
-    expect(found?.alias).toBe('carpeta-1');
+    expect(found?.alias).toMatch(/^carpeta-[0-9a-f]{6}$/);
     expect(await (calls[0]!.ctx.chooseFolder as () => Promise<unknown>)()).toBeNull();
   });
 });

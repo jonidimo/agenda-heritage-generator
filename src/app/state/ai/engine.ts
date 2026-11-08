@@ -52,7 +52,7 @@ export async function turn(r: TurnRequest): Promise<TurnOutcome> {
     adapter,
     cfg: configOf(r),
     send: sender(r.provider),
-    host: appToolHost({ vision: r.vision, signal: r.signal, draft: r.draft, web: await loadWebTools(r.signal) }),
+    host: appToolHost({ vision: r.vision, signal: r.signal, draft: r.draft, web: await loadWebTools(r.vision, r.signal) }),
     signal: r.signal,
     onEvent: r.onEvent,
     sleep,

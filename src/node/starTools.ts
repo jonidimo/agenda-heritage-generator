@@ -9,11 +9,11 @@
  */
 import { createHash } from 'node:crypto';
 import { lstat, mkdir, readdir, realpath, writeFile } from 'node:fs/promises';
-import { basename, extname, join, resolve, sep } from 'node:path';
+import { basename, extname, join, relative, resolve, sep } from 'node:path';
 import { z } from 'zod';
 import { sanitizeSvg } from '../core/assets/sanitizeSvg';
 import { ASSET_MAX_BYTES } from '../core/assets/prepare';
-import { LOW_DPI } from '../core/assets/image';
+import { LOW_DPI, rasterInfo } from '../core/assets/image';
 import { toBase64 } from '../core/resources';
 import { assessFont } from '../core/text/coverage';
 import { openFont } from '../core/text/fontkit';
@@ -226,7 +226,7 @@ export function createStarTools(options: StarToolsOptions): StarTools {
     if (sub) {
       // La subcarpeta tiene que quedar adentro (también siguiendo enlaces).
       const real = await realpath(resolve(ws.root, sub)).catch(() => null);
-      if (!real || (real !== ws.root && !real.startsWith(ws.root + sep))) return [];
+      if (!real || (real !== ws.root && !real.startsWith(ws.root.endsWith(sep) ? ws.root : ws.root + sep))) return [];
       start = real;
     }
     const out: Array<{ path: string; size: number }> = [];
@@ -246,7 +246,7 @@ export function createStarTools(options: StarToolsOptions): StarTools {
         if (info.isDirectory()) {
           if (depth < 3) await walk(full, depth + 1);
         } else if (info.isFile() && IMAGE_EXT.includes(extname(name).toLowerCase())) {
-          out.push({ path: full.slice(ws.root.length + 1).split('\\').join('/'), size: info.size });
+          out.push({ path: relative(ws.root, full).split('\\').join('/'), size: info.size });
         }
       }
     };
@@ -481,6 +481,8 @@ export function createStarTools(options: StarToolsOptions): StarTools {
           kind = 'vector';
           ext = '.svg';
         } else {
+          const head = rasterInfo(got.bytes);
+          if (head && head.width * head.height > 24_000_000) return fail(`La imagen es demasiado grande (${head.width} × ${head.height} px, el máximo son 24 megapíxeles): usá una versión más chica.`);
           try {
             const prepared = prepareRaster(got.bytes, { sizeMm: a.sizeMm, dpi: a.dpi ?? 300, focus: a.focus, crop: a.crop, ...(a.sizeMm ? { maxSide: 12_000 } : {}) });
             bytes = prepared.bytes;

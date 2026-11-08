@@ -144,7 +144,7 @@ async function starTools(route, request) {
   const b = bridge();
   try {
     if (route === 'tools-config' && request.method === 'GET') return json(await b.config());
-    if (route === 'tools-list' && request.method === 'GET') return json(await b.list());
+    if (route === 'tools-list') return request.method === 'GET' ? json(await b.list()) : json({ error: 'method' }, 405);
     if (request.method !== (route === 'tools-config' ? 'PUT' : 'POST')) return json({ error: 'method' }, 405);
     /** @type {unknown} */
     let body;
