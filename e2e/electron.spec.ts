@@ -132,14 +132,14 @@ test('con --mcp es un servidor MCP: sin ventana, la salida estándar es solo del
     env: { XDG_CONFIG_HOME: profile, APPDATA: profile },
   });
   expect(report.problems).toEqual([]);
-  expect(report.tools).toHaveLength(15);
+  expect(report.tools).toHaveLength(21);
 });
 
 test('como Node puro (ELECTRON_RUN_AS_NODE) también es un servidor MCP: es la forma que funciona en Windows', async () => {
   // Sin AGENDA_PUBLIC_DIR: el paquete encuentra la carpeta dist/ que lo acompaña.
   const report = await smokeMcp({ command: ELECTRON, args: [join(ROOT, 'dist-mcp', 'main.mjs')], env: { ELECTRON_RUN_AS_NODE: '1' } });
   expect(report.problems).toEqual([]);
-  expect(report.tools).toHaveLength(15);
+  expect(report.tools).toHaveLength(21);
 });
 
 test('el editor de texto en su lugar abre sin violar la política de seguridad (la letra se carga desde sus bytes)', async () => {

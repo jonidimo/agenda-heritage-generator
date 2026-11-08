@@ -11,6 +11,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { rasterInfo } from '../src/core/assets/image';
+import { openFont } from '../src/core/text/fontkit';
 import { createDesign } from '../src/core/design/defaults';
 import { parseDesign } from '../src/core/design/schema';
 import { applyJsonPatch, type JsonPatchOp } from '../src/core/util/jsonPatch';
@@ -685,6 +686,21 @@ describe('fuentes', () => {
     const again = await call('import_font', { family: 'Roboto', path: 'a.agenda.json', confirm: true });
     expect(again.body.installed[0].replaced).toBe(true);
     expect((await agenda()).userFonts).toHaveLength(2);
+  });
+
+  it('el recorte conserva los caracteres que los textos de la agenda ya usan (p. ej. un título en otra escritura)', async () => {
+    await withAgenda(KEYS, fontRoutes());
+    const has = async (): Promise<boolean> => openFont(fromBase64((await agenda()).userFonts[0].data)).hasGlyphForCodePoint(0x180);
+    await call('import_font', { family: 'Roboto', path: 'a.agenda.json', confirm: true });
+    expect(await has()).toBe(false);
+    const raw = await agenda();
+    raw.userFonts = [];
+    raw.customBlocks.push({ id: 't', pageType: 'notes', pageKey: null, kind: 'text', x: 10, y: 10, w: 50, h: 10, props: { text: 'Título ƀ' } });
+    await writeFile(join(dir, 'a.agenda.json'), JSON.stringify(raw));
+    const r = await call('import_font', { family: 'Roboto', path: 'a.agenda.json', confirm: true });
+    expect(r.isError, r.text).toBe(false);
+    expect(r.body.notes.join(' ')).toMatch(/caracteres que los textos de la agenda ya usan/);
+    expect(await has()).toBe(true);
   });
 
   it('sin la clave de Google también anda, con la hoja de estilos', async () => {

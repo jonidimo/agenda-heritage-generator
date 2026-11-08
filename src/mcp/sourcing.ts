@@ -75,6 +75,22 @@ const json = (value: unknown): ToolResult => ({ content: [{ type: 'text', text: 
 const failure = (value: unknown): ToolResult => ({ ...json(value), isError: true });
 const mb = (n: number): string => (n >= 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1)} MB` : `${Math.round(n / 1024)} KB`);
 
+/** Los caracteres que aparecen en los textos de una agenda (sus cadenas, sin los datos en base64 de imágenes y fuentes). */
+export function agendaChars(raw: unknown): string {
+  const seen = new Set<string>();
+  const walk = (v: unknown, key: string, depth: number): void => {
+    if (depth > 40) return;
+    if (typeof v === 'string') {
+      // Un texto largo sin espacios es un archivo en base64, no un texto escrito.
+      if (key === 'data' || (v.length > 1500 && !/\s/.test(v))) return;
+      for (const c of v) seen.add(c);
+    } else if (Array.isArray(v)) for (const x of v) walk(x, key, depth + 1);
+    else if (v && typeof v === 'object') for (const [k, x] of Object.entries(v)) walk(x, k, depth + 1);
+  };
+  walk(raw, '', 0);
+  return [...seen].filter((c) => (c.codePointAt(0) ?? 0) > 0x20).join('');
+}
+
 /** decodeURIComponent que no falla con un «%» suelto. */
 const safeDecode = (s: string): string => {
   try {
@@ -742,7 +758,7 @@ export function registerSourcingTools(server: McpServer, deps: SourcingDeps): vo
         path: z.string().optional().describe('La agenda (.agenda.json) que se lee y recibe la fuente, relativa a la carpeta de trabajo'),
         app: z.boolean().optional().describe('La aplicación de escritorio abierta, en lugar de un archivo'),
         roles: z.array(z.enum(TEXT_ROLES)).max(TEXT_ROLES.length).optional().describe(`Tipos de texto que pasan a usarla: ${TEXT_ROLES.join(', ')}`),
-        subset: z.enum(['latin', 'none']).optional().describe('latin: recorta a las letras de las lenguas de la aplicación y símbolos comunes (por defecto); none: entera'),
+        subset: z.enum(['latin', 'none']).optional().describe('latin: recorta a las letras de las lenguas de la aplicación, símbolos comunes y los caracteres que los textos de la agenda ya usan (por defecto); none: entera'),
         extraText: z.string().max(500).optional().describe('Caracteres que se agregan al recorte (p. ej. kanji de un título)'),
         allowIncomplete: z.boolean().optional().describe('Agregarla aunque le falten letras del castellano'),
         confirm: z.boolean().optional().describe('true: aplicar. Sin esto solo se devuelve el informe'),
@@ -756,7 +772,10 @@ export function registerSourcingTools(server: McpServer, deps: SourcingDeps): vo
       const wanted: FontVariant[] = [...weights.map((w) => ({ weight: w, style: 'normal' as const })), ...(a.italic ? weights.map((w) => ({ weight: w, style: 'italic' as const })) : [])];
       const resolved = await resolveFontFiles(a.family, wanted, ctx);
       const availableWeights = new Set(resolved.variantsAvailable.map(parseVariant).filter((v): v is FontVariant => v !== null).map((v) => v.weight)).size;
-      const extra = a.extraText ?? '';
+      // Con la agenda a la vista, el recorte conserva también los caracteres que sus textos ya usan (p. ej. el kanji de un título).
+      const early = a.path !== undefined || a.app === true ? await readTarget({ path: a.path, app: a.app }) : null;
+      const fromAgenda = early ? agendaChars(early.raw) : '';
+      const extra = (a.extraText ?? '') + fromAgenda;
       const variants: Array<{ variant: FontVariant; original: number; bytes: Uint8Array; assessment: FontAssessment; subset: boolean; dropped: number; variable: boolean }> = [];
       for (const f of resolved.files) {
         const original = await downloadFont(f.url, ctx);
@@ -812,6 +831,7 @@ export function registerSourcingTools(server: McpServer, deps: SourcingDeps): vo
           ...(variable ? ['Es una fuente variable (un solo archivo para varios pesos): el programa no elige el peso dentro del archivo, así que todos salen con el peso por defecto. Para negrita real, buscá una familia con archivos estáticos por peso.'] : []),
           ...(dropped > 0 ? [`El recorte descartó ${dropped} caracteres que no son de las lenguas de la aplicación (otras escrituras, símbolos). Si el texto los usa, repetí con extraText o con subset: "none".`] : []),
           ...(a.subset !== 'none' && !deps.subset ? ['Este servidor no tiene el módulo de recorte: la fuente se incrusta entera.'] : []),
+          ...(fromAgenda ? [`El recorte conserva además los caracteres que los textos de la agenda ya usan (${[...new Set([...fromAgenda])].filter((c) => !LATIN_SUBSET.includes(c)).length} fuera del latín).`] : []),
           'El PDF incrusta solo los glifos que aparecen en el texto, venga la fuente recortada o entera; el recorte achica el archivo .agenda.json.',
         ],
       };
@@ -820,7 +840,7 @@ export function registerSourcingTools(server: McpServer, deps: SourcingDeps): vo
       if (worst === 'unsuitable' && a.allowIncomplete !== true) return failure({ applied: false, ...report, hint: 'Le faltan letras del castellano. Elegí otra fuente, o repetí con allowIncomplete: true.' });
 
       // Antes de escribir nada: que entren todas (el esquema deja afuera en silencio las que pasan del máximo).
-      const target = await readTarget({ path: a.path, app: a.app });
+      const target = early;
       const have = target?.design.userFonts ?? [];
       const fresh = toInstall.filter((v) => !have.some((f) => f.spec.family === resolved.family && f.spec.weight === v.variant.weight && f.spec.style === v.variant.style)).length;
       if (have.length + fresh > USER_FONTS_MAX) return failure({ applied: false, error: `La agenda ya tiene ${have.length} fuentes propias y el máximo es ${USER_FONTS_MAX}: no entran ${fresh} más. Quitá alguna de userFonts.` });
