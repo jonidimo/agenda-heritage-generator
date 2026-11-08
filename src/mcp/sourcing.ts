@@ -192,7 +192,7 @@ export function registerSourcingTools(server: McpServer, deps: SourcingDeps): vo
     {
       title: 'Buscar imágenes',
       description:
-        'Busca imágenes en Openverse (sin clave: Creative Commons y dominio público), Pixabay (PIXABAY_API_KEY) y Unsplash (UNSPLASH_ACCESS_KEY). Devuelve cada resultado con su id, autor, licencia, tamaño en píxeles y una miniatura (imagen) para elegir; con «id» se importa con import_image. «license»: free = CC0, dominio público o CC BY (las únicas que no obligan a compartir igual ni limitan el uso comercial; Pixabay y Unsplash tienen licencia propia y quedan afuera), cc0, by, o any. «orientation» vertical para portadas de mes y de tapa, horizontal para fondos apaisados. Los resultados se guardan 24 horas: repetir la búsqueda no gasta llamadas.',
+        'Busca imágenes en Openverse y Wikimedia Commons (sin clave), Pexels (PEXELS_API_KEY), Pixabay (PIXABAY_API_KEY), Unsplash (UNSPLASH_ACCESS_KEY) y DeviantArt (DEVIANTART_CLIENT_ID y DEVIANTART_CLIENT_SECRET). Devuelve cada resultado con su id, autor, licencia, tamaño en píxeles y una miniatura (imagen) para elegir; con «id» se importa con import_image. «license»: free = CC0, dominio público o CC BY, cc0, by, o any (los servicios con licencia propia quedan fuera de los filtros free, cc0 y by). «orientation» vertical para portadas de mes y de tapa, horizontal para fondos apaisados. Los resultados se guardan 24 horas: repetir la búsqueda no gasta llamadas.',
       inputSchema: {
         query: z.string().trim().min(1).max(200).describe('Qué buscar (en inglés rinde más en Openverse y Unsplash; Pixabay admite «lang»)'),
         provider: z.array(z.enum(PROVIDER_IDS as readonly [string, ...string[]])).max(3).optional().describe('Dónde buscar (por defecto, en todos los que tienen lo que necesitan)'),
@@ -218,6 +218,7 @@ export function registerSourcingTools(server: McpServer, deps: SourcingDeps): vo
       }
       const summary = {
         query,
+        notice: 'Revisá la licencia de cada imagen antes de usarla: es responsabilidad de quien la usa.',
         count: report.hits.length,
         services: report.services,
         ...(report.notConfigured.length > 0 ? { notConfigured: report.notConfigured.map((n) => `${n.provider} (necesita ${n.needs})`) } : {}),
@@ -288,7 +289,7 @@ export function registerSourcingTools(server: McpServer, deps: SourcingDeps): vo
       description:
         'Baja una imagen y la deja lista: de search_images (por su «id»), de un enlace directo a un archivo de imagen («url»: solo de dominios que declaraste en AGENDA_TRUSTED_HOSTS, por ejemplo de tu red local, o de los de las APIs) o de un archivo de la carpeta de trabajo («image»). Las que no vienen de un catálogo con licencia (url e image) quedan bajo TU responsabilidad: el programa no revisa de quién son (ver el aviso en la respuesta); su crédito se guarda solo si indicás «author» o «license». La limpia (un SVG queda sin scripts ni enlaces externos), la endereza, la recorta a la proporción del lugar donde va y la achica a unos 300 ppp, y la agrega a «assets» de una agenda (archivo «path» o aplicación abierta «app: true») con su autor, licencia y dirección en «credit». SIN «confirm: true» no cambia nada: devuelve la propuesta (tamaño, ppp que alcanza, de quién es y con qué licencia, si ya estaba, y una vista previa) para que la persona la apruebe; con «confirm: true» y los MISMOS parámetros la aplica (una confirmación sin esa propuesta previa se rechaza). Tamaño: «for» cover (la tapa entera, con sangrado y lomo), page (una página) o «sizeMm» ({w, h} a mano). «focus» ({x, y} de 0 a 1) o «crop» ({x, y, w, h} de 0 a 1 sobre la imagen derecha) eligen qué parte queda; sin ellos, el centro. En un archivo, la imagen se guarda en una carpeta junto a la agenda (imagenes/) y se referencia por «path»; con «embed: true» va adentro del JSON. Después se coloca con update_design (portada del mes, tapa, un elemento image…) usando el id del recurso. No importa dos veces la misma imagen (compara el contenido).',
       inputSchema: {
-        id: z.string().trim().min(3).max(220).optional().describe('El id que devolvió search_images («openverse:…», «pixabay:…», «unsplash:…»)'),
+        id: z.string().trim().min(3).max(220).optional().describe('El id que devolvió search_images («openverse:…», «wikimedia:…», «pexels:…», «pixabay:…», «unsplash:…», «deviantart:…»)'),
         url: z.string().trim().max(1000).optional().describe('Un enlace directo a un archivo de imagen (PNG, JPEG o SVG) de un dominio de AGENDA_TRUSTED_HOSTS; browse_page lista los de una página'),
         image: z.string().trim().max(300).optional().describe('Un archivo de imagen (.png, .jpg, .jpeg, .svg) que se lee de la carpeta de trabajo, relativo a ella'),
         author: z.string().trim().max(200).optional().describe('Con url o image: de quién es la imagen (para el crédito)'),
@@ -388,15 +389,6 @@ export function registerSourcingTools(server: McpServer, deps: SourcingDeps): vo
       const warnings: string[] = [];
       if (hit.provider === 'web' || hit.provider === 'local') warnings.push(RESPONSIBILITY_NOTICE);
       if (hit.fileKind === 'preview') warnings.push('Solo se pudo bajar la copia reducida que sirve el servicio (el original está en un dominio que no se visita): la resolución es la de esa copia. Agregá el dominio del original en AGENDA_IMAGE_HOSTS si querés bajarlo.');
-      const licenseWarning: Partial<Record<ImageHit['licenseKind'], string>> = {
-        'by-sa': 'Licencia CC BY-SA: lo derivado (como esta imagen recortada) tiene que compartirse con la misma licencia.',
-        'by-nc': 'Licencia con restricciones (no comercial y/o sin derivadas): no sirve para una agenda que se vende, y recortarla puede ser una obra derivada. Mirá la licencia antes de usarla.',
-        'cc-other': 'Licencia con restricciones (p. ej. «sin derivadas»): recortar y achicar la imagen puede no estar permitido. Mirá la licencia antes de usarla.',
-        pixabay: 'Licencia propia de Pixabay: se puede usar libremente, pero no es Creative Commons y no se puede redistribuir la imagen sola.',
-        unsplash: 'Licencia propia de Unsplash: se puede usar libremente, pero no es Creative Commons y no se puede redistribuir la imagen sola.',
-      };
-      const restriction = licenseWarning[hit.licenseKind];
-      if (restriction) warnings.push(restriction);
       if (coverNote) warnings.push(coverNote);
       if (hit.provider === 'pixabay') warnings.push('Pixabay sirve como mucho 1280 px de lado sin permisos especiales: alcanza para un tamaño chico, no para una tapa a 300 ppp.');
 
@@ -750,7 +742,7 @@ export function registerSourcingTools(server: McpServer, deps: SourcingDeps): vo
     {
       title: 'Importar una fuente',
       description:
-        'Baja una familia de Google Fonts, comprueba que tenga las letras del castellano (ñ, tildes, «¿», «¡»), cifras y puntuación, la recorta a las letras que se usan (latín completo por defecto; el PDF ya incrusta solo los glifos que aparecen) y la agrega a «userFonts» de una agenda («path») o a la aplicación abierta («app: true»); con «roles» la pone en esos tipos de texto. SIN «confirm: true» no cambia nada: devuelve el informe (cobertura, pesos, tamaño antes y después, si conviene solo para títulos). Una fuente a la que le faltan letras del castellano no se agrega salvo «allowIncomplete». Funciona sin clave si se sabe la familia.',
+        'Baja una familia de Google Fonts, comprueba que tenga las letras del castellano (ñ, tildes, «¿», «¡»), cifras y puntuación, la incrusta entera (con «subset: latin» la recorta para un archivo más liviano; el PDF ya incrusta solo los glifos que aparecen) y la agrega a «userFonts» de una agenda («path») o a la aplicación abierta («app: true»); con «roles» la pone en esos tipos de texto. SIN «confirm: true» no cambia nada: devuelve el informe (cobertura, pesos, tamaño antes y después, si conviene solo para títulos). Una fuente a la que le faltan letras del castellano no se agrega salvo «allowIncomplete». Funciona sin clave si se sabe la familia.',
       inputSchema: {
         family: z.string().trim().min(1).max(80).describe('La familia, como en Google Fonts (p. ej. «Bangers», «Shippori Mincho»)'),
         weights: z.array(z.number().int().min(100).max(900)).min(1).max(4).optional().describe('Pesos (400 por defecto)'),
@@ -758,7 +750,7 @@ export function registerSourcingTools(server: McpServer, deps: SourcingDeps): vo
         path: z.string().optional().describe('La agenda (.agenda.json) que se lee y recibe la fuente, relativa a la carpeta de trabajo'),
         app: z.boolean().optional().describe('La aplicación de escritorio abierta, en lugar de un archivo'),
         roles: z.array(z.enum(TEXT_ROLES)).max(TEXT_ROLES.length).optional().describe(`Tipos de texto que pasan a usarla: ${TEXT_ROLES.join(', ')}`),
-        subset: z.enum(['latin', 'none']).optional().describe('latin: recorta a las letras de las lenguas de la aplicación, símbolos comunes y los caracteres que los textos de la agenda ya usan (por defecto); none: entera'),
+        subset: z.enum(['latin', 'none']).optional().describe('none: la fuente entera, para poder escribir cualquier carácter que tenga sin reimportar (por defecto); latin: la recorta a las letras de las lenguas de la aplicación y a los caracteres que los textos de la agenda ya usan, para un archivo más liviano (útil en fuentes japonesas o muy grandes)'),
         extraText: z.string().max(500).optional().describe('Caracteres que se agregan al recorte (p. ej. kanji de un título)'),
         allowIncomplete: z.boolean().optional().describe('Agregarla aunque le falten letras del castellano'),
         confirm: z.boolean().optional().describe('true: aplicar. Sin esto solo se devuelve el informe'),
@@ -789,7 +781,7 @@ export function registerSourcingTools(server: McpServer, deps: SourcingDeps): vo
         let bytes = original;
         let subset = false;
         let dropped = 0;
-        if (a.subset !== 'none' && deps.subset) {
+        if (a.subset === 'latin' && deps.subset) {
           const small = await deps.subset(original, LATIN_SUBSET + extra).catch(() => null);
           // Se queda con el recorte solo si pesa menos y sigue teniendo lo que tenía la fuente completa.
           if (small && small.length < original.length) {
@@ -830,9 +822,10 @@ export function registerSourcingTools(server: McpServer, deps: SourcingDeps): vo
         notes: [
           ...(variable ? ['Es una fuente variable (un solo archivo para varios pesos): el programa no elige el peso dentro del archivo, así que todos salen con el peso por defecto. Para negrita real, buscá una familia con archivos estáticos por peso.'] : []),
           ...(dropped > 0 ? [`El recorte descartó ${dropped} caracteres que no son de las lenguas de la aplicación (otras escrituras, símbolos). Si el texto los usa, repetí con extraText o con subset: "none".`] : []),
-          ...(a.subset !== 'none' && !deps.subset ? ['Este servidor no tiene el módulo de recorte: la fuente se incrusta entera.'] : []),
+          ...(a.subset === 'latin' && !deps.subset ? ['Este servidor no tiene el módulo de recorte: la fuente se incrusta entera.'] : []),
           ...(fromAgenda ? [`El recorte conserva además los caracteres que los textos de la agenda ya usan (${[...new Set([...fromAgenda])].filter((c) => !LATIN_SUBSET.includes(c)).length} fuera del latín).`] : []),
-          'El PDF incrusta solo los glifos que aparecen en el texto, venga la fuente recortada o entera; el recorte achica el archivo .agenda.json.',
+          'El PDF incrusta solo los glifos que aparecen en el texto, venga la fuente recortada o entera.',
+          ...(variants.some((v) => v.original > 2 * 1024 * 1024) ? ['La fuente pesa más de 2 MB: el .agenda.json queda grande. Con subset: "latin" queda más liviano (después, un carácter fuera del latín que no esté en la agenda necesitaría reimportar).'] : []),
         ],
       };
       if (a.confirm !== true) recordProposal('import_font', a);

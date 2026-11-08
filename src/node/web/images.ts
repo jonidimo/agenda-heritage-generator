@@ -15,11 +15,14 @@ import type { Cache } from './cache';
 import { extraHosts, IMAGE_FILE_HOSTS, parseTrustedHosts, WebError } from './guard';
 import type { HttpClient } from './http';
 import { openverse } from './sources/openverse';
+import { deviantart } from './sources/deviantart';
+import { pexels } from './sources/pexels';
 import { pixabay } from './sources/pixabay';
+import { wikimedia } from './sources/wikimedia';
 import { unsplash } from './sources/unsplash';
 import { PROVIDER_IDS, type ImageHit, type ImageSource, type ProviderId, type SearchRequest, type SourceContext } from './sources/types';
 
-export const SOURCES: Readonly<Record<ProviderId, ImageSource>> = { openverse, pixabay, unsplash };
+export const SOURCES: Readonly<Record<ProviderId, ImageSource>> = { openverse, wikimedia, pexels, pixabay, unsplash, deviantart };
 
 /** El contexto de los servicios: el cliente web, las variables de entorno, la caché y los dominios de archivos. */
 export function sourceContext(deps: { http: HttpClient; env: Readonly<Record<string, string | undefined>>; cache: Cache }): SourceContext {
@@ -73,8 +76,8 @@ export async function searchImages(q: SearchRequest, providers: readonly Provide
 
 /** La ficha de una imagen por su id (`servicio:identificador`): de la caché, o del servicio. */
 export async function resolveHit(id: string, ctx: SourceContext): Promise<ImageHit> {
-  const m = /^(openverse|pixabay|unsplash):(.{1,200})$/.exec(id.trim());
-  if (!m) throw new Error('El id de la imagen tiene que ser el que devuelve search_images, como «openverse:…», «pixabay:…» o «unsplash:…».');
+  const m = new RegExp(`^(${PROVIDER_IDS.join('|')}):(.{1,200})$`).exec(id.trim());
+  if (!m) throw new Error(`El id de la imagen tiene que ser el que devuelve search_images, como ${PROVIDER_IDS.map((p) => `«${p}:…»`).join(', ')}.`);
   const provider = m[1] as ProviderId;
   const cached = await ctx.cache.get<ImageHit>('hit', `${provider}:${m[2]}`);
   if (cached) return cached;

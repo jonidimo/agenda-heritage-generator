@@ -70,12 +70,12 @@ describe('searchImages', () => {
     expect(web.requests).toHaveLength(1);
     // Sin pedir un servicio, se usan los que están listos.
     const auto = await searchImages(request(), undefined, ctx);
-    expect(auto.services.map((s) => s.provider)).toEqual(['openverse']);
+    expect(auto.services.map((s) => s.provider)).toEqual(['openverse', 'wikimedia']);
   });
 
   it('con claves, junta los tres e intercala los resultados', async () => {
     const { web, ctx } = setup(KEYS);
-    const r = await searchImages(request({ limit: 12 }), undefined, ctx);
+    const r = await searchImages(request({ limit: 12 }), ['openverse', 'pixabay', 'unsplash'], ctx);
     expect(r.hits.map((h) => h.provider)).toEqual(['openverse', 'pixabay', 'unsplash', 'openverse', 'openverse']);
     const pix = web.requests.find((u) => u.includes('pixabay.com/api'))!;
     expect(new URL(pix).searchParams.get('key')).toBe('pix-key-777');
@@ -90,7 +90,7 @@ describe('searchImages', () => {
 
   it('el filtro de licencias libres deja CC0, dominio público y CC BY', async () => {
     const { web, ctx } = setup(KEYS);
-    const r = await searchImages(request({ license: 'free', limit: 12 }), undefined, ctx);
+    const r = await searchImages(request({ license: 'free', limit: 12 }), ['openverse', 'pixabay', 'unsplash'], ctx);
     expect(r.hits.map((h) => h.licenseKind).sort()).toEqual(['by', 'cc0']);
     expect(new URL(web.requests[0]!).searchParams.get('license')).toBe('cc0,pdm,by');
     expect(r.hits.some((h) => h.provider !== 'openverse')).toBe(false);

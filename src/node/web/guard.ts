@@ -31,12 +31,12 @@ export function redactUrl(url: string | URL): string {
 }
 
 /** Dominios de las APIs de búsqueda de imágenes (y de la descarga de miniaturas de Openverse). */
-export const IMAGE_API_HOSTS = ['api.openverse.org', 'pixabay.com', 'api.unsplash.com'] as const;
+export const IMAGE_API_HOSTS = ['api.openverse.org', 'pixabay.com', 'api.unsplash.com', 'api.pexels.com', 'commons.wikimedia.org', 'www.deviantart.com'] as const;
 /**
  * Dominios de donde se bajan los archivos de las imágenes: los de Pixabay y Unsplash, y los grandes
  * repositorios que alimentan a Openverse. Otros dominios se agregan a conciencia con `AGENDA_IMAGE_HOSTS`.
  */
-export const IMAGE_FILE_HOSTS = ['cdn.pixabay.com', 'pixabay.com', 'images.unsplash.com', 'api.openverse.org', 'upload.wikimedia.org', '*.staticflickr.com'] as const;
+export const IMAGE_FILE_HOSTS = ['cdn.pixabay.com', 'pixabay.com', 'images.unsplash.com', 'api.openverse.org', 'upload.wikimedia.org', '*.staticflickr.com', 'images.pexels.com', '*.wixmp.com', '*.deviantart.net'] as const;
 /** Dominios de Google Fonts: la API de búsqueda, la hoja de estilos con la dirección de cada archivo y los archivos. */
 export const FONT_HOSTS = ['www.googleapis.com', 'fonts.googleapis.com', 'fonts.gstatic.com'] as const;
 

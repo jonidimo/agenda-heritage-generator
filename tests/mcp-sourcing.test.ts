@@ -89,9 +89,10 @@ describe('search_images', () => {
   beforeEach(() => start({ env: {} }));
 
   it('devuelve los resultados con autor y licencia, y una miniatura de cada uno como imagen', async () => {
-    const r = await call('search_images', { query: 'estadio' });
+    const r = await call('search_images', { query: 'estadio', provider: ['openverse'] });
     expect(r.isError).toBe(false);
     expect(r.body.count).toBe(3);
+    expect(r.body.notice).toMatch(/Revisá la licencia/);
     expect(r.body.results[0]).toMatchObject({ n: 1, id: `openverse:${OV_ID}`, creator: 'Jane Doe', license: 'CC BY 2.0', size: '3000×2000' });
     expect(r.body.results[1].onlyPreview).toMatch(/dominio que no se visita/);
     const images = r.parts.filter((p) => p.type === 'image');
@@ -299,6 +300,50 @@ describe('imágenes propias: archivo, enlace y páginas', () => {
   });
 });
 
+describe('Pexels, Wikimedia Commons y DeviantArt', () => {
+  const ALL = { PEXELS_API_KEY: 'pex-key-1', DEVIANTART_CLIENT_ID: 'da-id', DEVIANTART_CLIENT_SECRET: 'da-secret-9' };
+
+  it('buscan juntos, con autor y licencia de cada uno, y la licencia de Commons sale de sus metadatos', async () => {
+    await start({ env: ALL });
+    const r = await call('search_images', { query: 'obelisco', provider: ['wikimedia', 'pexels', 'deviantart'], limit: 12 });
+    expect(r.isError, r.text).toBe(false);
+    const byId = Object.fromEntries(r.body.results.map((x: { id: string }) => [x.id, x]));
+    expect(byId['wikimedia:31415']).toMatchObject({ title: 'Obelisco de noche', creator: 'Ana & Co', license: 'CC BY-SA 4.0', licenseKind: 'by-sa', size: '3000×2000' });
+    expect(byId['wikimedia:3']).toMatchObject({ license: 'Public domain', licenseKind: 'pdm' });
+    expect(byId['wikimedia:2']).toBeUndefined();
+    expect(byId['pexels:2014422']).toMatchObject({ creator: 'Joey Farina', license: 'Licencia de Pexels' });
+    expect(byId[`deviantart:8C5F4A1E-2B7D-4F3A-9E10-AABBCCDDEEFF`]).toMatchObject({ title: 'Gojo fan art', creator: 'artista', size: '1920×1080' });
+    expect(Object.keys(byId)).toHaveLength(4);
+    expect(r.parts.filter((p) => p.type === 'image').length).toBeGreaterThanOrEqual(3);
+    // La clave de Pexels va como encabezado a su dominio; la de DeviantArt solo para pedir el acceso.
+    expect(web.sent.find((s) => s.url.includes('api.pexels.com'))!.headers['authorization']).toBe('pex-key-1');
+    expect(web.sent.find((s) => s.url.includes('/browse/popular'))!.headers['authorization']).toBe('Bearer da-token-xyz');
+    expect(JSON.stringify(r.parts.map((p) => p.text))).not.toMatch(/pex-key-1|da-secret-9|da-token-xyz/);
+    // El filtro free deja solo lo libre: Commons PD, no la CC BY-SA.
+    const free = await call('search_images', { query: 'obelisco', provider: ['wikimedia', 'pexels', 'deviantart'], license: 'free', thumbnails: false });
+    expect(free.body.results.map((x: { id: string }) => x.id)).toEqual(['wikimedia:3']);
+  });
+
+  it('se importan por su id con su crédito', async () => {
+    await withAgenda(ALL);
+    for (const [id, source, author] of [['wikimedia:31415', 'wikimedia', 'Ana & Co'], ['pexels:2014422', 'pexels', 'Joey Farina'], ['deviantart:8C5F4A1E-2B7D-4F3A-9E10-AABBCCDDEEFF', 'deviantart', 'artista']] as const) {
+      const dry = await call('import_image', { id, path: 'a.agenda.json', sizeMm: { w: 60, h: 40 }, embed: true });
+      expect(dry.isError, `${id} propuesta: ${dry.text}`).toBe(false);
+      const r = await call('import_image', { id, path: 'a.agenda.json', sizeMm: { w: 60, h: 40 }, embed: true, confirm: true });
+      expect(r.isError, `${id} ${r.text}`).toBe(false);
+      expect((await agenda()).assets.find((x: { id: string }) => x.id === r.body.assetId).credit).toMatchObject({ source, author });
+    }
+    expect(JSON.stringify(await agenda())).not.toMatch(/pex-key-1|da-secret-9|da-token-xyz/);
+  });
+
+  it('sin sus claves, Pexels y DeviantArt avisan qué les falta, y Wikimedia anda sin nada', async () => {
+    await start({ env: {} });
+    const r = await call('search_images', { query: 'obelisco', provider: ['wikimedia', 'pexels', 'deviantart'], thumbnails: false });
+    expect(r.body.notConfigured.join(' ')).toMatch(/PEXELS_API_KEY.*DEVIANTART_CLIENT_ID/);
+    expect(r.body.results.length).toBeGreaterThan(0);
+  });
+});
+
 describe('claves', () => {
   it('van a su servicio y a ningún otro lado: ni en las respuestas, ni en los archivos, ni en la caché', async () => {
     await withAgenda(KEYS);
@@ -445,8 +490,6 @@ describe('import_image', () => {
     expect(svg).not.toMatch(/script|onclick|alert/);
     expect(svg).toContain('<rect');
     expect(a.credit).toMatchObject({ license: 'CC BY-SA 4.0' });
-    // La licencia pide compartir igual: se avisa antes de importar.
-    expect(r.body.warnings.join(' ')).toMatch(/BY-SA/);
   });
 
   it('si solo se pudo bajar la copia reducida, lo dice', async () => {
@@ -660,7 +703,7 @@ describe('fuentes', () => {
   it('import_font sin confirm: informe de cobertura, tamaño y consejo, sin tocar nada', async () => {
     await withAgenda(KEYS, fontRoutes());
     const before = await readFile(join(dir, 'a.agenda.json'), 'utf8');
-    const r = await call('import_font', { family: 'Bangers', path: 'a.agenda.json' });
+    const r = await call('import_font', { family: 'Bangers', path: 'a.agenda.json', subset: 'latin' });
     expect(r.isError, r.text).toBe(false);
     expect(r.body).toMatchObject({ applied: false, family: 'Bangers', category: 'display', coverage: 'complete', canApply: true });
     expect(r.body.titleOnly[0]).toMatch(/exhibición/);
@@ -673,7 +716,7 @@ describe('fuentes', () => {
 
   it('con confirm la incrusta recortada, con sus roles, y repetirla la reemplaza', async () => {
     await withAgenda(KEYS, fontRoutes());
-    const r = await call('import_font', { family: 'Roboto', weights: [400, 700], path: 'a.agenda.json', roles: ['display', 'title'], confirm: true });
+    const r = await call('import_font', { family: 'Roboto', weights: [400, 700], path: 'a.agenda.json', roles: ['display', 'title'], subset: 'latin', confirm: true });
     expect(r.isError, r.text).toBe(false);
     expect(r.body.applied).toBe(true);
     expect(r.body.installed).toHaveLength(2);
@@ -691,13 +734,13 @@ describe('fuentes', () => {
   it('el recorte conserva los caracteres que los textos de la agenda ya usan (p. ej. un título en otra escritura)', async () => {
     await withAgenda(KEYS, fontRoutes());
     const has = async (): Promise<boolean> => openFont(fromBase64((await agenda()).userFonts[0].data)).hasGlyphForCodePoint(0x180);
-    await call('import_font', { family: 'Roboto', path: 'a.agenda.json', confirm: true });
+    await call('import_font', { family: 'Roboto', path: 'a.agenda.json', subset: 'latin', confirm: true });
     expect(await has()).toBe(false);
     const raw = await agenda();
     raw.userFonts = [];
     raw.customBlocks.push({ id: 't', pageType: 'notes', pageKey: null, kind: 'text', x: 10, y: 10, w: 50, h: 10, props: { text: 'Título ƀ' } });
     await writeFile(join(dir, 'a.agenda.json'), JSON.stringify(raw));
-    const r = await call('import_font', { family: 'Roboto', path: 'a.agenda.json', confirm: true });
+    const r = await call('import_font', { family: 'Roboto', path: 'a.agenda.json', subset: 'latin', confirm: true });
     expect(r.isError, r.text).toBe(false);
     expect(r.body.notes.join(' ')).toMatch(/caracteres que los textos de la agenda ya usan/);
     expect(await has()).toBe(true);
