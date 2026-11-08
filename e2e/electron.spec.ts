@@ -490,9 +490,20 @@ test('internet y carpetas: la carpeta por defecto es Documentos, las claves no v
   await win.getByRole('button', { name: 'Ajustes' }).click();
   await win.getByRole('menuitem', { name: /Internet y carpetas/ }).click();
   const dialog = win.getByTestId('tools-settings');
-  await expect(dialog.getByTestId('tools-root')).toHaveText(join(profile, 'Documents', 'Heritage Studio'));
   await dialog.getByTestId('tools-service-openverse').getByRole('button', { name: 'Probar' }).click();
   await expect(dialog.getByTestId('tools-result-openverse')).toBeVisible({ timeout: 60_000 });
   await expect(dialog.getByTestId('tools-service-pexels')).toContainText('Clave guardada');
+  // Los sitios van uno por campo, y cada uno se puede probar.
+  await dialog.getByRole('button', { name: 'Sitios de confianza' }).click();
+  await dialog.getByRole('button', { name: '+ Agregar sitio' }).first().click();
+  await dialog.getByRole('textbox', { name: /Sitios de confianza.*1/ }).fill('sitio-que-no-existe.invalid');
+  await dialog.getByTestId('host-list').first().getByRole('button', { name: 'Probar' }).click();
+  await expect(dialog.getByRole('status')).toContainText('✗', { timeout: 30_000 });
+  await dialog.getByRole('button', { name: 'Guardar sitios' }).click();
+  await expect(dialog).toContainText('Guardado');
+  expect((await api('config', 'GET')).body.trustedHosts).toBe('sitio-que-no-existe.invalid');
+  // Y la carpeta base se ve en su pestaña.
+  await dialog.getByRole('button', { name: 'Carpetas', exact: true }).click();
+  await expect(dialog.getByTestId('tools-root')).toHaveText(join(profile, 'Documents', 'Heritage Studio'));
 
 });

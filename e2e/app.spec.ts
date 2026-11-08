@@ -2875,6 +2875,29 @@ test.describe('imágenes: al subirlas', () => {
     ]);
   });
 
+  test('el documento nunca se desplaza (solo scrollean los paneles) y al pasar el mouse por una imagen se ve grande sin salirse de la ventana', async ({ page }) => {
+    await openQuiet(page);
+    await page.getByRole('tab', { name: 'Recursos / Vectores', exact: true }).click();
+    await upload(page, { name: 'foto.png', type: 'image/png', w: 1200, h: 900 });
+    const style = await page.evaluate<{ html: string; body: string }>('({ html: getComputedStyle(document.documentElement).overflowY, body: getComputedStyle(document.body).overflowY })');
+    expect(style).toEqual({ html: 'hidden', body: 'hidden' });
+    // Aunque algo intente scrollear el documento, no se mueve.
+    await page.evaluate('window.scrollTo(0, 500)');
+    expect(await page.evaluate<number>('window.scrollY')).toBe(0);
+    await page.getByTestId('hover-zoom').first().hover();
+    const preview = page.getByTestId('hover-zoom-preview').locator('img');
+    await expect(preview).toBeVisible();
+    const box = (await preview.boundingBox())!;
+    const view = page.viewportSize()!;
+    expect(box.x).toBeGreaterThanOrEqual(0);
+    expect(box.y).toBeGreaterThanOrEqual(0);
+    expect(box.x + box.width).toBeLessThanOrEqual(view.width);
+    expect(box.y + box.height).toBeLessThanOrEqual(view.height);
+    expect(box.width).toBeGreaterThan(200);
+    await page.mouse.move(1, 1);
+    await expect(page.getByTestId('hover-zoom-preview')).toHaveCount(0);
+  });
+
   test('un PNG común se guarda tal cual', async ({ page }) => {
     await openQuiet(page);
     await page.getByRole('tab', { name: 'Recursos / Vectores', exact: true }).click();

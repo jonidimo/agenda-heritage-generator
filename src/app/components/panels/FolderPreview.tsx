@@ -4,12 +4,13 @@
  */
 import { fromBase64 } from '@core/resources';
 import { FolderOpen, Plus } from 'lucide-react';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useT } from '../../i18n/ui';
 import { toolsListFolder, toolsOpenProject, toolsReadImage, type FolderListing } from '../../state/ai/toolsConfig';
 import { useAssistant } from '../../state/ai/assistant';
 import { useStore } from '../../state/store';
 import { addAssetFiles } from '../../state/uploads';
+import { HoverZoom } from '../HoverZoom';
 import { Button, Group, Select } from '../ui';
 
 const mimeOf = (name: string): string => (/\.svg$/i.test(name) ? 'image/svg+xml' : /\.png$/i.test(name) ? 'image/png' : 'image/jpeg');
@@ -40,6 +41,31 @@ export function FolderPreview({ onMessage }: { onMessage: (m: string) => void })
   useEffect(() => {
     void load();
   }, [load]);
+
+  /** El original de una imagen para verla grande (se pide al pasar el mouse y se guarda la última tanda). */
+  const originals = useRef(new Map<string, string>());
+  const original = async (path: string): Promise<string | undefined> => {
+    const key = `${alias}/${path}`;
+    const have = originals.current.get(key);
+    if (have) return have;
+    const file = await toolsReadImage(alias, path, agenda);
+    if (file.error) return undefined;
+    const url = URL.createObjectURL(new Blob([fromBase64(file.data).slice()], { type: mimeOf(file.name) }));
+    originals.current.set(key, url);
+    for (const [k, v] of originals.current) {
+      if (originals.current.size <= 8) break;
+      URL.revokeObjectURL(v);
+      originals.current.delete(k);
+    }
+    return url;
+  };
+  useEffect(() => {
+    const maps = originals.current;
+    return () => {
+      for (const v of maps.values()) URL.revokeObjectURL(v);
+      maps.clear();
+    };
+  }, []);
 
   const add = async (path: string): Promise<void> => {
     const file = await toolsReadImage(alias, path, agenda);
@@ -76,12 +102,14 @@ export function FolderPreview({ onMessage }: { onMessage: (m: string) => void })
         {listing && listing.images.length === 0 && <p className="text-[11.5px] text-ink-soft">{t('assets.foldersEmpty')}</p>}
         <div className="grid grid-cols-3 gap-1.5">
           {listing?.images.map((img) => (
-            <button key={img.path} type="button" className="group relative overflow-hidden rounded-md border border-line bg-white text-left hover:border-accent" title={`${img.path}\n${t('assets.folderAdd')}`} onClick={() => void add(img.path)}>
-              {img.thumb ? <img src={`data:image/jpeg;base64,${img.thumb}`} alt={img.path} className="h-16 w-full object-cover" /> : <span className="flex h-16 items-center justify-center text-[10px] text-ink-soft">{img.path.split('/').pop()}</span>}
-              <span className="absolute right-0.5 top-0.5 hidden rounded bg-accent p-0.5 text-white group-hover:block">
-                <Plus size={12} />
-              </span>
-            </button>
+            <HoverZoom key={img.path} src={() => original(img.path)} caption={img.path} className="block">
+              <button type="button" className="group relative block w-full overflow-hidden rounded-md border border-line bg-white text-left hover:border-accent" title={`${img.path}\n${t('assets.folderAdd')}`} onClick={() => void add(img.path)}>
+                {img.thumb ? <img src={`data:image/jpeg;base64,${img.thumb}`} alt={img.path} className="h-16 w-full object-cover" /> : <span className="flex h-16 items-center justify-center text-[10px] text-ink-soft">{img.path.split('/').pop()}</span>}
+                <span className="absolute right-0.5 top-0.5 hidden rounded bg-accent p-0.5 text-white group-hover:block">
+                  <Plus size={12} />
+                </span>
+              </button>
+            </HoverZoom>
           ))}
         </div>
       </div>

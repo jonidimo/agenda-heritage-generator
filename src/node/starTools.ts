@@ -21,7 +21,7 @@ import { Workspace } from '../mcp/workspace';
 import { browsePage } from './web/browse';
 import { createCache, defaultCacheDir, type Cache } from './web/cache';
 import { downloadFont, googleFontList, parseVariant, resolveFontFiles, searchFontList, variantName, type FontVariant } from './web/fonts';
-import { checkUrl, isTrusted, WebError } from './web/guard';
+import { checkUrl, isTrusted, parseTrustedHosts, WebError } from './web/guard';
 import { createHttpClient, type HttpClient } from './web/http';
 import { downloadImage, fetchThumbnail, notifyDownload, resolveHit, searchImages, shrinkToJpeg, sourceContext, SOURCES, SVG_MAX_BYTES, type Downloaded } from './web/images';
 import { ImageError, prepareRaster, sniffImage } from './web/prepareImage';
@@ -674,6 +674,24 @@ export function createStarTools(options: StarToolsOptions): StarTools {
       const fresh = createCache({ dir: null });
       const sc = sourceContext({ http, env, cache: fresh });
       try {
+        if (service.startsWith('host:')) {
+          const host = service.slice(5);
+          const trusted = parseTrustedHosts(host);
+          if (trusted.length !== 1) return { ok: false, message: 'No es un nombre de sitio válido (por ejemplo nas.lan, fotos.casa:8080 o *.casa.lan; no se aceptan «*» ni dominios como *.com).' };
+          const own = sourceContext({ http, env: { AGENDA_TRUSTED_HOSTS: host }, cache: fresh });
+          let lastError = '';
+          for (const scheme of ['https', 'http']) {
+            try {
+              const res = await own.http.get(`${scheme}://${host.replace(/^\*\./, 'www.')}/`, { allow: [], trusted: own.trusted, timeoutMs: 8000, maxBytes: 64 * 1024 });
+              return { ok: true, message: `Responde (${scheme}, código ${res.status}).` };
+            } catch (err) {
+              // Una página que contesta con un error del sitio (404, 403…) igual es un sitio que responde.
+              if (err instanceof WebError && err.code === 'http') return { ok: true, message: `Responde (${scheme}): ${err.message}` };
+              lastError = err instanceof Error ? err.message : String(err);
+            }
+          }
+          return { ok: false, message: lastError || 'No responde.' };
+        }
         if (service === 'fonts') {
           if (!env.GOOGLE_FONTS_API_KEY) return { ok: false, message: 'Falta la clave de Google Fonts.' };
           const list = await googleFontList(sc);

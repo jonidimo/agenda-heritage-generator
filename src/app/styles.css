@@ -46,6 +46,13 @@ body,
   height: 100%;
 }
 
+/* Es una aplicación, no una página: lo que se desborda scrollea adentro de sus paneles y el documento nunca se corre (con un panel largo, el scroll que sobraba movía todo el programa y dejaba un hueco). */
+html,
+body {
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
 /*
  * Tamaño de la interfaz (state/uiScale.ts fija --ui-zoom y el zoom de <html>). Con zoom, las
  * unidades vw y vh se multiplican por él: calc(52 * var(--vh)) ocupa el 52 % de la ventana con

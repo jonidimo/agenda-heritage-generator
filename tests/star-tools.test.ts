@@ -172,3 +172,18 @@ describe('cancelar y límites de descarga', () => {
     expect(textOf(r)).toMatch(/pesa|máximo/);
   });
 });
+
+describe('probar un sitio de confianza', () => {
+  it('un nombre inválido se rechaza sin pedir nada y uno que responde se da por bueno (aunque conteste 404)', async () => {
+    const before = web.requests.length;
+    expect((await tools.check('host:*.com', {})).ok).toBe(false);
+    expect((await tools.check('host:*', {})).ok).toBe(false);
+    expect(web.requests.length).toBe(before);
+    const lan = fakeWeb([{ match: 'https://nas.lan/', status: 404, body: 'no' }]);
+    const t = createStarTools({ version: 'test', http: lan.http, cache: createCache({ dir: null }) });
+    const r = await t.check('host:nas.lan', {});
+    expect(r.ok).toBe(true);
+    const none = await createStarTools({ version: 'test', http: fakeWeb([]).http, cache: createCache({ dir: null }) }).check('host:otro.lan', {});
+    expect(none.ok).toBe(true);
+  });
+});

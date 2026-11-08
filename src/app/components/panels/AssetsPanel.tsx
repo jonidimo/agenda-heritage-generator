@@ -20,6 +20,7 @@ import { assetAspect } from '../canvas/StampLayer';
 import { WatermarkFields } from '../Inspector';
 import { Badge, Button, Field, Group, Select, Toggle } from '../ui';
 import { isDesktopShell } from '../../state/desktopBridge';
+import { HoverZoom } from '../HoverZoom';
 import { FolderPreview } from './FolderPreview';
 import { PAGE_TYPES } from '@core/sections/registry';
 
@@ -158,9 +159,9 @@ export function AssetsPanel() {
             const dpi = a.kind === 'raster' && info?.pxWidth ? (placed ? effectiveDpi(info.pxWidth, placed.maxWmm) : effectiveDpi(info.pxWidth, 100)) : null;
             return (
               <li key={a.id} className="flex gap-2 rounded-md border border-line bg-white/60 p-1.5">
-                <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded bg-white">
+                <HoverZoom src={href ?? vecHref} caption={a.name} className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded bg-white">
                   {href || vecHref ? <img src={href ?? vecHref} alt="" className="max-h-full max-w-full" /> : <ImageIcon size={20} className="text-ink-soft" />}
-                </div>
+                </HoverZoom>
                 <div className="min-w-0 flex-1 text-[11.5px]">
                   <div className="truncate font-semibold">{a.name}</div>
                   <div className="text-ink-soft">

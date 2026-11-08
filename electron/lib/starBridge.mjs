@@ -202,7 +202,7 @@ export class StarBridge {
 
   /** @param {unknown} service */
   async check(service) {
-    if (typeof service !== 'string' || service.length > 40) return { ok: false, message: 'Servicio desconocido.' };
+    if (typeof service !== 'string' || service.length > 210) return { ok: false, message: 'Servicio desconocido.' };
     const tools = await this.loadTools();
     return tools.check(service, await this.deps.store.toolEnv());
   }

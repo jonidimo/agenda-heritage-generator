@@ -14,6 +14,7 @@
  *   proveedor, de modelo o el permiso de mirar las páginas.
  */
 import type { AiProviderId } from '@core/ai/messages';
+import { setTurnBase, turnBase } from './turnBase';
 import { PROVIDER_IDS, PROVIDERS } from '@core/ai/providers';
 import { isDesktopShell } from '../desktopBridge';
 import type { AiErrorKind } from '@core/ai/errors';
@@ -263,6 +264,7 @@ export const useAssistant = create<AssistantState>((set, get) => {
       // La agenda como estaba al pedir (o la que tenía de base la propuesta que se ajusta): si la persona la
       // cambia mientras el modelo trabaja, la propuesta llega vieja.
       const startRevision = refining ? refining.shown.baseRevision : useStore.getState().revision;
+      setTurnBase(startRevision);
       const ac = new AbortController();
       abort = ac;
       const turnId = nextTurn++;
@@ -285,7 +287,10 @@ export const useAssistant = create<AssistantState>((set, get) => {
         const replaced = refining ? previewKeyOf(refining.shown.id) : null;
         refiningShown = null;
         current = { design: out.proposal.design, call: out.pending };
-        const stale = st.revision !== startRevision;
+        // Lo que el propio asistente importó en el turno (imágenes, fuentes) no cuenta como un cambio de la persona.
+        const base = turnBase() ?? startRevision;
+        setTurnBase(null);
+        const stale = st.revision !== base;
         // Una propuesta armada sobre la agenda de antes desharía lo que la persona cambió: no se muestra sobre la página.
         if (!stale) st.preview(() => out.proposal.design, previewKeyOf(id));
         else if (replaced && st.previewKey === replaced) st.clearPreview();
@@ -301,7 +306,7 @@ export const useAssistant = create<AssistantState>((set, get) => {
             ignored: out.proposal.ignored,
             ops: [...(refining?.shown.ops ?? []), ...out.proposal.patch],
             rounds: (refining?.shown.rounds ?? 0) + 1,
-            baseRevision: startRevision,
+            baseRevision: base,
             stale,
           },
         });

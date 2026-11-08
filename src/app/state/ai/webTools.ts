@@ -13,6 +13,7 @@ import { isDesktopShell } from '../desktopBridge';
 import { addUserFont } from '../fonts';
 import { useStore } from '../store';
 import { addPreparedAsset } from '../uploads';
+import { adoptOwnChange } from './turnBase';
 
 interface StarPart {
   type: 'text' | 'image';
@@ -91,7 +92,9 @@ async function absorb(result: StarResult, vision: boolean): Promise<AiPart[]> {
   });
   const notes: string[] = [];
   for (const a of result.assets ?? []) {
+    const before = useStore.getState().revision;
     const added = await addPreparedAsset({ name: a.name, kind: a.kind, mime: a.mime, bytes: fromBase64(a.data), credit: a.credit });
+    adoptOwnChange(before);
     notes.push(
       added.duplicate
         ? `Ya estaba en Resources como «${added.name}»: assetId ${added.id}. Usá ese.`
