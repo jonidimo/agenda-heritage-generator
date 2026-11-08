@@ -114,6 +114,20 @@ export class AgendaDocument {
     return this.plan.pages.length;
   }
 
+  /** Lo que mide una página, en mm. */
+  pageSize(): { w: number; h: number } {
+    return { w: this.ctx.pageW, h: this.ctx.pageH };
+  }
+
+  /**
+   * Lo que mide la tapa entera, en mm, con el sangrado y el lomo si es envolvente: el tamaño de la imagen que
+   * la cubre (a 300 ppp, ver `import_image`).
+   */
+  coverSize(): { w: number; h: number } {
+    const sheet = coverSheet(this.ctx, this.plan.signatures);
+    return { w: sheet.w, h: sheet.h };
+  }
+
   page(index: number): PageModel {
     const hit = this.cache.get(index);
     if (hit) return hit.model;

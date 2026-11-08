@@ -61,6 +61,11 @@ evita que npm escriba en el canal que usan el cliente y el servidor.
 | `check_design` | Lista lo que el programa ignoraría o corregiría en el archivo (claves desconocidas, colores no válidos, valores fuera de la lista o del rango) y resume la agenda armada: páginas, hojas, cuadernillos, enlaces, la fuente de cada tipo de texto (si está cargada y si le falta la puntuación) y los avisos con sus páginas. Cada aviso trae `fix`: qué tocar en el JSON para corregirlo (ver la sección 11). |
 | `get_guide` | Esta guía (`lang`: `es` o `en`), entera o una sección (`section` busca en los títulos: `"fuentes"`, `"alcance"`, `"avisos"`…). Para los clientes que no leen recursos. |
 | `add_font` | Agrega una fuente propia (`.ttf`, `.otf`, `.woff`, `.woff2` de la carpeta de trabajo) a un archivo (`path`, viaja adentro en `userFonts`) o a la aplicación abierta (`app: true`); con `roles`, la pone en esos tipos de texto. Devuelve sus glifos y la puntuación que le falta (ver la sección 7). |
+| `search_images` | Busca imágenes en Openverse (sin clave), Pixabay (`PIXABAY_API_KEY`) y Unsplash (`UNSPLASH_ACCESS_KEY`) y devuelve cada resultado con su `id`, autor, licencia, tamaño y una **miniatura como imagen** para elegir. `license`: `free` (CC0, dominio público o CC BY), `cc0`, `by` o `any`; también `orientation` (`vertical` para portadas), `minWidth` y `type` (`vector`). Lo ya pedido se guarda 24 horas (repetir una búsqueda no gasta llamadas de la API). |
+| `import_image` | Baja una imagen de `search_images` (por su `id`), la limpia (un SVG queda sin scripts ni enlaces externos), la endereza, la recorta a la proporción del lugar donde va (`for`: `cover` = la tapa entera con sangrado y lomo, `page`, o `sizeMm`; `focus` o `crop` eligen qué parte queda) y la achica a ~300 ppp (`dpi`; nunca la agranda). **Sin `confirm: true` no cambia nada**: devuelve la propuesta (tamaño, ppp, autor, licencia, vista previa, si ya estaba); con `confirm: true` la agrega a `assets` con su `credit`. En un archivo queda en `imagenes/` junto a la agenda (`path`), o adentro con `embed: true`; con `app: true`, en la aplicación abierta. No importa dos veces la misma imagen (compara el contenido; `allowDuplicate` lo permite). |
+| `build_credits_page` | Arma (o actualiza) al final de la agenda la página de créditos con autor, licencia y dirección de las imágenes importadas que la agenda usa (`onlyUsed: false`: todas). Se reparte en varias páginas si hace falta. |
+| `search_fonts` | Busca fuentes en Google Fonts (necesita `GOOGLE_FONTS_API_KEY`, gratis): familia, categoría, pesos, cursiva y escrituras; avisa cuáles conviene solo para títulos. |
+| `import_font` | Baja una familia de Google Fonts (`weights`, `italic`), comprueba que tenga ñ, tildes, «¿», «¡», cifras y puntuación, la recorta a las letras de las lenguas de la agenda y la agrega a `userFonts` (`path` o `app: true`; con `roles`, la pone en esos tipos de texto). **Sin `confirm: true` solo informa**; una fuente a la que le faltan letras del castellano no se agrega (salvo `allowIncomplete`). Anda sin clave si sabés la familia. |
 | `list_pages` | Las páginas, con su número, clave, tipo y título (se puede filtrar por tipo). |
 | `render_page` | Dibuja una página tal como se imprime y la devuelve como imagen PNG, con su lado (derecha o izquierda), su zona de contenido, sus bloques (id, nombre y caja en mm) y sus avisos. Calidad: `dpi` (p. ej. 300) o `width` (píxeles); `area` (`{x, y, w, h}` en mm) dibuja solo esa zona, para mirar un detalle en grande (300 ppp por defecto); `out` (`.png`) guarda la imagen a la resolución pedida, con sus ppp anotados; `transparent` deja el fondo sin color. Lo que se ve en la respuesta no pasa de 1600 px (1000 si se guarda), y la respuesta dice los píxeles por mm para pasar de la imagen a milímetros. |
 | `export_pdf` | Escribe un PDF (`out`) del tipo que dice `kind` (se sigue aceptando `mode`): `pages` (para tableta, con enlaces y marcadores), `imposed` (pliegos para imprimir doble faz y doblar en cuadernillos), `fronts`/`backs`, `signature`, `calibration`, `sewing`, `cover`, `separate`. `imageDpi` (`300` para imprimir, `150` para pantalla u `"original"`; por defecto 300, o 150 si la agenda es para pantalla) achica las imágenes que tienen más resolución de la que hace falta al tamaño en que se imprimen, sin perder calidad que se note; las demás quedan como están. |
@@ -260,6 +265,10 @@ clave no existe. Si `/theme/tokens/fonts` ya tiene otros tipos de texto, agregá
 separado (`"path": "/theme/tokens/fonts/display"`) para no borrarlos; `add_font` con `roles` lo hace
 solo.
 
+### Fuentes de Google Fonts
+
+`search_fonts` busca (con `GOOGLE_FONTS_API_KEY`) y `import_font` baja e incrusta una familia. Antes de agregarla revisa que tenga **ñ, tildes, «¿» y «¡»**, las cifras y la puntuación, y avisa si conviene usarla solo para títulos (fuentes `display` y manuscritas, las de un solo peso, las que no tienen cifras o puntuación). La recorta a las letras de las lenguas de la aplicación (`subset: "latin"`; `extraText` agrega caracteres, p. ej. kanji de un título): el archivo `.agenda.json` pesa mucho menos, y se conservan el kerning, las ligaduras y la licencia. El PDF, venga la fuente recortada o entera, ya incrusta solo los glifos que aparecen en el texto. Todas las de Google Fonts son libres (OFL, Apache o similar). Con `roles`, la respuesta trae los `warnings` de maquetación que produjo el cambio.
+
 ## 8. Alcance de un elemento: pageType y pageKey
 
 Cada elemento propio (`customBlocks`), ajuste (`overrides`), estilo (`blockStyles`,
@@ -292,6 +301,17 @@ renglones, cuadrícula).
 El archivo va como `path` (relativo a la carpeta del `.agenda.json`), `data` (base64) o `builtin`
 (los integrados, como `watermarks/colibri.svg`). Los íconos integrados no se declaran: se usan
 como `icon:<id>` en cualquier lugar que lleva una imagen.
+
+### Imágenes de internet
+
+Flujo: `search_images` → elegir por la miniatura → `import_image` (sin `confirm`: la propuesta) → mostrarle la propuesta a la persona → `import_image` con `confirm: true` → colocarla con `update_design` (portada del mes, tapa, un elemento `image`…, usando el `assetId` que devuelve) → `build_credits_page`.
+
+- **Qué queda guardado**: la imagen ya recortada y a ~300 ppp (no la original de 5000 px, así el PDF no pesa de más) y, en `assets[].credit`, el servicio, el autor, la licencia y su dirección, la página de la imagen y el hash del original (para no importar dos veces la misma). Las licencias CC BY y similares piden ese crédito: `build_credits_page` lo arma.
+- **Tapa y páginas**: `for: "cover"` toma del motor el tamaño de la tapa entera (con **sangrado y lomo** si es envolvente) y `for: "page"` el de una página. Una foto apaisada de fondo de pantalla se recorta a la proporción de una portada vertical alrededor de `focus` (`{x, y}` de 0 a 1) o de la zona `crop` (`{x, y, w, h}` de 0 a 1 sobre la imagen ya derecha). Si la imagen no alcanza los ppp pedidos, la propuesta lo dice (`lowDpi` si es menos de 250) y no la agranda.
+- **Licencias**: `license: "free"` deja CC0, dominio público y CC BY. Pixabay y Unsplash tienen licencia propia (se pueden usar libremente, pero no son Creative Commons) y quedan afuera de ese filtro. Las imágenes de fans o arte oficial de una marca suelen tener derechos de autor: no están en estas fuentes.
+- **Claves**: `PIXABAY_API_KEY`, `UNSPLASH_ACCESS_KEY` y `GOOGLE_FONTS_API_KEY` son variables de entorno del servidor (por ejemplo, en el `env` de la configuración del cliente MCP); nunca se escriben en la agenda ni en la caché. Openverse funciona sin clave.
+- **Límites**: Pixabay sirve hasta 1280 px de lado sin permisos especiales (alcanza para un tamaño chico, no para una tapa). De Openverse se baja el original solo si está en un dominio de la lista (Wikimedia, Flickr…); de otro modo, la copia reducida que sirve Openverse, y la respuesta lo dice. `AGENDA_IMAGE_HOSTS` (nombres separados por comas) agrega dominios a conciencia. Openverse sin clave tiene un límite diario de pedidos bajo (por eso se guardan las búsquedas), y estas herramientas no pasan por un proxy HTTP: sin conexión directa a internet, fallan con un mensaje claro y el resto del servidor sigue andando.
+- Un SVG se **limpia** al bajarlo: se sacan scripts, `foreignObject`, enlaces, referencias a archivos o direcciones de afuera y manejadores de eventos; la respuesta dice qué se sacó. Solo se importan PNG, JPEG y SVG.
 
 ## 10. Traducir y feriados
 
@@ -356,3 +376,11 @@ enlaces simbólicos. No reemplaza una agenda o un tema que ya existen salvo que 
 imágenes de una agenda solo pueden ser rutas integradas, datos dentro del archivo o archivos de
 su misma carpeta (nunca de afuera). Los valores que llegan de un archivo se validan y se mantienen
 dentro de su rango antes de llegar a la vista previa o al PDF.
+
+El acceso a internet de las herramientas de búsqueda e importación está acotado: solo `https`, solo los
+dominios de las APIs (Openverse, Pixabay, Unsplash, Google Fonts y los repositorios de imágenes de
+la lista), nunca direcciones IP ni locales o privadas (se comprueba la dirección a la que de verdad se conecta, y
+también en cada redirección), con un tiempo máximo y un tamaño máximo por descarga. Las claves de las APIs
+vienen de variables de entorno, no salen en ninguna respuesta ni se guardan en la agenda. Nada se agrega a una
+agenda sin `confirm: true`. `AGENDA_CACHE_DIR` cambia la carpeta de la caché de búsquedas (vacía: solo en
+memoria).

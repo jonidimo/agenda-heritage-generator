@@ -30,7 +30,7 @@ describe('servidor MCP por stdio', () => {
     async () => {
       const report = await smokeMcp({ command: process.execPath, args: [bundle], env: { AGENDA_PUBLIC_DIR: join(ROOT, 'public') } });
       expect(report.problems).toEqual([]);
-      expect(report.tools).toHaveLength(15);
+      expect(report.tools).toHaveLength(20);
       // Nueve pedidos (initialize, tools/list, seis llamadas y una lectura de recurso), nueve respuestas: nada más salió por la salida estándar.
       expect(report.stdoutLines).toBe(9);
     },

@@ -487,6 +487,31 @@ export const LinksZ = z
  */
 export const BUILTIN_PATH = /^(?:[\w-]+\/)*[\w-]+(?:\.[\w-]+)+$/;
 
+/**
+ * De dónde salió una imagen que se descargó de un servicio (Openverse, Pixabay, Unsplash): autor, licencia y
+ * dirección, para dar el crédito que la licencia pide y para no bajar la misma imagen dos veces
+ * (`sourceSha256` es el hash del archivo original, antes de recortarlo y achicarlo). Las direcciones son `https`.
+ */
+const httpsUrl = z.string().max(1000).regex(/^https:\/\//);
+export const AssetCreditZ = z.object({
+  /** El servicio: `openverse`, `pixabay`, `unsplash` o `manual`. */
+  source: z.string().max(40),
+  /** El identificador de la imagen en ese servicio. */
+  id: z.string().max(200).default(''),
+  title: z.string().max(300).default(''),
+  author: z.string().max(200).default(''),
+  authorUrl: httpsUrl.nullable().catch(null).default(null),
+  /** El nombre de la licencia («CC BY 4.0», «CC0 1.0», «Unsplash License»). */
+  license: z.string().max(100).default(''),
+  licenseUrl: httpsUrl.nullable().catch(null).default(null),
+  /** La página de la imagen en el servicio. */
+  url: httpsUrl.nullable().catch(null).default(null),
+  sourceSha256: z.string().regex(/^[0-9a-f]{64}$/).optional().catch(undefined),
+  /** Falso si los datos los dio quien pidió la importación y no el servicio. */
+  verified: z.boolean().catch(true).default(true),
+});
+export type AssetCredit = z.infer<typeof AssetCreditZ>;
+
 export const AssetRefZ = z.object({
   id: z.string(),
   name: z.string(),
@@ -506,6 +531,8 @@ export const AssetRefZ = z.object({
    */
   path: z.string().max(RELATIVE_PATH_MAX).regex(new RegExp(RELATIVE_PATH_PATTERN, 'u')).nullable().optional().catch(null),
   pages: intIn(0, 100_000).optional(),
+  /** Autor, licencia y origen de una imagen descargada (ver `AssetCreditZ`). */
+  credit: AssetCreditZ.optional().catch(undefined),
 });
 export type AssetRef = z.infer<typeof AssetRefZ>;
 

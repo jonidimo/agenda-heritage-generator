@@ -34,9 +34,9 @@ const call = async (name: string, args: Record<string, unknown>) => {
 };
 
 describe('nombres de los parámetros', () => {
-  it('son 15 herramientas; «path» siempre se lee, «out» siempre se escribe, y no hay otros nombres de archivo (salvo «font», la fuente que lee add_font)', async () => {
+  it('son 20 herramientas; «path» siempre se lee, «out» siempre se escribe, y no hay otros nombres de archivo (salvo «font», la fuente que lee add_font)', async () => {
     const { tools } = await client.listTools();
-    expect(tools).toHaveLength(15);
+    expect(tools).toHaveLength(20);
     // El único otro archivo de entrada es la fuente de add_font, y se llama así.
     const withFont = tools.filter((t) => Object.hasOwn((t.inputSchema.properties ?? {}) as object, 'font'));
     expect(withFont.map((t) => t.name)).toEqual(['add_font']);

@@ -11,11 +11,14 @@ import type { ServerResources } from './server';
 import { appVersion } from './version';
 
 export function sourceResources(): ServerResources {
-  const wasmPath = createRequire(import.meta.url).resolve('@resvg/resvg-wasm/index_bg.wasm');
+  const require = createRequire(import.meta.url);
+  const wasmPath = require.resolve('@resvg/resvg-wasm/index_bg.wasm');
+  const subsetPath = require.resolve('harfbuzzjs/dist/harfbuzz-subset.wasm');
   const guide = (file: string) => (): Promise<string> => readFile(join(ROOT, 'docs', file), 'utf8');
   return {
     version: appVersion(),
     guides: { en: guide('llm-templates.md'), es: guide('plantillas-llm.md') },
     rasterize: createRasterizer(async () => new Uint8Array(await readFile(wasmPath))),
+    subsetWasm: async () => new Uint8Array(await readFile(subsetPath)),
   };
 }

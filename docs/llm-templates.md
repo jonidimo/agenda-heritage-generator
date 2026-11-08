@@ -61,6 +61,11 @@ matters: it keeps npm from printing anything on the channel the client and the s
 | `check_design` | Lists what the program would ignore or correct in the file (unknown keys, invalid colours, values outside the list or range), and summarizes the built planner: pages, sheets, signatures, links, the font of each text role (whether it is loaded and whether it lacks punctuation) and the warnings with their pages. Each warning carries `fix`: what to change in the JSON to fix it (see section 11). |
 | `get_guide` | This guide (`lang`: `en` or `es`), whole or one section (`section` searches the headings: `"fonts"`, `"scope"`, `"warnings"`…). For clients that do not read resources. |
 | `add_font` | Adds a font of your own (a `.ttf`, `.otf`, `.woff` or `.woff2` in the working folder) to a file (`path`; it travels inside, in `userFonts`) or to the open app (`app: true`); with `roles`, sets it for those text roles. Returns its glyph count and the punctuation it lacks (see section 7). |
+| `search_images` | Searches images in Openverse (no key), Pixabay (`PIXABAY_API_KEY`) and Unsplash (`UNSPLASH_ACCESS_KEY`) and returns each result with its `id`, author, license, size and a **thumbnail as an image** to choose from. `license`: `free` (CC0, public domain or CC BY), `cc0`, `by` or `any`; also `orientation` (`vertical` for covers), `minWidth` and `type` (`vector`). What was already asked is kept for 24 hours (repeating a search costs no API calls). |
+| `import_image` | Downloads an image from `search_images` (by its `id`), cleans it (an SVG loses scripts and external links), straightens it, crops it to the shape of where it goes (`for`: `cover` = the whole cover with bleed and spine, `page`, or `sizeMm`; `focus` or `crop` choose what stays) and shrinks it to ~300 dpi (`dpi`; never enlarges). **Without `confirm: true` nothing changes**: it returns the proposal (size, dpi, author, license, preview, whether it was already there); with `confirm: true` it adds it to `assets` with its `credit`. In a file it goes to `imagenes/` next to the planner (`path`), or inside with `embed: true`; with `app: true`, into the open app. It does not import the same image twice (it compares content; `allowDuplicate` allows it). |
+| `build_credits_page` | Builds (or updates) the credits page at the end of the planner with author, license and address of the imported images the planner uses (`onlyUsed: false`: all of them). It spreads over several pages if needed. |
+| `search_fonts` | Searches Google Fonts (needs `GOOGLE_FONTS_API_KEY`, free): family, category, weights, italic and scripts; says which ones suit titles only. |
+| `import_font` | Downloads a Google Fonts family (`weights`, `italic`), checks it has ñ, accents, «¿», «¡», digits and punctuation, trims it to the letters of the planner's languages and adds it to `userFonts` (`path` or `app: true`; with `roles`, it sets those text types). **Without `confirm: true` it only reports**; a font missing Spanish letters is not added (unless `allowIncomplete`). Works without a key if you know the family. |
 | `list_pages` | The pages, with their number, key, type and title (filter by type). |
 | `render_page` | Draws one page exactly as it prints and returns it as a PNG image, with its side (right or left), its content area, its blocks (id, name and box in mm) and its warnings. Quality: `dpi` (e.g. 300) or `width` (pixels); `area` (`{x, y, w, h}` in mm) draws only that zone, to look at a detail up close (300 ppi by default); `out` (`.png`) saves the image at the requested resolution, with its ppi recorded; `transparent` leaves the background clear. What is shown in the reply is never wider than 1600 px (1000 when saved), and the reply gives pixels per mm so you can convert from the image to millimetres. |
 | `export_pdf` | Writes a PDF (`out`) of the kind in `kind` (`mode` is still accepted): `pages` (for tablets, with links and bookmarks), `imposed` (sheets to print double-sided and fold into signatures), `fronts`/`backs`, `signature`, `calibration`, `sewing`, `cover`, `separate`. `imageDpi` (`300` for print, `150` for screens or `"original"`; default 300, or 150 when the planner is for screens) reduces images that have more resolution than their printed size needs, without visible quality loss; the others stay as they are. |
@@ -258,6 +263,10 @@ key does not exist. If `/theme/tokens/fonts` already has other roles, add each o
 (`"path": "/theme/tokens/fonts/display"`) so they are not removed; `add_font` with `roles` does it
 for you.
 
+### Google Fonts
+
+`search_fonts` searches (with `GOOGLE_FONTS_API_KEY`) and `import_font` downloads and embeds a family. Before adding it, it checks it has **ñ, accents, «¿» and «¡»**, digits and punctuation, and says whether it suits titles only (`display` and handwriting fonts, single-weight ones, ones without digits or punctuation). It trims it to the letters of the app's languages (`subset: "latin"`; `extraText` adds characters, e.g. kanji for a title): the `.agenda.json` file weighs much less, and kerning, ligatures and the license are kept. The PDF, whether the font is trimmed or whole, already embeds only the glyphs that appear in the text. Everything in Google Fonts is free (OFL, Apache or similar).
+
 ## 8. Scope of an element: pageType and pageKey
 
 Every own element (`customBlocks`), adjustment (`overrides`), style (`blockStyles`, `pageStyles`)
@@ -290,6 +299,17 @@ grid).
 The file goes as `path` (relative to the folder of the `.agenda.json`), `data` (base64) or
 `builtin` (the built-in ones, like `watermarks/colibri.svg`). Built-in icons are not declared:
 use `icon:<id>` anywhere an image goes.
+
+### Images from the internet
+
+Flow: `search_images` → choose by thumbnail → `import_image` (without `confirm`: the proposal) → show the proposal to the person → `import_image` with `confirm: true` → place it with `update_design` (month cover, cover, an `image` element… using the returned `assetId`) → `build_credits_page`.
+
+- **What is stored**: the image already cropped and at ~300 dpi (not the 5000 px original, so the PDF does not weigh more than needed) and, in `assets[].credit`, the service, author, license and its address, the image's page and the hash of the original (so the same one is not imported twice). CC BY and similar licenses ask for that credit: `build_credits_page` builds it.
+- **Cover and pages**: `for: "cover"` takes the whole cover's size from the engine (with **bleed and spine** if it is a wrap-around cover) and `for: "page"` that of a page. A landscape wallpaper photo is cropped to the shape of a portrait cover around `focus` (`{x, y}` from 0 to 1) or the `crop` area (`{x, y, w, h}` from 0 to 1 over the upright image). If the image does not reach the requested dpi, the proposal says so (`lowDpi` under 250) and it is not enlarged.
+- **Licenses**: `license: "free"` keeps CC0, public domain and CC BY. Pixabay and Unsplash have their own license (free to use, but not Creative Commons) and are left out of that filter. Fan art or a brand's official art usually has copyright: it is not in these sources.
+- **Keys**: `PIXABAY_API_KEY`, `UNSPLASH_ACCESS_KEY` and `GOOGLE_FONTS_API_KEY` are environment variables of the server (for example in the `env` of the MCP client configuration); they are never written to the planner or the cache. Openverse works without a key.
+- **Limits**: Pixabay serves up to 1280 px on the long side without special permission (enough for a small size, not for a cover). From Openverse the original is downloaded only if it is on a listed domain (Wikimedia, Flickr…); otherwise the reduced copy Openverse serves, and the answer says so. `AGENDA_IMAGE_HOSTS` (comma-separated names) adds domains on purpose. Openverse without a key has a low daily request limit (which is why searches are kept), and these tools do not go through an HTTP proxy: without a direct internet connection they fail with a clear message and the rest of the server keeps working.
+- An SVG is **cleaned** on download: scripts, `foreignObject`, links, references to outside files or addresses and event handlers are removed; the answer says what was removed. Only PNG, JPEG and SVG are imported.
 
 ## 10. Translating and holidays
 
@@ -353,3 +373,10 @@ does not overwrite an existing planner or theme unless asked to. Images in a pla
 built-in paths, data embedded in the file or files in its own folder (never outside it). Values
 that come from a file are validated and kept within range before they reach the preview or the
 PDF.
+
+The internet access of the search and import tools is restricted: `https` only, only the API domains
+(Openverse, Pixabay, Unsplash, Google Fonts and the listed image repositories), never IP addresses or local or private
+ones (the address it really connects to is checked, and on every redirect too), with a time limit and a size limit
+per download. API keys come from environment variables, appear in no answer and are not saved in the planner.
+Nothing is added to a planner without `confirm: true`. `AGENDA_CACHE_DIR` changes the search cache folder (empty:
+memory only).

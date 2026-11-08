@@ -6,6 +6,7 @@
  *
  * No atrapa los errores: quien lo importa (el arranque de Electron) decide cómo terminar.
  */
+import subsetWasm from 'harfbuzzjs/dist/harfbuzz-subset.wasm';
 import wasm from '@resvg/resvg-wasm/index_bg.wasm';
 import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -26,4 +27,5 @@ await runStdio({
   version: appVersion(),
   guides: { en: async () => guideEn, es: async () => guideEs },
   rasterize: createRasterizer(async () => wasm),
+  subsetWasm: async () => subsetWasm,
 });

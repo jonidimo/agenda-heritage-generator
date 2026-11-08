@@ -37,9 +37,13 @@ import { JsonPatchOpZ } from '../core/util/jsonPatchSchema';
 import { isRelativeAssetPath } from '../core/util/relpath';
 import { isNewerVersion } from '../core/util/version';
 import { checkDesignData, checkDesignJson, type CheckResult } from '../node/check';
+import { createSubsetter, type SubsetWasmSource } from '../node/subset';
+import { createCache, defaultCacheDir, type Cache } from '../node/web/cache';
+import { createHttpClient, type HttpClient } from '../node/web/http';
 import { folderIO, fullCatalogue, loadFonts, openNodeDocument } from '../node/env';
 import type { Rasterizer } from './resvg';
 import { AppLink } from './live';
+import { registerSourcingTools } from './sourcing';
 import { Workspace } from './workspace';
 
 const DESIGN_EXT = ['.agenda.json'] as const;
@@ -65,6 +69,7 @@ Flujo: create_design (desde una plantilla) → update_design (JSON Patch) → ch
 Referencia: list_catalogue (secciones con sus opciones, temas, ornamentos, variables de texto) y get_schema (con «part» para leer solo una parte, p. ej. "theme.tokens.lines").
 Con la aplicación de escritorio abierta: app_status dice qué agenda tiene; con «app: true» check_design, render_page, update_design y las demás trabajan sobre ESA agenda (los cambios son un paso que la persona puede deshacer; si ella la tocó mientras tanto, volvé a leerla), app_reveal le muestra una página y app_library/app_open cambian de agenda.
 Claves: un elemento propio (customBlocks) con pageKey null vale para todas las páginas de su pageType, con una pageKey solo para esa página; paper: true le pone fondo blanco que tapa los renglones de abajo. «/locale» traduce todo lo que la agenda genera en una operación. Las fuentes por tipo de texto van en /theme/tokens/fonts/<rol>; una fuente propia se agrega con add_font (viaja en userFonts) y lo que no tiene sale de /theme/tokens/fallbacks. Las imágenes y SVG van en assets (kind raster, vector, pdf) o como "icon:<id>". Cada aviso de check_design trae «fix»: cómo corregirlo.
+Imágenes y fuentes de internet: search_images (miniaturas para elegir) → import_image (sin confirm: true solo propone: tamaño, ppp, autor y licencia; con confirm: true la agrega a assets con su crédito) → build_credits_page; search_fonts → import_font (revisa ñ, tildes, ¿ y ¡ y recorta la fuente). Solo visitan los dominios de esas APIs; las claves son variables de entorno (PIXABAY_API_KEY, UNSPLASH_ACCESS_KEY, GOOGLE_FONTS_API_KEY; Openverse y import_font de una familia conocida andan sin clave).
 Medidas en milímetros; colores #rrggbb; las rutas de archivo son relativas a la carpeta de trabajo.`;
 
 /** Una fuente que se puede incrustar: el archivo pesa como mucho esto (lo mismo que acepta la aplicación; en base64 entra en `userFonts`). */
@@ -113,7 +118,7 @@ function layoutResult(layout: LayoutFeedback): { warnings: LayoutFeedback['notes
   return { warnings: layout.notes, ...(Object.keys(fixes).length > 0 ? { fixes } : {}), ...(layout.omitted > 0 ? { omittedWarnings: layout.omitted } : {}) };
 }
 
-type ToolResult = { content: Array<{ type: 'text'; text: string } | { type: 'image'; data: string; mimeType: string }>; isError?: boolean };
+export type ToolResult = { content: Array<{ type: 'text'; text: string } | { type: 'image'; data: string; mimeType: string }>; isError?: boolean };
 
 const text = (value: unknown): ToolResult => ({ content: [{ type: 'text', text: typeof value === 'string' ? value : JSON.stringify(value, null, 2) }] });
 
@@ -133,6 +138,8 @@ export interface ServerResources {
   guides: { en: () => Promise<string>; es: () => Promise<string> };
   /** SVG → PNG para `render_page`. */
   rasterize: Rasterizer;
+  /** El WebAssembly que recorta fuentes (`import_font`); sin él, las fuentes de Google se incrustan enteras. */
+  subsetWasm?: SubsetWasmSource;
 }
 
 export interface ServerOptions extends ServerResources {
@@ -140,6 +147,8 @@ export interface ServerOptions extends ServerResources {
   root: string;
   /** El enlace con la aplicación de escritorio abierta (en las pruebas, uno falso). */
   appLink?: AppLink;
+  /** Lo que usan la búsqueda y la importación de imágenes y fuentes de internet (en las pruebas, respuestas simuladas). */
+  web?: { http?: HttpClient; env?: Readonly<Record<string, string | undefined>>; cache?: Cache };
 }
 
 /** Lo que acepta la aplicación en un cambio (ver el protocolo del enlace en vivo). */
@@ -448,65 +457,92 @@ export function createServer(opts: ServerOptions): McpServer {
     async ({ font, path, app, family, weight, style, roles }) => {
       if ((path === undefined) === (app !== true)) throw new Error('Indicá dónde va la fuente: «path» (una agenda .agenda.json) o «app: true» (la aplicación abierta), una de las dos.');
       const { bytes } = await ws.readBytes(font, FONT_EXT, MAX_FONT_BYTES);
-      let opened: FKFont;
-      try {
-        opened = openFont(bytes);
-      } catch (err) {
-        throw new Error(`«${font}» no es una fuente que se pueda leer: ${(err as Error).message}`, { cause: err });
-      }
-      const detected = detectFaceMeta(opened);
-      const spec = { family: (family ?? detected.family).trim().slice(0, USER_FONT_FAMILY_MAX).trim() || 'Sin nombre', weight: weight ?? detected.weight, style: style ?? detected.style };
-      /**
-       * Cuántos glifos tiene y qué puntuación le falta, con las fuentes de reserva de ESA agenda (su
-       * tema, y las fuentes propias que ya trae): de ahí van a salir los signos al dibujar.
-       */
-      const describeFont = async (design: unknown): Promise<{ family: string; weight: number; style: 'normal' | 'italic'; glyphs: number; punctuation: ReturnType<typeof punctuationOf> }> => {
-        const parsed = checkDesignData(design).design;
-        const own: UserFont[] = (parsed?.userFonts ?? []).filter((f) => f.spec.family !== spec.family || f.spec.weight !== spec.weight || f.spec.style !== spec.style);
-        const probe = withUserFonts(await sharedFonts(), own).registry.fork();
-        const face = probe.register(bytes, { ...spec, source: 'user', file: 'probe' });
-        const fallbacks = parsed ? resolveThemeFor(parsed.theme).fallbacks : ['Manrope'];
-        return { ...spec, glyphs: opened.numGlyphs, punctuation: punctuationOf(probe, face, fallbacks) };
-      };
-      const roleList = roles ?? [];
-      if (app === true) {
-        const added = await appLink.request<LiveFontAdded>('fonts.add', { spec, data: toBase64(bytes) });
-        if (roleList.length === 0) {
-          // Sin roles no cambia la agenda abierta (la fuente queda para elegirla), así que no hay avisos
-          // nuevos; si no hay una abierta, la puntuación se mide con la reserva de siempre.
-          const open = await appLink.request<LiveDesign>('design.get', { fonts: true }).catch(() => null);
-          return text({ added: true, font: { ...(await describeFont(open?.design)), id: added.id }, roles: [] });
-        }
-        const got = await appLink.request<LiveDesign>('design.get', { fonts: true });
-        const info = await describeFont(got.design);
-        const result = await updateInApp(fontRoleOps(got.design, roleList, spec));
-        return { ...result, content: [{ type: 'text', text: JSON.stringify({ font: { ...info, id: added.id }, roles: roleList }, null, 2) }, ...result.content] };
-      }
-      const { full, text: body } = await ws.read(path!, DESIGN_EXT);
-      const raw = parseJson(body, path!);
-      const info = await describeFont(raw);
-      const list = (raw as { userFonts?: unknown } | null)?.userFonts;
-      const fonts = Array.isArray(list) ? list : [];
-      // La misma familia, peso y estilo se reemplaza (con su id): no quedan dos fuentes iguales.
-      const same = fonts.findIndex((f: unknown) => {
-        const s = (f as { spec?: { family?: unknown; weight?: unknown; style?: unknown } } | null)?.spec;
-        return s?.family === spec.family && (s.weight ?? 400) === spec.weight && (s.style ?? 'normal') === spec.style;
-      });
-      const id = same >= 0 ? String((fonts[same] as { id?: unknown }).id ?? newId('font')) : newId('font');
-      const entry = { id, spec, data: toBase64(bytes) };
-      const ops: JsonPatchOp[] = [
-        Array.isArray(list) ? (same >= 0 ? { op: 'replace', path: `/userFonts/${same}`, value: entry } : { op: 'add', path: '/userFonts/-', value: entry }) : { op: 'add', path: '/userFonts', value: [entry] },
-        ...fontRoleOps(raw, roleList, spec),
-      ];
-      const next = applyJsonPatch(raw, ops);
-      const check = checkDesignData(next);
-      if (!check.design) return { ...text({ written: false, issues: check.issues }), isError: true };
-      if ((check.design.userFonts?.length ?? 0) === 0) return { ...text({ written: false, issues: [{ path: '/userFonts', message: `Ya hay ${USER_FONTS_MAX} fuentes o alguna no es válida: no se pudo agregar.` }] }), isError: true };
-      const written = await ws.write(full, `${JSON.stringify(stamp(next), null, 2)}\n`, { extensions: DESIGN_EXT, overwrite: true });
-      const layout = await newLayoutWarnings((d) => open(d, dirname(written)), checkDesignJson(body).design, check.design);
-      return text({ written: true, path: ws.show(written), font: { ...info, id }, roles: roleList, issues: check.issues, ...layoutResult(layout) });
+      return installFont({ bytes, label: font, path, app, family, weight, style, roles });
     },
   );
+
+  /**
+   * Incrusta una fuente (sus bytes) en una agenda en archivo (`path`, viaja en userFonts) o en la aplicación abierta
+   * (`app`), y con `roles` la pone en esos tipos de texto. La usan `add_font` (un archivo de la carpeta de trabajo) e
+   * `import_font` (una fuente de Google Fonts). `label` es cómo se nombra la fuente en los errores.
+   */
+  async function installFont(a: { bytes: Uint8Array; label: string; path?: string | undefined; app?: boolean | undefined; family?: string | undefined; weight?: number | undefined; style?: 'normal' | 'italic' | undefined; roles?: readonly string[] | undefined }): Promise<ToolResult> {
+    const { bytes, label, path, app, family, weight, style } = a;
+    let opened: FKFont;
+    try {
+      opened = openFont(bytes);
+    } catch (err) {
+      throw new Error(`«${label}» no es una fuente que se pueda leer: ${(err as Error).message}`, { cause: err });
+    }
+    const detected = detectFaceMeta(opened);
+    const spec = { family: (family ?? detected.family).trim().slice(0, USER_FONT_FAMILY_MAX).trim() || 'Sin nombre', weight: weight ?? detected.weight, style: style ?? detected.style };
+    /**
+     * Cuántos glifos tiene y qué puntuación le falta, con las fuentes de reserva de ESA agenda (su
+     * tema, y las fuentes propias que ya trae): de ahí van a salir los signos al dibujar.
+     */
+    const describeFont = async (design: unknown): Promise<{ family: string; weight: number; style: 'normal' | 'italic'; glyphs: number; punctuation: ReturnType<typeof punctuationOf> }> => {
+      const parsed = checkDesignData(design).design;
+      const own: UserFont[] = (parsed?.userFonts ?? []).filter((f) => f.spec.family !== spec.family || f.spec.weight !== spec.weight || f.spec.style !== spec.style);
+      const probe = withUserFonts(await sharedFonts(), own).registry.fork();
+      const face = probe.register(bytes, { ...spec, source: 'user', file: 'probe' });
+      const fallbacks = parsed ? resolveThemeFor(parsed.theme).fallbacks : ['Manrope'];
+      return { ...spec, glyphs: opened.numGlyphs, punctuation: punctuationOf(probe, face, fallbacks) };
+    };
+    const roleList = a.roles ?? [];
+    if (app === true) {
+      const added = await appLink.request<LiveFontAdded>('fonts.add', { spec, data: toBase64(bytes) });
+      if (roleList.length === 0) {
+        // Sin roles no cambia la agenda abierta (la fuente queda para elegirla), así que no hay avisos
+        // nuevos; si no hay una abierta, la puntuación se mide con la reserva de siempre.
+        const open = await appLink.request<LiveDesign>('design.get', { fonts: true }).catch(() => null);
+        return text({ added: true, font: { ...(await describeFont(open?.design)), id: added.id }, roles: [] });
+      }
+      const got = await appLink.request<LiveDesign>('design.get', { fonts: true });
+      const info = await describeFont(got.design);
+      const result = await updateInApp(fontRoleOps(got.design, roleList, spec));
+      return { ...result, content: [{ type: 'text', text: JSON.stringify({ font: { ...info, id: added.id }, roles: roleList }, null, 2) }, ...result.content] };
+    }
+    const { full, text: body } = await ws.read(path!, DESIGN_EXT);
+    const raw = parseJson(body, path!);
+    const info = await describeFont(raw);
+    const list = (raw as { userFonts?: unknown } | null)?.userFonts;
+    const fonts = Array.isArray(list) ? list : [];
+    // La misma familia, peso y estilo se reemplaza (con su id): no quedan dos fuentes iguales.
+    const same = fonts.findIndex((f: unknown) => {
+      const s = (f as { spec?: { family?: unknown; weight?: unknown; style?: unknown } } | null)?.spec;
+      return s?.family === spec.family && (s.weight ?? 400) === spec.weight && (s.style ?? 'normal') === spec.style;
+    });
+    const id = same >= 0 ? String((fonts[same] as { id?: unknown }).id ?? newId('font')) : newId('font');
+    const entry = { id, spec, data: toBase64(bytes) };
+    const ops: JsonPatchOp[] = [
+      Array.isArray(list) ? (same >= 0 ? { op: 'replace', path: `/userFonts/${same}`, value: entry } : { op: 'add', path: '/userFonts/-', value: entry }) : { op: 'add', path: '/userFonts', value: [entry] },
+      ...fontRoleOps(raw, roleList, spec),
+    ];
+    const next = applyJsonPatch(raw, ops);
+    const check = checkDesignData(next);
+    if (!check.design) return { ...text({ written: false, issues: check.issues }), isError: true };
+    if ((check.design.userFonts?.length ?? 0) === 0) return { ...text({ written: false, issues: [{ path: '/userFonts', message: `Ya hay ${USER_FONTS_MAX} fuentes o alguna no es válida: no se pudo agregar.` }] }), isError: true };
+    const written = await ws.write(full, `${JSON.stringify(stamp(next), null, 2)}\n`, { extensions: DESIGN_EXT, overwrite: true });
+    const layout = await newLayoutWarnings((d) => open(d, dirname(written)), checkDesignJson(body).design, check.design);
+    return text({ written: true, path: ws.show(written), font: { ...info, id }, replaced: same >= 0, roles: roleList, issues: check.issues, ...layoutResult(layout) });
+  }
+
+  /* ---------- Imágenes y fuentes de internet ---------- */
+
+  const env = opts.web?.env ?? process.env;
+  registerSourcingTools(server, {
+    ws,
+    appLink,
+    http: opts.web?.http ?? createHttpClient({ userAgent: `HeritageStudio-MCP/${opts.version} (+https://github.com/jonidimo/agenda-heritage-generator)` }),
+    env,
+    cache: opts.web?.cache ?? createCache({ dir: defaultCacheDir(env) }),
+    subset: opts.subsetWasm ? createSubsetter(opts.subsetWasm) : null,
+    open,
+    stamp,
+    parseJson,
+    updateInApp,
+    installFont,
+  });
 
   /* ---------- La aplicación de escritorio abierta ---------- */
 
