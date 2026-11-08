@@ -78,3 +78,18 @@ describe('browsePage', () => {
     await expect(browsePage('http://fotos.lan/x.png', bin.ctx)).rejects.toThrow(/no es lo que se esperaba/);
   });
 });
+
+describe('HTML hostil', () => {
+  it('etiquetas sin cerrar no vuelven cuadrático el recorrido', () => {
+    for (const html of ['<a '.repeat(100_000), '<base '.repeat(100_000), '<title '.repeat(100_000), '<img src="a.jpg" '.repeat(50_000)]) {
+      const t0 = Date.now();
+      page(html);
+      expect(Date.now() - t0, html.slice(0, 12)).toBeLessThan(1500);
+    }
+  });
+
+  it('una dirección desmedida no se lista', () => {
+    expect(page(`<img src="/${'a'.repeat(2000)}.jpg"><img src="/b.jpg">`).images.map((i) => i.url)).toEqual(['http://fotos.lan/b.jpg']);
+  });
+});
+

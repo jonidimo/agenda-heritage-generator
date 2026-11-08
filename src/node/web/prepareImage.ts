@@ -67,10 +67,43 @@ function hasExif(b: Uint8Array): boolean {
 export function sniffImage(b: Uint8Array): 'png' | 'jpeg' | 'svg' | null {
   if (b.length > 8 && b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47) return 'png';
   if (b.length > 3 && b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) return 'jpeg';
-  const head = new TextDecoder().decode(b.subarray(0, 8192));
-  // El primer elemento tiene que ser <svg> (después de la declaración XML, comentarios y el DOCTYPE): un HTML que lo contiene no lo es.
-  if (/^\s*(?:<\?xml[^>]*\?>\s*)?(?:<!--[\s\S]*?-->\s*)*(?:<!DOCTYPE[^>[]*(?:\[[\s\S]*?\])?>\s*)?(?:<!--[\s\S]*?-->\s*)*<svg[\s>/]/i.test(head.charCodeAt(0) === 0xfeff ? head.slice(1) : head)) return 'svg';
-  return null;
+  return startsWithSvgElement(new TextDecoder().decode(b.subarray(0, 8192))) ? 'svg' : null;
+}
+
+/**
+ * ¿El primer elemento es `<svg>`? Después de un BOM, espacios, la declaración XML, comentarios y el DOCTYPE. Se recorre
+ * a mano (un regex con grupos repetidos retrocede de forma exponencial con `<!-- -->` repetidos).
+ */
+export function startsWithSvgElement(text: string): boolean {
+  let i = text.charCodeAt(0) === 0xfeff ? 1 : 0;
+  const n = text.length;
+  for (let guard = 0; guard < 64; guard++) {
+    while (i < n && /\s/.test(text[i]!)) i++;
+    if (text.startsWith('<?', i)) {
+      const end = text.indexOf('?>', i + 2);
+      if (end < 0) return false;
+      i = end + 2;
+    } else if (text.startsWith('<!--', i)) {
+      const end = text.indexOf('-->', i + 4);
+      if (end < 0) return false;
+      i = end + 3;
+    } else if (/^<!DOCTYPE/i.test(text.slice(i, i + 9))) {
+      // Con posible subconjunto interno entre corchetes.
+      let depth = 0;
+      let j = i + 9;
+      for (; j < n; j++) {
+        const c = text[j];
+        if (c === '[') depth++;
+        else if (c === ']') depth--;
+        else if (c === '>' && depth <= 0) break;
+      }
+      if (j >= n) return false;
+      i = j + 1;
+    } else {
+      return /^<svg[\s>/]/i.test(text.slice(i, i + 6));
+    }
+  }
+  return false;
 }
 
 export function prepareRaster(bytes: Uint8Array, opts: PrepareOptions): PreparedImage {

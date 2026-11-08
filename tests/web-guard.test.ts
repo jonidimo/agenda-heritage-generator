@@ -1,6 +1,6 @@
 /** Qué direcciones puede visitar el servidor: solo https, solo los dominios de las APIs, nunca direcciones locales ni privadas. */
 import { describe, expect, it } from 'vitest';
-import { checkUrl, extraHosts, FONT_HOSTS, guardedLookup, hostAllowed, IMAGE_API_HOSTS, IMAGE_FILE_HOSTS, isPublicAddress, parseTrustedHosts, redactUrl, WebError } from '../src/node/web/guard';
+import { checkUrl, extraHosts, FONT_HOSTS, guardedLookup, hostAllowed, IMAGE_API_HOSTS, IMAGE_FILE_HOSTS, isNeverTrusted, isPublicAddress, parseTrustedHosts, redactUrl, WebError } from '../src/node/web/guard';
 
 describe('isPublicAddress', () => {
   it.each(['8.8.8.8', '1.1.1.1', '93.184.216.34', '172.32.0.1', '100.63.255.255', '2606:4700:4700::1111', '2a00:1450:4009:81f::200e', '::ffff:8.8.8.8'])('%s es pública', (ip) => {
@@ -137,4 +137,23 @@ describe('dominios de confianza (AGENDA_TRUSTED_HOSTS)', () => {
     // Sin lista de confianza, http nunca.
     expect(() => checkUrl('http://nas.lan/', IMAGE_API_HOSTS)).toThrow(WebError);
   });
+
+  it('un comodín sobre un sufijo público o una declaración que no puede coincidir se descarta', () => {
+    expect(parseTrustedHosts('*.co.uk,*.com.br,*.github.io,*.herokuapp.com,*.com.ar,127.1,010.0.0.1,0x7f.1,casa.github.io')).toEqual([{ host: 'casa.github.io', wildcard: false, port: null }]);
+  });
+
+  it('un nombre de confianza que apunta a enlace local, 0.0.0.0 o multicast no se conecta; a la red propia sí', async () => {
+    const resolver = (list: Array<{ address: string; family: 4 | 6 }>) => (_h: string, _o: object, cb: (e: null, a: typeof list) => void) => cb(null, list);
+    const run = (list: Array<{ address: string; family: 4 | 6 }>) =>
+      new Promise<Error | null>((resolve) => guardedLookup(resolver(list) as never, 'lan')('nas.lan', { all: true } as never, (err) => resolve(err)));
+    expect(await run([{ address: '192.168.1.20', family: 4 }])).toBeNull();
+    expect(await run([{ address: '127.0.0.1', family: 4 }])).toBeNull();
+    expect(await run([{ address: 'fd00::5', family: 6 }])).toBeNull();
+    for (const address of ['169.254.169.254', '0.0.0.0', '224.0.0.1', '::', 'fe80::1', 'ff02::1', '::ffff:169.254.169.254']) {
+      const err = await run([{ address, family: address.includes(':') ? 6 : 4 }]);
+      expect(err, address).toBeInstanceOf(WebError);
+    }
+    expect(isNeverTrusted('10.0.0.1')).toBe(false);
+  });
 });
+

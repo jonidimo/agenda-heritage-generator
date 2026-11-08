@@ -27,6 +27,16 @@ describe('sniffImage', () => {
   });
 });
 
+describe('sniffImage con entradas hostiles', () => {
+  it('comentarios repetidos no cuelgan el reconocimiento', () => {
+    const t0 = Date.now();
+    expect(sniffImage(new TextEncoder().encode('<!-- -->'.repeat(1000)))).toBeNull();
+    expect(sniffImage(new TextEncoder().encode('<!-- -->'.repeat(40) + '<svg xmlns="x"/>'))).toBe('svg');
+    expect(sniffImage(new TextEncoder().encode('<?xml version="1.0"?><!DOCTYPE svg [<!ENTITY a "b">]><!-- c --><svg/>'))).toBe('svg');
+    expect(Date.now() - t0).toBeLessThan(500);
+  });
+});
+
 describe('prepareRaster', () => {
   it('sin medidas ni cambios, el JPEG queda con sus bytes originales', () => {
     const src = makeJpeg(200, 100);

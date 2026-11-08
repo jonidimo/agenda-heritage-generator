@@ -1,6 +1,6 @@
 /** El cliente web: dominios en cada redirección, tiempo y tamaño máximos, y errores que no revelan las claves. */
 import { describe, expect, it } from 'vitest';
-import { WebError } from '../src/node/web/guard';
+import { parseTrustedHosts, WebError } from '../src/node/web/guard';
 import { createHttpClient, MAX_REDIRECTS, type Transport } from '../src/node/web/http';
 import { fakeWeb } from './helpers/web';
 
@@ -125,4 +125,23 @@ describe('createHttpClient', () => {
     expect(err.code).toBe('network');
     expect(err.message).toBe('No se pudo conectar con api.openverse.org (ECONNREFUSED).');
   });
+
+  it('un dominio de confianza vale solo si el pedido empieza en él: un tercero no lleva a la red propia', async () => {
+    const trusted = parseTrustedHosts('nas.lan');
+    const web = fakeWeb([
+      { match: 'https://api.openverse.org/a', status: 302, headers: { location: 'http://nas.lan/secreto' }, body: '' },
+      { match: 'http://nas.lan/secreto', body: 'datos de la red' },
+      { match: 'http://nas.lan/ok', status: 302, headers: { location: 'https://cdn.pixabay.com/f' }, body: '' },
+      { match: 'https://cdn.pixabay.com/f', status: 302, headers: { location: 'http://nas.lan/otra' }, body: '' },
+    ]);
+    // Empieza en un host de catálogo y redirige a uno declarado: se corta.
+    const err = await failure(web.http.get('https://api.openverse.org/a', { allow: ALLOW, trusted }));
+    expect(err.code).toBe('blocked-host');
+    expect(web.requests).toEqual(['https://api.openverse.org/a']);
+    // Empieza en el declarado, pasa a un público y vuelve al declarado: tampoco.
+    const back = await failure(web.http.get('http://nas.lan/ok', { allow: ALLOW, trusted }));
+    expect(back.code).toBe('blocked-host');
+    expect(web.requests).not.toContain('http://nas.lan/otra');
+  });
 });
+

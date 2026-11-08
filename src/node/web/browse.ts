@@ -34,6 +34,7 @@ export const PAGE_MAX_BYTES = 3 * 1024 * 1024;
 const MAX_TAGS = 30_000;
 const MAX_IMAGES = 300;
 const MAX_LINKS = 80;
+const MAX_URL = 800;
 
 /** Las propiedades de una etiqueta, con los nombres en minúsculas y los valores sin entidades. */
 function attributes(tag: string): Record<string, string> {
@@ -51,7 +52,8 @@ function attributes(tag: string): Record<string, string> {
 
 function resolve(raw: string | undefined, base: URL): string | null {
   const v = (raw ?? '').trim();
-  if (!v || /^(?:data|javascript|mailto|tel|blob):/i.test(v) || v.startsWith('#')) return null;
+  // Una dirección desmedida no es una imagen: no pasa (y no llega al modelo).
+  if (!v || v.length > MAX_URL || /^(?:data|javascript|mailto|tel|blob):/i.test(v) || v.startsWith('#')) return null;
   try {
     const u = new URL(v, base);
     if (u.protocol !== 'http:' && u.protocol !== 'https:') return null;
@@ -84,7 +86,7 @@ function largestOfSrcset(srcset: string): string | null {
 /** Saca de un HTML las imágenes y los enlaces (con direcciones absolutas), en el orden de la página y sin repetir. */
 export function extractPage(html: string, pageUrl: URL): PageContents {
   let base = pageUrl;
-  const title = str(decodeEntities(/<title[^>]*>([\s\S]*?)<\/title>/i.exec(html)?.[1] ?? ''), 160);
+  const title = str(decodeEntities(/<title[^<>]{0,200}>([^<]{0,500})/i.exec(html)?.[1] ?? ''), 160);
   const images = new Map<string, PageImage>();
   const links = new Map<string, PageLink>();
   const add = (raw: string | undefined, via: PageImage['via'], extra: Partial<Pick<PageImage, 'alt' | 'width' | 'height'>> = {}): void => {
@@ -98,10 +100,11 @@ export function extractPage(html: string, pageUrl: URL): PageContents {
   };
 
   let count = 0;
-  const tagRe = /<(img|source|a|meta|link|base)\b[^>]*>/gi;
+  // `[^<>]{0,4000}`: una etiqueta sin cerrar se corta en el siguiente «<» (el recorrido es lineal, no cuadrático).
+  const tagRe = /<(img|source|a|meta|link|base)\b[^<>]{0,4000}>/gi;
   let m: RegExpExecArray | null;
   // Primero el <base>, que cambia cómo se resuelve todo lo demás.
-  const baseTag = /<base\b[^>]*>/i.exec(html);
+  const baseTag = /<base\b[^<>]{0,2000}>/i.exec(html);
   if (baseTag) {
     const href = resolve(attributes(baseTag[0]).href, pageUrl);
     if (href) base = new URL(href);

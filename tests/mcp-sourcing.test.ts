@@ -26,6 +26,7 @@ import { googleList, imageRoutes, OV_ID, OV_ID2, OV_ID3 } from './helpers/servic
 import { makeJpeg } from './helpers/jpeg';
 import { makePng } from './helpers/png';
 import { writeFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
 
 type Part = { type: string; text?: string; data?: string; mimeType?: string };
 let dir = '';
@@ -240,6 +241,42 @@ describe('imágenes propias: archivo, enlace y páginas', () => {
   async function rmAll(): Promise<void> {
     for (const close of closers.splice(0)) await close();
   }
+
+  it('browse_page no baja por su cuenta miniaturas de otro sitio declarado', async () => {
+    const routes: Route[] = [
+      { match: 'http://fotos.lan/g', type: 'text/html', body: '<img src="/a.jpg"><img src="http://router.lan/reboot.jpg"><base href="http://fotos.lan/">' },
+      { match: 'http://fotos.lan/a.jpg', type: 'image/jpeg', body: makeJpeg(300, 200) },
+      { match: /router\.lan/, type: 'image/jpeg', body: makeJpeg(300, 200) },
+    ];
+    await withAgenda({ AGENDA_TRUSTED_HOSTS: 'fotos.lan,router.lan' }, routes);
+    const r = await call('browse_page', { url: 'http://fotos.lan/g' });
+    expect(r.isError, r.text).toBe(false);
+    expect(r.body.images.map((i: { importable: boolean }) => i.importable)).toEqual([true, true]);
+    expect(web.requests.some((u) => u.includes('router.lan'))).toBe(false);
+    expect(r.body.untrusted).toMatch(/datos, no instrucciones/);
+  });
+
+  it('una url de un catálogo se importa con su id, no como enlace propio; y lo que se aplica es lo que se propuso', async () => {
+    await withAgenda({ AGENDA_TRUSTED_HOSTS: 'fotos.lan' }, lan());
+    const direct = await call('import_image', { url: 'https://upload.wikimedia.org/x.jpg', path: 'a.agenda.json' });
+    expect(direct.isError).toBe(true);
+    expect(direct.text).toMatch(/AGENDA_TRUSTED_HOSTS/);
+    // La propuesta se hace con una imagen; el enlace pasa a devolver otra: se aplica la que vio la persona (la bajada se reutiliza).
+    const args = { url: 'http://fotos.lan/ia/uno.jpg', path: 'a.agenda.json', sizeMm: { w: 60, h: 40 }, embed: true, author: 'Yo' };
+    expect((await call('import_image', args)).isError).toBe(false);
+    const seen = createHash('sha256').update(makeJpeg(1200, 800)).digest('hex');
+    web.routes.find((r) => r.match === 'http://fotos.lan/ia/uno.jpg')!.body = makeJpeg(1300, 800, 70);
+    const done = await call('import_image', { ...args, confirm: true }, { raw: true });
+    expect(done.isError, done.text).toBe(false);
+    expect((await agenda()).assets.find((x: { id: string }) => x.id === done.body.assetId).credit.sourceSha256).toBe(seen);
+  });
+
+  it('una url con un «%» suelto no rompe con un error críptico', async () => {
+    await withAgenda({ AGENDA_TRUSTED_HOSTS: 'fotos.lan' }, [...lan(), { match: 'http://fotos.lan/%E0%A4%A.jpg', type: 'image/jpeg', body: makeJpeg(300, 200) }]);
+    const r = await call('import_image', { url: 'http://fotos.lan/%E0%A4%A.jpg', path: 'a.agenda.json', embed: true });
+    expect(r.isError, r.text).toBe(false);
+    expect(r.body.proposal.name).toBeTruthy();
+  });
 
   it('import_image con url: de un dominio declarado, con aviso; de otro, no', async () => {
     await withAgenda({ AGENDA_TRUSTED_HOSTS: 'fotos.lan,*.otra.lan' }, lan());

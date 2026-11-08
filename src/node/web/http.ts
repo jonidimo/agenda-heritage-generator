@@ -71,11 +71,12 @@ export interface TransportOptions {
 /** La conexión real: `https`, con la resolución de nombres que solo deja pasar direcciones públicas. */
 export function createHttpsTransport(options: TransportOptions = {}): Transport {
   const lookup = options.lookup ?? (guardedLookup() as LookupFunction);
+  const lanLookup = options.lookup ?? (guardedLookup(undefined, 'lan') as LookupFunction);
   return (url, { headers, signal, relaxed }) =>
     new Promise((resolve, reject) => {
       // Un dominio de confianza se resuelve como siempre (puede ser de la red local) y puede ser http; lo demás, solo https y direcciones públicas.
       const request = relaxed && url.protocol === 'http:' ? httpRequest : httpsRequest;
-      const req = request(url, { method: 'GET', headers, signal, agent: false, ...(relaxed ? {} : { lookup }), ...(options.ca ? { ca: options.ca } : {}) } as never, (res) => {
+      const req = request(url, { method: 'GET', headers, signal, agent: false, lookup: relaxed ? lanLookup : lookup, ...(options.ca ? { ca: options.ca } : {}) } as never, (res) => {
         const encoding = String(res.headers['content-encoding'] ?? '').trim().toLowerCase();
         const decoder = encoding === 'gzip' || encoding === 'x-gzip' ? createGunzip() : encoding === 'deflate' ? createInflate() : encoding === 'br' ? createBrotliDecompress() : null;
         // `pipeline` pasa los errores del origen al descompresor, que es lo que se lee.
@@ -99,17 +100,22 @@ export function createHttpClient(opts: { transport?: Transport; userAgent: strin
     async get(raw, o) {
       const maxBytes = o.maxBytes ?? DEFAULT_MAX_BYTES;
       const timeoutMs = o.timeoutMs ?? DEFAULT_TIMEOUT_MS;
-      let url = checkUrl(raw, o.allow, o.trusted);
+      // Los dominios de confianza valen solo si el pedido EMPIEZA en uno: un tercero (una ficha, una redirección) no puede llevar a la red propia.
+      let trusted: readonly TrustedHost[] | undefined = o.trusted;
+      let url = checkUrl(raw, o.allow, trusted);
+      if (trusted && !isTrusted(url, trusted)) trusted = undefined;
       const control = new AbortController();
       const timer = setTimeout(() => control.abort(), timeoutMs);
       let headers: Record<string, string> = { 'user-agent': opts.userAgent, 'accept-encoding': 'gzip, deflate, br', ...lowerKeys(o.headers) };
       try {
         for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
-          const res = await transport(url, { headers, signal: control.signal, relaxed: o.trusted !== undefined && isTrusted(url, o.trusted) });
+          const res = await transport(url, { headers, signal: control.signal, relaxed: trusted !== undefined && isTrusted(url, trusted) });
           const location = res.headers['location'];
           if (REDIRECTS.has(res.status) && location) {
             await discard(res.body);
-            const next = checkUrl(new URL(location, url).href, o.allow, o.trusted);
+            const next = checkUrl(new URL(location, url).href, o.allow, trusted);
+            // Una vez que un salto no es de confianza, los siguientes tampoco.
+            if (trusted && !isTrusted(next, trusted)) trusted = undefined;
             if (next.host !== url.host) headers = Object.fromEntries(Object.entries(headers).filter(([k]) => !SENSITIVE_HEADERS.includes(k)));
             url = next;
             continue;

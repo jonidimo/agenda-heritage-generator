@@ -70,6 +70,14 @@ export interface TrustedHost {
 /** Sufijos de una sola etiqueta que se admiten con comodín: los que se usan en redes propias. */
 const LOCAL_SUFFIXES = new Set(['lan', 'local', 'home', 'internal', 'localdomain', 'intranet', 'corp']);
 
+/** Sufijos públicos donde cualquiera registra un sitio: un comodín sobre ellos abriría sitios de terceros. */
+const PUBLIC_SUFFIXES = new Set([
+  'github.io', 'gitlab.io', 'herokuapp.com', 'vercel.app', 'netlify.app', 'blogspot.com', 'wordpress.com', 'pages.dev', 'workers.dev', 'web.app',
+  'firebaseapp.com', 'appspot.com', 'cloudfront.net', 'amazonaws.com', 'azurewebsites.net', 'onrender.com', 'glitch.me', 'repl.co', 'ngrok.io',
+  'ngrok-free.app', 'fly.dev', 'surge.sh', 'neocities.org', 'weebly.com', 'wixsite.com', 'tumblr.com', 'medium.com', 'substack.com', 'duckdns.org', 'no-ip.org',
+]);
+const isPublicSuffix = (host: string): boolean => PUBLIC_SUFFIXES.has(host) || /^(?:co|com|org|net|gov|edu|ac|or|ne|go|gob)\.[a-z]{2}$/.test(host);
+
 /** Lee la lista (separada por comas): `nas.lan`, `*.casa.lan`, `192.168.1.20:8080`, `fotos.ejemplo.org`. Lo que no es un nombre válido se descarta (nunca `*` solo ni `*.com`). */
 export function parseTrustedHosts(value: string | undefined): TrustedHost[] {
   const out: TrustedHost[] = [];
@@ -81,9 +89,11 @@ export function parseTrustedHosts(value: string | undefined): TrustedHost[] {
     const port = m[3] ? Number(m[3]) : null;
     if (port !== null && (port < 1 || port > 65535)) continue;
     if (isIP(host) === 6) continue;
+    // Solo dígitos y puntos que no son una IPv4 completa (`127.1`, `010.0.0.1`): el navegador las normaliza y nunca coincidirían.
+    if (/^(?:0x[0-9a-f]+|\d+)(?:\.(?:0x[0-9a-f]+|\d+))*$/.test(host) && isIP(host) === 0) continue;
     if (wildcard) {
       const labels = host.split('.');
-      if (isIP(host) !== 0 || (labels.length < 2 && !LOCAL_SUFFIXES.has(host))) continue;
+      if (isIP(host) !== 0 || (labels.length < 2 && !LOCAL_SUFFIXES.has(host)) || isPublicSuffix(host)) continue;
     }
     if (!wildcard && isIP(host) === 0 && !/^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)*[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(host)) continue;
     out.push({ host, wildcard, port });
@@ -198,11 +208,31 @@ type Resolver = (hostname: string, options: LookupOptions, callback: (err: NodeJ
  * de verdad se conecta, así un dominio que cambia de dirección entre la consulta y la conexión no
  * puede llevar a una red interna.
  */
-export function guardedLookup(resolver: Resolver = dnsLookup as unknown as Resolver) {
+/** Direcciones a las que ni un dominio de confianza puede apuntar (solo si se declara esa IP tal cual): enlace local (metadatos de la nube), sin especificar y multicast. */
+export function isNeverTrusted(ip: string): boolean {
+  const kind = isIP(ip.split('%')[0]!);
+  if (kind === 4) {
+    const p = v4Parts(ip);
+    return p === null || p[0] === 0 || (p[0] === 169 && p[1] === 254) || p[0] >= 224;
+  }
+  if (kind !== 6) return true;
+  const g = v6Groups(ip);
+  if (!g) return true;
+  if (g.slice(0, 5).every((x) => x === 0) && g[5] === 0xffff) return isNeverTrusted(`${g[6]! >> 8}.${g[6]! & 255}.${g[7]! >> 8}.${g[7]! & 255}`);
+  return g.every((x) => x === 0) || (g[0]! >= 0xfe80 && g[0]! <= 0xfebf) || (g[0]! & 0xff00) === 0xff00;
+}
+
+/**
+ * La resolución de nombres de las conexiones. `policy` 'public': solo direcciones de internet. 'lan' (un dominio de
+ * confianza): también las de la red propia, pero nunca enlace local, sin especificar ni multicast: la persona declaró
+ * un nombre, no esas direcciones (un nombre que cambia de dirección no puede llevar a los metadatos de la nube).
+ */
+export function guardedLookup(resolver: Resolver = dnsLookup as unknown as Resolver, policy: 'public' | 'lan' = 'public') {
   return (hostname: string, options: LookupOptions, callback: LookupCallback): void => {
     resolver(hostname, { ...options, all: true }, (err, addresses) => {
       if (err) return callback(err, '', 4);
-      if (addresses.length === 0 || addresses.some((a) => !isPublicAddress(a.address))) {
+      const ok = policy === 'lan' ? (a: LookupAddress): boolean => !isNeverTrusted(a.address) : (a: LookupAddress): boolean => isPublicAddress(a.address);
+      if (addresses.length === 0 || addresses.some((a) => !ok(a))) {
         return callback(new WebError('blocked-address', `«${hostname}» apunta a una dirección que no es pública: no se conecta.`), '', 4);
       }
       if (options.all) return callback(null, addresses);

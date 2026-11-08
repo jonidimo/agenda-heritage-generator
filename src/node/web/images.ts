@@ -98,7 +98,7 @@ export interface Downloaded {
 
 /** Baja el archivo de la imagen (solo de los dominios permitidos); un SVG se limpia. */
 export async function downloadImage(hit: ImageHit, ctx: SourceContext): Promise<Downloaded> {
-  const res = await ctx.http.get(hit.fileUrl, { allow: ctx.fileHosts, trusted: ctx.trusted, headers: { accept: 'image/png,image/jpeg,image/svg+xml,image/*;q=0.5' }, maxBytes: IMAGE_DOWNLOAD_MAX_BYTES, timeoutMs: 60_000, accept: (t) => t.startsWith('image/') || t === 'application/octet-stream' || t === '' });
+  const res = await ctx.http.get(hit.fileUrl, { allow: hit.provider === 'web' ? [] : ctx.fileHosts, ...(hit.provider === 'web' ? { trusted: ctx.trusted } : {}), headers: { accept: 'image/png,image/jpeg,image/svg+xml,image/*;q=0.5' }, maxBytes: IMAGE_DOWNLOAD_MAX_BYTES, timeoutMs: 60_000, accept: (t) => t.startsWith('image/') || t === 'application/octet-stream' || t === '' });
   const kind = sniffImage(res.body);
   if (!kind) throw new WebError('bad-type', 'El archivo no es una imagen PNG, JPEG o SVG (los WebP, GIF y AVIF no se importan).');
   if (kind === 'svg') {
@@ -163,7 +163,7 @@ export function shrinkToJpeg(bytes: Uint8Array, maxWidth: number, quality = 72):
 export async function fetchThumbnail(hit: ImageHit, ctx: SourceContext): Promise<{ data: Uint8Array; mime: string } | null> {
   if (!hit.thumbUrl) return null;
   try {
-    const res = await ctx.http.get(hit.thumbUrl, { allow: ctx.fileHosts, trusted: ctx.trusted, headers: { accept: 'image/jpeg,image/png,image/*;q=0.5' }, maxBytes: 3 * 1024 * 1024, timeoutMs: 15_000, accept: (t) => t.startsWith('image/') });
+    const res = await ctx.http.get(hit.thumbUrl, { allow: ctx.fileHosts, headers: { accept: 'image/jpeg,image/png,image/*;q=0.5' }, maxBytes: 3 * 1024 * 1024, timeoutMs: 15_000, accept: (t) => t.startsWith('image/') });
     const small = shrinkToJpeg(res.body, THUMB_PX);
     if (small) return { data: small, mime: 'image/jpeg' };
     // Un formato que no se decodifica acá (WebP…): se pasa tal cual si es chico.
